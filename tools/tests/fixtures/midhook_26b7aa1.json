@@ -1,0 +1,65 @@
+{
+  "SE1": {
+    "hex": "83 3d ec 40 16 5e 00 74 26 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 56 6a 01 e8 2c b8 fd ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 55 8b ec 56 8b f1 ff 25 dc 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_endlog",
+        "relative": false
+      },
+      {
+        "offset": 32,
+        "symbol": "Rs7End_OnSite",
+        "relative": true
+      },
+      {
+        "offset": 55,
+        "symbol": "g_rs7_resume_SE1",
+        "relative": false
+      }
+    ],
+    "source": "26b7aa1759385edc6a814e145158075cfe3816d4 MSVC v145 Release Win32"
+  },
+  "SE2": {
+    "hex": "83 3d ec 40 16 5e 00 74 26 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 56 6a 02 e8 ec b7 fd ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 55 8b ec 83 e4 f8 ff 25 e0 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_endlog",
+        "relative": false
+      },
+      {
+        "offset": 32,
+        "symbol": "Rs7End_OnSite",
+        "relative": true
+      },
+      {
+        "offset": 55,
+        "symbol": "g_rs7_resume_SE2",
+        "relative": false
+      }
+    ],
+    "source": "26b7aa1759385edc6a814e145158075cfe3816d4 MSVC v145 Release Win32"
+  },
+  "SE3": {
+    "hex": "83 3d ec 40 16 5e 00 74 26 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 56 6a 03 e8 ac b7 fd ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 8b 16 8b 82 b0 00 00 00 ff 25 e4 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_endlog",
+        "relative": false
+      },
+      {
+        "offset": 32,
+        "symbol": "Rs7End_OnSite",
+        "relative": true
+      },
+      {
+        "offset": 57,
+        "symbol": "g_rs7_resume_SE3",
+        "relative": false
+      }
+    ],
+    "source": "26b7aa1759385edc6a814e145158075cfe3816d4 MSVC v145 Release Win32"
+  }
+}

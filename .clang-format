@@ -1,0 +1,59 @@
+# clang-format 23 (Visual Studio Build Tools' LLVM or scoop llvm). Format with scripts\format.ps1.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+DerivePointerAlignment: false
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+InsertBraces: true
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  # <winsock2.h>/<windows.h> before every other system header (tlhelp32.h and friends need it first).
+  - Regex: '^<(winsock2|windows)\.h>'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3
+SpacesBeforeTrailingComments: 2
+AlignTrailingComments: true
+ReflowComments: Always
+BinPackArguments: true
+BinPackParameters: true
+AlignAfterOpenBracket: Align
+ContinuationIndentWidth: 4
+BreakConstructorInitializers: BeforeColon
+PenaltyReturnTypeOnItsOwnLine: 1000
+InsertNewlineAtEOF: true
+LineEnding: LF
+BreakTemplateDeclarations: Yes
+# Macros invoked as whole declarations, without a trailing semicolon.
+StatementMacros:
+  - RS7_FNVARS
+  - RS7_FNEXT
+  - RS7_SAVE_ALL
+  - RS7_RESTORE_ALL
+  - PUB_VAR
+  - PAIR
+  - RS7_GPU_THUNK
+# Naked-stub function heads: the body `{ __asm { ... } }` is code, not a block of statements.
+Macros:
+  - RS7_STUB(name)=void name()
+  - STUB(n)=void n()
