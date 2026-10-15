@@ -13,6 +13,8 @@ seven-string charts on a seven-string highway, and notes on the low B string are
 like any other note. Six-string songs and bass songs are not changed. The mod plays charts made for
 seven strings; it does not convert six-string charts.
 
+<img width="1922" height="1107" alt="showcase" src="https://github.com/user-attachments/assets/f8ecad58-917e-4565-abb6-996a14270a64" />
+
 <details>
 <summary><b>Contents</b></summary>
 
