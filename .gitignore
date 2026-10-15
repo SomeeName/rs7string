@@ -1,0 +1,39 @@
+bin/
+obj/
+.vs/
+*.user
+src/generated/
+__pycache__/
+docs/evidence/
+dist/
+
+# Job 3 verification scratch
+/pytest-*/
+/tuner8-*.log
+/baseline-*.log
+/red-build.log
+/session-red-*.log
+
+# Never commit evidence from the game: disassembly/decompiler listings, dumps, logs, scratch output
+evidence/
+*-evidence/
+**/evidence/
+*.dmp
+*.mdmp
+*.log
+*.stamp
+scratch/
+tmp/
+*.orig
+*.rej
+
+# Local generated outputs and game-derived data
+docs/eight-audit.tsv
+docs/publish-grid-manifest.json
+.venv/
+original/
+rs7string/
+*.nif
+*.psarc
+*.gfx
+*.swf

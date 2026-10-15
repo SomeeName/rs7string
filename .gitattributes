@@ -1,0 +1,6 @@
+# Source is LF in the repository and in the working tree (see .editorconfig).
+* text=auto eol=lf
+
+*.dds binary
+*.bin binary
+*.rs7da binary

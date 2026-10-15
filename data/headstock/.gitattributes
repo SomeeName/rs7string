@@ -1,0 +1,2 @@
+# Encoded package is a byte-exact format; never convert its header LF to CRLF.
+rs7string_headstock.bin binary

@@ -1,0 +1,542 @@
+{
+  "Rs7_Stub_TK": {
+    "hex": "83 3d 48 44 16 5e 00 75 09 83 3d 50 f7 1d 5e 00 74 0f 60 ff 74 24 24 51 e8 73 7b fe ff 83 c4 08 61 55 8b ec 83 ec 28 ff 25 6c 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_tuner_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 11,
+        "symbol": "g_rs7_tn_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 25,
+        "symbol": "Rs7_TunerKey",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 41,
+        "symbol": "g_rs7_resume_TK",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_TS": {
+    "hex": "83 3d 48 44 16 5e 00 74 0f 60 57 ff 74 24 28 e8 7c 72 fe ff 83 c4 08 61 55 8b ec 83 ec 08 ff 25 70 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_tuner_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 16,
+        "symbol": "Rs7_TunerApply",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 32,
+        "symbol": "g_rs7_resume_TS",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_TUT": {
+    "hex": "83 3d 50 f7 1d 5e 00 74 11 60 ff b5 78 ff ff ff 57 e8 da c9 fe ff 83 c4 08 61 8b 17 8b 02 8b cf ff 25 d4 86 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_tn_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 18,
+        "symbol": "Rs7_TnUuidTuning",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_resume_TUT",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_XB1": {
+    "hex": "9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 8d 46 38 50 ff 75 08 e8 e1 9c fb ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 8d 4c 24 14 ff 15 e0 86 20 5e ff 25 dc 86 20 5e",
+    "fixups": [
+      {
+        "offset": 27,
+        "symbol": "Rs7Ext_OnSngLoaded",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 48,
+        "symbol": "g_rs7_target_XB1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 54,
+        "symbol": "g_rs7_resume_XB1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_N1": {
+    "hex": "0f b6 40 38 83 f8 06 72 24 83 f8 07 77 1f 83 3d a8 3b 1d 5e 00 74 07 b8 08 00 00 00 eb 0f 83 f8 06 75 0a 83 3d f0 40 16 5e 00 74 01 40 51 6a 01 ff 25 f0 84 20 5e",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "g_rs7_publish_ports",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 37,
+        "symbol": "g_rs7_s7_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 50,
+        "symbol": "g_rs7_resume_N1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_N21": {
+    "hex": "0f b6 49 38 83 f9 06 72 24 83 f9 07 77 1f 83 3d a8 3b 1d 5e 00 74 07 b9 08 00 00 00 eb 0f 83 f9 06 75 0a 83 3d f0 40 16 5e 00 74 01 41 50 6a 01 ff 25 c8 85 20 5e",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "g_rs7_publish_ports",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 37,
+        "symbol": "g_rs7_s7_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 50,
+        "symbol": "g_rs7_resume_N21",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_GSZ1": {
+    "hex": "66 81 7e 3a 52 37 75 23 81 be ac 00 00 00 52 53 37 47 75 17 66 c7 46 3a 00 00 c7 86 ac 00 00 00 00 00 00 00 68 b0 00 00 00 eb 02 6a 40 6a 03 56 ff 25 24 87 20 5e",
+    "fixups": [
+      {
+        "offset": 50,
+        "symbol": "g_rs7_resume_GSZ1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_GIZ1": {
+    "hex": "51 52 56 e8 38 e8 fb ff 83 c4 04 5a 59 50 6a 03 56 ff 25 30 87 20 5e",
+    "fixups": [
+      {
+        "offset": 4,
+        "symbol": "Rs7Gs_InfoFreeSize",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 19,
+        "symbol": "g_rs7_resume_GIZ1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSA2": {
+    "hex": "56 e8 da f3 ff ff 75 0b 68 d4 01 00 00 ff 25 78 85 20 5e 68 5c 01 00 00 ff 25 78 85 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegDisownZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_PSA2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 26,
+        "symbol": "g_rs7_resume_PSA2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSD1": {
+    "hex": "c7 45 fc 05 00 00 00 50 e8 d3 f3 ff ff 75 07 c7 45 fc 07 00 00 00 ff 25 7c 85 20 5e",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 24,
+        "symbol": "g_rs7_resume_PSD1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSD2": {
+    "hex": "8d b8 04 01 00 00 50 e8 b4 f3 ff ff 75 06 8d b8 54 01 00 00 ff 25 80 85 20 5e",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 22,
+        "symbol": "g_rs7_resume_PSD2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSU3": {
+    "hex": "b9 06 00 00 00 57 e8 15 f2 ff ff 75 05 b9 08 00 00 00 ff 25 94 85 20 5e",
+    "fixups": [
+      {
+        "offset": 7,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 20,
+        "symbol": "g_rs7_resume_PSU3",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSL1": {
+    "hex": "0f b6 47 0b 83 3d bc 40 16 5e 00 74 12 83 f8 06 75 0d 53 e8 88 f3 ff ff 75 05 a1 c0 40 16 5e 33 c9 ff 25 70 85 20 5e",
+    "fixups": [
+      {
+        "offset": 6,
+        "symbol": "g_rs7_head_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 20,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 27,
+        "symbol": "g_rs7_peg_load",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "g_rs7_resume_PSL1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSC1": {
+    "hex": "60 57 e8 39 0e fc ff 83 c4 04 61 8b c7 5b 8b e5 ff 25 6c 85 20 5e",
+    "fixups": [
+      {
+        "offset": 3,
+        "symbol": "Rs7_PegSetCtor",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_PSC1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSU1": {
+    "hex": "57 e8 7a f2 ff ff 75 0c 66 83 f9 08 73 12 ff 25 84 85 20 5e 66 3b 4f 04 73 06 ff 25 84 85 20 5e ff 25 88 85 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSU1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSU1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSU1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSU2": {
+    "hex": "57 e8 4a f2 ff ff 75 0c 66 83 fb 08 72 12 ff 25 8c 85 20 5e 66 3b 5f 04 72 06 ff 25 8c 85 20 5e ff 25 90 85 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSU2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSU2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSU2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSM1": {
+    "hex": "50 e8 4a f3 ff ff 75 0c 66 83 f9 08 73 12 ff 25 98 85 20 5e 66 3b 48 04 73 06 ff 25 98 85 20 5e ff 25 9c 85 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSM1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSM1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSM1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSM2": {
+    "hex": "50 8b 45 08 8b 40 08 50 e8 13 f3 ff ff 75 0c 58 80 fb 08 72 12 ff 25 a0 85 20 5e 58 80 fb 06 72 06 ff 25 a0 85 20 5e ff 25 a4 85 20 5e",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 23,
+        "symbol": "g_rs7_resume_PSM2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "g_rs7_resume_PSM2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 41,
+        "symbol": "g_rs7_target_PSM2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSR1": {
+    "hex": "8b 4e 2c 8b 51 18 8b 52 0c 0f b7 42 04 ff 25 a8 85 20 5e",
+    "fixups": [
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_PSR1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_PSN1": {
+    "hex": "8b 0d 18 26 1d 5e 83 fb 06 73 09 8b 0c 99 ff 25 ac 85 20 5e 8b 09 ff 25 ac 85 20 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_pegsets",
+        "addend": -8,
+        "relative": false
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSN1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 24,
+        "symbol": "g_rs7_resume_PSN1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_GSSS": {
+    "hex": "66 81 79 3a 52 37 75 3a 81 b9 ac 00 00 00 52 53 37 47 75 2e 39 91 a8 00 00 00 75 26 80 b9 a3 00 00 00 00 74 1d 0f b6 42 41 57 33 ff 3b f8 73 0b 8b 74 b9 40 c6 46 70 01 47 eb f1 5f ff 25 44 87 20 5e 32 c0 38 42 0b 76 06 ff 25 40 87 20 5e ff 25 44 87 20 5e",
+    "fixups": [
+      {
+        "offset": 62,
+        "symbol": "g_rs7_target_GSSS",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 75,
+        "symbol": "g_rs7_resume_GSSS",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 81,
+        "symbol": "g_rs7_target_GSSS",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_Stub_GSSE": {
+    "hex": "66 81 79 3a 52 37 75 25 81 b9 ac 00 00 00 52 53 37 47 75 19 33 c0 8b 7c 81 40 85 ff 74 03 88 5f 70 40 83 f8 08 72 ef ff 25 4c 87 20 5e 38 5a 0b 76 06 ff 25 48 87 20 5e ff 25 4c 87 20 5e",
+    "fixups": [
+      {
+        "offset": 41,
+        "symbol": "g_rs7_target_GSSE",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 52,
+        "symbol": "g_rs7_resume_GSSE",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 58,
+        "symbol": "g_rs7_target_GSSE",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_PegOwnedZF": {
+    "hex": "51 50 8b 44 24 0c 85 c0 74 11 b9 40 00 00 00 3b 04 8d 1c 26 1d 5e 74 06 49 75 f4 83 c9 01 58 59 c2 04 00",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_pegsets",
+        "addend": -4,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  },
+  "Rs7_PegDisownZF": {
+    "hex": "51 50 8b 44 24 0c 85 c0 74 11 b9 40 00 00 00 3b 04 8d 1c 26 1d 5e 74 0b 49 75 f4 83 c9 01 58 59 c2 04 00 c7 04 8d 1c 26 1d 5e 00 00 00 00 58 59 c2 04 00",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_pegsets",
+        "addend": -4,
+        "relative": false
+      },
+      {
+        "offset": 38,
+        "symbol": "g_rs7_pegsets",
+        "addend": -4,
+        "relative": false
+      }
+    ],
+    "source": "951f935 MSVC v145 Release Win32"
+  }
+}

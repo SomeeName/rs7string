@@ -1,0 +1,37 @@
+[project]
+name = "rs7string-tools"
+version = "0.0.0"
+description = "Site generators, checks and emulator tests for rs7string (not a package)"
+requires-python = ">=3.12"
+dependencies = [
+    "capstone>=5.0",
+    "numpy>=1.26",
+    "pefile>=2024.8.26",
+    "unicorn>=2.1",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "keystone-engine>=0.9.2",
+    "ruff>=0.17",
+    "tree-sitter>=0.26.0",
+    "tree-sitter-cpp>=0.23.4",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# Formatting plus safe autofixes only. E501 is the formatter's job; the rest need a human or could change
+# behaviour: F401/F811 (the emulator tests import pytest fixtures such as `emus` and take them as arguments),
+# F403/F405 (star imports), F841 (unused assignments), E731, E741.
+ignore = ["E501", "E731", "E741", "F401", "F403", "F405", "F811", "F841"]

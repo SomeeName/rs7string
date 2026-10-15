@@ -1,0 +1,18 @@
+{
+  "rs7_inline7_lh.nif": {
+    "bytes": 1424764,
+    "sha256": "01b564082c6b92036794680150ad63ceaa6d8b69cff8d16af92d09cf5021cf55",
+    "copies": 1037,
+    "literal_bytes": 1413740
+  },
+  "package": {
+    "bytes": 2863876,
+    "sha256": "e49b718c20b19695a9ae942f9942f17592d69f7e5bc542dc839e21edabf5a07e",
+    "templates": [
+      "epi_whilshire_cherry_lh.nif",
+      "epi_whilshire_peg.nif"
+    ],
+    "template_16_byte_runs": 0,
+    "nif_literal_template_16_byte_runs": 0
+  }
+}

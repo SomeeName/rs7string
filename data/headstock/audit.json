@@ -1,0 +1,56 @@
+{
+  "rs7_inline7.nif": {
+    "bytes": 1424764,
+    "sha256": "e665b8ef7df35090e15b3d0323f43d35154d44e68bb59373af2632088e83f02a",
+    "copies": 1117,
+    "literal_bytes": 1413904
+  },
+  "rs7_inline8.nif": {
+    "bytes": 1548479,
+    "sha256": "6ec5fb5b9fcc45ac034c895f0110ab5545dd1f17eab4926b1ab104552075af07",
+    "copies": 1204,
+    "literal_bytes": 1537294
+  },
+  "rs7_peg.nif": {
+    "bytes": 27154,
+    "sha256": "f919762bd63e1fe637ef5d1d148995c4da9f11df93f198aca61bbac361639b86",
+    "copies": 157,
+    "literal_bytes": 25009
+  },
+  "rs7hs_env.dds": {
+    "bytes": 43832,
+    "sha256": "147a698fbeac2f41885182e97deaf93b85975991bbb4298eefdab17f71895d33",
+    "provenance": "our procedural texture"
+  },
+  "rs7hs_flat_n.dds": {
+    "bytes": 2872,
+    "sha256": "0ef16c20868a650cae28e5cd7defe9888ddce2ae31fbbd9dc315fcba70194f50",
+    "provenance": "our procedural texture"
+  },
+  "rs7hs_hardware.dds": {
+    "bytes": 699192,
+    "sha256": "fe2e6b7a9ca059918cb109c68f6d5706f0bdf788f030c8b2d0de7da52950c609",
+    "provenance": "our procedural texture"
+  },
+  "rs7hs_hardware_gloss.dds": {
+    "bytes": 174904,
+    "sha256": "f77271368e7fc66ce308d728f84918ab125e70fba1d08b8836500ea0a3f97c2e",
+    "provenance": "our procedural texture"
+  },
+  "rs7hs_wood.dds": {
+    "bytes": 2796344,
+    "sha256": "d7504c85dcf3918be176eb7ea06337dcae3025dda983ee0d56df51b7557117ab",
+    "provenance": "our procedural texture"
+  },
+  "rs7hs_wood_gloss.dds": {
+    "bytes": 699192,
+    "sha256": "de52ce7f9a8e346fc2989c2be3b142aec56c06b9ba15a1e801a231c2d3b76ea7",
+    "provenance": "our procedural texture"
+  },
+  "package": {
+    "bytes": 14873158,
+    "sha256": "8f5ba0cbf69de3f01b63d45e135365dfc586341e6e8e7cabbe82f5d6f56aad69",
+    "template_16_byte_runs": 0,
+    "nif_literal_template_16_byte_runs": 0
+  }
+}

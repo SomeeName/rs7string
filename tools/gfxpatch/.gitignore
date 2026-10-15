@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.work/
+*.gfx
+*.swf
+*.dds
+*.xml
+RSChordDisplay.as
