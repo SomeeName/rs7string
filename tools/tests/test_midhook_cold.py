@@ -317,8 +317,12 @@ register(
     [
         Case(
             f"index{i:x}",
-            regs={UC_X86_REG_EBX: i, UC_X86_REG_ECX: 0xCCCC0002},
-            mem={NAMES: b"".join((0x71000000 + k).to_bytes(4, "little") for k in range(6))},
+            # ESI is a real tuner session at PSN1, now also used to track the palette's player.
+            regs={UC_X86_REG_EBX: i, UC_X86_REG_ECX: 0xCCCC0002, UC_X86_REG_ESI: D + 0x3500},
+            mem={
+                NAMES: b"".join((0x71000000 + k).to_bytes(4, "little") for k in range(6)),
+                D + 0x3500: bytes(0x30),
+            },
             words={"g_rs7_pegnames": NAMES},
         )
         for i in (0, 1, 2, 5, 6, 7, 8, 255, 0x80000000, 0xFFFFFFFF)

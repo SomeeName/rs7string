@@ -33,7 +33,7 @@ import gen_fncopy  # noqa: E402
 pytestmark = pytest.mark.skipif(not gen_fncopy.EXE.exists(), reason="needs original/Rocksmith2014.unpacked.exe")
 
 MGR, RGB, OUT, STACK, RET, GLOBAL = 0x10000000, 0x11000000, 0x12000000, 0x13000000, 0x14000000, 0x135F58C
-PTR_OLD, UV_OLD, PTR_NEW, UV_NEW = 0x350, 0x890, 0x350, 0xA50
+PTR_OLD, UV_OLD, PTR_NEW, UV_NEW = 0x350, 0x890, 0xDD0, 0x14D0
 
 
 def image():
@@ -348,22 +348,22 @@ def test_extra_data_colour_unported_reads_the_wrong_cell():
     text, base = gen_fncopy.load_text()
     ported = {p.va for p in cm.ports()}
     assert {0x48EC14, 0x48EC1A} <= ported
-    # stock bytes (stride 6, base 0x890) against the native matrix: (mode 0, state 0, slot 0) lands on M+0x890
+    # The legacy view is deliberately unpopulated here: catch a native reader using it.
     stock_uc, _ = machine(False)
     uc.mem_write(0x48EC14, bytes(stock_uc.mem_read(0x48EC14, 3)))
     uc.mem_write(0x48EC1A, bytes(stock_uc.mem_read(0x48EC1A, 7)))
     for r, v in (
         (UC_X86_REG_EAX, MGR),
         (UC_X86_REG_ESI, 0),
-        (UC_X86_REG_EBX, 0),
-        (UC_X86_REG_EDI, 0),
+        (UC_X86_REG_EBX, 3),
+        (UC_X86_REG_EDI, 1),
         (UC_X86_REG_EBP, OUT + 0x800),
     ):
         uc.reg_write(r, v)
     uc.mem_write(MGR + 0x348, struct.pack("<II", 0, 0))
     uc.emu_start(0x48EBED, 0x48EC24, count=100)
     got = struct.unpack("<f", bytes(uc.mem_read(OUT + 0x800 - 0x24, 4)))[0]
-    assert got != uv_val(0, 0, 0)
+    assert got != uv_val(0, 3, 1)
 
 
 def test_audit_missed_reads_are_all_in_reads():
@@ -371,3 +371,18 @@ def test_audit_missed_reads_are_all_in_reads():
     covered = {va for vas in cm.READS.values() for va in vas}
     assert {0x48EC1A, 0x4B0EA1, 0x4B0EF3} <= covered
     assert {0x48EC1A, 0x4B0EA1, 0x4B0EF3, 0x48EC14, 0x4B0E99, 0x4B0EEB} <= {p.va for p in cm.ports()}
+
+
+def test_constructor_initializes_only_appended_tables_and_preserves_legacy_storage():
+    uc, _ = machine(True)
+    before = bytes([0xA5]) * 0xDD0
+    uc.mem_write(MGR, before)
+    # Execute the actual ported constructor's matrix loop, with ST0 = 0.
+    uc.mem_write(RET, b"\xd9\xee")  # FLDZ
+    uc.emu_start(RET, RET + 2, count=1)
+    uc.reg_write(UC_X86_REG_ESI, MGR)
+    uc.reg_write(UC_X86_REG_EAX, 0)
+    uc.emu_start(0x5184F6, 0x518521, count=10000)
+    assert bytes(uc.mem_read(MGR, 0xDD0)) == before
+    assert bytes(uc.mem_read(MGR + PTR_NEW, 448 * 4)) == struct.pack("<I", 0x12F1A84) * 448
+    assert bytes(uc.mem_read(MGR + UV_NEW, 448 * 4)) == bytes(448 * 4)

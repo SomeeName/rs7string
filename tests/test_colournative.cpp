@@ -111,7 +111,7 @@ TEST(native_colour_scalar_callbacks_preserve_context_and_copy_bits) {
     Rs7Colour_CMUV(c);
 
     for (int s : {0, 6, 7}) {
-        CHECK_EQ(*reinterpret_cast<uint32_t*>(mgr + 0xA50 + 4 * (40 + s)), locals[5]);
+        CHECK_EQ(*reinterpret_cast<uint32_t*>(mgr + rs7colour::kUV + 4 * (40 + s)), locals[5]);
     }
 
     CHECK_EQ(c.eax, 40u);
@@ -122,7 +122,7 @@ TEST(native_colour_scalar_callbacks_preserve_context_and_copy_bits) {
     CHECK_EQ(c.eflags, 0x8D7u);
 
     for (int s : {6, 7}) {
-        CHECK_EQ(*reinterpret_cast<uint32_t*>(mgr + 0xA50 + 4 * (336 + s)), locals[3]);
+        CHECK_EQ(*reinterpret_cast<uint32_t*>(mgr + rs7colour::kUV + 4 * (336 + s)), locals[3]);
     }
 }
 
@@ -245,4 +245,75 @@ TEST(native_colour_cmbuild_drains_a_request_made_before_the_build) {
     Rs7Colour_CMBUILD(c);
     CHECK_EQ(CmFixture::Slot(), f.published);
     CHECK(!rs7colour::PublishPending());
+}
+
+// RSMods GetStringColor uses mode*0xA8 and the stock state offsets, including in CB mode.
+TEST(native_colour_rsmods_six_column_abi_shares_the_correct_rgb_values) {
+    const auto saved = g_rs7_native_colours;
+
+    g_rs7_native_colours = 1;
+    alignas(4) uint8_t mgr[rs7colour::kSize] = {};
+    float stock[2][28][6][3] = {};
+
+    for (int m = 0; m < 2; ++m) {
+        for (int st = 0; st < 28; ++st) {
+            for (int s = 0; s < 6; ++s) {
+                stock[m][st][s][0] = float(m * 168 + st * 6 + s);
+                *reinterpret_cast<float*>(mgr + rs7colour::UVOffset(m, st, s)) = float(m * 168 + st * 6 + s);
+                *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(m, st, s)) = stock[m][st][s];
+            }
+        }
+    }
+
+    rs7colour::Publish(mgr);
+
+    for (int m = 0; m < 2; ++m) {
+        for (int st = 0; st < 28; ++st) {
+            for (int s = 0; s < 6; ++s) {
+                auto* legacy = *reinterpret_cast<float**>(mgr + 0x350 + 4 * (m * 0xA8 + st * 6 + s));
+
+                CHECK(legacy == rs7colour::GetRGB(mgr, m, st, s));
+                CHECK_EQ(*reinterpret_cast<float*>(mgr + 0x890 + 4 * (m * 0xA8 + st * 6 + s)),
+                         float(m * 168 + st * 6 + s));
+
+                if (legacy == stock[m][st][s]) {
+                    legacy[1] = 0.25f;  // custom/rainbow write through RSMods' address
+                    CHECK_EQ(rs7colour::GetRGB(mgr, m, st, s)[1], 0.25f);
+                }
+            }
+        }
+    }
+
+    g_rs7_native_colours = saved;
+}
+
+extern "C" void Rs7_Call_GlowColour();
+
+TEST(native_colour_glow_stub_reads_all_eight_slots_in_both_modes) {
+    const auto saved = g_rs7_native_colours;
+
+    g_rs7_native_colours = 1;
+    alignas(4) uint8_t mgr[rs7colour::kSize] = {};
+    float colours[2][8][3] = {};
+    auto* mgrPtr = mgr;
+
+    for (uint32_t mode = 0; mode < 2; ++mode) {
+        for (uint32_t slot = 0; slot < 8; ++slot) {
+            *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(mode, 3, slot)) = colours[mode][slot];
+            const uint32_t stockIndex = mode * 0xA8 + slot;
+            float* rgbPtr;
+
+            __asm {
+                mov ecx, mgrPtr
+                mov eax, stockIndex
+                mov edx, slot
+                call Rs7_Call_GlowColour
+                mov rgbPtr, eax
+            }
+
+            CHECK(rgbPtr == colours[mode][slot]);
+        }
+    }
+
+    g_rs7_native_colours = saved;
 }

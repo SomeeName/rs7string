@@ -49,8 +49,9 @@ TEST(review_colour_layout_all_cells_are_contiguous_and_disjoint) {
     for (uintptr_t enabled : {uintptr_t(0), uintptr_t(1)}) {
         g_rs7_native_colours = enabled;
         const unsigned width = enabled ? 8 : 6;
-        const unsigned uv = enabled ? 0xA50 : 0x890;
-        const unsigned size = enabled ? 0x1150 : 0xDD0;
+        const unsigned ptr = enabled ? rs7colour::kPtr : 0x350;
+        const unsigned uv = enabled ? rs7colour::kUV : 0x890;
+        const unsigned size = enabled ? rs7colour::kSize : 0xDD0;
 
         CHECK_EQ(rs7colour::Width(), width);
         unsigned cell = 0;
@@ -58,7 +59,7 @@ TEST(review_colour_layout_all_cells_are_contiguous_and_disjoint) {
         for (unsigned mode = 0; mode < 2; ++mode) {
             for (unsigned state = 0; state < 28; ++state) {
                 for (unsigned slot = 0; slot < width; ++slot, ++cell) {
-                    CHECK_EQ(rs7colour::PtrOffset(mode, state, slot), 0x350u + 4 * cell);
+                    CHECK_EQ(rs7colour::PtrOffset(mode, state, slot), ptr + 4 * cell);
                     CHECK_EQ(rs7colour::UVOffset(mode, state, slot), uv + 4 * cell);
                     CHECK(rs7colour::PtrOffset(mode, state, slot) + 4 <= uv);
                     CHECK(rs7colour::UVOffset(mode, state, slot) + 4 <= size);
@@ -66,7 +67,7 @@ TEST(review_colour_layout_all_cells_are_contiguous_and_disjoint) {
             }
         }
 
-        CHECK_EQ(0x350u + 4 * cell, uv);
+        CHECK_EQ(ptr + 4 * cell, uv);
         CHECK_EQ(uv + 4 * cell, size);
         alignas(4) uint8_t mgr[rs7colour::kSize] = {};
         float sentinel[3] = {1, 0, 0};

@@ -271,7 +271,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void Rs7_Call_GlowColour() {
         mov eax, 0E0h
     glc_mode0:
         add eax, edx
-        mov eax, [ecx+eax*4+3B0h]
+        mov eax, [ecx+eax*4+0E30h]
         ret
     }
 }

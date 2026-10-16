@@ -508,9 +508,9 @@ def test_real_sites_json_is_valid():
         "GKH2",
     ] + ["LSA", "LSG", "LSC", "LSE"] + ["PP_SNGD", "PP_SNGF", "PP_TOC"]  # plain PSARC (group psarc)
     assert (
-        len([s for s in sites if not s.publish]) == 626 + 19 + 6 + 31 + 4 + 3 + 7 + 3 + 4 + 2 - 7 - 26 - 7 - 21 - 2
+        len([s for s in sites if not s.publish]) == 626 + 19 + 6 + 31 + 4 + 3 + 7 + 3 + 4 + 2 - 7 - 26 - 7 - 21 - 2 + 2
     )  # 1.0: - C1-C5 N11 GSCL, - the B-phase tuner (15 sites, 11 refs), - the stage-2 peg (PG1-4 PH1 PH2 X_GIVE), - the S7 object (10 sites, 11 refs), - R7b N9; + LT1 TF1 IN1 (fix/headstock2); + 4 CM4B0E* fret-number lane ports + 2 CM48EC* Guitarcade ResolveExtraDataColor ports; + LoadStep probes + plain PSARC + [neck] clite GK* (GKH1/GKH2 included)
-    assert len([s for s in sites if s.id.startswith("CM")]) == 167
+    assert len([s for s in sites if s.id.startswith("CM")]) == 169
     assert (
         len([s for s in sites if not s.id.startswith("CM") and not s.publish])
         == 465 + 19 + 6 + 31 + 4 + 3 + 7 + 3 - 7 - 26 - 7 - 21 - 2

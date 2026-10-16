@@ -39,7 +39,7 @@ TEST(colours2_six_column_table_read_eight_wide_is_the_reported_rotation) {
     CHECK_EQ(got[6] % 6, 2);
     // and the native offsets are the 8-column ones
     g_rs7_native_colours = 1;
-    CHECK_EQ(rs7colour::PtrOffset(0, 1, 6), uint32_t(0x350 + 4 * 14));
+    CHECK_EQ(rs7colour::PtrOffset(0, 1, 6), uint32_t(rs7colour::kPtr + 4 * 14));
     g_rs7_native_colours = 0;
     CHECK_EQ(rs7colour::PtrOffset(0, 1, 6), uint32_t(0x350 + 4 * 12));
 }

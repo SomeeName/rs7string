@@ -197,12 +197,13 @@ def test_every_copy_entry_has_its_site_row():
 
 
 @pytest.mark.parametrize("n", [7, 8])
-def test_mode2_menu_start_is_the_first_string_of_the_order(n):
+@pytest.mark.parametrize("old_mode", [0, 5])
+def test_mode2_menu_start_is_the_first_string_of_the_order(n, old_mode):
     for sub, string, reverse, want in ((0, 0, 0, n - 1), (1, 0, 0, 0), (0, 5, 1, 5), (1, 6, 0, 6)):
         m = h.Machine(True)
-        m.session(n, {0x18: 0}, h.arrays_for(GUITAR_OPEN, OFFS), stock_count=6)
+        m.session(n, {0x18: old_mode}, h.arrays_for(GUITAR_OPEN, OFFS), stock_count=6)
         m.uc.mem_write(h.SESSION + 0x22D, bytes([reverse]))
         calls = m.run("TS8M2E", {"eax": sub}, stack=[h.SESSION, string])
         assert cur(m) == want, (sub, string, reverse)
         sel = [c for c in calls if c[0] == 0x5B0490]
-        assert sel and sel[0][1][5] == want  # SelectString's EDI
+        assert sel and all(c[1][5] == want for c in sel)  # Every SelectString's EDI, including mode-5 reselect.

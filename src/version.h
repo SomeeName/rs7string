@@ -1,2 +1,2 @@
 #pragma once
-#define RS7_VERSION "0.3.0-facet"
+#define RS7_VERSION "1.0.0-beta.2"

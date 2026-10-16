@@ -22,7 +22,7 @@ EVIDENCE = (
 
 
 def move(d):
-    base, new = (0x350, 0x350) if d < 0x890 else (0x890, 0xA50)
+    base, new = (0x350, 0xDD0) if d < 0x890 else (0x890, 0x14D0)
     index, remainder = divmod(d - base, 4)
     assert remainder == 0 and 0 <= index < 336
     mode, rest = divmod(index, 168)
@@ -145,12 +145,16 @@ def ports():
         assert i.mnemonic == "cmp" and i.operands[-1].imm == 6
         field(va, fn, 8, reason="capacity guard (proven string index)")
 
+    # Preserve the stock six-column ABI for external writers (RSMods). Native tables are appended.
+    field(0x518B26, 0x518AF0, 0xDD0, True, "FillStateColors appended pointer table")
+    field(0x519725, 0x5196F0, 0xDD0, True, "GetColor appended pointer table")
+
     # Constructor: two modes * 28 states * eight pointers/UVs, shared prefix untouched.
-    field(0x5184F6, 0x517F70, 0xA50, True)
+    field(0x5184F6, 0x517F70, 0x14D0, True)
     field(0x518504, 0x517F70, 8)
     field(0x51850B, 0x517F70, -0x700, True)
-    field(0x518AC4, 0x518AC0, 0x1150, reason="creation allocation")
-    field(0x518571, 0x518550, 0x1150, reason="scalar-delete sized free")
+    field(0x518AC4, 0x518AC0, 0x1BD0, reason="creation allocation")
+    field(0x518571, 0x518550, 0x1BD0, reason="scalar-delete sized free")
 
     # mode*28+state is unchanged. *6 -> *8 via same-length IMUL reg,reg,4
     # followed by the existing scale2/scale8. Key/source walk remains six-long.
@@ -163,15 +167,15 @@ def ports():
         (0x48EC14, 0x48EBD0, "6B C9 04"),
     ):
         put(va, fn, b, "synthesized state index *6 -> *8")
-    # Equal-range fifth store was synthesized separately: (q*4+A50/8+2)*8.
-    put(0x518BAF, 0x518B50, "8D 14 95 4C 01 00 00", "scalar fifth UV address")
-    put(0x518CB0, 0x518C70, "8D 14 95 4C 01 00 00", "scalar fifth index address")
+    # Equal-range fifth store was synthesized separately: (q*4+14D0/8+2)*8.
+    put(0x518BAF, 0x518B50, "8D 14 95 9C 02 00 00", "scalar fifth UV address")
+    put(0x518CB0, 0x518C70, "8D 14 95 9C 02 00 00", "scalar fifth index address")
     for fn, vas in (
         (0x518B50, [0x518BC0, 0x518BC7, 0x518BCE, 0x518BD5, 0x518BDF, 0x518C2D]),
         (0x518C70, [0x518CA9, 0x518CB7, 0x518CBF, 0x518CC6, 0x518CD0]),
     ):
         for va in vas:
-            field(va, fn, ins(va).disp + 0x1C0, True)
+            field(va, fn, ins(va).disp + 0xC40, True)
     field(0x518CF0, 0x518C70, 0x380)
     field(0x518CF6, 0x518C70, move(0x9E0), True)
     field(0x5196FE, 0x5196F0, 8)

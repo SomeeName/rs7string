@@ -1479,11 +1479,43 @@ def test_psr1_reset_bound_is_the_active_peg_count(emus):
 @pytest.mark.parametrize("index", range(8))
 def test_psn1_colour_name(emus, index):
     """Index < 6: the stock table entry; 6/7 (past the table): entry 0, a string-colour name."""
-    stock, patched = run_s7_site(emus, "PSN1", {UC_X86_REG_EBX: index, UC_X86_REG_EAX: 0x1111}, {})
+    stock, patched = run_s7_site(
+        emus,
+        "PSN1",
+        {UC_X86_REG_EBX: index, UC_X86_REG_EAX: 0x1111, UC_X86_REG_ESI: S7_MEM},
+        {S7_MEM: bytes(0x30)},
+    )
     table = struct.unpack("<6I", emus[1].read(0x12ED0C0, 24))
     assert patched[0][2] == table[index if index < 6 else 0]
     if index < 6:
         assert patched[:3] == stock[:3]
+
+
+@pytest.mark.parametrize("player", [0, 1, 2])
+@pytest.mark.parametrize("native", [False, True])
+def test_psn1_tracks_player_only_in_owned_pegset(emus, pegs, player, native):
+    session, guitar, head, ps = (HEAD_MEM + off for off in (0, 0x100, 0x200, 0x300))
+    s, g, h, p = bytearray(0x30), bytearray(0x20), bytearray(0x10), bytearray(0x1D4)
+    struct.pack_into("<I", s, 8, player)
+    struct.pack_into("<I", s, 0x2C, guitar)
+    struct.pack_into("<I", g, 0x18, head)
+    struct.pack_into("<I", h, 0x0C, ps)
+    p[0x1CE] = 0xA5
+    if native:
+        own_for(emus, ps, "native")
+    stock, patched = run_s7_site(
+        emus,
+        "PSN1",
+        {UC_X86_REG_EBX: 5, UC_X86_REG_ESI: session},
+        {session: bytes(s), guitar: bytes(g), head: bytes(h), ps: bytes(p)},
+    )
+    expected = bytearray(p)
+    if native and player < 2:
+        expected[0x1CE] = player
+    assert patched[:4] == stock[:4]  # register/FPU/stack behaviour remains stock; cold oracle checks flags
+    assert patched[4][ps] == bytes(expected)
+    for addr in (session, guitar, head):
+        assert patched[4][addr] == stock[4][addr]
 
 
 def test_psn2_null_slot_is_skipped(emus):

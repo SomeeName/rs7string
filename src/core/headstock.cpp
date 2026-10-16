@@ -1,6 +1,7 @@
 #include "core/headstock.h"
 #include "core/colournative.h"
 #include "core/frets.h"
+#include "core/pegcolour.h"
 #include "core/string7.h"
 #include "core/string7diag.h"
 #include "core/tuner.h"
@@ -570,8 +571,8 @@ bool rs7head::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRg
         return false;
     }
 
-    const float* c1 = *reinterpret_cast<const float* const*>(mgr + 0x350 + ((mode * 28 + 1) * rs7colour::Width()) * 4);
-    const float* c4 = *reinterpret_cast<const float* const*>(mgr + 0x350 + ((mode * 28 + 4) * rs7colour::Width()) * 4);
+    const float* c1 = *reinterpret_cast<const float* const*>(mgr + rs7colour::PtrOffset(mode, 1));
+    const float* c4 = *reinterpret_cast<const float* const*>(mgr + rs7colour::PtrOffset(mode, 4));
     if (!c1 || !c4) {
         return false;
     }
@@ -762,6 +763,16 @@ extern "C" void __cdecl Rs7_PegNamed(uint8_t* session, uint32_t index) {
     At<uint32_t>(slot, kSlotNamed) = 2 + index;  // string colour index (2..7 = strings 0..5 at 0x59BF80)
 }
 
+void Rs7Head_TrackColourPlayer(uint8_t* session) {
+    uint8_t* guitar = session ? At<uint8_t*>(session, 0x2C) : nullptr;
+    uint8_t* ps = PegSetOf(guitar);
+    const unsigned player = session ? At<uint32_t>(session, 8) : 2;
+
+    if (IsNative(ps) && player < 2) {
+        ps[kColourPlayer] = uint8_t(player);
+    }
+}
+
 // ---- per frame / tuner ----
 void Rs7Head_Frame(uint8_t* guitar, bool want) {
     if (!g_rs7_native_pegset) {
@@ -773,6 +784,26 @@ void Rs7Head_Frame(uint8_t* guitar, bool want) {
     uint8_t* ps = head ? At<uint8_t*>(head, kHeadPegs) : nullptr;
     if (!IsNative(ps) || !At<uint8_t>(ps, kPegLoaded)) {
         return;
+    }
+
+    const uint8_t* manager = g_rs7_colormgr ? *reinterpret_cast<uint8_t**>(g_rs7_colormgr) : nullptr;
+    const unsigned changed = rs7pegcolour::Refresh(ps, manager, ps[kColourPlayer]);
+    static unsigned colourLogs = 0;
+
+    if (changed && colourLogs < 8) {
+        ++colourLogs;
+        Rs7Log("pegcolour: refreshed %u cached peg colour(s), player %u (manager %p, PegSet %p)", changed,
+               unsigned(ps[kColourPlayer]), static_cast<const void*>(manager), static_cast<void*>(ps));
+
+        for (unsigned s = 0; s < At<uint16_t>(ps, kPegCount); ++s) {
+            uint8_t* slot = Slot(ps, int(s));
+
+            if (slot[0] && At<uint32_t>(slot, kSlotNamed) >= 2) {
+                Rs7Log("pegcolour: selected slot %u name %u RGB %.3f/%.3f/%.3f outline phase %.3f/%.3f", s,
+                       At<uint32_t>(slot, kSlotNamed), At<float>(slot, kSlotRgb), At<float>(slot, kSlotRgb + 4),
+                       At<float>(slot, kSlotRgb + 8), At<float>(slot, 0x20), At<float>(slot, 0x24));
+            }
+        }
     }
 
     // C-lite: a guitar built with 7 strings has 7 pegs for its whole life (raised once, after the load
