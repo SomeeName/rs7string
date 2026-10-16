@@ -151,7 +151,7 @@ All rows are members of the native 7-string unit (no ini switch since 1.0; `Rs7_
 |---|---|---|
 | GuitarStrings | `g_rs7_native_strings` | capacity-8 arrays (`+40h` main, `+60h` ghost; the stock `+4`/`+1Ch` six remain as aliases), InstrumentInfo grown to `0x48` with its own counts (`+40h` active, `+41h` loaded; `+0Bh` stays the stock count). Bind, load, unload, fade, transforms, update, reset, pluck, vibration, InitColors, free, section dimming/glow choice `0x460550`, glow ramp `0x5441A0`, headstock segment colours `0x58E4F0` run as relocated copies (GS* sites). Songs start/end hooks GSSS/GSSE. |
 | PegSet | `g_rs7_native_pegset` | 8 slots; peg 7 is slot 6, so stock fade/layer/tint loops cover it. |
-| Colour manager | `g_rs7_native_colours` | `*0x135F58C`: 6 slots per colour state widened to 8 (both colour modes). |
+| Colour manager | `g_rs7_native_colours` | `*0x135F58C`: original six-slot tables retained for RSMods; appended eight-slot tables (both colour modes). |
 | FretGrid | `g_rs7_native_fretgrid` | cells of 264h per row instead of 1CCh; hooks FGR*, PUBGC/GO/GB/GA/GF/EDGE/GP. Answers `Rnd_FretGrid_GetCellPos` `0x58FE00` from native cells for strings 0-7. |
 | Pitch | `g_rs7_native_pitch` | detector grown to `13E0h` (int16 tuning8 `+13B8h`, openMidi8 `+13C8h`, active count `+13D8h`), matcher to `6Ch`; `0x873E90` replaced by a port with an 8-entry base table (35 / 30 for strings 6 / 7); strings >= 6 of `0x873F80` calls go to `Rs7_Pitch_Raw8`. |
 | Next-note grid | `g_rs7_native_nextgrid` | 8 time rows (sites NGB*). |
@@ -171,6 +171,45 @@ sparks (`0x40CAD5`), hit/miss text (`0x7F2FDD`) and the Riff Repeater marker (`0
 string 6's colour from the native eight-column colour manager (CM* sites; the six-column fallback
 C1-C5 was removed in 1.0). Note tails (sustain ribbons, slides, vibrato, bends) follow the 7th lane
 because the native grid gives string 6 a real cell; BD1-BD4 give string-6 bends string 0's direction.
+
+**RSMods colour compatibility (CONFIRMED by source and native regression tests).** RSMods
+`GetStringColor` reads `*0x135F58C`, player mode at `+0x348`, then uses mode stride `0xA8`
+and six-column state offsets starting at `+0x350`. Widening those tables in place redirects its
+custom-colour, Extended Range and rainbow writes to other states/modes. The manager now keeps
+the stock RGB-pointer/UV ABI at `+0x350` / `+0x890` and appends eight-column RGB-pointer/UV tables
+at `+0xDD0` / `+0x14D0` (allocation and sized free `0x1BD0`). CMINIT/CMBUILD and palette publication
+mirror the first six pointer entries of every state and mode into the stock tables. Both views
+alias the same source RGB storage, so RSMods writes immediately reach the corresponding game
+colour, including colourblind mode, named peg colours and fret-number states. The extra strings
+remain owned by rs7string. Game readers/writers use the appended tables. In-game confirmation
+with the reported custom/rainbow settings and 3+3 headstock is still required.
+
+**Selected peg refresh (CONFIRMED by game code and native tests).** `0x59BD70` / `0x59BF80`
+copy a named colour into each PegSet slot at `+0x10`; palette edits do not invalidate it.
+RSMods deliberately delays its tuner palette application. N5 now refreshes these copies on the
+game thread for both six- and seven-string guitars, using the last PSN1 session's player index.
+Names 0/1 retain reset/success states 6/5; string names use state 4. The seventh peg recalculates
+its brightness from the current stock state-4/state-1 ratio instead of a previously published
+extra-colour snapshot. Taken flags, named indices and animation scalars at `+0x20/+0x24` stay intact.
+`0x543150` also writes this copied RGB times `ClipFade*2` into `StringColor` before the
+`0x543910` glow blur, so stale RGB affects both the peg and its coloured bloom. The black quads
+at `0x544610` are a separate path. **HYPOTHESIS:** the RGB/intensity mismatch explains the
+reported difference in glow width; verify the appearance in the same tuner stage in game.
+
+**RSMods seventh-string default (CONFIRMED by RSMods source and native tests).** At startup,
+inspect the game directory's XInput proxy as resource data, identify its RSMods version resource, and read
+the adjacent `RSMods.ini`. This works before RSMods loads and avoids the same-named system XInput DLL.
+With `ExtendedRange=on`, use `string0_CB` for custom-colour mode 2, or RSMods' default ER low B
+`00C68E` for modes 0/1. Apply it to both profile colour modes. Missing/invalid configuration falls
+back to rs7string's own colours. `[color] rsmods_extended_range=0` explicitly selects those saved
+colours; toggling the preference never overwrites them. RSMods configuration changes need a restart.
+
+**Tuner menu entry (CONFIRMED by live log and generated-copy emulator).** TS8M2E at `0x5B0135`
+normalizes a menu start (submode 0/string 0) to `order[0]`. It must update both EDI and the string
+argument at `[ebp+0xC]`: entering from old mode 5 reloads that argument at `0x5B020E` and selects
+again at `0x5B0213`. Updating EDI alone selects low B and then E while the stored current string
+still says low B. The generated port now preserves the normalized argument for that second call;
+fallback submode 1 and explicit reverse-pass starts retain their requested string.
 
 **Colour.** The game colours a note by sampling a 256x128 ramp texture (16 rows, one per string and
 colour mode) at a V coordinate. Step 1 writes the exact `[color]` RGB for sparks and text. Step 2

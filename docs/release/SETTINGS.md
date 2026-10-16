@@ -55,6 +55,7 @@
 
 | Key | Default | Effect | Apply | F9 | Exp. |
 |---|---|---|---|---|---|
+| `rsmods_extended_range` | `1` | Follow RSMods Extended Range low B colour when RSMods is installed and `ExtendedRange=on`: standard modes use `00C68E`, custom mode uses valid `[String Colors] string0_CB`. Applies in both colour modes. RSMods settings are read at startup. `0` uses the two colours below. Their saved values stay intact. Missing or invalid RSMods settings keep your own colours. | Live | yes | no |
 | `string6_color` | `C8C8C8` | Colour of the seventh string as `RRGGBB` (`#` optional): gems, sparks, hit/miss text, string line, glow and tuner. Invalid text falls back to the default and is logged. | Live | yes | no |
 | `string6_color_cb` | same as `string6_color` | The same colour in colourblind mode. When omitted or empty it follows `string6_color` at startup. After that the overlay keeps a separate value. | Live | yes | no |
 | `ramp_swap` | `1` | Lets seventh-string gems take their own colour (copies the game's colour ramps with an extra band). `0` turns this off. | Restart | yes | no |

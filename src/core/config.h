@@ -68,6 +68,7 @@ struct Rs7Config {
     bool colorCbValid = true;                 // string6_color_cb missing, empty or valid
     uint32_t string6RgbCb = kRs7DefaultColour;
     std::wstring string6CbRaw;
+    bool rsmodsExtendedRange = true;  // [color] rsmods_extended_range: use RSMods ER low B when available
     int rampSwapRaw = 1;
     bool rampSwap = true;  // raw != 0
     int allowInexactRaw = 0;

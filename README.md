@@ -35,7 +35,8 @@ seven strings; it does not convert six-string charts.
 ## Features
 
 - **Seven-string highway** with note detection and scoring on the low B string. Alternate tunings work.
-- **Own colour for the seventh string** (light grey by default), with a separate colourblind setting.
+- **Own colour for the seventh string**, with a separate colourblind setting. Uses RSMods' Extended
+  Range low B colour when enabled, otherwise light grey by default.
 - **Fret grid and fret bars** that span all seven strings.
 - **Seven-string tuner** that starts on low B. Song pages show names such as `B Standard 7Str`.
 - **Chords with the seventh string**: seven-row chord diagrams, finger numbers, open-string bars and

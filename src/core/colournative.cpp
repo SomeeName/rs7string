@@ -56,6 +56,18 @@ void rs7colour::Publish(uint8_t* mgr) {
         return;
     }
 
+    // CONFIRMED RSMods GetStringColor uses the stock state*6/mode*168 layout.
+    // Share the pointers, not RGB snapshots: custom colours and rainbow writes must
+    // immediately reach the game and must never target another state or mode.
+    for (uint32_t mode = 0; mode < 2; ++mode) {
+        for (uint32_t state = 0; state < 28; ++state) {
+            const uint32_t legacy = 4 * ((mode * 28 + state) * 6);
+
+            std::memcpy(mgr + 0x350 + legacy, mgr + PtrOffset(mode, state), 6 * 4);
+            std::memcpy(mgr + 0x890 + legacy, mgr + UVOffset(mode, state), 6 * 4);
+        }
+    }
+
     g_fallback7 = (uint32_t(g_rs7_fx_rgb[0] * 255.0f) << 16) | (uint32_t(g_rs7_fx_rgb[1] * 255.0f) << 8) |
                   uint32_t(g_rs7_fx_rgb[2] * 255.0f);
 

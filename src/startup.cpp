@@ -24,6 +24,7 @@
 #include "core/publish_grid.h"
 #include "core/publish_pitch.h"
 #include "core/resolve.h"
+#include "core/rsmodscolour.h"
 #include "core/settings.h"
 #include "core/sidestore.h"
 #include "core/songend.h"
@@ -469,7 +470,7 @@ void Rs7_Startup() {
     Rs7Log("rs7string %s loaded", RS7_VERSION);
     // Before any site is patched: the stubs read g_rs7_diag and g_rs7_fx_rgb (g_rs7_v6 stays 0 = the stock preview row
     // until Step 2).
-    const Rs7Config cfg = LoadConfig();
+    Rs7Config cfg = LoadConfig();
 
     if (GetPrivateProfileIntW(L"debug", L"veh_log", 0, IniPath().c_str())) {
         AddVectoredExceptionHandler(1, VehLog);
@@ -489,6 +490,24 @@ void Rs7_Startup() {
     for (int i = 0; i < 1200 && !GetModuleHandleW(L"d3d9.dll"); ++i) {
         Sleep(50);
     }
+
+    // Inspect the installed RSMods proxy without depending on its load order; keep saved colours intact.
+    rs7rsmods::Init();
+    uint32_t effectiveRgb[2] = {cfg.string6Rgb, cfg.string6RgbCb};
+
+    rs7rsmods::Resolve(rs7rsmods::Cached(), cfg.rsmodsExtendedRange, effectiveRgb);
+    cfg.string6Rgb = effectiveRgb[0];
+    cfg.string6RgbCb = effectiveRgb[1];
+
+    for (int mode = 0; mode < 2; ++mode) {
+        float channels[3];
+
+        Rs7_RgbToFloats(effectiveRgb[mode], channels);
+        std::copy(channels, channels + 3, g_rs7_fx_rgb + mode * 3);
+    }
+
+    Rs7Log("colour: RSMods Extended Range automatic=%d available=%d effective=%06X/%06X", cfg.rsmodsExtendedRange,
+           rs7rsmods::Cached().valid, unsigned(cfg.string6Rgb), unsigned(cfg.string6RgbCb));
 
     const DWORD d3d9Tick = GetTickCount();  // Step 2 hooks the device no earlier than 15 s after this
 
@@ -574,7 +593,7 @@ void Rs7_Startup() {
         hooks.push_back(h);
     }
 
-    // [neck] native_colours=1 widens the ColourManager at creation (CM* sites: 0xDD0 -> 0x1150 bytes,
+    // [neck] native_colours=1 widens the ColourManager at creation (CM* sites: 0xDD0 -> 0x1BD0 bytes,
     // 6 -> 8 columns). The game builds its one manager once, ~12 s after launch (fix/colours2, measured
     // with tests/colours2/cmtime.py); one that already exists keeps the stock 6-column layout in a
     // 0xDD0 block, which the 8-column readers would misread (rotated string colours, black 7th string)

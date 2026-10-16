@@ -47,6 +47,7 @@
     <ClCompile Include="..\src\d3d\*.cpp" />
     <ClCompile Include="..\src\log.cpp" Condition="Exists('..\src\log.cpp')" />
     <ClCompile Include="*.cpp" />
+    <ResourceCompile Include="rsmods_fixture.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -196,6 +196,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSR1(Rs7Mid::Context& c) {
 // so 0x59BF80 runs its string-colour branch; PSN2 then gives the slot the 7th string's colour. The stub
 // compared the index with 6 and left those flags (Compare32 reproduces them).
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSN1(Rs7Mid::Context& c) {
+    Rs7Head_TrackColourPlayer(reinterpret_cast<uint8_t*>(c.esi));
     const uint32_t* names = reinterpret_cast<const uint32_t*>(g_rs7_pegnames);
 
     c.Compare32(c.ebx, 6);

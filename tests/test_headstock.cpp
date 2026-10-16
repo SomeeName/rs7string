@@ -1,3 +1,4 @@
+#include "core/colournative.h"
 #include "core/headstock.h"
 #include "test.h"
 #include <cmath>
@@ -238,27 +239,34 @@ TEST(head_loaded_counts_keep_the_load_and_start_with_six) {
 }
 
 TEST(head_named_colour_scales_the_7th_colour_like_string_0s_named_colour) {
-    std::vector<uint8_t> mgr(0x350 + 2 * 28 * 6 * 4, 0);
-    const float lit[4] = {0.5f, 0.25f, 0.0f, 1.0f}, named[4] = {1.0f, 0.5f, 0.0f, 1.0f};
+    const auto saved = g_rs7_native_colours;
 
-    for (uint32_t mode = 0; mode < 2; ++mode) {
-        *reinterpret_cast<const float**>(&mgr[0x350 + ((mode * 28 + 1) * 6) * 4]) = lit;
-        *reinterpret_cast<const float**>(&mgr[0x350 + ((mode * 28 + 4) * 6) * 4]) = named;
+    for (uintptr_t enabled : {uintptr_t(0), uintptr_t(1)}) {
+        g_rs7_native_colours = enabled;
+        std::vector<uint8_t> mgr(rs7colour::kSize, 0);
+        const float lit[4] = {0.5f, 0.25f, 0.0f, 1.0f}, named[4] = {1.0f, 0.5f, 0.0f, 1.0f};
+
+        for (uint32_t mode = 0; mode < 2; ++mode) {
+            *reinterpret_cast<const float**>(&mgr[rs7colour::PtrOffset(mode, 1)]) = lit;
+            *reinterpret_cast<const float**>(&mgr[rs7colour::PtrOffset(mode, 4)]) = named;
+        }
+
+        *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 0;
+        *reinterpret_cast<uint32_t*>(&mgr[0x34C]) = 1;
+        const float fx[6] = {0.1f, 0.2f, 0.3f, 0.4f, 0.2f, 0.1f};
+        float out[3];
+
+        CHECK(NamedColour(mgr.data(), 0, fx, out));
+        CHECK(out[0] == 0.2f && out[1] == 0.4f && out[2] == 0.6f);  // x2 = max(named) / max(lit)
+        CHECK(NamedColour(mgr.data(), 1, fx, out));
+        CHECK(out[0] == 0.8f && out[1] == 0.4f && out[2] == 0.2f);
+        CHECK(!NamedColour(mgr.data(), 2, fx, out));
+        CHECK(!NamedColour(nullptr, 0, fx, out));
+        *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 2;  // unknown colour mode: stock guard
+        CHECK(!NamedColour(mgr.data(), 0, fx, out));
     }
 
-    *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 0;
-    *reinterpret_cast<uint32_t*>(&mgr[0x34C]) = 1;
-    const float fx[6] = {0.1f, 0.2f, 0.3f, 0.4f, 0.2f, 0.1f};
-    float out[3];
-
-    CHECK(NamedColour(mgr.data(), 0, fx, out));
-    CHECK(out[0] == 0.2f && out[1] == 0.4f && out[2] == 0.6f);  // x2 = max(named) / max(lit)
-    CHECK(NamedColour(mgr.data(), 1, fx, out));
-    CHECK(out[0] == 0.8f && out[1] == 0.4f && out[2] == 0.2f);
-    CHECK(!NamedColour(mgr.data(), 2, fx, out));
-    CHECK(!NamedColour(nullptr, 0, fx, out));
-    *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 2;  // unknown colour mode: stock guard
-    CHECK(!NamedColour(mgr.data(), 0, fx, out));
+    g_rs7_native_colours = saved;
 }
 
 TEST(head_tuner_nodes_are_the_arrow_and_the_letter) {

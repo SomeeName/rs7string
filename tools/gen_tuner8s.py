@@ -172,6 +172,8 @@ fn(
             "test edi, edi",
             "jne tu8_m2e_keep",
             "movzx edi, byte ptr [ebx + 0x36c]",
+            # Mode 5 entry selects again from this argument at 0x5B020E.
+            "mov dword ptr [ebp + 0xc], edi",
             "tu8_m2e_keep:",
         ]
     },

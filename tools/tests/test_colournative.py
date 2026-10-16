@@ -9,7 +9,7 @@ import gen_colournative as cm
 
 def test_layout_preserves_every_stock_state_and_mode():
     seen = set()
-    for base, new_base in ((0x350, 0x350), (0x890, 0xA50)):
+    for base, new_base in ((0x350, 0xDD0), (0x890, 0x14D0)):
         for mode in range(2):
             for state in range(28):
                 for slot in range(6):
@@ -32,3 +32,9 @@ def test_generated_sites_are_current():
 
     actual = json.loads((cm.REPO / "sites.json").read_text())["sites"]
     assert [s for s in actual if s["id"].startswith("CM")] == cm.sites()
+
+
+def test_native_tables_leave_the_six_column_rsmods_abi_intact():
+    # RSMods uses offsets through 0xDD0 without calling a game getter.
+    assert cm.move(0x350) >= 0xDD0
+    assert cm.move(0x890) >= cm.move(0x350) + 2 * 28 * 8 * 4

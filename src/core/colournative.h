@@ -3,12 +3,13 @@
 #include <cstdint>
 
 // CONFIRMED stock layout: section 4 fretgrid-tables.md. Native compact layout:
-// prefix/source lists/modes unchanged; [2][28][8] RGB pointers at 350h and UV
-// floats at A50h; allocation and sized free 1150h. Owned RGB has process lifetime.
+// prefix/source lists/modes unchanged; stock six-column ABI retained through DD0h.
+// Appended [2][28][8] RGB pointers at DD0h and UV floats at 14D0h; size 1BD0h.
+// Stock pointer entries alias the native RGB values for RSMods. Owned RGB has process lifetime.
 extern "C" __declspec(dllexport) uintptr_t g_rs7_native_colours;
 
 namespace rs7colour {
-constexpr uint32_t kPtr = 0x350, kUV = 0xA50, kSize = 0x1150;
+constexpr uint32_t kPtr = 0xDD0, kUV = 0x14D0, kSize = 0x1BD0;
 constexpr int kStates = 28, kModes = 2, kWidth = 8;
 
 inline uint32_t Width() {
@@ -16,7 +17,7 @@ inline uint32_t Width() {
 }
 
 inline uint32_t PtrOffset(uint32_t mode, uint32_t state, uint32_t slot = 0) {
-    return kPtr + 4 * ((mode * 28 + state) * Width() + slot);
+    return (g_rs7_native_colours ? kPtr : 0x350) + 4 * ((mode * 28 + state) * Width() + slot);
 }
 
 inline uint32_t UVOffset(uint32_t mode, uint32_t state, uint32_t slot = 0) {

@@ -14,8 +14,8 @@
 //   +0Ch slots[8] x 28h (stock: 6; +0 taken, +4 entity, +8 locator NiPointer, +0Ch owning pointer,
 //        +10h rgb, +1Ch named colour index, +20h/+24h message scalars),
 //   +14Ch pegColor[8] x 10h (stock: 6 at +0FCh, written by the stock ctor, moved by PSC1),
-//   +1CCh rs7 tail: u8 capacity (8), u8 loaded count, u8 frames without the 7th string, u8 frames
-//        to the cull of the lowered pegs; +1D0h magic. Size 1D4h (PSA1 / PSA2).
+//   +1CCh rs7 tail: u8 capacity (8), u8 loaded count, u8 colour player, u8 reserved;
+//        +1D0h magic. Size 1D4h (PSA1 / PSA2).
 // Identification (review #1): a PegSet is native only if it is in the ownership table g_rs7_pegsets
 // (registered by PSC1 before InitTail, removed by PSA2 right before the sized free). Never by the
 // tail/magic: a PegSet constructed before the patch is a stock 0x15C allocation, and +1CCh/+1D0h lie
@@ -77,7 +77,8 @@ constexpr int kCapacity = 8;
 constexpr uint32_t kStockColours = 0xFC;  // pegColor[6] x 10h, where the stock ctor writes it
 constexpr uint32_t kColours = 0x14C;      // pegColor[8] x 10h
 constexpr uint32_t kColourStride = 0x10;
-constexpr uint32_t kTail = 0x1CC;  // u8 capacity, u8 loaded, u8 frames unwanted, u8 cull countdown
+constexpr uint32_t kTail = 0x1CC;              // u8 capacity, u8 loaded, u8 colour player, u8 reserved
+constexpr uint32_t kColourPlayer = kTail + 2;  // formerly unused frame counter; player of last colour selection
 constexpr uint32_t kMagicOff = 0x1D0;
 constexpr uint32_t kMagic = 0x50375352;  // "RS7P"
 constexpr uint32_t kSize = 0x1D4;
@@ -160,6 +161,8 @@ struct Rs7HeadStats {
 void Rs7Head_Stats(Rs7HeadStats* out);
 // From N5 (Rs7_S7Update) every frame, game thread: want = the guitar was built with 7/8 strings.
 void Rs7Head_Frame(uint8_t* guitar, bool want);
+// PSN1 sees selections for every string/player, including stock six-string tuner sessions.
+void Rs7Head_TrackColourPlayer(uint8_t* session);
 // The peg entity of slot s while s is below the active count and taken (nullptr otherwise).
 uint8_t* Rs7Head_Peg(uint8_t* guitar, int s);
 void Rs7Head_ResetLog();

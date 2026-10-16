@@ -4,6 +4,32 @@
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · **Changelog**
 
+## 1.0.0-beta.2
+
+**Beta update focused on RSMods colour compatibility and tuner fixes.**
+
+### Fixes
+
+- Fix incorrect colours with RSMods custom colours, Extended Range mode and colourblind mode,
+  including headstock pegs and fret numbers.
+- Keep the selected tuning peg and its coloured glow synchronized when RSMods changes the palette.
+- Fix the seven-string tuner switching back to E after initially selecting low B.
+
+### Improvements
+
+- Automatically use RSMods' configured Extended Range low B colour for the seventh string.
+- Detect RSMods reliably regardless of DLL loading order.
+- Add an F9 setting to disable automatic colour matching and use your own saved colours.
+
+### Updating
+
+Close Rocksmith and back up your existing installation. Extract the ZIP and copy everything inside
+`bin/Release/` into the game folder. Keep your existing `rs7string.ini` to preserve your settings;
+new settings use their defaults.
+
+RSMods still controls Extended Range activation timing. A brief colour transition when moving from
+the tuner into a song may remain.
+
 ## 1.0
 
 The first release: seven-string guitar charts in Rocksmith 2014 Remastered on Windows.

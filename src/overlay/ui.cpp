@@ -314,6 +314,7 @@ void TabStatus(const Rs7OverlayUi& ui) {
 
 void TabColour() {
     Section("string 6 colour");
+    Edit("color.rsmods_extended_range");
     Edit("color.string6_color");
     Edit("color.string6_color_cb");
     Rs7SwapStats sw{};

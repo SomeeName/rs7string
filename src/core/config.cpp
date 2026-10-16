@@ -143,6 +143,7 @@ Rs7Config Rs7Config_Load(const wchar_t* iniPath) {
         }
     }
 
+    c.rsmodsExtendedRange = ReadInt(L"color", L"rsmods_extended_range", 1, iniPath) != 0;
     c.rampSwapRaw = static_cast<int>(ReadInt(L"color", L"ramp_swap", 1, iniPath));
     c.rampSwap = c.rampSwapRaw != 0;
     c.allowInexactRaw = static_cast<int>(ReadInt(L"color", L"allow_inexact", 0, iniPath));

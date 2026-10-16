@@ -4,6 +4,7 @@
 #include "core/config.h"
 #include "core/frets.h"
 #include "core/headstock.h"
+#include "core/rsmodscolour.h"
 #include "core/songend.h"
 #include "core/string7.h"
 #include "core/string7diag.h"
@@ -48,7 +49,9 @@ void ApplyLowRange(const Rs7SetValue& v) {
 }  // W: read per check
 
 void ApplyColour(const Rs7SetValue&) {
-    const uint32_t rgb[2] = {Val("color.string6_color").rgb, Val("color.string6_color_cb").rgb};
+    uint32_t rgb[2] = {Val("color.string6_color").rgb, Val("color.string6_color_cb").rgb};
+
+    rs7rsmods::Resolve(rs7rsmods::Cached(), Val("color.rsmods_extended_range").i != 0, rgb);
 
     for (int m = 0; m < 2; ++m) {
         float f[3];
@@ -109,6 +112,11 @@ const Rs7SetDef kDefs[] = {
     {"debug.head_stretch_mode", L"debug", L"head_stretch_mode", T::Int, W::Live, "0", 0, 1, "Stretch mode",
      "0 = rotate diag(1,k,1), 1 = also Entity_SetScale(k).", ApplyHead},
     // [color]
+    {"color.rsmods_extended_range", L"color", L"rsmods_extended_range", T::Bool, W::Live, "1", 0, 1,
+     "Follow RSMods Extended Range colour",
+     "When RSMods is installed with ExtendedRange=on, use its low B colour in both colour modes. "
+     "RSMods settings are read at startup. Turn off to use the two colours below; their saved values stay intact.",
+     ApplyColour},
     {"color.string6_color", L"color", L"string6_color", T::Rgb, W::Live, "C8C8C8", 0, 0, "String 6 colour",
      "Gems (ramp copy), sparks, hit/miss text, 7th string line, glow, tuner.", ApplyColour},
     {"color.string6_color_cb", L"color", L"string6_color_cb", T::Rgb, W::Live, "C8C8C8", 0, 0,
