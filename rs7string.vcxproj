@@ -19,6 +19,10 @@
     <WholeProgramOptimization>false</WholeProgramOptimization>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- MASM (ml.exe) for the shared mid-hook thunks and the protect syscall (src/platform/*.asm). -->
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
   <PropertyGroup>
     <TargetName>dinput8</TargetName>
     <!-- No ILT: exports point at the stubs themselves (tools/tests/test_emu.py relies on it). -->
@@ -29,6 +33,8 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
+      <!-- /W4 /WX: a new warning fails the build (AGENTS.md "Build and gates"); third_party has warnings off. -->
+      <TreatWarningAsError>true</TreatWarningAsError>
       <!-- C4405: an inline-asm operand named like a register/mnemonic (`push gs`, `push out`) is not the C variable. -->
       <TreatSpecificWarningsAsErrors>4405;%(TreatSpecificWarningsAsErrors)</TreatSpecificWarningsAsErrors>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -50,6 +56,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\**\*.cpp" />
+    <!-- Every feature has a hooks.cpp / registration.cpp: one object folder per source folder. -->
+    <ClCompile Update="src\features\**\*.cpp" ObjectFileName="$(IntDir)%(RelativeDir)" />
   </ItemGroup>
   <!-- Dear ImGui v1.92.9b (MIT, third_party/imgui, unmodified) for the overlay (src/overlay). /Gy so the
        linker drops what the overlay never calls (and with it the imports it would bring). -->
@@ -59,5 +67,12 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <MASM Include="src\platform\*.asm" />
+  </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)analyze.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
 </Project>

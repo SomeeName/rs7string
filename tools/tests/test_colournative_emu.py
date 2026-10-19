@@ -8,8 +8,6 @@ for the stock columns 0-5. Columns 6/7 are read back from the native matrix (slo
 from __future__ import annotations
 
 import struct
-import sys
-from pathlib import Path
 
 import pytest
 from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_MODE_32, UC_PROT_ALL, Uc
@@ -25,12 +23,11 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
-TOOLS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOLS))
-import gen_colournative as cm  # noqa: E402
-import gen_fncopy  # noqa: E402
+import gen_colournative as cm
+import gen_fncopy
+from emu_common import needs_exe
 
-pytestmark = pytest.mark.skipif(not gen_fncopy.EXE.exists(), reason="needs original/Rocksmith2014.unpacked.exe")
+pytestmark = needs_exe
 
 MGR, RGB, OUT, STACK, RET, GLOBAL = 0x10000000, 0x11000000, 0x12000000, 0x13000000, 0x14000000, 0x135F58C
 PTR_OLD, UV_OLD, PTR_NEW, UV_NEW = 0x350, 0x890, 0xDD0, 0x14D0
@@ -229,7 +226,7 @@ def run_fill_uv(native, fn, mode, state, lo, hi, publish):
     uv = UV_NEW if native else UV_OLD
     for i in range(2 * 28 * width):
         uc.mem_write(MGR + uv + 4 * i, b"\0\0\0\0")
-    if native and publish:  # CMUV / CMIX: the DLL's integer callbacks (core/colournative.cpp)
+    if native and publish:  # CMUV / CMIX: the DLL's integer callbacks (features/colours/hooks.cpp)
 
         def cb(uc_, addr, size, _):
             eax = uc_.reg_read(UC_X86_REG_EAX)

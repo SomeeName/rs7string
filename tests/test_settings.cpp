@@ -1,13 +1,16 @@
-#include "core/config.h"
-#include "core/frets.h"
-#include "core/headstock.h"
-#include "core/settings.h"
-#include "core/songend.h"
-#include "core/string7.h"
-#include "core/string7diag.h"
-#include "core/tuner.h"
+#include "config_fixture.h"
 #include "d3d/swap.h"
-#include "hooks/registry.h"
+#include "features/colours/colours.h"
+#include "features/diag/diag.h"
+#include "features/frets/frets.h"
+#include "features/headstock/headstock.h"
+#include "features/scene/scene.h"
+#include "features/songend/songend.h"
+#include "features/string7/string7.h"
+#include "features/tuner/tuner.h"
+#include "hook_rules.h"
+#include "platform/settings.h"
+#include "tempfile.h"
 #include "test.h"
 #include <windows.h>
 #include <cstdio>
@@ -16,23 +19,6 @@
 #include <string>
 
 namespace {
-std::wstring TempIni(const char* content) {
-    wchar_t dir[MAX_PATH];
-
-    GetTempPathW(MAX_PATH, dir);
-    const std::wstring path = std::wstring(dir) + L"rs7string_test_settings.ini";
-    FILE* f = nullptr;
-
-    _wfopen_s(&f, path.c_str(), L"wb");
-
-    if (f) {
-        std::fputs(content, f);
-        std::fclose(f);
-    }
-
-    return path;
-}
-
 std::string ReadAll(const std::wstring& path) {
     std::string s;
     FILE* f = nullptr;
@@ -168,7 +154,7 @@ TEST(settings_table_is_consistent) {
 
 TEST(settings_defaults_match_the_startup_defaults) {
     Restore r;
-    const Rs7Config c = Rs7Config_Load(L"Z:\\does\\not\\exist\\rs7string.ini");
+    const Rs7TestConfig c = Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini");
 
     Rs7Set_InitFromIni(L"Z:\\does\\not\\exist\\rs7string.ini");
     CHECK_EQ(Rs7Set_State(Rs7Set_Find("color.string6_color")).value.rgb, c.string6Rgb);
@@ -255,11 +241,11 @@ TEST(settings_tuner_keys) {
     CHECK_EQ(g_rs7_tuner_auto, uintptr_t(5));
     CHECK_EQ(g_rs7_tuner_any, 1L);  // the tuner stubs enter C++ from now on
     CHECK(Rs7Set_SetText("debug.tuner_autotune", "31") == Rs7SetResult::Invalid);
-    CHECK(!Rs7Set_Bool("tuner.lowrange"));
-    CHECK(Rs7Set_SetText("tuner.lowrange", "1") == Rs7SetResult::Live);
-    CHECK_EQ(g_rs7_lowrange, uintptr_t(1));
+    CHECK(Rs7Set_Bool("tuner.lowrange"));
     CHECK(Rs7Set_SetText("tuner.lowrange", "0") == Rs7SetResult::Live);
     CHECK_EQ(g_rs7_lowrange, uintptr_t(0));
+    CHECK(Rs7Set_SetText("tuner.lowrange", "1") == Rs7SetResult::Live);
+    CHECK_EQ(g_rs7_lowrange, uintptr_t(1));
     // 1.0: [tuner] seven_slot and [debug] tuner_trace were removed with the B-phase tuner.
     CHECK(Rs7Set_Find("tuner.seven_slot") < 0);
     CHECK(Rs7Set_Find("debug.tuner_trace") < 0);
@@ -281,7 +267,8 @@ TEST(settings_headstock_values_go_to_the_live_override) {
 
 TEST(settings_save_writes_only_changed_keys_and_keeps_the_rest) {
     Restore r;
-    const std::wstring p = TempIni("; my notes\r\n[neck]\r\nstring7_v=0.4\r\n[other]\r\nfoo=bar\r\n");
+    const std::wstring p =
+        rs7test::TempIni(L"settings", "; my notes\r\n[neck]\r\nstring7_v=0.4\r\n[other]\r\nfoo=bar\r\n");
 
     Rs7Set_InitFromIni(p.c_str());
     CHECK_EQ(Rs7Set_DirtyCount(), 0);
@@ -295,7 +282,7 @@ TEST(settings_save_writes_only_changed_keys_and_keeps_the_rest) {
     CHECK_EQ(Rs7Set_Save(p.c_str()), 4);
     CHECK_EQ(Rs7Set_DirtyCount(), 0);
     CHECK_EQ(Rs7Set_Save(p.c_str()), 0);
-    const Rs7Config c = Rs7Config_Load(p.c_str());
+    const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
 
     CHECK_EQ(c.string7V, 0.6f);
     CHECK_EQ(c.string6Rgb, 0x112233u);
@@ -320,8 +307,9 @@ TEST(settings_save_writes_only_changed_keys_and_keeps_the_rest) {
 
 TEST(settings_invalid_ini_numbers_disable_the_setting) {
     Restore r;
-    const std::wstring p = TempIni("[neck]\r\nstring7_v=junk\r\nfret_extend=5\r\n[debug]\r\ntuner_autotune=99\r\n"
-                                   "[color]\r\nstring6_color=nothex\r\n");
+    const std::wstring p =
+        rs7test::TempIni(L"settings", "[neck]\r\nstring7_v=junk\r\nfret_extend=5\r\n[debug]\r\ntuner_autotune=99\r\n"
+                                      "[color]\r\nstring6_color=nothex\r\n");
 
     Rs7Set_InitFromIni(p.c_str());
     CHECK_EQ(Rs7Set_Float("neck.string7_v"), 0.4f);
@@ -335,7 +323,8 @@ TEST(settings_numeric_prefixes_and_overflow_fail_closed) {
     Restore r;
 
     for (const std::string bad : std::vector<std::string>{"-1", "1junk", std::string(1000, '9')}) {
-        const auto p = TempIni(("[neck]\r\nnative_pitch=" + bad + "\r\n[window]\r\nscreen=" + bad + "\r\n").c_str());
+        const auto p = rs7test::TempIni(
+            L"settings", ("[neck]\r\nnative_pitch=" + bad + "\r\n[window]\r\nscreen=" + bad + "\r\n").c_str());
 
         Rs7Set_InitFromIni(p.c_str());
         CHECK(!Rs7Set_Bool("neck.native_pitch"));

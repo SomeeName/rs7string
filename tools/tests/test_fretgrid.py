@@ -1,4 +1,4 @@
-"""Native capacity-8 FretGrid (tools/gen_fretgrid.py, core/fretgrid.h): the patched game code against the stock
+"""Native capacity-8 FretGrid (tools/gen_fretgrid.py, features/fretgrid/fretgrid.h): the patched game code against the stock
 code in Unicorn, 6 strings. The stock functions run on a stock-layout grid, the patched ones (the generated
 edits applied to the same exe bytes) on a native-layout grid; every value must agree cell by cell.
 """
@@ -9,22 +9,18 @@ import gc
 import json
 import random
 import struct
-import sys
-from functools import lru_cache
-from pathlib import Path
 
 import capstone
-import pefile
 import pytest
 from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_MODE_32, UC_PROT_ALL, Uc
 from unicorn.x86_const import UC_X86_REG_ECX, UC_X86_REG_EAX, UC_X86_REG_EIP, UC_X86_REG_ESP
 
-TOOLS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOLS))
-import gen_fncopy  # noqa: E402
-import gen_fretgrid as fg  # noqa: E402
+import game_files
+import gen_fncopy
+import gen_fretgrid as fg
+from emu_common import CRT_MEMSET, crt_memset, exe_sections, needs_exe
 
-pytestmark = pytest.mark.skipif(not gen_fncopy.EXE.exists(), reason="needs original/Rocksmith2014.unpacked.exe")
+pytestmark = needs_exe
 
 ROW_S, ROW_N = fg.CELL, fg.CELL_N
 WIRE_S, WIRE_N = fg.WIRE, fg.WIRE_N
@@ -32,17 +28,6 @@ BASE_S, BASE_N = fg.BASE, fg.BASE_N
 GRID, GUITAR, INFO, OUT = 0x10000000, 0x11000000, 0x11001000, 0x11002000
 STACK, RET = 0x12000000, 0x13000000
 CELL = 0x4C
-
-
-@lru_cache(maxsize=1)
-def sections():
-    pe = pefile.PE(str(gen_fncopy.EXE), fast_load=True)
-    out = []
-    for s in pe.sections:
-        name = s.Name.rstrip(b"\0")
-        if name in (b".text", b".rdata", b".data"):
-            out.append((pe.OPTIONAL_HEADER.ImageBase + s.VirtualAddress, bytes(s.get_data()[: s.Misc_VirtualSize])))
-    return out
 
 
 def patched_edits():
@@ -53,7 +38,7 @@ def patched_edits():
 def machine(native: bool, hooks=None):
     gc.collect()  # each Uc commits tens of MB: free the previous ones first
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
-    for va, data in sections():
+    for va, data in exe_sections():
         size = (len(data) + 0xFFF) & ~0xFFF
         uc.mem_map(va, size, UC_PROT_ALL)
         uc.mem_write(va, data)
@@ -64,17 +49,8 @@ def machine(native: bool, hooks=None):
     for a, n in ((GRID, 0x20000), (GUITAR, 0x4000), (STACK - 0x10000, 0x20000), (RET, 0x1000)):
         uc.mem_map(a, n, UC_PROT_ALL)
     uc.mem_write(RET, b"\xf4")
-    uc.hook_add(UC_HOOK_CODE, memset_hook, begin=0xF5B0C0, end=0xF5B0C0)  # the CRT memset (VMProtect-wrapped)
+    uc.hook_add(UC_HOOK_CODE, crt_memset, begin=CRT_MEMSET, end=CRT_MEMSET)
     return uc
-
-
-def memset_hook(uc, address, size, data):
-    sp = uc.reg_read(UC_X86_REG_ESP)
-    ret, dst, val, n = struct.unpack("<4I", bytes(uc.mem_read(sp, 16)))
-    uc.mem_write(dst, bytes([val & 0xFF]) * n)
-    uc.reg_write(UC_X86_REG_EAX, dst)
-    uc.reg_write(UC_X86_REG_ESP, sp + 4)
-    uc.reg_write(UC_X86_REG_EIP, ret)
 
 
 def call(uc, entry, args=(), ecx=0, eax=0, limit=2_000_000, until=None):
@@ -102,7 +78,7 @@ def test_generated_sites_are_current():
 
 def test_no_stock_layout_constant_is_left_in_the_fretgrid_code():
     """Every 1CC / 1C0 / 2EC0 / 72A0 operand of the listed functions is edited, except V2's (the stub)."""
-    ledger = fg.REPO.parents[0] / "research/7-string/nslot/evidence/fretgrid-tables/functions.tsv"
+    ledger = game_files.RESEARCH / "7-string/nslot/evidence/fretgrid-tables/functions.tsv"
     if not ledger.exists():
         pytest.skip("needs the maintainer's local function ledger (not in this repository)")
     text, base = gen_fncopy.load_text()

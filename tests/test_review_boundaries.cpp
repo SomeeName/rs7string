@@ -1,10 +1,10 @@
-#include "core/colournative.h"
-#include "core/extblock.h"
-#include "core/fncopy.h"
-#include "core/freeze.h"
-#include "core/publish_state.h"
-#include "core/sidestore.h"
-#include "core/tuningname.h"
+#include "features/colours/colours.h"
+#include "features/nslot/nslot.h"
+#include "features/pitch/pitch.h"
+#include "features/publish/publish.h"
+#include "features/tuner/tuningname.h"
+#include "platform/fncopy.h"
+#include "platform/freeze.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>

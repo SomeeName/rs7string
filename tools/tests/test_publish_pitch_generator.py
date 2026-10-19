@@ -10,6 +10,10 @@ from unicorn import Uc, UC_ARCH_X86, UC_MODE_32
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
 import gen_publish_pitch as gp
+from emu_common import needs_exe
+
+# Reads the user's game exe (tools/game_files.py): skipped without it (CI).
+pytestmark = needs_exe
 
 CODE, DATA, STACK, STOP = 0x2000000, 0x2100000, 0x2200000, 0x200F000
 DET, MAT, TRACK, INPUT, RESULT, NOTE = [DATA + i * 0x10000 for i in range(6)]

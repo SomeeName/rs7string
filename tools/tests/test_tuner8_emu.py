@@ -41,11 +41,11 @@ def copy_bytes(fid):
     code, edits, rels, _, _ = gen_fncopy.build(fn, text, base)
     patched = bytearray(code)
     patched.extend(bytes(1) * (0x900 - len(patched)))
-    # Rs7_Call_PubEdge (publish off): AL = first ? 0 : active count - 1 (the stock expression, +40h)
+    # the PubEdge call-in (publish off): AL = first ? 0 : active count - 1 (the stock expression, +40h)
     patched.extend(bytes.fromhex("84C9 7506 8A4040 FEC8 C3 32C0 C3".replace(" ", "")))
     for e in edits:
         if e.sym:
-            assert e.sym == "Rs7_Call_PubEdge", e.sym
+            assert e.sym == "g_rs7_callin_PubEdge", e.sym
             patched[e.off : e.off + len(e.expect)] = bytes([0x90]) * len(e.expect)
             patched[e.off] = 0xE8
             patched[e.off + 1 : e.off + 5] = struct.pack("<i", (COPY + 0x900) - (COPY + e.off + 5))

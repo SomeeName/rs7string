@@ -18,9 +18,13 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- MASM (ml.exe) for the shared mid-hook thunks and the protect syscall (src/platform/*.asm). -->
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
   <PropertyGroup>
     <TargetName>rs7string_tests</TargetName>
-    <!-- No ILT: test_d3d.cpp reads the thunks' first bytes and the vtable slots hold their addresses. -->
+    <!-- No ILT: test_d3d_hook.cpp reads the thunks' first bytes and the vtable slots hold their addresses. -->
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(MSBuildThisFileDirectory)..\bin\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)..\obj\$(ProjectName)\$(Configuration)\</IntDir>
@@ -28,11 +32,13 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
+      <!-- /W4 /WX: a new warning fails the build (AGENTS.md "Build and gates"); third_party has warnings off. -->
+      <TreatWarningAsError>true</TreatWarningAsError>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <Optimization>Disabled</Optimization>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PreprocessorDefinitions>WIN32;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\src;$(MSBuildThisFileDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -42,12 +48,27 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\core\*.cpp" />
-    <ClCompile Include="..\src\hooks\*.cpp" />
+    <!-- The hook table list, the failure groups and the write conditions (model/groups.h). -->
+    <ClCompile Include="..\src\registry.cpp;..\src\hook_rules.cpp" />
     <ClCompile Include="..\src\d3d\*.cpp" />
-    <ClCompile Include="..\src\log.cpp" Condition="Exists('..\src\log.cpp')" />
-    <ClCompile Include="*.cpp" />
+    <ClCompile Include="..\src\platform\*.cpp" />
+    <ClCompile Include="..\src\model\*.cpp" />
+    <!-- The settings table list and the overlay's own table (platform/settings.h); the rest of src/ and overlay/ is the DLL's. -->
+    <ClCompile Include="..\src\settings_tables.cpp;..\src\settings_removed.cpp;..\src\overlay\overlay_settings.cpp" />
+    <!-- App-layer code with native tests: the DirectInput wrapper, the overlay's pipe commands and its input capture flags. -->
+    <ClCompile Include="..\src\dinput_wrap.cpp;..\src\overlay\overlaycmd.cpp;..\src\overlay\capture.cpp" />
+    <!-- Feature sources and tests (tests/<name>/) repeat file names: one object folder per source folder. -->
+    <ClCompile Include="..\src\features\**\*.cpp" ObjectFileName="$(IntDir)features\%(RecursiveDir)" />
+    <ClCompile Include="**\*.cpp" ObjectFileName="$(IntDir)tests\%(RecursiveDir)" />
     <ResourceCompile Include="rsmods_fixture.rc" />
   </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\src\platform\*.asm" />
+  </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)..\analyze.props" />
+  <Import Project="$(MSBuildThisFileDirectory)..\asan.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
 </Project>

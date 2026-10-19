@@ -1,0 +1,122 @@
+{
+  "Rs7_Stub_R2": {
+    "hex": "81 fb c8 01 00 00 74 1a 85 db 75 09 83 3d 84 85 16 5e 00 75 1d 03 55 1c d9 44 13 44 ff 25 08 b4 16 5e 03 55 1c d9 42 44 dc c0 d8 a2 90 00 00 00 eb 06 03 55 1c d9 42 44 9c 83 3d 84 85 16 5e 00 74 47 9d 8d 64 24 f8 d9 1c 24 d9 04 24 d8 65 d0 d9 e1 d9 5c 24 04 9c 60 8b f4 ff 76 28 ff 76 24 ff 75 d0 52 0f b6 45 10 50 0f b6 45 18 50 0f b6 45 14 50 e8 98 11 fe ff 8b e6 61 9d d9 04 24 8d 64 24 08 ff 25 08 b4 16 5e 9d ff 25 08 b4 16 5e",
+    "fixups": [
+      {
+        "offset": 14,
+        "symbol": "g_rs7_diag",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 30,
+        "symbol": "g_rs7_resume_R2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 59,
+        "symbol": "g_rs7_diag",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 116,
+        "symbol": "Rs7_DiagNoteHead",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 133,
+        "symbol": "g_rs7_resume_R2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 140,
+        "symbol": "g_rs7_resume_R2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "7f80b7b"
+  },
+  "Rs7_Stub_R6": {
+    "hex": "81 f9 c8 01 00 00 74 0c 03 c7 d9 44 01 40 ff 25 0c b4 16 5e 03 c7 d9 40 40 dc c0 d8 a0 8c 00 00 00 ff 25 0c b4 16 5e",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_R6",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "g_rs7_resume_R6",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "7f80b7b"
+  },
+  "Rs7_Stub_W": {
+    "hex": "83 3d 30 b7 16 5e 00 74 20 83 3d 2c b7 16 5e 00 74 17 60 56 e8 67 c4 ff ff 83 c4 04 61 d8 1d 6c 68 14 5e ff 25 cc bc 16 5e d8 1d 70 68 14 5e ff 25 cc bc 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_lowrange",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 11,
+        "symbol": "g_rs7_tuner_any",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 21,
+        "symbol": "Rs7_WrongThreshold",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 31,
+        "symbol": "g_rs7_wrong_thr",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 37,
+        "symbol": "g_rs7_resume_W",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 43,
+        "symbol": "g_rs7_wrong_stock",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 49,
+        "symbol": "g_rs7_resume_W",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "7f80b7b"
+  },
+  "Rs7_Stub_PUBGP": {
+    "hex": "60 8b ec ff 75 18 ff 75 2c ff 75 28 ff 75 1c ff 75 24 e8 e9 f5 ff ff 83 c4 14 89 45 1c 61 c2 0c 00",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Publish_GridPos",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "7f80b7b"
+  }
+}

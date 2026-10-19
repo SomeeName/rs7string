@@ -21,6 +21,19 @@ SPECS = [
 ]
 
 
+def guard_target(md, raw: bytes, va: int, target: int) -> dict:
+    """The site's `target` field: the displaced JAE (rel8 or rel32, not necessarily the last instruction: PUBGE2's
+    `jae rel8` is followed by a displaced `cmp byte [esi+8],0`). Asserts it branches to the expected target."""
+    import capstone
+
+    for i in md.disasm(raw, va):
+        if i.mnemonic == "jae":
+            off = i.address - va
+            assert i.operands[0].type == capstone.x86.X86_OP_IMM and i.operands[0].imm == target, (hex(va), i.op_str)
+            return {"rel_at": off + i.imm_offset, "rel_size": i.imm_size, "insn_end": off + i.size}
+    raise AssertionError(f"no jae in the displaced bytes at {va:#x}")
+
+
 def manifest():
     text, base = gen_fncopy.load_text()
     sites = []
@@ -53,8 +66,7 @@ def manifest():
             "note": f"0x{va:X} publication grid exact port",
         }
         if target:
-            # Last overwritten instruction is the stock JAE rel32.
-            site["target"] = {"rel_at": length - 4, "rel_size": 4, "insn_end": length}
+            site["target"] = guard_target(md, raw, va, target)
         sites.append(site)
         registry.append(
             f'{{ "{name}", Rs7_Stub_{name}, &g_rs7_resume_{name}, '

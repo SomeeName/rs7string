@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6F2B7C1E-7A1D-4C55-9B7E-5A1C0D7E7003}</ProjectGuid>
+    <RootNamespace>rs7string_fuzz</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- MASM (ml.exe) for the shared mid-hook thunks and the protect syscall (src/platform/*.asm). -->
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <TargetName>rs7string_fuzz</TargetName>
+    <!-- libFuzzer + ASan (scripts\fuzz.ps1, build.ps1 -Fuzz): never part of the default build. -->
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(MSBuildThisFileDirectory)..\bin\Fuzz\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\obj\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <!-- /W4 /WX: a new warning fails the build (AGENTS.md "Build and gates"); third_party has warnings off. -->
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <AdditionalOptions>/fsanitize=address /fsanitize=fuzzer %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>WIN32;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\src;$(MSBuildThisFileDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <!-- Tests only (real devices); the DLL must not import d3d9.dll (tools/check_exports.py). -->
+      <AdditionalDependencies>d3d9.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <!-- The hook table list, the failure groups and the write conditions (model/groups.h). -->
+    <ClCompile Include="..\src\registry.cpp;..\src\hook_rules.cpp" />
+    <ClCompile Include="..\src\d3d\*.cpp" />
+    <ClCompile Include="..\src\platform\*.cpp" />
+    <ClCompile Include="..\src\model\*.cpp" />
+    <!-- The settings table list and the overlay's own table (platform/settings.h); the rest of src/ and overlay/ is the DLL's. -->
+    <ClCompile Include="..\src\settings_tables.cpp;..\src\settings_removed.cpp;..\src\overlay\overlay_settings.cpp" />
+    <!-- App-layer code with native tests: the DirectInput wrapper and the overlay's pipe commands. -->
+    <ClCompile Include="..\src\dinput_wrap.cpp;..\src\overlay\overlaycmd.cpp" />
+    <!-- Feature sources repeat file names: one object folder per source folder. The fuzz targets replace tests/. -->
+    <ClCompile Include="..\src\features\**\*.cpp" ObjectFileName="$(IntDir)features\%(RecursiveDir)" />
+    <ClCompile Include="*.cpp" ObjectFileName="$(IntDir)fuzz\" />
+      </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\src\platform\*.asm" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>

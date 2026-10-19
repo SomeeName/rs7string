@@ -1,0 +1,104 @@
+{
+  "Rs7_Stub_N12": {
+    "hex": "80 f9 06 72 0b 77 0f 83 3d a8 a7 13 5e 00 74 06 ff 25 ac 77 16 5e ff 25 b0 77 16 5e",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "g_rs7_s7_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_N12",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 24,
+        "symbol": "g_rs7_target_N12",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 24bfba8"
+  },
+  "Rs7_Stub_N13": {
+    "hex": "80 f9 06 72 12 60 57 56 e8 c3 fa ff ff 83 c4 08 61 ff 25 b4 77 16 5e ff 25 b8 77 16 5e",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "Rs7_S7MaskBackfill",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 19,
+        "symbol": "g_rs7_resume_N13",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 25,
+        "symbol": "g_rs7_target_N13",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 24bfba8"
+  },
+  "Rs7_Stub_PM0": {
+    "hex": "c7 40 40 ff ff ff ff 60 50 e8 a2 f8 ff ff 83 c4 04 61 ff 25 f8 73 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "Rs7Pitch_MatNew",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 20,
+        "symbol": "g_rs7_resume_PM0",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 24bfba8"
+  },
+  "Rs7_Stub_PR0": {
+    "hex": "60 53 e8 19 f7 ff ff 83 c4 04 61 8b 83 f0 11 00 00 ff 25 fc 73 16 5e",
+    "fixups": [
+      {
+        "offset": 3,
+        "symbol": "Rs7Pitch_DetReset",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 19,
+        "symbol": "g_rs7_resume_PR0",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 24bfba8"
+  },
+  "Rs7_Stub_PM1": {
+    "hex": "60 52 56 e8 e8 f8 ff ff 83 c4 08 61 8b 46 04 5b 85 c0 ff 25 00 74 16 5e",
+    "fixups": [
+      {
+        "offset": 4,
+        "symbol": "Rs7Pitch_MatTuned",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 20,
+        "symbol": "g_rs7_resume_PM1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 24bfba8"
+  }
+}

@@ -22,7 +22,7 @@ preprocessor lines or labels, inside initializer lists, macros, strings or __asm
 that tree-sitter cannot parse cleanly. The result is idempotent and clang-format leaves it alone.
 
 The source is parsed with tree-sitter-cpp after a same-length rewrite that hides what that grammar does not
-know: calling conventions, __declspec(...), the RS7_STUB(name) function head, and __asm statements (kept as
+know: calling conventions, __declspec(...) and __asm statements (kept as
 `;` placeholders whose real extent is remembered).
 
 Exit status: 0; with --check 1 when a file would change.
@@ -56,8 +56,6 @@ _BLANK_WORDS = {
     b"CALLBACK",
     b"NTAPI",
 }
-# Function-head macros: NAME(arg) -> `void arg()`, padded to the original length (.clang-format "Macros").
-_HEAD_MACROS = {b"RS7_STUB", b"STUB"}
 _ASM_WORDS = {b"__asm", b"_asm"}
 _STRING_PREFIXES = {b"L", b"u", b"U", b"u8"}
 
@@ -214,18 +212,6 @@ def sanitize(src: bytes) -> tuple[bytes, dict[int, int]]:
                             break
                     blank(i, k)
                     j = k
-            elif word in _HEAD_MACROS:
-                k = j
-                while k < n and src[k] in b" \t":
-                    k += 1
-                if src[k : k + 1] == b"(":
-                    close = src.find(b")", k)
-                    if close > 0 and b"\n" not in src[k:close]:
-                        head = b"void " + src[k + 1 : close].strip() + b"()"
-                        if len(head) <= close + 1 - i:
-                            blank(i, close + 1)
-                            out[i : i + len(head)] = head
-                            j = close + 1
             elif word in _ASM_WORDS:
                 k = j
                 while k < n and src[k] in b" \t":

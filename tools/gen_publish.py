@@ -9,7 +9,7 @@ import struct
 import gen_fncopy as fc
 
 REPO = Path(__file__).resolve().parents[1]
-OUT = REPO / "src/core/publish_specs.generated.h"
+OUT = REPO / "src/features/publish/publish_specs.generated.h"
 FNS = [
     fc.Fn(
         "PUBCL",
@@ -17,9 +17,9 @@ FNS = [
         0x875424,
         arrays=False,
         edits={
-            0x8751FC: ("call", "Rs7_Call_PubBaseG", 7),
-            0x875205: ("call", "Rs7_Call_PubBaseB", 7),
-            0x87522C: ("call", "Rs7_Call_PubClassify", 7),
+            0x8751FC: ("call", "g_rs7_callin_PubBaseG", 7),
+            0x875205: ("call", "g_rs7_callin_PubBaseB", 7),
+            0x87522C: ("call", "g_rs7_callin_PubClassify", 7),
             0x875233: (
                 "bytes",
                 "B9 46 00 00 00 83 C3 08 EB 03",
@@ -43,7 +43,7 @@ FNS = [
         0x58E820,
         arrays=False,
         edits={
-            0x58E7A2: ("call", "Rs7_Call_PubWireCount", 7),
+            0x58E7A2: ("call", "g_rs7_callin_PubWireCount", 7),
         },
     ),
 ]

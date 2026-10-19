@@ -3,7 +3,7 @@
 #include <d3d9.h>
 
 // The overlay's frame hook (overlay/overlay.h): slots 17 (Present) and 16 (Reset) of the game
-// device's vtable, the same technique as d3d/swap.cpp (hot-patchable thunks, COM vtables only, no
+// device's vtable, the same technique as d3d/swap_hook.cpp (hot-patchable thunks, COM vtables only, no
 // d3d9.lib). The ramp worker hands the device over (Rs7Ramp_RunWorker's device callback).
 //
 // Why Present and not EndScene: RSMods (xinput1_3.dll) inline-hooks the d3d9 EndScene body and

@@ -6,13 +6,14 @@ Writes only sites.json here. Never reads protected archives or uses keys.
 
 import json
 from pathlib import Path
+import game_files
 import pefile
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 def main():
-    pe = pefile.PE(str(REPO.parent / "original" / "Rocksmith2014.unpacked.exe"))
+    pe = pefile.PE(str(game_files.UNPACKED_EXE))
     entries = [
         ("DGM", 0x757698, 7),
         ("DGS", 0x7580DF, 7),

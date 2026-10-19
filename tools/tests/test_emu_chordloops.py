@@ -4,7 +4,7 @@ import struct
 
 import pytest
 from unicorn.x86_const import *
-from test_emu import Emu, CODE, DATA, STACK, RET_MAGIC, site_va, FLAGS_MASK, DLL, SNAPSHOT
+from emu_harness import Emu, CODE, DATA, STACK, RET_MAGIC, site_va, FLAGS_MASK, DLL, SNAPSHOT
 
 pytestmark = pytest.mark.skipif(
     not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"

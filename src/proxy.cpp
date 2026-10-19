@@ -1,6 +1,6 @@
 // dinput8.dll proxy: every export forwards to the system dinput8.dll (SysWOW64 for this
 // 32-bit process). The game only imports DirectInput8Create; the rest exist for completeness.
-#include "core/dinput.h"
+#include "dinput_wrap.h"
 #include <windows.h>
 #include <unknwn.h>
 

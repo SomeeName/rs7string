@@ -11,7 +11,9 @@ void* operator new(size_t n) {
     throw std::bad_alloc();
 }
 void operator delete(void* p) noexcept { std::free(p); }
-#include "core/extblock.cpp"
+#include "model/extblock.cpp"
+#include "features/nslot/hooks_extblock.cpp"
+extern "C" void __cdecl Rs7Mid_Fldcw(uint32_t) {}  // midhook_thunks.asm (Rs7Mid::GameFcw in XB1)
 static int freed = 0, loaded = 0, failureLogs = 0;
 static bool liveNs = true, throwLog = false;
 void Rs7Log(const char* message, ...) {

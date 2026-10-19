@@ -48,12 +48,6 @@ BreakTemplateDeclarations: Yes
 StatementMacros:
   - RS7_FNVARS
   - RS7_FNEXT
-  - RS7_SAVE_ALL
-  - RS7_RESTORE_ALL
   - PUB_VAR
   - PAIR
   - RS7_GPU_THUNK
-# Naked-stub function heads: the body `{ __asm { ... } }` is code, not a block of statements.
-Macros:
-  - RS7_STUB(name)=void name()
-  - STUB(n)=void n()

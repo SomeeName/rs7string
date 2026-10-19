@@ -1,12 +1,12 @@
 #pragma once
-#include "core/ramp.h"
+#include "features/colours/colours.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 #include <d3d9.h>
 #include <vector>
 
-// Real D3D9 devices for test_d3d.cpp / test_gpu.cpp: a hidden window, windowed HAL with software vertex
+// Real D3D9 devices for test_d3d_*.cpp / test_gpu.cpp: a hidden window, windowed HAL with software vertex
 // processing (REF if HAL fails). FPU_PRESERVE keeps the process's x87 precision for the other tests.
 namespace rs7d3d {
 inline HWND Window() {

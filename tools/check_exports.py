@@ -26,11 +26,21 @@ REQUIRED_DATA = [
     "g_rs7_colormgr",
     "Rs7_S7LogMask",
     "g_rs7_pegsets",
-    "Rs7_Stub_PP_TOC",
-    "Rs7_Stub_PP_SNGF",
+    "Rs7_Mid_PP_TOC",
+    "Rs7_Mid_PP_SNGF",
     "Rs7_Stub_PP_SNGD",
     "g_rs7_skip_PP_TOC",
     "g_rs7_plain_psarc",
+    # mid-hook builders and thunks (test_midhook_emu.py, test_midhook_call_emu.py, emu_harness.py)
+    "Rs7Mid_Build",
+    "Rs7Mid_BuildLight",
+    "Rs7Mid_BuildSse",
+    "Rs7Mid_BuildCall",
+    "Rs7Mid_BuildWrap",
+    "Rs7Mid_BuildCallIn",
+    "Rs7Mid_Thunk",
+    "Rs7Mid_ThunkLight",
+    "Rs7Mid_ThunkSse",
 ]
 FORBIDDEN_IMPORTS = ["d3d9.dll"]
 IMAGE_BASE = 0x5E000000

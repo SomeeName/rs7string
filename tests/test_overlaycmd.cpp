@@ -1,5 +1,5 @@
-#include "core/overlaycmd.h"
-#include "core/settings.h"
+#include "overlay/overlaycmd.h"
+#include "platform/settings.h"
 #include "test.h"
 #include <windows.h>
 #include <string>

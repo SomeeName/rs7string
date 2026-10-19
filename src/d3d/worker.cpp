@@ -1,8 +1,9 @@
 #include "d3d/worker.h"
 #include "d3d/iids.h"
 #include "d3d/sehread.h"
-#include "hooks/registry.h"
-#include "log.h"
+#include "features/colours/colours.h"
+#include "model/groups.h"
+#include "platform/log.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -39,7 +40,7 @@ const char* StateName(Rs7CandState s) {
 // The game's device from a texture in the list. SEH-guarded; the caller holds the list lock, so the
 // texture cannot be freed meanwhile. Returns the raw pointer (the game keeps the device alive) if its
 // GetTexture/SetTexture slots point into d3d9.dll. (The vtable itself need not: d3d9.dll 10.0.26100
-// gives every device its own vtable copy in private heap memory - observed by test_d3d.cpp.)
+// gives every device its own vtable copy in private heap memory - observed by test_d3d_hook.cpp.)
 IDirect3DDevice9* DeviceOf(uintptr_t tex, uintptr_t lo, uintptr_t hi) {
     __try {
         auto* base = reinterpret_cast<IDirect3DBaseTexture9*>(tex);
@@ -109,6 +110,114 @@ struct Ctx {
     std::vector<std::string> lastRejects, loggedRejects;
 };
 
+// Device finder only (overlay without the ramp copy): no candidates, no texture hooks.
+void FindDeviceOnly(Ctx& x, bool wantDevice, IDirect3DDevice9* dev) {
+    if (!wantDevice) {
+        return;
+    }
+
+    if (!dev) {
+        if (!x.noDeviceLogged) {
+            Rs7Log("overlay: no device yet (no valid d3d texture in the list)");
+        }
+        x.noDeviceLogged = true;
+        return;
+    }
+
+    x.hooked = true;
+    if (x.opts.onDevice) {
+        x.opts.onDevice(dev);
+    }
+}
+
+// Each reject reason once, at most kMaxRejectLines of them.
+void LogNewRejects(Ctx& x, const std::vector<std::string>& rejects) {
+    for (const auto& r : rejects) {
+        bool seen = false;
+
+        for (const auto& l : x.loggedRejects) {
+            seen = seen || l == r;
+        }
+
+        if (seen || x.loggedRejects.size() >= kMaxRejectLines) {
+            continue;
+        }
+
+        x.loggedRejects.push_back(r);
+        Rs7Log("ramp: reject %s", r.c_str());
+    }
+}
+
+// Logs the walk on the first round and whenever its candidates or rejects changed.
+void LogWalkIfChanged(Ctx& x) {
+    const Rs7TexWalk& w = x.walk;
+    std::vector<uintptr_t> found;
+
+    found.reserve(w.found.size());
+
+    for (const auto& f : w.found) {
+        found.push_back(f.d3d);
+    }
+
+    if (x.rounds++ == 0 || found != x.lastFound || w.rejects != x.lastRejects) {
+        unsigned note = 0, add = 0;
+
+        for (const auto& f : w.found) {
+            (f.family == Rs7Family::Note ? note : add)++;
+        }
+
+        Rs7Log(
+            "ramp: texture list: %u nodes, %u source textures, %u name matches, %u candidates (note %u, additive %u)%s",
+            w.nodes, w.sources, w.nameMatches, unsigned(w.found.size()), note, add,
+            w.readFault    ? ", read fault"
+            : w.cycleOrCap ? ", cycle or node cap"
+                           : "");
+        LogNewRejects(x, w.rejects);
+        x.lastFound = found;
+        x.lastRejects = w.rejects;
+    }
+}
+
+// Adds the walk's new textures to the candidate table.
+void AddCandidates(Ctx& x) {
+    for (const auto& f : x.walk.found) {
+        if (Rs7Cand_Find(reinterpret_cast<void*>(f.d3d))) {
+            continue;
+        }
+
+        const int idx = Rs7Cand_Add(reinterpret_cast<void*>(f.d3d), f.family, f.path, f.obj);
+
+        if (idx >= 0) {
+            Rs7Log("ramp: candidate %s d3d=%08X obj=%08X fmt=%u '%s'", FamilyName(f.family), unsigned(f.d3d),
+                   unsigned(f.obj), f.fmt, f.path);
+        } else if (!x.fullLogged) {
+            x.fullLogged = true;
+            Rs7Log("ramp: candidate table full (%d): '%s' not swapped", kRs7MaxCands, f.path);
+        }
+    }
+}
+
+// Hooks the device's texture slots (and hands it to the overlay); retried next round on failure.
+void InstallOnDevice(Ctx& x, IDirect3DDevice9* dev) {
+    if (!dev) {
+        if (!x.noDeviceLogged) {
+            Rs7Log("ramp: no device yet (no valid d3d texture in the list)");
+        }
+        x.noDeviceLogged = true;
+        return;
+    }
+
+    if (Rs7Swap_InstallOn(dev)) {
+        x.hooked = true;
+        Rs7Swap_UpdateV6("hooked");
+        if (x.opts.onDevice) {
+            x.opts.onDevice(dev);  // the overlay (Present/Reset)
+        }
+    } else if (++x.installFails <= 5) {
+        Rs7Log("ramp: install failed (%u), retrying next round", x.installFails);
+    }
+}
+
 void Round(Ctx& x) {
     if (!x.opts.ramp && x.hooked) {  // device finder only: nothing to walk for any more
         if (x.opts.recheck) {
@@ -128,87 +237,15 @@ void Round(Ctx& x) {
         return;
     }
 
-    const Rs7TexWalk& w = x.walk;
-    std::vector<uintptr_t> found;
-
-    found.reserve(w.found.size());
-
-    for (const auto& f : w.found) {
-        found.push_back(f.d3d);
-    }
-
     if (!x.opts.ramp) {
-        // Device finder only (overlay without the ramp copy): no candidates, no texture hooks.
-        if (!wantDevice) {
-            return;
-        }
-
-        if (!dev) {
-            if (!x.noDeviceLogged) {
-                Rs7Log("overlay: no device yet (no valid d3d texture in the list)");
-            }
-            x.noDeviceLogged = true;
-            return;
-        }
-
-        x.hooked = true;
-        if (x.opts.onDevice) {
-            x.opts.onDevice(dev);
-        }
+        FindDeviceOnly(x, wantDevice, dev);
         return;
     }
 
-    if (x.rounds++ == 0 || found != x.lastFound || w.rejects != x.lastRejects) {
-        unsigned note = 0, add = 0;
-
-        for (const auto& f : w.found) {
-            (f.family == Rs7Family::Note ? note : add)++;
-        }
-
-        Rs7Log(
-            "ramp: texture list: %u nodes, %u source textures, %u name matches, %u candidates (note %u, additive %u)%s",
-            w.nodes, w.sources, w.nameMatches, unsigned(w.found.size()), note, add,
-            w.readFault    ? ", read fault"
-            : w.cycleOrCap ? ", cycle or node cap"
-                           : "");
-
-        for (const auto& r : w.rejects) {
-            bool seen = false;
-
-            for (const auto& l : x.loggedRejects) {
-                seen = seen || l == r;
-            }
-
-            if (seen || x.loggedRejects.size() >= kMaxRejectLines) {
-                continue;
-            }
-
-            x.loggedRejects.push_back(r);
-            Rs7Log("ramp: reject %s", r.c_str());
-        }
-
-        x.lastFound = found;
-        x.lastRejects = w.rejects;
-    }
-
-    for (const auto& f : w.found) {
-        if (Rs7Cand_Find(reinterpret_cast<void*>(f.d3d))) {
-            continue;
-        }
-
-        const int idx = Rs7Cand_Add(reinterpret_cast<void*>(f.d3d), f.family, f.path, f.obj);
-
-        if (idx >= 0) {
-            Rs7Log("ramp: candidate %s d3d=%08X obj=%08X fmt=%u '%s'", FamilyName(f.family), unsigned(f.d3d),
-                   unsigned(f.obj), f.fmt, f.path);
-        } else if (!x.fullLogged) {
-            x.fullLogged = true;
-            Rs7Log("ramp: candidate table full (%d): '%s' not swapped", kRs7MaxCands, f.path);
-        }
-    }
-
-    if (!w.readFault && !w.cycleOrCap) {
-        Rs7Ramp_Reconcile(w);
+    LogWalkIfChanged(x);
+    AddCandidates(x);
+    if (!x.walk.readFault && !x.walk.cycleOrCap) {
+        Rs7Ramp_Reconcile(x.walk);
     }
 
     if (x.hooked) {
@@ -218,26 +255,8 @@ void Round(Ctx& x) {
         }
     }
 
-    if (!wantDevice) {
-        return;
-    }
-
-    if (!dev) {
-        if (!x.noDeviceLogged) {
-            Rs7Log("ramp: no device yet (no valid d3d texture in the list)");
-        }
-        x.noDeviceLogged = true;
-        return;
-    }
-
-    if (Rs7Swap_InstallOn(dev)) {
-        x.hooked = true;
-        Rs7Swap_UpdateV6("hooked");
-        if (x.opts.onDevice) {
-            x.opts.onDevice(dev);  // the overlay (Present/Reset)
-        }
-    } else if (++x.installFails <= 5) {
-        Rs7Log("ramp: install failed (%u), retrying next round", x.installFails);
+    if (wantDevice) {
+        InstallOnDevice(x, dev);
     }
 }
 

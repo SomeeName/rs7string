@@ -18,9 +18,13 @@ NEEDS = {
     "tuner.h": "legacy tuner contract; native_tuner job",
     "headstock.cpp": "seventh peg activation/load; eighth assets and peg lifecycle separate",
     "frets.cpp": "seventh-string span extrapolation; publish/native fretgrid job",
-    "neck.cpp": "row-6 fallback only; publish/native nextgrid job",
-    "chord7.cpp": "string-6 frame scale/feedback helpers; chordloops/native frame job",
-    "gsnative.cpp": "capacity eight is present but counts/palette fallbacks need publish review",
+    "frets/hooks.cpp": "seventh-string span extrapolation; publish/native fretgrid job",
+    "frets/hooks_log.cpp": "seventh-string span extrapolation; publish/native fretgrid job",
+    "nextgrid/hooks.cpp": "row-6 fallback only; publish/native nextgrid job",
+    "chords/hooks.cpp": "string-6 frame scale/feedback helpers; chordloops/native frame job",
+    "strings/layout.cpp": "capacity eight is present but counts/palette fallbacks need publish review",
+    "strings/hooks_copies.cpp": "capacity eight is present but counts/palette fallbacks need publish review",
+    "strings/hooks_frame.cpp": "capacity eight is present but counts/palette fallbacks need publish review",
 }
 
 
@@ -30,7 +34,7 @@ def classify(path, line):
         return "OK for 8", "comment/documented seven-mode contract, not a runtime bound"
     if "Rs7Log(" in code or "Log(" in code or "snprintf" in code:
         return "OK for 8", "diagnostic text/index; runtime limits covered separately"
-    if path.name in ("hsbuild.cpp", "dxt.cpp", "color.cpp", "ramp.cpp", "rampstate.cpp"):
+    if path.name in ("hsbuild.cpp", "dxt.cpp", "rgb.cpp", "ramp.cpp", "rampstate.cpp"):
         return "OK for 8", "hash/compression/RGB/palette-state constant, not string capacity"
     if "d3d" in path.parts or "overlay" in path.parts or path.name in ("songend.cpp", "songend.h"):
         return "OK for 8", "graphics/API/stack offset or diagnostics, not an instrument maximum"
@@ -38,19 +42,20 @@ def classify(path, line):
         if "t[7]" in code or "ReadSeven" in code or "Name7" in code or "SevenFor" in code:
             return "NEEDS CHANGE", "seven-only API intentionally retained; TN awaits native eight-array provenance"
         return "OK for 8", "Name8 / manifest hook reads Rs7String7 behind [tuner] names"
-    if path.name == "vguit.cpp":
-        if any(s in code for s in ("midi[7]", "g_tuningCount == 7", "voices < 7")):
+    if "vguit" in path.parts:
+        if any(s in code for s in ("midi[7]", "count == 7", "voices < 7")):
             return "NEEDS CHANGE", "seven-voice chord scheduler/report; single-note helpers are eight-ready"
         return "OK for 8", "eight-gated single-note helpers/counters or explicit six-slot stock projection"
-    if path.name in NEEDS:
-        return "NEEDS CHANGE", NEEDS[path.name]
-    if path.name == "stubs.cpp":
+    key = path.name if path.name in NEEDS else f"{path.parent.name}/{path.name}"
+    if key in NEEDS:
+        return "NEEDS CHANGE", NEEDS[key]
+    if key in ("string7/hooks_stubs.cpp", "chords/hooks_stubs.cpp"):  # the former hooks/stubs.cpp
         if re.search(r"add dword ptr \[esp\], 7\b", code):
             return "OK for 8", "seven bytes skipped at a branch join; not a string count"
         if re.search(r"mov.*[,]\s*7\b", code):
             return "NEEDS CHANGE", "legacy seventh-object request; native alternate path required"
         return "OK for 8", "stock/legacy stub boundary; see native-path requirements in report"
-    if path.name in ("diag.cpp", "mid_examples.cpp", "string7diag.cpp"):
+    if path.name == "diag.cpp" or key in ("diag/hooks.cpp", "scene/hooks.cpp"):
         return "OK for 8", "diagnostic sample limited to strings 0/6; does not limit gameplay"
     return "OK for 8", "capacity-eight record/native array or explicit stock/legacy contract; see report"
 

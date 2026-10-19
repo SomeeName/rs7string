@@ -2,9 +2,13 @@
 
 import struct
 import pytest
-from test_nextgrid import Machine, run_update, note, RET, STACK, HEAP, FAKE
+from nextgrid_harness import Machine, run_update, note, RET, STACK, HEAP, FAKE
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX
+from emu_common import needs_exe
+
+# Reads the user's game exe (tools/game_files.py): skipped without it (CI).
+pytestmark = needs_exe
 
 
 @pytest.fixture(scope="module")

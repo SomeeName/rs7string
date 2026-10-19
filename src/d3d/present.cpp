@@ -1,8 +1,7 @@
 #include "d3d/present.h"
-#include "core/patch.h"
+#include "d3d/hookutil.h"
 #include "d3d/sehread.h"
-#include "log.h"
-#include <cstdarg>
+#include "platform/patch.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -11,7 +10,7 @@ extern "C" HRESULT __stdcall Rs7_PresentHook(IDirect3DDevice9* dev, const RECT* 
                                              const RGNDATA* dirty);
 extern "C" HRESULT __stdcall Rs7_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp);
 
-// Hot-patchable thunks, as d3d/swap.cpp: a trampoline hooker reading these slots can hook them after us.
+// Hot-patchable thunks, as d3d/swap_hook.cpp: a trampoline hooker reading these slots can hook them after us.
 extern "C" __declspec(naked) void Rs7_Thunk_Present() {
     __asm {
         mov edi, edi
@@ -33,6 +32,8 @@ extern "C" __declspec(naked) void Rs7_Thunk_Reset() {
 }
 
 namespace {
+using rs7d3d::LogQuiet;
+using rs7d3d::ModuleName;
 constexpr unsigned kSlotReset = 16, kSlotPresent = 17;
 using Present_t = HRESULT(__stdcall*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
 using Reset_t = HRESULT(__stdcall*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
@@ -47,47 +48,10 @@ Rs7PresentCallbacks g_cb;
 volatile LONG g_frames, g_faults;
 const Rs7SehReader g_mem{};
 
-void LogQuiet(const char* fmt, ...) {
-    char buf[512];
-    va_list ap;
-
-    va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof buf, fmt, ap);
-    va_end(ap);
-
-    try {
-        Rs7Log("%s", buf);
-    } catch (...) {
-    }
-}
-
 void Fault(const char* where) {
     InterlockedIncrement(&g_faults);
     g_dead = true;
     LogQuiet("overlay: fault in the %s callback - overlay drawing OFF for this run", where);
-}
-
-void ModuleOf(const void* a, char* out, size_t n) {
-    HMODULE m = nullptr;
-    char path[MAX_PATH] = {};
-
-    if (!a ||
-        !GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            static_cast<LPCSTR>(a), &m) ||
-        !GetModuleFileNameA(m, path, MAX_PATH)) {
-        std::snprintf(out, n, "no module");
-        return;
-    }
-
-    const char* base = path;
-
-    for (const char* p = path; *p; ++p) {
-        if (*p == '\\' || *p == '/') {
-            base = p + 1;
-        }
-    }
-
-    std::snprintf(out, n, "%s", base);
 }
 
 void CallPresent(IDirect3DDevice9* dev) {
@@ -162,8 +126,8 @@ bool Rs7Present_InstallOn(void* device, const Rs7PresentCallbacks& cb) {
 
     char modPresent[MAX_PATH], modReset[MAX_PATH];
 
-    ModuleOf(vt[kSlotPresent], modPresent, sizeof modPresent);
-    ModuleOf(vt[kSlotReset], modReset, sizeof modReset);
+    ModuleName(vt[kSlotPresent], modPresent, sizeof modPresent);
+    ModuleName(vt[kSlotReset], modReset, sizeof modReset);
     g_origPresent = reinterpret_cast<Present_t>(vt[kSlotPresent]);
     g_origReset = reinterpret_cast<Reset_t>(vt[kSlotReset]);
     g_cb = cb;

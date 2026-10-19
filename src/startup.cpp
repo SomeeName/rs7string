@@ -1,51 +1,42 @@
 #include "startup.h"
-#include "core/allocstats.h"
-#include "core/assetload.h"
-#include "core/chord7.h"
-#include "core/chordloops.h"
-#include "core/clite.h"
-#include "core/color.h"
-#include "core/colournative.h"
-#include "core/config.h"
-#include "core/diagrams.h"
-#include "core/eight.h"
-#include "core/freeze.h"
-#include "core/fretgrid.h"
-#include "core/frets.h"
-#include "core/gsnative.h"
-#include "core/headstock.h"
-#include "core/nextgrid.h"
-#include "core/patch.h"
-#include "core/pattern.h"
-#include "core/pitch8.h"
-#include "core/plainpsarc.h"
-#include "core/protect.h"
-#include "core/publish.h"
-#include "core/publish_grid.h"
-#include "core/publish_pitch.h"
-#include "core/resolve.h"
-#include "core/rsmodscolour.h"
-#include "core/settings.h"
-#include "core/sidestore.h"
-#include "core/songend.h"
-#include "core/spinprobe.h"
-#include "core/status.h"
-#include "core/string7.h"
-#include "core/string7diag.h"
-#include "core/tuner.h"
-#include "core/tuner8.h"
-#include "core/tuningname.h"
-#include "core/vguit.h"
 #include "d3d/present.h"
 #include "d3d/worker.h"
+#include "features/allocstats/allocstats.h"
+#include "features/chords/chords.h"
+#include "features/clite/clite.h"
+#include "features/colours/colours.h"
+#include "features/diag/diag.h"
+#include "features/diagrams/diagrams.h"
+#include "features/fretgrid/fretgrid.h"
+#include "features/frets/frets.h"
+#include "features/headstock/headstock.h"
+#include "features/nextgrid/nextgrid.h"
+#include "features/pitch/pitch.h"
+#include "features/psarc/psarc.h"
+#include "features/publish/publish.h"
+#include "features/scene/scene.h"
+#include "features/songend/songend.h"
+#include "features/string7/string7.h"
+#include "features/strings/strings.h"
+#include "features/testdrive/testdrive.h"
+#include "features/tuner/tuner.h"
+#include "features/vguit/vguit.h"
 #include "generated/sites.generated.h"
-#include "hooks/isolate.h"
-#include "hooks/registry.h"
-#include "log.h"
+#include "hook_rules.h"
+#include "model/eight.h"
+#include "model/status.h"
 #include "overlay/overlay.h"
+#include "platform/isolate.h"
+#include "platform/log.h"
+#include "platform/protect.h"
+#include "platform/resolve.h"
+#include "platform/retry.h"
+#include "platform/settings.h"
+#include "platform/spinprobe.h"
+#include "settings_removed.h"
+#include "startup_sites.h"
 #include "version.h"
 #include <windows.h>
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -87,22 +78,22 @@ std::wstring IniPath() {
     return p.substr(0, p.find_last_of(L"\\/") + 1) + L"rs7string.ini";
 }
 
-Rs7Config LoadConfig() {
+Rs7ColourConfig LoadConfig() {
     const std::wstring ini = IniPath();
-    const Rs7Config c = Rs7Config_Load(ini.c_str());
+    const bool found = Rs7Set_ReadIni(ini.c_str());  // every feature's startup read
+    const Rs7DiagConfig& d = Rs7Diag_Config();
+    const Rs7ColourConfig c = Rs7Colour_Config();
+    const Rs7String7Config& s7 = Rs7String7_Config();
+    const Rs7FretConfig& f = Rs7Frets_Config();
 
-    g_rs7_eight = c.eight ? 1 : 0;  // before any module reads the preparation gate
-    g_rs7_diag = c.diagnostics ? 1 : 0;
-    // String 6's colour, [mode*3 + channel]: mode 0 normal, mode 1 colourblind.
-    float rgb[3];
+    g_rs7_eight = Rs7Eight_Config().eight ? 1 : 0;  // before any module reads the preparation gate
+    g_rs7_diag = d.diagnostics ? 1 : 0;
+    const uint32_t rgb[2] = {c.string6Rgb, c.string6RgbCb};
 
-    Rs7_RgbToFloats(c.string6Rgb, rgb);
-    std::copy(rgb, rgb + 3, g_rs7_fx_rgb);
-    Rs7_RgbToFloats(c.string6RgbCb, rgb);
-    std::copy(rgb, rgb + 3, g_rs7_fx_rgb + 3);
-    Rs7Log("config %ls: %s", ini.c_str(), c.found ? "found" : "not found (defaults)");
-    Rs7Log("config: [debug] diagnostics=%d -> diagnostics %s", c.diagnosticsRaw,
-           c.diagnostics ? "ON (D1-D5 log lines; D2/D3/D5 patched)" : "off (D2/D3/D5 resolved, not patched)");
+    rs7colour::SetPalette(rgb);  // string 6's colour
+    Rs7Log("config %ls: %s", ini.c_str(), found ? "found" : "not found (defaults)");
+    Rs7Log("config: [debug] diagnostics=%d -> diagnostics %s", d.diagnosticsRaw,
+           d.diagnostics ? "ON (D1-D5 log lines; D2/D3/D5 patched)" : "off (D2/D3/D5 resolved, not patched)");
     Rs7Log("config: [color] string6_color=%06X%s string6_color_cb=%06X%s ramp_swap=%d allow_inexact=%d",
            unsigned(c.string6Rgb),
            c.colorValid ? (c.string6Raw.empty() ? " (default)" : "") : " (INVALID text, default used)",
@@ -111,14 +102,12 @@ Rs7Config LoadConfig() {
            : c.colorCbValid ? ""
                             : " (INVALID text, string6_color used)",
            c.rampSwapRaw, c.allowInexactRaw);
-    g_rs7_s7_on = c.string7Line ? 1 : 0;
-    Rs7Log("config: [neck] string7_line=%d -> 7th string line %s", c.string7LineRaw,
-           c.string7Line ? "ON" : "off (N1 / N21 request stock counts, N12 keeps string 6 out of the SNG mask)");
-    g_rs7_s7_v = c.string7V;
-    Rs7Log("config: [neck] string7_v=%.2f%s", double(c.string7V),
-           c.string7VValid ? (c.string7VRaw.empty() ? " (default)" : "") : " (INVALID text, default used)");
-    g_rs7_head_on = c.headstockPeg ? 1 : 0;
-    g_rs7_native_pegset = 1;         // mandatory since 1.0
+    g_rs7_s7_on = s7.string7Line ? 1 : 0;
+    Rs7Log("config: [neck] string7_line=%d -> 7th string line %s", s7.string7LineRaw,
+           s7.string7Line ? "ON" : "off (N1 / N21 request stock counts, N12 keeps string 6 out of the SNG mask)");
+    g_rs7_s7_v = s7.string7V;
+    Rs7Log("config: [neck] string7_v=%.2f%s", double(s7.string7V),
+           s7.string7VValid ? (s7.string7VRaw.empty() ? " (default)" : "") : " (INVALID text, default used)");
     g_rs7_native_strings = 1;        // mandatory since 1.0 (the copy check below may still refuse it)
     g_rs7_native_colours = 1;        // mandatory since 1.0 (the ColourManager check below may still refuse it)
     rs7fg::ConfigureDeferred(true);  // mandatory since 1.0
@@ -138,66 +127,35 @@ Rs7Config LoadConfig() {
     if (!g_rs7_native_pitch) {
         Rs7Log("pitch8: MSVCR100 _msize not found - the native 8-entry tuning storage is unavailable");
     }
-    rs7ng::Configure(true);  // mandatory since 1.0
-    Rs7Head_SetIni(ini.c_str());
-    Rs7Log("config: [neck] headstock_peg=%d -> 7th tuning peg %s", c.headstockPegRaw,
-           !c.headstockPeg
-               ? "off"
-               : "native 7-slot PegSet: 6-string guitars load 7 pegs, peg 7 active on 7-string songs / tuners");
-    Rs7Asset_Configure(ini.c_str());
+    rs7ng::Configure(true);               // mandatory since 1.0
+    Rs7Headstock_Configure(ini.c_str());  // [neck] headstock_peg, [assets] (features/headstock/headstock.h)
     Rs7Alloc_Configure(ini.c_str());
     Rs7Chord_Configure(ini.c_str());
     Rs7Diagram_Configure(ini.c_str());
 
-    {
-        std::wstring csv = ini.substr(0, ini.find_last_of(L"\\/") + 1) + L"rs7string_vguitar.csv";
+    Rs7Vg_StartFromIni(ini.c_str());
+    Rs7Variant_ReadIni(ini.c_str());  // [test] force_* (features/testdrive/testdrive.h)
 
-        Rs7Vg_Configure(ini.c_str(), csv.c_str());
+    g_rs7_frets_on = f.fretExtend ? 1 : 0;
+    g_rs7_fret_halflen = f.fretHalfLen;
+    Rs7Log("config: [neck] fret_extend=%d fret_halflen=%.3f%s -> fret bars %s", f.fretExtendRaw, double(f.fretHalfLen),
+           f.fretHalfLenValid ? (f.fretHalfLenRaw.empty() ? " (default)" : "") : " (INVALID text, default used)",
+           f.fretExtend ? "span the 7th string on 7-string songs (F1/F2)" : "stock (F1 replays stock)");
+    if (!f.fretHalfLenValid) {
+        Rs7Log("config: [neck] fret_halflen text was \"%ls\"", f.fretHalfLenRaw.c_str());
     }
-
-    g_rs7_frets_on = c.fretExtend ? 1 : 0;
-    g_rs7_fret_halflen = c.fretHalfLen;
-    Rs7Log("config: [neck] fret_extend=%d fret_halflen=%.3f%s -> fret bars %s", c.fretExtendRaw, double(c.fretHalfLen),
-           c.fretHalfLenValid ? (c.fretHalfLenRaw.empty() ? " (default)" : "") : " (INVALID text, default used)",
-           c.fretExtend ? "span the 7th string on 7-string songs (F1/F2)" : "stock (F1 replays stock)");
-    if (!c.fretHalfLenValid) {
-        Rs7Log("config: [neck] fret_halflen text was \"%ls\"", c.fretHalfLenRaw.c_str());
+    if (Rs7Eight_Config().eight) {
+        Rs7Log("config: [neck] eight=1 -> 8-string preparation (T8 columns 6/7, vguitar string 7); native "
+               "publish/tuner acceptance still required");
     }
-    g_rs7_lowrange = c.tunerLowRange ? 1 : 0;
-    Rs7Log("config: [tuner] lowrange=%d -> %s", c.tunerLowRangeRaw,
-           c.tunerLowRange
-               ? "7-string tuner: wrong-instrument threshold and detector lowest open follow the lowest string"
-               : "stock (wrong-instrument threshold 34)");
-    g_rs7_tuner_auto = static_cast<uintptr_t>(c.tunerAutotune);
-    Rs7Tuner_ResetAll();
-    Rs7Log("config: [debug] tuner_autotune=%d%s", c.tunerAutotune,
-           c.tunerAutotune ? " s (TEST DRIVING: strings report tuned by themselves)" : " (off)");
+    Rs7Tuner_Configure();  // [tuner], [debug] tuner_autotune (features/tuner/tuner.h)
 
-    {
-        rs7tn::Config tn;
-
-        tn.on = c.tunerNames;
-        if (c.eight) {
-            Rs7Log("config: [neck] eight=1 -> 8-string preparation (T8 columns 6/7, vguitar string 7); native "
-                   "publish/tuner acceptance still required");
-        }
-        std::snprintf(tn.prefix, sizeof tn.prefix, "%s", c.namePrefix.c_str());
-        std::snprintf(tn.suffix, sizeof tn.suffix, "%s", c.nameSuffix.c_str());
-        Rs7Tn_Configure(tn);
-        g_rs7_tn_on = c.tunerNames ? 1 : 0;
-        const int b0[7] = {0, 0, 0, 0, 0, 0, 0};
-
-        Rs7Log("config: [tuner] names=%d name_prefix=\"%s\" name_suffix=\"%s\"%s -> %s", c.tunerNamesRaw, tn.prefix,
-               tn.suffix, c.nameAffixValid ? "" : " (INVALID text replaced by the default)",
-               c.tunerNames ? ("7-string tuning names, e.g. \"" + rs7tn::KnownDisplay(b0, tn, 0, false) + "\"").c_str()
-                            : "stock tuning names");
-    }
-
-    g_rs7_endlog = c.songEndLog ? 1 : 0;
-    Rs7Log("config: [debug] song_end_log=%d -> %s", int(c.songEndLog),
-           c.songEndLog ? "song state changes and the route that ends a song are logged (SE1-SE3, issue #13)" : "off");
-    if (!c.string7VValid) {
-        Rs7Log("config: [neck] string7_v text was \"%ls\"", c.string7VRaw.c_str());
+    g_rs7_endlog = Rs7SongEnd_Config() ? 1 : 0;
+    Rs7Log("config: [debug] song_end_log=%d -> %s", int(Rs7SongEnd_Config()),
+           Rs7SongEnd_Config() ? "song state changes and the route that ends a song are logged (SE1-SE3, issue #13)"
+                               : "off");
+    if (!s7.string7VValid) {
+        Rs7Log("config: [neck] string7_v text was \"%ls\"", s7.string7VRaw.c_str());
     }
     if (!c.colorValid) {
         Rs7Log("config: [color] string6_color text was \"%ls\"", c.string6Raw.c_str());
@@ -207,132 +165,6 @@ Rs7Config LoadConfig() {
     }
 
     return c;
-}
-
-// Runs inside a thread freeze (core/freeze.h): no allocation, no logging. A Bytes site's replacement is
-// parsed beforehand (WriteBytesFor, outside the freeze).
-bool Apply(const Rs7Resolved& r, const Rs7Hook& h, uintptr_t midEntry, const std::vector<uint8_t>& bytes) {
-    const uintptr_t stub = h.callback ? midEntry : reinterpret_cast<uintptr_t>(h.stub);
-
-    switch (r.site->kind) {
-        case Rs7Kind::Jmp:
-            return Rs7_WriteJmp(r.addr, static_cast<size_t>(r.site->length), stub);
-        case Rs7Kind::JmpAtomic8:
-            return Rs7_WriteJmpAtomic8(r.addr, stub);
-        case Rs7Kind::Rel32:
-            return Rs7_WriteRel32(r.addr, r.addr + 4, stub, true);
-        case Rs7Kind::Call:
-            return Rs7_WriteRel32(r.addr + 1, r.addr + 5, stub, false);
-        case Rs7Kind::Bytes:
-            if (bytes.empty() || bytes.size() != r.original.size()) {
-                return false;
-            }
-
-            return Rs7_WriteBytes(r.addr, bytes.data(), bytes.size());
-        case Rs7Kind::Ref:
-        case Rs7Kind::CallRef:
-            return true;  // never written (Rs7_ShouldPatch excludes them anyway)
-    }
-
-    return false;
-}
-
-// Outside the freeze: a Bytes site's replacement bytes (empty: not a Bytes site or unparsable).
-std::vector<uint8_t> WriteBytesFor(const Rs7Resolved& r) {
-    if (r.site->kind != Rs7Kind::Bytes) {
-        return {};
-    }
-
-    Rs7Pattern w;
-    if (!Rs7_ParsePattern(r.site->write, w) || w.bytes.size() != r.original.size()) {
-        return {};
-    }
-
-    return w.bytes;
-}
-
-// The bytes a site's apply / restore touch: the original bytes cover every kind's write.
-Rs7Range RangeOf(const Rs7Resolved& r) {
-    return {r.addr, r.addr + r.original.size()};
-}
-
-// [neck] native_fretgrid=1: the FGR layout sites are written later, by the first call of the FGHK mid-hook (FGHK and
-// FGCT, the mid-hooks, are written with the main batch) on the game's own thread (core/fretgrid.h,
-// rs7fg::OnGuitarUpdate); the resolved sites wait here.
-struct DeferredSite {
-    Rs7Resolved r;
-    const Rs7Hook* h;
-    std::vector<uint8_t> bytes;  // parsed at startup (Bytes sites)
-};
-
-std::vector<DeferredSite> g_deferredFg;
-std::vector<Rs7Range> g_deferredRanges;  // built at startup with g_deferredFg
-
-struct DeferredRound {
-    size_t n;           // sites written before the failure (== size: all)
-    size_t unrestored;  // review #8: rollbacks that failed the read-back
-    size_t firstBad;    // index of the first of them
-};
-
-void WriteDeferred(void* p) {  // inside the freeze
-    DeferredRound& d = *static_cast<DeferredRound*>(p);
-    size_t n = 0;
-
-    for (; n < g_deferredFg.size(); ++n) {
-        if (!Apply(g_deferredFg[n].r, *g_deferredFg[n].h, 0, g_deferredFg[n].bytes)) {
-            break;
-        }
-    }
-
-    d.n = n;
-    if (n == g_deferredFg.size()) {
-        return;
-    }
-
-    for (size_t j = 0; j < n; ++j) {
-        if (!Rs7_RestoreBytes(g_deferredFg[j].r.addr, g_deferredFg[j].r.original.data(),
-                              g_deferredFg[j].r.original.size()) &&
-            d.unrestored++ == 0) {
-            d.firstBad = j;
-        }
-    }
-}
-
-// The game (main) thread, first guitar update. The other threads (loaders, audio, our workers) are frozen
-// while the FGR sites change (review #9).
-bool ApplyDeferredFg() {
-    DeferredRound d{0, 0, 0};
-    Rs7FreezeStats st;
-    const bool ran = Rs7_RunFrozen(g_deferredRanges.data(), g_deferredRanges.size(), &WriteDeferred, &d, &st);
-    char line[256];
-
-    Rs7_FreezeDescribe(st, line, sizeof line);
-    Rs7Log("fretgrid: %s (%u deferred sites, game thread %lu)", line, unsigned(g_deferredFg.size()),
-           GetCurrentThreadId());
-
-    if (!ran) {
-        Rs7_DisableFeature(Rs7Feature::Fretgrid);
-        return false;
-    }
-
-    if (d.n == g_deferredFg.size()) {
-        return true;
-    }
-
-    if (d.unrestored) {  // review #8: never retried (FGHK writes once); the group stays off
-        Rs7Log("fretgrid: UNRECOVERABLE %s (+%u more): restoring the original bytes failed after %s could not be "
-               "written - "
-               "sites stay written, feature fretgrid DISABLED",
-               g_deferredFg[d.firstBad].r.site->id, unsigned(d.unrestored - 1), g_deferredFg[d.n].r.site->id);
-    } else {
-        Rs7Log("fretgrid: writing %s failed - the %u sites already written were restored", g_deferredFg[d.n].r.site->id,
-               unsigned(d.n));
-    }
-
-    // Only the Fretgrid group fails (and what depends on its layout: native_publish, native_tuner).
-    Rs7_DisableFeature(Rs7Feature::Fretgrid);
-
-    return false;
 }
 
 // The first member of the native 7-string unit whose switch is off, or nullptr when all are on.
@@ -464,14 +296,15 @@ LONG CALLBACK VehLog(EXCEPTION_POINTERS* ep) {
 
     return EXCEPTION_CONTINUE_SEARCH;
 }
-}  // namespace
 
-void Rs7_Startup() {
-    Rs7Log("rs7string %s loaded", RS7_VERSION);
-    // Before any site is patched: the stubs read g_rs7_diag and g_rs7_fx_rgb (g_rs7_v6 stays 0 = the stock preview row
-    // until Step 2).
-    Rs7Config cfg = LoadConfig();
+// The game's code section (filled by FindGameText).
+struct GameText {
+    uintptr_t va = 0;
+    size_t size = 0;
+};
 
+// [debug] veh_log, [debug] spin_probe.
+void StartDebugProbes() {
     if (GetPrivateProfileIntW(L"debug", L"veh_log", 0, IniPath().c_str())) {
         AddVectoredExceptionHandler(1, VehLog);
         Rs7Log("debug: veh_log=1 -> the first 40 exceptions (plus 40 in the game image) are logged (diagnostic)");
@@ -480,100 +313,93 @@ void Rs7_Startup() {
     if (GetPrivateProfileIntW(L"debug", L"spin_probe", 0, IniPath().c_str())) {
         Rs7SpinProbe_Start();
     }
-    g_rs7_publish_trace = GetPrivateProfileIntW(L"debug", L"publish_trace", 0, IniPath().c_str()) != 0;
+}
+
+// Every setting, before any site is patched: the stubs read g_rs7_diag and g_rs7_fx_rgb (g_rs7_v6 stays 0 = the stock
+// preview row until Step 2).
+Rs7ColourConfig LoadStartupConfig() {
+    Rs7ColourConfig cfg = LoadConfig();
+
+    StartDebugProbes();
+    Rs7Publish_ReadIni(IniPath().c_str());
     // The overlay's view of every key (it edits them later; nothing is applied here).
     Rs7Set_InitFromIni(IniPath().c_str());
     Rs7Overlay_Configure(IniPath().c_str());
 
-    // The exe is VMProtect-packed; d3d9.dll loading is the signal the CDLC enabler also uses. Polled every
-    // 50 ms: the game reads PSARC TOCs from then on and the plain-PSARC sites must be in place first.
-    for (int i = 0; i < 1200 && !GetModuleHandleW(L"d3d9.dll"); ++i) {
-        Sleep(50);
-    }
+    return cfg;
+}
 
-    // Inspect the installed RSMods proxy without depending on its load order; keep saved colours intact.
-    rs7rsmods::Init();
-    uint32_t effectiveRgb[2] = {cfg.string6Rgb, cfg.string6RgbCb};
+// The exe is VMProtect-packed; d3d9.dll loading is the signal the CDLC enabler also uses. Polled every 50 ms: the game
+// reads PSARC TOCs from then on and the plain-PSARC sites must be in place first. Returns the tick after which Step 2
+// may hook the device (no earlier than 15 s later).
+DWORD WaitForGame(Rs7ColourConfig& cfg) {
+    Rs7_Retry(1200, 50, [] { return GetModuleHandleW(L"d3d9.dll") != nullptr; });
+    Rs7Colour_Start(cfg);  // RSMods' colour and glow; cfg's string 6 colours become the effective ones
 
-    rs7rsmods::Resolve(rs7rsmods::Cached(), cfg.rsmodsExtendedRange, effectiveRgb);
-    cfg.string6Rgb = effectiveRgb[0];
-    cfg.string6RgbCb = effectiveRgb[1];
+    return GetTickCount();
+}
 
-    for (int mode = 0; mode < 2; ++mode) {
-        float channels[3];
-
-        Rs7_RgbToFloats(effectiveRgb[mode], channels);
-        std::copy(channels, channels + 3, g_rs7_fx_rgb + mode * 3);
-    }
-
-    Rs7Log("colour: RSMods Extended Range automatic=%d available=%d effective=%06X/%06X", cfg.rsmodsExtendedRange,
-           rs7rsmods::Cached().valid, unsigned(cfg.string6Rgb), unsigned(cfg.string6RgbCb));
-
-    const DWORD d3d9Tick = GetTickCount();  // Step 2 hooks the device no earlier than 15 s after this
-
+// The supported build's .text section; false (and Fail) for anything else.
+bool FindGameText(GameText& text) {
     const HMODULE exe = GetModuleHandleW(nullptr);
     const DWORD checksum = Nt(exe)->OptionalHeader.CheckSum;
 
     if (checksum != kRs7PeChecksum) {
         Rs7Log("unsupported game build: PE checksum %08X, need %08X - nothing patched", checksum, kRs7PeChecksum);
         Fail("unsupported game build (PE checksum)");
-        return;
+        return false;
     }
 
-    uintptr_t textVa = 0;
-    size_t textSize = 0;
-
-    if (!TextSection(exe, &textVa, &textSize)) {
+    if (!TextSection(exe, &text.va, &text.size)) {
         Rs7Log("no .text section - nothing patched");
         Fail("no .text section");
-        return;
+        return false;
     }
 
-    // Plain PSARC / SNG first, on its own (core/plainpsarc.h): a failure there disables only it.
-    // [debug] plain_delay_ms (test only): start it later, so a CDLC enabler with its own plain-PSARC
-    // patches gets there first (the coexistence path).
-    if (const UINT delay = GetPrivateProfileIntW(L"debug", L"plain_delay_ms", 0, IniPath().c_str())) {
-        Rs7Log("debug: plain_delay_ms=%u -> plain PSARC starts late (test only)", delay < 30000 ? delay : 30000u);
-        Sleep(delay < 30000 ? delay : 30000u);
-    }
+    return true;
+}
 
-    Rs7Plain_Start(GetPrivateProfileIntW(L"psarc", L"plain", 1, IniPath().c_str()) != 0, kRs7PsarcSites,
-                   kRs7PsarcSiteCount, textVa, textSize);
+// Plain PSARC / SNG first, on its own (features/psarc/psarc.h): a failure there disables only it. Likewise
+// [test] fast and the UI state log.
+void StartIsolatedFeatures(const GameText& text) {
+    Rs7Plain_StartFromIni(kRs7PlainHost, IniPath().c_str(), kRs7PsarcSites, kRs7PsarcSiteCount, text.va, text.size);
+    Rs7Fast_Start(IniPath().c_str(), kRs7FastSites, kRs7FastSiteCount, text.va, text.size);  // [test] fast
+    Rs7Ui_Start();  // log only: "ui: OLD -> NEW" for test drivers
+}
 
-    Rs7ResolveResult res;
+// Resolves the main batch's sites. Unresolved sites disable their own feature group; only an unresolved core site is
+// fatal (false, after Fail).
+bool ResolveSites(const GameText& text, Rs7ResolveResult& res) {
     const DWORD resolveTick = GetTickCount();
-    int attempts = 0;
+    const int attempts = Rs7_Retry(20, 500, [&] {  // .text may still be unpacking
+        res = Rs7_ResolveAll(kRs7Sites, kRs7SiteCount, reinterpret_cast<const uint8_t*>(text.va), text.size, text.va);
 
-    for (int attempt = 0; attempt < 20; ++attempt) {  // .text may still be unpacking
-        ++attempts;
-        res = Rs7_ResolveAll(kRs7Sites, kRs7SiteCount, reinterpret_cast<const uint8_t*>(textVa), textSize, textVa);
-        if (res.ok) {
-            break;
-        }
-
-        Sleep(500);
-    }
+        return res.ok;
+    });
 
     Rs7Log("resolve: %d sites in %lu ms (%d attempt%s)", kRs7SiteCount, GetTickCount() - resolveTick, attempts,
            attempts == 1 ? "" : "s");
 
-    if (!res.ok) {
-        // Unresolved sites disable their own feature group; only an unresolved core site is fatal.
-        const std::string first = res.errors.empty() ? std::string("sites not resolved") : res.errors.front();
-
-        if (!Rs7_IsolateResolveFailures(res, [](const std::string& m) { Rs7Log("%s", m.c_str()); })) {
-            Rs7Log("nothing patched");
-            Fail(first.c_str());
-            return;
-        }
+    if (res.ok) {
+        return true;
     }
 
+    const std::string first = res.errors.empty() ? std::string("sites not resolved") : res.errors.front();
+
+    if (!Rs7_IsolateResolveFailures(res, kRs7Groups, [](const std::string& m) { Rs7Log("%s", m.c_str()); })) {
+        Rs7Log("nothing patched");
+        Fail(first.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+// Binds every stub's variables before any jump to it exists; `hooks[i]` becomes the hook of `res.sites[i]`.
+bool PrepareHooks(const Rs7ResolveResult& res, std::vector<const Rs7Hook*>& hooks) {
     // Construct the side store's map here, on the worker thread: its first use must not be inside
     // a game frame (S4/S1), where the allocation could throw.
     Rs7Store_ClearAll();
-
-    // Bind every stub's variables before any jump to it exists.
-    std::vector<const Rs7Hook*> hooks;
 
     for (const auto& r : res.sites) {
         const Rs7Hook* h = Rs7_FindHook(r.site->id);
@@ -581,7 +407,7 @@ void Rs7_Startup() {
         if (!h) {
             Rs7Log("no stub for site %s - nothing patched", r.site->id);
             Fail("a site has no stub");
-            return;
+            return false;
         }
 
         if (h->resume) {
@@ -593,76 +419,12 @@ void Rs7_Startup() {
         hooks.push_back(h);
     }
 
-    // [neck] native_colours=1 widens the ColourManager at creation (CM* sites: 0xDD0 -> 0x1BD0 bytes,
-    // 6 -> 8 columns). The game builds its one manager once, ~12 s after launch (fix/colours2, measured
-    // with tests/colours2/cmtime.py); one that already exists keeps the stock 6-column layout in a
-    // 0xDD0 block, which the 8-column readers would misread (rotated string colours, black 7th string)
-    // and a rebuild would overflow. Then the native matrix is refused.
-    if (g_rs7_native_colours) {
-        void* const mgr = rs7colour::ExistingManager(g_rs7_colormgr);
+    return true;
+}
 
-        if (mgr) {
-            Rs7Log("colour: the game built its ColourManager (%p) before the sites were written (%.1f s after "
-                   "d3d9) - native_colours OFF (stock six-column matrix)",
-                   mgr, (GetTickCount() - d3d9Tick) / 1000.0);
-            g_rs7_native_colours = 0;
-        } else {
-            Rs7Log("colour: ColourManager not built yet (%.1f s after d3d9) - native 8-column layout from its creation",
-                   (GetTickCount() - d3d9Tick) / 1000.0);
-        }
-    }
-
-    // The native strings: the function copies are built from the live (still unpatched) code; if
-    // any differs from the generated one, native strings are off (and with them the 7-string unit: nothing patched).
-    if (g_rs7_native_strings && !Rs7Gs_BuildCopies()) {
-        g_rs7_native_strings = 0;
-    }
-    g_rs7_native_chordloops = cfg.nativeChordloops && g_rs7_native_strings ? 1 : 0;
-    Rs7Log("config: [chords] native_chordloops=%d -> %s", cfg.nativeChordloopsRaw,
-           g_rs7_native_chordloops
-               ? "native 8-slot chord bends / sustain techniques (CL* sites), 7/8-string chord frames (B1/B2)"
-           : cfg.nativeChordloops ? "off: native_strings is unavailable (CL* sites unwritten)"
-                                  : "off (CL* sites unwritten)");
-
-    // Evaluate after native-string initialization: a failed copy is a missing prerequisite.
-    // Native 7-string mode = C-lite (the guitar is built with the arrangement's count) + the publication ports (that
-    // can show it); neither works alone. The native tuner (core/tuner8.h) needs the native GuitarStrings, FretGrid and
-    // colour matrix
-    // (its copies carry their in-place edits). Copies are built from the live code.
-    if (g_rs7_native_tuner && (!g_rs7_native_strings || !g_rs7_native_fretgrid || !g_rs7_native_colours)) {
-        Rs7Log("tuner8: native_tuner OFF - needs the native strings, FretGrid and colours (now %d %d %d)",
-               int(g_rs7_native_strings), int(g_rs7_native_fretgrid), int(g_rs7_native_colours));
-        g_rs7_native_tuner = 0;
-    }
-
-    if (g_rs7_native_tuner && !Rs7Tuner8_BuildCopies()) {
-        g_rs7_native_tuner = 0;
-    }
-
-    // ... and the native tuner (fix/clite3, docs/ARCHITECTURE.md): the stock tuner session keeps six slots per
-    // string array (peaks +80h, letters, picks) and its loops run to info+0Bh, so a guitar built with 7 must only ever
-    // meet a native 8-slot session.
-    const bool cliteMode = g_rs7_native_pegset && g_rs7_native_tuner;
-
-    Rs7Publish_Configure(cliteMode);
-    if (g_rs7_publish_ports && (!Rs7Publish_BuildCopies() || !Rs7PublishPitch_BuildCopies())) {
-        g_rs7_publish_ports = g_rs7_native_publish = 0;
-    }
-    if (g_rs7_native_publish) {
-        Rs7Log("native_publish: ON - native 8-slot layouts and ports; a guitar shows the string count it was built "
-               "with (C-lite)");
-    }
-
-    // C-lite (core/clite.h): a guitar BUILT with 7/8 strings needs the native ports (with all their prerequisites,
-    // which include every native layout) and the native PegSet.
-    g_rs7_clite = cliteMode && g_rs7_native_publish ? 1 : 0;
-    Rs7Log("clite: %s", g_rs7_clite ? "guitar rebuilt with the arrangement's string count at selection (GK* sites; "
-                                      "PSQ1 replaced by GKC)"
-                                    : "off: a native layout or the native ports are unavailable");
-
-    // Diagnostics off: D2/D3/D5 stay resolved above (all or nothing still covers them) but unwritten.
-    // [debug] skip_sites=ID,ID,... (test bisection): resolved, not written. Stubs that jump to a
-    // skipped site's continuation are unaffected; skipping one half of a stub pair is the tester's call.
+// [debug] skip_sites=ID,ID,... (test bisection): resolved, not written, as ",ID,ID,". Stubs that jump to a skipped
+// site's continuation are unaffected; skipping one half of a stub pair is the tester's call.
+std::string ReadSkipSites() {
     wchar_t skipW[512] = {};
 
     GetPrivateProfileStringW(L"debug", L"skip_sites", L"", skipW, 512, IniPath().c_str());
@@ -676,114 +438,68 @@ void Rs7_Startup() {
 
     skip += ",";
 
-    // The grown session (allocation, init, sized free), its copies and mid-hooks are one contract: a
-    // debug skip of any TU8* / TS8* site turns the whole switch off before anything is patched.
-    if (g_rs7_native_tuner && (skip.find(",TU8") != std::string::npos || skip.find(",TS8") != std::string::npos)) {
-        g_rs7_native_tuner = 0;
-        Rs7Log("tuner8: a native tuner site was skipped - native_tuner off");
-    }
+    return skip;
+}
 
-    if (g_rs7_native_tuner) {
-        Rs7Log("tuner8: native_tuner ON - native 8-slot tuner sessions");
-    }
+// The native 7-string unit's startup checks, from the live (still unpatched) code. Returns [debug] skip_sites.
+std::string ConfigureNativeUnit(DWORD d3d9Tick) {
+    Rs7Colour_CheckManager(d3d9Tick);  // a manager the game already built keeps the stock layout
+    // The native strings: the function copies are built from the live code; if any differs from the generated one,
+    // native strings are off (and with them the 7-string unit: nothing patched).
+    Rs7Gs_Prepare();
+    Rs7Chord_StartLoops(g_rs7_native_strings != 0);
+    // Evaluate after native-string initialization: a failed copy is a missing prerequisite.
+    // Native 7-string mode = C-lite (the guitar is built with the arrangement's count) + the publication ports (that
+    // can show it); neither works alone. The native tuner (features/tuner/tuner.h) needs the native GuitarStrings,
+    // FretGrid and colour matrix (its copies carry their in-place edits). Copies are built from the live code.
+    Rs7Tuner8_Prepare();
+    // ... and the native tuner (fix/clite3, docs/ARCHITECTURE.md): the stock tuner session keeps six slots per
+    // string array (peaks +80h, letters, picks) and its loops run to info+0Bh, so a guitar built with 7 must only ever
+    // meet a native 8-slot session.
+    const bool cliteMode = g_rs7_native_pegset && g_rs7_native_tuner;
+
+    Rs7Publish_Start(cliteMode);
+    // C-lite (features/clite/clite.h): a guitar BUILT with 7/8 strings needs the native ports (with all their
+    // prerequisites, which include every native layout) and the native PegSet.
+    Rs7Clite_Configure(cliteMode);
+    // Diagnostics off: D2/D3/D5 stay resolved above (all or nothing still covers them) but unwritten.
+    const std::string skip = ReadSkipSites();
+
+    Rs7Tuner8_ApplySkip(skip);
 
     if (!g_rs7_native_tuner && g_rs7_clite) {  // a skipped tuner site: clite (and its native_publish half) go too
         Rs7_DisableFeature(Rs7Feature::Clite);
         Rs7Log("clite: off - the native tuner was turned off (a 7-built guitar needs the 8-slot tuner session)");
     }
 
-    // Since 1.0 the native layouts have no legacy fallback (hooks/registry.h Rs7_IsSevenUnit): one member that is off
-    // after the checks above leaves the game stock - nothing of the main batch is written (plain PSARC is separate).
-    if (const char* missing = MissingSevenUnitMember()) {
-        Rs7Log("7-string support OFF: %s is unavailable (no legacy fallback since 1.0) - nothing patched, the game "
-               "stays stock (six strings)",
-               missing);
-        Fail("native 7-string unit incomplete (see the log)");
-        return;
+    return skip;
+}
+
+// Since 1.0 the native layouts have no legacy fallback (model/groups.h Rs7_IsSevenUnit): one member that is off after
+// the checks above leaves the game stock - nothing of the main batch is written (plain PSARC is separate).
+bool SevenUnitComplete() {
+    const char* missing = MissingSevenUnitMember();
+
+    if (!missing) {
+        return true;
     }
 
-    // Prepare every enabled generic hook before writing any site. The same Jmp
-    // sites.json entries retain sitecheck's whole-instruction/no-inbound checks.
-    // Process lifetime ownership: rollback restores sites, but never frees code
-    // that a thread could still be executing. Startup runs once.
-    // A failing site disables only its own feature group (hooks/isolate.h); the round then restarts
-    // with that group gone. Only a core failure aborts everything.
-    static Rs7Mid::Hook midHooks[kRs7SiteCount];
-    Rs7PatchOps ops;
+    Rs7Log("7-string support OFF: %s is unavailable (no legacy fallback since 1.0) - nothing patched, the game "
+           "stays stock (six strings)",
+           missing);
+    Fail("native 7-string unit incomplete (see the log)");
 
-    ops.count = res.sites.size();
-    ops.feature = [&](size_t i) {
-        return Rs7_FeatureOf(*hooks[i]);
-    };
-    ops.name = [&](size_t i) {
-        return res.sites[i].site->id;
-    };
-    ops.log = [](const std::string& m) {
-        Rs7Log("%s", m.c_str());
-    };
-    // [neck] native_fretgrid: the FGR layout sites (not the FGHK / FGCT mid-hooks) are written later on the game
-    // thread (rs7fg::OnGuitarUpdate); they are not part of this batch.
-    auto deferredFg = [&](size_t i) {
-        return hooks[i]->fg == kRs7FgNative && std::strcmp(res.sites[i].site->id, "FGHK") != 0 &&
-               std::strcmp(res.sites[i].site->id, "FGCT") != 0;
-    };
+    return false;
+}
 
-    ops.should = [&](size_t i) {
-        if (!Rs7_ShouldPatch(*hooks[i], g_rs7_diag != 0, Rs7Vg_Enabled(), g_rs7_native_pegset != 0,
-                             g_rs7_native_strings != 0)) {
-            return false;
-        }
-
-        if (skip.size() > 2 && skip.find("," + std::string(res.sites[i].site->id) + ",") != std::string::npos) {
-            Rs7Log("site %s skipped ([debug] skip_sites)", res.sites[i].site->id);
-            return false;
-        }
-
-        if (deferredFg(i)) {
-            return false;
-        }
-
-        return true;
-    };
-    std::vector<std::vector<uint8_t>> writeBytes(res.sites.size());
-
-    ops.prepare = [&](size_t i) {
-        if (res.sites[i].site->kind == Rs7Kind::Bytes) {  // parsed here: apply runs inside the freeze
-            if (writeBytes[i].empty()) {
-                writeBytes[i] = WriteBytesFor(res.sites[i]);
-            }
-            if (writeBytes[i].empty()) {
-                return false;
-            }
-        }
-
-        if (!hooks[i]->callback || midHooks[i].Entry()) {
-            return true;
-        }
-
-        const auto& r = res.sites[i];
-
-        return r.site->kind == Rs7Kind::Jmp &&
-               midHooks[i].Prepare(r.addr, r.original.data(), r.original.size(), hooks[i]->callback);
-    };
-    ops.apply = [&](size_t i) {
-        return Apply(res.sites[i], *hooks[i], midHooks[i].Entry(), writeBytes[i]);
-    };
-    ops.range = [&](size_t i) {
-        return RangeOf(res.sites[i]);
-    };
-    // review #9: every round under a thread freeze; review #8: read-back verified
-    ops.restore = [&](size_t i) {
-        const Rs7Resolved& r = res.sites[i];
-
-        return Rs7_RestoreBytes(r.addr, r.original.data(), r.original.size());
-    };
-    std::vector<size_t> todo;
-    const Rs7PatchResult pr = Rs7_PatchIsolated(ops, todo);
+// The main batch (startup_sites.h); false (after Fail) unless every round succeeded.
+bool ApplyPatchRounds(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks, const std::string& skip,
+                      std::vector<size_t>& todo) {
+    const Rs7PatchResult pr = Rs7Startup_WriteSites(res, hooks, skip, todo);
 
     if (pr == Rs7PatchResult::FreezeTimeout) {
         Fail("patching failed (a game thread stayed inside a site; nothing written)");
-        return;
+        return false;
     }
 
     if (pr == Rs7PatchResult::Unrecoverable) {
@@ -791,77 +507,34 @@ void Rs7_Startup() {
         Rs7Log("UNRECOVERABLE: %u site(s) left written after a failed rollback - patching stopped",
                unsigned(todo.size()));
         Fail("patching failed (UNRECOVERABLE rollback; see the log)");
-        return;
+        return false;
     }
 
     if (pr != Rs7PatchResult::Ok) {
         Fail("patching failed (core site; restored)");
-        return;
+        return false;
     }
 
-    if (g_rs7_clite) {
-        Rs7Clite_Start(cfg.eight);
-    }
-    // The deferred FretGrid sites: the final round's feature state decides (a disabled Fretgrid group has none).
-    g_deferredFg.clear();
+    return true;
+}
 
-    for (size_t i = 0; i < res.sites.size(); ++i) {
-        if (deferredFg(i) && !hooks[i]->ref &&
-            Rs7_ShouldPatch(*hooks[i], g_rs7_diag != 0, Rs7Vg_Enabled(), g_rs7_native_pegset != 0,
-                            g_rs7_native_strings != 0) &&
-            !(skip.size() > 2 && skip.find("," + std::string(res.sites[i].site->id) + ",") != std::string::npos)) {
-            g_deferredFg.push_back({res.sites[i], hooks[i], WriteBytesFor(res.sites[i])});
-        }
-    }
-
-    g_deferredRanges.clear();
-
-    for (const DeferredSite& d : g_deferredFg) {
-        g_deferredRanges.push_back(RangeOf(d.r));
-    }
-
-    rs7fg::SetDeferredApply(g_deferredFg.empty() ? nullptr : &ApplyDeferredFg);
-
-    for (size_t i = 0; i < res.sites.size(); ++i) {
-        const Rs7Resolved& r = res.sites[i];
-
-        if (hooks[i]->ref) {
-            Rs7Log("resolved %-7s at %08X -> %08X", r.site->id, unsigned(r.addr), unsigned(r.target));
-        } else if (deferredFg(i) && Rs7_ShouldPatch(*hooks[i], g_rs7_diag != 0, Rs7Vg_Enabled(),
-                                                    g_rs7_native_pegset != 0, g_rs7_native_strings != 0)) {
-            Rs7Log("deferred %-4s at %08X (written on the game thread by the first guitar update)", r.site->id,
-                   unsigned(r.addr));
-        } else if (Rs7_ShouldPatch(*hooks[i], g_rs7_diag != 0, Rs7Vg_Enabled(), g_rs7_native_pegset != 0,
-                                   g_rs7_native_strings != 0)) {
-            Rs7Log("patched %-4s at %08X (original target %08X)", r.site->id, unsigned(r.addr), unsigned(r.target));
-        } else {
-            Rs7Log("resolved %-4s at %08X (%s off: not patched)", r.site->id, unsigned(r.addr),
-                   hooks[i]->vgOnly                     ? "[test] vguitar"
-                   : hooks[i]->pegs == kRs7PegNative    ? "the native PegSet"
-                   : hooks[i]->strs == kRs7StrNative    ? "the native GuitarStrings"
-                   : hooks[i]->fg == kRs7FgNative       ? "the native FretGrid"
-                   : hooks[i]->pitch == kRs7PitchNative ? "the native pitch storage"
-                   : hooks[i]->ng == kRs7NgNative       ? "the native next-note grid"
-                                                        : "diagnostics");
-        }
-    }
-
+// The summary line, the plain-PSARC state and the overlay's status board.
+void ReportStartup(size_t written, size_t resolved, size_t deferred) {
     Rs7Log("%u of %u sites patched, %u FretGrid sites deferred to the first guitar update (memory protection via %s)",
-           unsigned(todo.size()), unsigned(res.sites.size()), unsigned(g_deferredFg.size()), Rs7_ProtectMethod());
+           unsigned(written), unsigned(resolved), unsigned(deferred), Rs7_ProtectMethod());
     Rs7Plain_LogState("after the main batch");
+    Rs7StartStatus st;
 
-    {
-        Rs7StartStatus st;
+    st.state = Rs7StartState::Patched;
+    st.written = unsigned(written);
+    st.resolved = unsigned(resolved);
+    std::snprintf(st.protect, sizeof st.protect, "%s", Rs7_ProtectMethod());
+    Rs7Status_SetStart(st);
+}
 
-        st.state = Rs7StartState::Patched;
-        st.written = unsigned(todo.size());
-        st.resolved = unsigned(res.sites.size());
-        std::snprintf(st.protect, sizeof st.protect, "%s", Rs7_ProtectMethod());
-        Rs7Status_SetStart(st);
-    }
-
-    // Step 2: the ramp copy (D3D hooks). Everything above is Step 1 and stays in force whatever happens here.
-    // The same worker finds the device for the overlay ([overlay] enabled=1), with or without the ramp copy.
+// Step 2: the ramp copy (D3D hooks). Everything before is Step 1 and stays in force whatever happens here.
+// The same worker finds the device for the overlay ([overlay] enabled=1), with or without the ramp copy.
+void RunDeviceWorker(const Rs7ColourConfig& cfg, DWORD d3d9Tick) {
     const bool ramp = cfg.rampSwap;
     const bool overlay = Rs7Overlay_Enabled();
 
@@ -872,7 +545,7 @@ void Rs7_Startup() {
         return;
     }
 
-    const Rs7SwapCfg sc{{cfg.string6Rgb, cfg.string6RgbCb}, cfg.allowInexact};
+    const Rs7SwapCfg sc{{cfg.string6Rgb, cfg.string6RgbCb}, cfg.allowInexact, rs7rsmods::Present()};
 
     Rs7Swap_Configure(sc);
     Rs7WorkerOpts opts;
@@ -885,4 +558,41 @@ void Rs7_Startup() {
     }
 
     Rs7Ramp_RunWorker(sc, d3d9Tick, opts);  // does not return
+}
+}  // namespace
+
+void Rs7_Startup() {
+    Rs7Log("rs7string %s loaded", RS7_VERSION);
+    Rs7ColourConfig cfg = LoadStartupConfig();
+    const DWORD d3d9Tick = WaitForGame(cfg);
+    GameText text;
+
+    if (!FindGameText(text)) {
+        return;
+    }
+
+    StartIsolatedFeatures(text);
+    Rs7ResolveResult res;
+    std::vector<const Rs7Hook*> hooks;
+
+    if (!ResolveSites(text, res) || !PrepareHooks(res, hooks)) {
+        return;
+    }
+
+    const std::string skip = ConfigureNativeUnit(d3d9Tick);
+    std::vector<size_t> todo;
+
+    if (!SevenUnitComplete() || !ApplyPatchRounds(res, hooks, skip, todo)) {
+        return;
+    }
+
+    if (g_rs7_clite) {
+        Rs7Clite_Start(Rs7Eight_Config().eight);
+    }
+
+    const size_t deferred = Rs7Startup_DeferFretGrid(res, hooks, skip);
+
+    Rs7Startup_LogSites(res, hooks);
+    ReportStartup(todo.size(), res.sites.size(), deferred);
+    RunDeviceWorker(cfg, d3d9Tick);
 }

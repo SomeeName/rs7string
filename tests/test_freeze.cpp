@@ -1,7 +1,8 @@
-#include "core/diagrams.h"
-#include "core/freeze.h"
-#include "core/patch.h"
-#include "hooks/isolate.h"
+#include "features/diagrams/diagrams.h"
+#include "hook_rules.h"
+#include "platform/freeze.h"
+#include "platform/isolate.h"
+#include "platform/patch.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>
@@ -246,8 +247,8 @@ TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
     Rs7PatchOps ops;
 
     ops.count = 3;
-    ops.feature = [](size_t i) {
-        return i == 0 ? Rs7Feature::Core : Rs7Feature::Diagrams;
+    ops.group = [](size_t i) {
+        return Rs7_Group(i == 0 ? Rs7Feature::Core : Rs7Feature::Diagrams);
     };
     ops.name = [](size_t i) {
         static const char* n[3] = {"A", "B", "C"};
@@ -287,7 +288,7 @@ TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
     Rs7_ResetFeatureFailures();
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(ops, written) == Rs7PatchResult::Ok);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, ops, written) == Rs7PatchResult::Ok);
     CHECK_EQ(written.size(), size_t(1));  // B's group disabled, round 2 wrote A only
     CHECK_EQ(buf[0][0], 0x22);
     CHECK_EQ(buf[1][0], 0x11);

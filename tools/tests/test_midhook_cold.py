@@ -1,4 +1,5 @@
-"""Old-vs-new equivalence of the cold sites converted from naked stubs to C++ mid-hook callbacks.
+"""Old-vs-new equivalence of the sites converted from naked stubs to C++ mid-hook callbacks (cold sites in full mode,
+the hot BD1-BD4, TF1 and V2 in light mode; the N-slot chord sites are in test_midhook_nslot.py).
 
 See midhook_oracle.py for what is compared (GPRs, EFLAGS, next EIP, x87, XMM, live stack, data, every
 machine write, settings, complete helper inputs) and docs/ARCHITECTURE.md ("Mid-hook conversion").
@@ -8,12 +9,11 @@ Every case runs under 3 incoming EFLAGS patterns (the last has DF set) and 2 sta
 from __future__ import annotations
 
 import itertools
-from functools import lru_cache
 
 import pytest
 
-from test_emu import DLL, SNAPSHOT, DATA, STACK
-from midhook_oracle import FLAG_PATTERNS, MISALIGN, Case, Helper, Machine, Spec, Sym, flags_dead_at
+from emu_harness import DLL, SNAPSHOT, DATA, STACK, site_target
+from midhook_oracle import Case, Helper, Spec, Sym, oracle_tests
 
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -48,6 +48,7 @@ register(
         "TK",
         6,
         pushed=4,
+        locals=0x28,  # `push ebp; mov ebp,esp; sub esp,28h`
         helpers={"Rs7_TunerKey": Helper(2, deref=((0, 24), (1, 32)))},
         words={"g_rs7_tn_on": 0},
     ),
@@ -65,7 +66,7 @@ register(
 
 # ---- TS: entry of Play_TunerSession_ApplyTuning ([esp+4] = session, EDI = offsets) ----------------
 register(
-    Spec("TS", 6, pushed=4, helpers={"Rs7_TunerApply": Helper(2, deref=((0, 48), (1, 24)))}),
+    Spec("TS", 6, pushed=4, locals=8, helpers={"Rs7_TunerApply": Helper(2, deref=((0, 48), (1, 24)))}),
     [
         Case(
             "on",  # 1.0: [tuner] seven_slot is gone (always on), TS always hands over
@@ -406,46 +407,239 @@ register(
 )
 
 
-@lru_cache(maxsize=None)
-def machine(sid: str) -> Machine:
-    return Machine(SPECS[sid][0])
+# ---- refactor step 7, batch 1 (stubs frozen at 0cf5874) -------------------------------------------
+# BD1-BD4: perStringMode guards `cmp <string>,6; jae` (light). String 6 reads string 0's mode and joins the stock
+# body after it; the old stubs left the flags of `add [esp],n` there, so the contract is "free" (exits checked).
+MODES = (0, 1, 2, 0xFFFFFFFF)
+STRINGS = (0, 3, 5, 6, 7, 0xFF)
+BINFO, BGUITAR, BSESSION = D + 0x4000, D + 0x4100, D + 0x4200
 
 
-def cases():
-    for sid, (_, cs) in SPECS.items():
-        for case, flags, misalign in itertools.product(cs, FLAG_PATTERNS, MISALIGN):
-            yield pytest.param(sid, case, flags, misalign, id=f"{sid}-{case.id}-f{flags:x}-a{misalign}")
+def bend_info(mode0: int) -> bytes:
+    raw = bytearray(blob(0x40, 81))
+    raw[0x20:0x24] = mode0.to_bytes(4, "little")
+    return bytes(raw)
 
 
-@pytest.mark.parametrize("sid,case,flags,misalign", list(cases()))
-def test_mid_hook_matches_frozen_stub(sid, case, flags, misalign):
-    machine(sid).compare(case, flags, misalign)
+def bend_objects(mode0: int) -> dict:
+    guitar = bytearray(blob(0x40, 82))
+    guitar[0x24:0x28] = BINFO.to_bytes(4, "little")
+    session = bytearray(blob(0x400, 83))
+    session[0x37C:0x380] = BGUITAR.to_bytes(4, "little")
+    return {BINFO: bend_info(mode0), BGUITAR: bytes(guitar), BSESSION: bytes(session)}
 
 
-@pytest.mark.parametrize("sid", [sid for sid, (spec, _) in SPECS.items() if spec.flags == "dead"])
-def test_dead_flags_are_rewritten_before_any_read(sid):
-    """The flag contract "dead" (the hook leaves the incoming arithmetic flags, the old stub left helper
-    leftovers) is only valid where no continuation reads them: scan the game code after each exit."""
-    m = machine(sid)
-    for exit_address in m.exit_addresses:
-        assert flags_dead_at(exit_address), f"{sid}: flags may be live at {exit_address:#x}"
+BEND_SITES = {  # sid -> (string register, base register and value, join offset after the site)
+    "BD1": (UC_X86_REG_ECX, (UC_X86_REG_EAX, BINFO), 0x0A),
+    "BD2": (UC_X86_REG_ECX, (UC_X86_REG_EAX, BINFO), 0x0E),
+    "BD3": (UC_X86_REG_EBX, (UC_X86_REG_EDI, BSESSION), 0x17),
+    "BD4": (UC_X86_REG_EBX, (UC_X86_REG_EAX, BGUITAR), 0x20),
+}
+for sid, (string_reg, (base_reg, base), join) in BEND_SITES.items():
+    register(
+        Spec(sid, 5, flags="free", exits=("resume", "target", ("resume", join))),
+        [
+            Case(
+                f"string{v:x}-mode{m:x}",
+                regs={string_reg: 0xABCD0000 | v, base_reg: base, UC_X86_REG_EDX: 0xDDDD0003},
+                mem=bend_objects(m),
+            )
+            for v, m in itertools.product(STRINGS, MODES)
+        ],
+    )
+# BD1 leaves through the target for a string-6 mode other than 0, BD2-BD4 only for strings above 6.
+
+# ---- D5: gem position log of strings 0 and 6 (diagnostics); replays `fld [ebx+14h]; mov eax,[esp+10h]` ------
+GEM = D + 0x4800
+register(
+    Spec("D5", 7, helpers={"Rs7_DiagGemPos": Helper(2, deref=((0, 0x20), (1, 12)))}),
+    [
+        Case(f"string{v:x}", regs={UC_X86_REG_EBX: GEM}, mem={GEM: bytes(blob(0x0C, 91)) + bytes([v]) + blob(0x13, 92)})
+        for v in STRINGS
+    ],
+)
+
+# ---- B1: chord frame marks after Rnd_GemGeom_Ctor; replays `mov esi,[ebp+18h]; push eax; call <stdcall 1>` -------
+register(
+    Spec(
+        "B1",
+        9,
+        helpers={"Rs7Chord_OnBoxGeom": Helper(3)},
+        patch=lambda m: {m.target: bytes.fromhex("31 C0 B8 78 56 34 12 C2 04 00")},  # xor eax,eax; mov eax,..; ret 4
+    ),
+    [
+        Case(f"geom{g:x}-chord{o:x}", regs={UC_X86_REG_EAX: g}, ebp={8: o, 0x0C: D + 0x4C00, 0x18: 0x51515151})
+        for g, o in itertools.product((0, D + 0x4A00), (0, D + 0x4B00))
+    ],
+)
 
 
-def test_every_registered_site_calls_its_helper_at_least_once():
-    """The matrix is not vacuous: for every site some case reaches each helper (and some case skips it)."""
-    for sid, (spec, cs) in SPECS.items():
-        reached = {name: False for name in spec.helpers}
-        skipped = {name: False for name in spec.helpers}
-        exits = set()
-        for case in cs:
-            state = machine(sid).compare(case, FLAG_PATTERNS[0], 0)
-            exits.add(state["eip"])
-            calls = {c[0] for c in state["calls"]}
-            for name in spec.helpers:
-                (reached if name in calls else skipped)[name] = True
-        assert exits == set(machine(sid).exit_addresses), (sid, [hex(e) for e in exits])  # every exit is taken
-        assert all(reached.values()), (sid, reached)
-        assert all(skipped.values()) or sid in ALWAYS_CALLS, (sid, skipped)
+# ---- refactor step 7, batch 2 (stubs frozen at 24bfba8) -------------------------------------------
+# N12: section mask guard `cmp cl,6; jae skip`; string 6 goes on to the stock write with [neck] string7_line. The old
+# stub left the flags of its own compare of g_rs7_s7_on there, the hook the incoming ones ("free", exits checked).
+register(
+    Spec("N12", 5, flags="free", exits=("resume", "target")),
+    [
+        Case(f"string{v:x}-on{on:x}", regs={UC_X86_REG_ECX: 0xABCD0000 | v}, words={"g_rs7_s7_on": on})
+        for v, on in itertools.product(STRINGS, SETTINGS)
+    ],
+)
+
+# ---- N13: back-fill loop bound `cmp cl,6; jb loop`; after string 5 the string-6 back-fill (ESI = song, EDI = level) --
+register(
+    Spec("N13", 9, flags="free", helpers={"Rs7_S7MaskBackfill": Helper(2)}, exits=("resume", "target")),
+    [
+        Case(f"string{v:x}", regs={UC_X86_REG_ECX: 0xABCD0000 | v, UC_X86_REG_ESI: D + 0x5000, UC_X86_REG_EDI: 3})
+        for v in STRINGS
+    ],
+)
+
+# ---- PM0 / PR0 / PM1: native pitch tails at matcher creation, detector reset and matcher tuning --------------------
+MATCHER, DETECTOR, TUNING = D + 0x5100, D + 0x6000, D + 0x5200
+register(
+    Spec("PM0", 7, flags="dead", helpers={"Rs7Pitch_MatNew": Helper(1, deref=((0, 0x80),))}),
+    [Case("matcher", regs={UC_X86_REG_EAX: MATCHER}, mem={MATCHER: blob(0x80, 101)})],
+)
+register(
+    Spec("PR0", 6, flags="dead", helpers={"Rs7Pitch_DetReset": Helper(1, deref=((0, 0x40),))}),
+    [Case("detector", regs={UC_X86_REG_EBX: DETECTOR}, mem={DETECTOR: blob(0x1400, 102)})],
+)
+register(
+    Spec("PM1", 6, helpers={"Rs7Pitch_MatTuned": Helper(2, deref=((0, 0x80), (1, 8)))}),
+    [
+        Case(
+            f"det{d:x}",
+            regs={UC_X86_REG_ESI: MATCHER, UC_X86_REG_EDX: TUNING},
+            mem={MATCHER: blob(4, 103) + d.to_bytes(4, "little") + blob(0x78, 104), TUNING: blob(8, 105)},
+        )
+        for d in (0, D + 0x5300)
+    ],
+)
+# PM0, PR0 and PM1 always call their helper.
+
+# ---- refactor step 7, batch 3 (stubs frozen at b8c0ed7; the N-slot sites: test_midhook_nslot.py) ------------
+# TF1: the tuner camera's reference string BL = min(count, 6) - 1 (light); the old stub left its `dec bl` flags.
+TGUITAR, TINFO = D + 0x5000, D + 0x5100
+register(
+    Spec("TF1", 8, flags="free"),
+    [
+        Case(
+            f"count{n:x}",
+            regs={UC_X86_REG_EAX: TGUITAR, UC_X86_REG_EBX: 0xB1B1B100, UC_X86_REG_EDX: 0xDDDD0003},
+            mem={TGUITAR: bytes(0x24) + TINFO.to_bytes(4, "little"), TINFO: bytes(0x0B) + bytes([n]) + bytes(4)},
+        )
+        for n in (0, 1, 4, 6, 7, 8, 0xFF)
+    ],
+)
+
+# V2: the slide end cell `al * row + ecx + edx + 3Ch` with the stock and the native row stride (light).
+register(
+    Spec("V2", 15, flags="free", words={"g_rs7_fg_row": 0x1CC}),
+    [
+        Case(
+            f"al{a:x}-row{r:x}",
+            regs={UC_X86_REG_EAX: 0xEAEAEA00 | a, UC_X86_REG_ECX: 0x40000000, UC_X86_REG_EDX: 0x4C * 6},
+            words={"g_rs7_fg_row": r},
+        )
+        for a, r in itertools.product((0, 1, 23, 0xFF), (0x1CC, 0x264))
+    ],
+)
+
+# ---- refactor step 7, batch 2b (stubs frozen at 6d1a62c) ------------------------------------------
+# N5: per-frame driver, then the replay `mov eax,[ebx+18h]; test eax,eax` (flags exact).
+GUITAR = D + 0x7000
+register(
+    Spec("N5", 5, helpers={"Rs7_S7Update": Helper(1)}),
+    [
+        Case(f"gs{g:x}", regs={UC_X86_REG_EBX: GUITAR}, mem={GUITAR: blob(0x18, 111) + g.to_bytes(4, "little")})
+        for g in (0, D + 0x7100)
+    ],
+)
+
+# N18 / N22: `cmp al,[esi+0Bh]; jae` with a string-6 path to a join (EDX = 6, ECX = the object, EAX = the join).
+# Strings x count x fret x helper result; the flags the old stubs left are dead at every exit ("free").
+BEND_INFO, BEND_GS, BEND_OBJ = D + 0x7200, D + 0x7300, D + 0x7400
+COUNTS = (6, 7)
 
 
-ALWAYS_CALLS = {"XB1", "GIZ1", "PSC1", "TK", "TS"}  # the helper call is unconditional
+def info_with(count: int) -> bytes:
+    raw = bytearray(blob(0x10, 112))
+    raw[0x0B] = count
+    return bytes(raw)
+
+
+for sid, length, join, amount_at in (("N18", 9, 0x10, -0x64), ("N22", 5, 0x0C, -0x60)):
+    register(
+        Spec(
+            sid,
+            length,
+            flags="free",
+            helpers={"Rs7_S7BendTarget": Helper(4)},
+            exits=("resume", "target", ("resume", join)),
+        ),
+        [
+            Case(
+                f"string{v:x}-count{n}-fret{f:x}-obj{r:x}",
+                regs={
+                    UC_X86_REG_EAX: 0xABCD0000 | v,
+                    UC_X86_REG_EDX: 0xDDDD0000 | f,
+                    UC_X86_REG_ESI: BEND_INFO,
+                    UC_X86_REG_ECX: BEND_GS,
+                },
+                mem={BEND_INFO: info_with(n)},
+                ebp={amount_at: 0x3F000000},
+                rets={"Rs7_S7BendTarget": r},
+            )
+            for v, n, f, r in itertools.product(STRINGS, COUNTS, (3, 0xFF), (0, BEND_OBJ))
+        ],
+    )
+
+# N19 / N20 / N23 (light): the release shape `cmp <string>,[info+0Bh]; jae`, join at resume + 7. The old stubs called
+# Rs7_S7BendTarget (kinds 1 / 3, no log), which now calls the split-off Rs7_S7BendObject the light hooks call directly:
+# the real Rs7_S7BendTarget runs in the old run, so both runs record the same Rs7_S7BendObject calls.
+RELEASE_SITES = {  # sid -> (string register, info register, GuitarStrings register)
+    "N19": (UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ECX),
+    "N20": (UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ECX),
+    "N23": (UC_X86_REG_ECX, UC_X86_REG_ESI, UC_X86_REG_EDX),
+}
+for sid, (string_reg, info_reg, gs_reg) in RELEASE_SITES.items():
+    register(
+        Spec(sid, 5, flags="free", helpers={"Rs7_S7BendObject": Helper(2)}, exits=("resume", "target", ("resume", 7))),
+        [
+            Case(
+                f"string{v:x}-count{n}-obj{r:x}",
+                regs={string_reg: 0xABCD0000 | v, info_reg: BEND_INFO, gs_reg: BEND_GS},
+                mem={BEND_INFO: info_with(n)},
+                rets={"Rs7_S7BendObject": r},
+            )
+            for v, n, r in itertools.product(STRINGS, COUNTS, (0, BEND_OBJ))
+        ],
+    )
+
+# I1: `sub eax,2; jz bass` in Play_MidiToFret; string 6 of an active song returns MIDI - base through `pop ebp; ret`
+# (the old stub's own, the hook's the stock one at resume + 0Dh). The return address on the stack is the bass target,
+# an exit, so both runs end there with the same EBP / ESP.
+I1_BASS = 0x874079  # site_target("I1"), a constant so that collection needs no game image
+register(
+    Spec("I1", 5, flags="free", helpers={"Rs7_Base6": Helper(1)}, exits=("resume", "target")),
+    [
+        Case(
+            f"instr{i}-string{s}-key{k:x}-base{b:x}",
+            regs={UC_X86_REG_EAX: i, UC_X86_REG_ECX: 50, UC_X86_REG_EDX: s, UC_X86_REG_ESI: k},
+            stack={0: 0x5EB05EB0, 4: I1_BASS},
+            rets={"Rs7_Base6": b},
+        )
+        for i, s, k, b in itertools.product((0, 1, 2, 3), (5, 6, 7), (0, D + 0x7500), (0x80000000, 37))
+    ],
+)
+
+ALWAYS_CALLS = {"XB1", "GIZ1", "PSC1", "TK", "TS", "B1", "PM0", "PR0", "PM1", "N5"}  # the helper call is unconditional
+(
+    test_mid_hook_matches_frozen_stub,
+    test_dead_flags_are_rewritten_before_any_read,
+    test_every_registered_site_calls_its_helper_at_least_once,
+) = oracle_tests(SPECS, ALWAYS_CALLS)
+
+
+def test_i1_return_address_is_the_bass_target():
+    assert site_target("I1") == I1_BASS

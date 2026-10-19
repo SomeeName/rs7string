@@ -11,7 +11,7 @@
 | Tracking issue | SomeeName/rs7string#18 |
 | Audience | DotCharter (and any other chart writer) exporting 7-string (later 8-string, 5/6-string bass) arrangements for Rocksmith 2014 Remastered with the rs7string mod |
 | Reference writer | The maintainer's rs7chart tool (to be published later: `src/rs7chart/sng.py` `ExtBlock`, writer in `convert.py`, tests in `tests/test_extblock.py`) |
-| Reference reader | rs7string `src/core/extblock.cpp`, `rs7ext::Parse` |
+| Reference reader | rs7string `src/model/extblock.cpp`, `rs7ext::Parse` |
 
 > [!TIP]
 > Chart-tool authors: [section 9](#9-dotcharter-checklist-state-of-dotcharter-master-45ff88cc8-2026-10-14)
@@ -217,13 +217,13 @@ Absent `CHDT` = every extended column is -1. Absent `CHNT` = no extended techniq
 
 ## 6. How rs7string reads it
 
-`src/core/extblock.cpp`, hook XB1 at 0x55922C (end of `SNG_Song_Load`, loader thread, before the
+`src/model/extblock.cpp` (parser) and `src/features/nslot/hooks_extblock.cpp` (store), hook XB1 at 0x55922C (end of `SNG_Song_Load`, loader thread, before the
 body is freed): parses and validates the bytes between the stream position and its size against
 the loaded song (template count `+94h`, ChordNotes count `+0ACh`, tuning `+110h`) and keeps the
 parsed block per song. Log: one `extblock: SNG ...` line per loaded SNG (block summary, or the
 reason it was ignored).
 
-Stage 2 (native N-slot chords, `src/core/nslot.cpp`, docs/ARCHITECTURE.md): the
+Stage 2 (native N-slot chords, `src/features/nslot/`, docs/ARCHITECTURE.md): the
 song's chord templates and ChordNotes records are converted into superset records (the stock record
 followed by 8-slot arrays: template frets/fingers/MIDI, ChordNotes masks/slides/vibrato/bends) once
 at load (`CHDT` -> template slots 6/7, `CHNT` -> ChordNotes slots 6/7), and the game's own chord code

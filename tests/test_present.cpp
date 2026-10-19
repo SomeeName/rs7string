@@ -1,6 +1,6 @@
 #include "d3d/present.h"
 #include "d3d_fixture.h"
-#include "log.h"
+#include "platform/log.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>

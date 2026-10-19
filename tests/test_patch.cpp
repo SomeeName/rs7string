@@ -1,5 +1,5 @@
-#include "core/patch.h"
-#include "core/protect.h"
+#include "platform/patch.h"
+#include "platform/protect.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>

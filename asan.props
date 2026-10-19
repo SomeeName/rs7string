@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AddressSanitizer for the native tests only (build.ps1 -Asan passes /p:Rs7Asan=true; never the DLL): own object
+     and output folders (obj\asan, bin\Asan), so the normal test build is untouched. build.ps1 copies the ASan
+     runtime DLL next to the test exe and runs it. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Rs7Asan)' == 'true'">
+    <IntDir>$(MSBuildThisFileDirectory)obj\asan\$(ProjectName)\</IntDir>
+    <OutDir>$(MSBuildThisFileDirectory)bin\Asan\</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Rs7Asan)' == 'true'">
+    <ClCompile>
+      <AdditionalOptions>/fsanitize=address %(AdditionalOptions)</AdditionalOptions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <!-- /fsanitize=address writes no per-folder ObjectFileName directory of its own either; create them. -->
+  <Target Name="Rs7AsanDirs" BeforeTargets="ClCompile" Condition="'$(Rs7Asan)' == 'true'">
+    <MakeDir Directories="@(ClCompile->'%(ObjectFileName)'->DirectoryName()->Distinct())" />
+  </Target>
+</Project>

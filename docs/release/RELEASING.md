@@ -6,7 +6,8 @@
 
 > [!IMPORTANT]
 > Static preparation does not establish in-game release acceptance. Complete the maintainer's
-> release acceptance process separately before publishing.
+> release acceptance process separately before publishing. The manual in-game part is the
+> [test checklist](TEST-CHECKLIST.md).
 
 ## Contents
 
@@ -97,3 +98,8 @@ Requirements and failure handling:
 - If GitHub publication fails after tagging, the local tag remains. Inspect the failure and the
   local/remote state before retrying.
 - The script refuses existing tags and does not overwrite an existing release.
+
+### The public tree
+
+The public repository gets one commit per release. Its tree is every tracked file of the private repository
+except the maintainer's private-only files (internal plans, handover notes and the tooling that lists them).

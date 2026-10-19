@@ -1,6 +1,6 @@
-#include "core/extblock.h"
-#include "core/string7.h"
-#include "core/string7diag.h"
+#include "features/nslot/nslot.h"
+#include "features/scene/scene.h"
+#include "features/string7/string7.h"
 #include "test.h"
 #include <windows.h>
 #include <cstdint>

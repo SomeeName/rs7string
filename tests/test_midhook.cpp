@@ -1,5 +1,5 @@
-#include "hooks/midhook.h"
-#include "hooks/registry.h"
+#include "hook_rules.h"
+#include "platform/midhook.h"
 #include "test.h"
 #include <windows.h>
 #include <algorithm>
@@ -25,7 +25,7 @@ TEST(midhook_relocation_and_rejections) {
     const uint8_t loop[] = {0xe2, 0xfe, 0x90, 0x90, 0x90};
     const uint8_t pic[] = {0xe8, 0, 0, 0, 0};
     const uint8_t cut[] = {0x8b, 0x84, 0x24, 0, 0};
-    const uint8_t prefix[] = {0x66, 0x90, 0x90, 0x90, 0x90};
+    const uint8_t prefix[] = {0xf3, 0x90, 0x90, 0x90, 0x90};  // REP (PAUSE): only 66 is whitelisted
 
     for (const auto* p : {middle, loop, pic, cut, prefix}) {
         CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, p, 0x1000, 5, 0x2000), 0u);
@@ -176,7 +176,7 @@ TEST(midhook_x87_memory_forms_and_trailing_ret) {
     CHECK(std::memcmp(out, fst, sizeof fst) == 0);
 
     // FLD / FSTP / FLDCW / FNSTCW memory forms are accepted too.
-    for (uint8_t reg : {0, 2, 3, 5, 7}) {
+    for (int reg : {0, 2, 3, 5, 7}) {
         const uint8_t m[] = {0xd9, uint8_t(0x40 | (reg << 3)), 0x10, 0x90, 0x90};  // [eax+10h]
 
         CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, m, 0x1000, sizeof m, 0x2000), sizeof m);
@@ -200,10 +200,15 @@ TEST(midhook_x87_memory_forms_and_trailing_ret) {
     const uint8_t early[] = {0x5e, 0xc3, 0x90, 0x90, 0x90, 0x90};
 
     CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, early, 0x1000, sizeof early, 0x2000), 0u);
-    // C2 (RET imm16) is not whitelisted.
+    // C2 (RET imm16) is copied as is, also only as the last instruction; a cut immediate is rejected.
     const uint8_t retn[] = {0x5e, 0x5b, 0x5d, 0xc2, 0x04, 0x00};
 
-    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, retn, 0x1000, sizeof retn, 0x2000), 0u);
+    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, retn, 0x1000, sizeof retn, 0x2000), sizeof retn);
+    CHECK(std::memcmp(out, retn, sizeof retn) == 0);
+    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, retn, 0x1000, 5, 0x2000), 0u);
+    const uint8_t retnEarly[] = {0xc2, 0x04, 0x00, 0x90, 0x90};
+
+    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, retnEarly, 0x1000, sizeof retnEarly, 0x2000), 0u);
 }
 
 namespace {
@@ -299,4 +304,125 @@ TEST(midhook_pilot_registration) {
         CHECK(hook && hook->callback && !hook->stub && !hook->resume);
         CHECK(hook && !hook->diagOnly && !hook->vgOnly);
     }
+}
+
+namespace {
+uint32_t g_lightSeen[9];
+
+void __cdecl LightEdit(Rs7Mid::Context& c) {
+    const uint32_t* r = &c.edi;
+
+    for (int i = 0; i < 9; ++i) {
+        g_lightSeen[i] = r[i];
+    }
+
+    c.eax += 1;
+    c.ecx = 0x1234;
+    c.ebx = 0x5678;
+    c.eflags |= 1;  // CF
+    Rs7Mid::Push(c, 0xfeedface);
+    Rs7Mid::Push(c, 0xcafef00d);
+    c.esp += 8;  // pushed, then dropped again: the frame copy runs over the pushed bytes
+}
+}  // namespace
+
+TEST_NO_ASAN(midhook_light_matches_full_contract) {
+    auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+
+    CHECK(page != nullptr);
+    if (!page) {
+        return;
+    }
+
+    // nop x5; ret: the callback's edits reach the caller unchanged.
+    const uint8_t original[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0xc3};
+
+    std::memcpy(page, original, sizeof original);
+    CHECK(Rs7Mid_BuildLight(page + 64, 256, page, uintptr_t(page), 5, uintptr_t(page + 64), uintptr_t(&LightEdit)) > 0);
+    auto fn = page + 64;
+    uint32_t eaxOut, ecxOut, ebxOut, esiOut, ediOut, ebpOut, flagsOut, espBefore, espAfter, ebpBefore;
+
+    // EBP stays the frame pointer here (locals are EBP-relative); the emulator tests cover an edited EBP.
+    __asm {
+        push ebx
+        push esi
+        push edi
+        mov ebpBefore, ebp
+        mov espBefore, esp
+        mov edx, fn
+        push edx
+        mov eax, 10
+        mov ecx, 20
+        mov edx, 30
+        mov ebx, 40
+        mov esi, 50
+        mov edi, 60
+        clc
+        call dword ptr [esp]
+        pop edx
+        mov espAfter, esp
+        pushfd
+        pop flagsOut
+        mov eaxOut, eax
+        mov ecxOut, ecx
+        mov ebxOut, ebx
+        mov esiOut, esi
+        mov ediOut, edi
+        mov ebpOut, ebp
+        pop edi
+        pop esi
+        pop ebx
+    }
+
+    CHECK_EQ(espAfter, espBefore);
+    CHECK_EQ(eaxOut, 11u);
+    CHECK_EQ(ecxOut, 0x1234u);
+    CHECK_EQ(ebxOut, 0x5678u);
+    CHECK_EQ(esiOut, 50u);
+    CHECK_EQ(ediOut, 60u);
+    CHECK_EQ(ebpOut, ebpBefore);
+    CHECK(flagsOut & 1);
+    // Context as the callback saw it: EDI ESI EBP ESP EBX EDX ECX EAX; ESP is the site's (below fn and the return).
+    CHECK_EQ(g_lightSeen[0], 60u);
+    CHECK_EQ(g_lightSeen[1], 50u);
+    CHECK_EQ(g_lightSeen[2], ebpBefore);
+    CHECK_EQ(g_lightSeen[3], espBefore - 8);
+    CHECK_EQ(g_lightSeen[4], 40u);
+    CHECK_EQ(g_lightSeen[5], 30u);
+    CHECK_EQ(g_lightSeen[7], 10u);
+    VirtualFree(page, 0, MEM_RELEASE);
+}
+
+TEST(midhook_light_leaves_x87_sse_state_alone) {
+    auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+
+    CHECK(page != nullptr);
+    if (!page) {
+        return;
+    }
+
+    const uint8_t raw[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0xc3};
+
+    std::memcpy(page, raw, sizeof raw);
+    CHECK(Rs7Mid_BuildLight(page + 64, 256, page, uintptr_t(page), 5, uintptr_t(page + 64), uintptr_t(&Noop)) > 0);
+    __declspec(align(16)) uint8_t original[512]{}, before[512]{}, after[512]{};
+    auto fn = reinterpret_cast<void (*)()>(page + 64);
+
+    __asm {
+        fxsave original
+        fninit
+        fld1
+        fldpi
+        pcmpeqd xmm0, xmm0
+        pcmpeqd xmm7, xmm7
+        fxsave before
+        call fn
+        fxsave after
+        fxrstor original
+    }
+
+    CHECK(std::memcmp(before, after, 5) == 0);
+    CHECK(std::memcmp(before + 6, after + 6, 22) == 0);
+    CHECK(std::memcmp(before + 32, after + 32, 256) == 0);
+    VirtualFree(page, 0, MEM_RELEASE);
 }

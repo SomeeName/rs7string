@@ -5,7 +5,7 @@ import struct
 import pytest
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
-from test_emu import Emu, DATA, STACK, DLL, SNAPSHOT, site_va
+from emu_harness import Emu, DATA, STACK, DLL, SNAPSHOT, site_va
 
 pytestmark = pytest.mark.skipif(not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs DLL/snapshot")
 

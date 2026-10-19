@@ -6,7 +6,7 @@ import struct
 import pytest
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
-from test_emu import Emu, DATA, STACK, RET_MAGIC, DLL, SNAPSHOT
+from emu_harness import CODE, Emu, DATA, STACK, RET_MAGIC, DLL, SNAPSHOT, site_mid_entry, site_va
 
 pytestmark = pytest.mark.skipif(not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs DLL/snapshot")
 
@@ -46,11 +46,17 @@ def test_native_queries_and_invalid_indices(emu, count):
             e.uc.mem_write(grid + 0x30 + 25 * 0x264 + string * 0x4C + k * 12, struct.pack("<fff", string, k, 123))
         e.uc.mem_write(out, struct.pack("<fff", -1, -2, -3))
         put(e, esp, RET_MAGIC, grid, k, string)
-        e.run(e.exports["Rs7_Stub_PUBGP"], RET_MAGIC, {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: fret, UC_X86_REG_ECX: out})
+        e.run(entry(e, "R1"), RET_MAGIC, {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: fret, UC_X86_REG_ECX: out})
         assert e.uc.reg_read(UC_X86_REG_EAX) & 255 == int(good)
         assert struct.unpack("<fff", e.uc.mem_read(out, 12)) == (
             (float(string), float(k), 123.0) if good else (-1.0, -2.0, -3.0)
         )
+
+
+def entry(e, sid):
+    """The mid-hook entry of `sid` (the game's patched jump goes there), built with the DLL's emitter."""
+    out = CODE + 0xC0000 + 0x100 * ("PUBGS", "PUBGE1", "PUBGE2", "PUBGA", "R1").index(sid)
+    return site_mid_entry(e.uc, e.exports, sid, out, STACK + 0x60000, RET_MAGIC)
 
 
 @pytest.mark.parametrize(
@@ -68,6 +74,7 @@ def test_active_guard(emu, sid, reg, info_reg, count):
     e.uc.mem_write(info + 0xB, bytes([count]))
     put(e, e.exports["g_rs7_resume_" + sid], RET_MAGIC)
     put(e, e.exports["g_rs7_target_" + sid], RET_MAGIC + 16)
+    start = entry(e, sid)  # built before the registers are set (the emitter runs in the same emulator)
     for s in range(10):
         hit = []
 
@@ -80,7 +87,7 @@ def test_active_guard(emu, sid, reg, info_reg, count):
         e.uc.reg_write(reg, s)
         e.uc.reg_write(info_reg, info)
         e.uc.reg_write(UC_X86_REG_ESP, STACK + 0x80000)
-        e.uc.emu_start(e.exports["Rs7_Stub_" + sid], RET_MAGIC + 32, count=100)
+        e.uc.emu_start(start, RET_MAGIC + 32, count=2000)
         e.uc.hook_del(h)
         assert hit == [RET_MAGIC if s < count else RET_MAGIC + 16]
 
@@ -136,12 +143,13 @@ def test_attach_point_string_is_a_byte(emu, s, hi):
     stock body whatever the upper bytes; low byte >= 8 is rejected (eax 0)."""
     e = emu
     esp = STACK + 0x80000
-    put(e, e.exports["g_rs7_resume_PUBGA"], RET_MAGIC + 16)
+    stock = site_va("PUBGA") + 6  # after the replayed `push ebp; mov ebp,esp; sub esp,4Ch`
+    start = entry(e, "PUBGA")
     put(e, esp, RET_MAGIC, hi | s, DATA + 0xD000)
     hit = []
 
     def stop(uc, addr, size, user):
-        if addr in (RET_MAGIC, RET_MAGIC + 16):
+        if addr in (RET_MAGIC, stock):
             hit.append(addr)
             uc.emu_stop()
 
@@ -149,11 +157,11 @@ def test_attach_point_string_is_a_byte(emu, s, hi):
     try:
         e.uc.reg_write(UC_X86_REG_ESP, esp)
         e.uc.reg_write(UC_X86_REG_EAX, 0x55)
-        e.uc.emu_start(e.exports["Rs7_Stub_PUBGA"], RET_MAGIC + 32, count=100)
+        e.uc.emu_start(start, RET_MAGIC + 32, count=2000)
     finally:
         e.uc.hook_del(h)
     if s < 6:
-        assert hit == [RET_MAGIC + 16]
+        assert hit == [stock]
     else:
         assert hit == [RET_MAGIC] and e.uc.reg_read(UC_X86_REG_EAX) == 0
 
@@ -204,7 +212,7 @@ def _r1_run(e, grid, fret, k, string):
         UC_X86_REG_EDI: 0xD1D1,
         UC_X86_REG_EBP: 0x1111,
     }
-    e.run(e.exports["Rs7_Stub_PUBGP"], RET_MAGIC, regs)
+    e.run(entry(e, "R1"), RET_MAGIC, regs)
     r = {
         n: e.uc.reg_read(c)
         for n, c in dict(
@@ -276,3 +284,53 @@ def test_r1_stock_row_stride_is_rejected(emu):
         assert r["eax"] & 255 == 0
     finally:
         e.uc.mem_write(e.exports["g_rs7_fg_row"], struct.pack("<I", ROW))
+
+
+PUBGE2_PUSH, PUBGE2_REJECT = 0x7E368A, 0x7E36E8  # `push ecx` after the optional `neg ecx`; the reject tail
+
+
+def run_pubge2(e, start, string, count, flag):
+    """From `start` (the stock bytes at the site, or the hook entry) to the push of the fret offset or the reject."""
+    info = DATA + 0xC000
+    e.uc.mem_write(info + 8, bytes([flag, 0, 0, count]))
+    stops = []
+
+    def stop(uc, addr, size, user):
+        if addr in (PUBGE2_PUSH, PUBGE2_REJECT):
+            stops.append(addr)
+            uc.emu_stop()
+
+    h = e.uc.hook_add(UC_HOOK_CODE, stop)
+    try:
+        regs = {UC_X86_REG_EBX: 0xB0B0B000 | string, UC_X86_REG_ESI: info, UC_X86_REG_ECX: 5}
+        for reg, value in {**regs, UC_X86_REG_ESP: STACK + 0x80000, UC_X86_REG_EFLAGS: 0x202}.items():
+            e.uc.reg_write(reg, value)
+        e.uc.emu_start(start, RET_MAGIC + 32, count=3000)
+    finally:
+        e.uc.hook_del(h)
+    return stops, e.uc.reg_read(UC_X86_REG_ECX)
+
+
+@pytest.mark.parametrize("flag", [0, 1, 0x80])
+def test_pubge2_matches_the_stock_bytes(emu, flag):
+    """PUBGE2 against the real stock bytes (not the old stub): with six strings the hook takes the stock exits and the
+    stock `cmp byte [esi+8],0; je` decides `neg ecx`; with seven, string 6 joins like a stock string and 7 is rejected."""
+    e = emu
+    va = site_va("PUBGE2")
+    put(e, e.exports["g_rs7_resume_PUBGE2"], va + 9)
+    put(e, e.exports["g_rs7_target_PUBGE2"], PUBGE2_REJECT)
+    hook = entry(e, "PUBGE2")
+    for s in range(8):
+        stock = run_pubge2(e, va, s, 6, flag)
+        assert run_pubge2(e, hook, s, 6, flag) == stock
+        assert stock[0] == [PUBGE2_PUSH if s < 6 else PUBGE2_REJECT]
+    accepted = run_pubge2(e, va, 0, 6, flag)
+    assert accepted[1] == (5 if flag == 0 else 0xFFFFFFFB)
+    assert run_pubge2(e, hook, 6, 7, flag) == accepted
+    assert run_pubge2(e, hook, 7, 7, flag)[0] == [PUBGE2_REJECT]
+
+
+def test_pubge2_site_target_is_the_rel8_reject():
+    from emu_harness import site_target
+
+    assert site_target("PUBGE2") == PUBGE2_REJECT

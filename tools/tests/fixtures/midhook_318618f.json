@@ -1,0 +1,194 @@
+{
+  "Rs7_Stub_R3a": {
+    "hex": "9c 81 f9 c8 01 00 00 74 0d 9d 8d 44 01 3c d9 00 ff 25 20 00 14 5e 9d d9 40 3c dc c0 d8 a0 88 00 00 00 d9 1d 3c 00 14 5e d9 40 40 dc c0 d8 a0 8c 00 00 00 d9 1d 40 00 14 5e d9 40 44 dc c0 d8 a0 90 00 00 00 d9 1d 44 00 14 5e 8d 05 3c 00 14 5e d9 00 ff 25 20 00 14 5e",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_R3a",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 36,
+        "symbol": "g_rs7_scratch_R3a",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 53,
+        "symbol": "g_rs7_scratch_R3a",
+        "addend": 4,
+        "relative": false
+      },
+      {
+        "offset": 70,
+        "symbol": "g_rs7_scratch_R3a",
+        "addend": 8,
+        "relative": false
+      },
+      {
+        "offset": 76,
+        "symbol": "g_rs7_scratch_R3a",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 84,
+        "symbol": "g_rs7_resume_R3a",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  },
+  "Rs7_Stub_R3b": {
+    "hex": "9c 81 f9 c8 01 00 00 74 0d 9d 8d 44 01 3c d9 00 ff 25 24 00 14 5e 9d d9 40 3c dc c0 d8 a0 88 00 00 00 d9 1d 48 00 14 5e d9 40 40 dc c0 d8 a0 8c 00 00 00 d9 1d 4c 00 14 5e d9 40 44 dc c0 d8 a0 90 00 00 00 d9 1d 50 00 14 5e 8d 05 48 00 14 5e d9 00 ff 25 24 00 14 5e",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_R3b",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 36,
+        "symbol": "g_rs7_scratch_R3b",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 53,
+        "symbol": "g_rs7_scratch_R3b",
+        "addend": 4,
+        "relative": false
+      },
+      {
+        "offset": 70,
+        "symbol": "g_rs7_scratch_R3b",
+        "addend": 8,
+        "relative": false
+      },
+      {
+        "offset": 76,
+        "symbol": "g_rs7_scratch_R3b",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 84,
+        "symbol": "g_rs7_resume_R3b",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  },
+  "Rs7_Stub_R3c": {
+    "hex": "9c 81 f9 c8 01 00 00 74 0d 9d 8d 44 01 3c d9 00 ff 25 28 00 14 5e 9d d9 40 3c dc c0 d8 a0 88 00 00 00 d9 1d 54 00 14 5e d9 40 40 dc c0 d8 a0 8c 00 00 00 d9 1d 58 00 14 5e d9 40 44 dc c0 d8 a0 90 00 00 00 d9 1d 5c 00 14 5e 8d 05 54 00 14 5e d9 00 ff 25 28 00 14 5e",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_R3c",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 36,
+        "symbol": "g_rs7_scratch_R3c",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 53,
+        "symbol": "g_rs7_scratch_R3c",
+        "addend": 4,
+        "relative": false
+      },
+      {
+        "offset": 70,
+        "symbol": "g_rs7_scratch_R3c",
+        "addend": 8,
+        "relative": false
+      },
+      {
+        "offset": 76,
+        "symbol": "g_rs7_scratch_R3c",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 84,
+        "symbol": "g_rs7_resume_R3c",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  },
+  "Rs7_Stub_R4": {
+    "hex": "9c 81 f9 c8 01 00 00 74 0e 9d 8d 44 01 3c 5e d9 00 ff 25 2c 00 14 5e 9d d9 40 3c dc c0 d8 a0 88 00 00 00 d9 1d 60 00 14 5e d9 40 40 dc c0 d8 a0 8c 00 00 00 d9 1d 64 00 14 5e d9 40 44 dc c0 d8 a0 90 00 00 00 d9 1d 68 00 14 5e 8d 05 60 00 14 5e 5e d9 00 ff 25 2c 00 14 5e",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "g_rs7_resume_R4",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 37,
+        "symbol": "g_rs7_scratch_R4",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 54,
+        "symbol": "g_rs7_scratch_R4",
+        "addend": 4,
+        "relative": false
+      },
+      {
+        "offset": 71,
+        "symbol": "g_rs7_scratch_R4",
+        "addend": 8,
+        "relative": false
+      },
+      {
+        "offset": 77,
+        "symbol": "g_rs7_scratch_R4",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 86,
+        "symbol": "g_rs7_resume_R4",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  },
+  "Rs7_Stub_S3": {
+    "hex": "66 89 88 56 13 00 00 60 56 50 e8 51 fb ff ff 83 c4 08 61 c3",
+    "fixups": [
+      {
+        "offset": 11,
+        "symbol": "Rs7_OnDetectorTuned",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  },
+  "Rs7_Stub_PT1": {
+    "hex": "66 89 90 56 13 00 00 60 56 50 e8 21 f7 ff ff 83 c4 08 61 c3",
+    "fixups": [
+      {
+        "offset": 11,
+        "symbol": "Rs7Pitch_DetTuned",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 318618f (+ Rs7_OnDetectorTuned exported)"
+  }
+}

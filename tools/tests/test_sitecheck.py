@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
+import game_files
 import sitecheck
 import sitetable
 from sitetable import Site
 
-ROOT = Path(__file__).resolve().parents[3]
-ANALYSIS = ROOT / "original" / "Rocksmith2014.analysis.exe"
+ANALYSIS = game_files.ANALYSIS_EXE
 SITES = Path(__file__).resolve().parents[2] / "sites.json"  # this checkout
 
 

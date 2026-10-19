@@ -147,7 +147,8 @@ Rules:
 ## Logs and settings
 
 - **Log:** `rs7string.log`, next to `dinput8.dll`. It records the startup patch results and whether
-  a loaded song uses seven-string mode.
+  a loaded song uses seven-string mode. It hides your Windows user name, user folder and computer name
+  (shown as `<user>`, `%USERPROFILE%` and `<pc>`), so you can share it; check it before you post it anyway.
 - **Settings:** `rs7string.ini`, next to `dinput8.dll`. Missing keys use the defaults.
   [SETTINGS](SETTINGS.md) lists every key and whether it takes effect live, on restart, or at the next
   song.

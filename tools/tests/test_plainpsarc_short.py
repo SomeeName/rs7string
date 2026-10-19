@@ -5,7 +5,7 @@ from test_nslot_lock import ROOT, compile_harness
 
 
 def test_plain_sng_rejects_short_input_before_reading_header(tmp_path):
-    source = (ROOT / "src/hooks/stubs_psarc.cpp").read_text()
+    source = (ROOT / "src/features/psarc/hooks.cpp").read_text()
     start = source.index("using Rs7SngDecrypt =")
     (tmp_path / "sngstub.inc").write_text(source[start:])
     harness = tmp_path / "plainpsarc_short.cpp"

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EFLAGS, UC_X86_REG_EIP, UC_X86_REG_XMM0, UC_X86_REG_XMM7
-from test_emu import Emu, ALL_REGS, CODE, DATA, STACK, DLL, SNAPSHOT, site_va, game_text, TEXT_VA
+from emu_harness import Emu, ALL_REGS, CODE, DATA, STACK, DLL, SNAPSHOT, site_va, game_text, TEXT_VA
 
 pytestmark = pytest.mark.skipif(
     not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"

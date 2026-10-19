@@ -1,0 +1,1292 @@
+{
+  "Rs7_NsTplAt": {
+    "hex": "51 56 be e0 1a 16 5e b9 40 00 00 00 39 06 75 10 3b 56 04 73 0b 8b c2 c1 e0 07 03 46 08 5e 59 c3 83 c6 20 49 75 e6 8d 0c d2 8d 04 c8 5e 59 c3",
+    "fixups": [
+      {
+        "offset": 3,
+        "symbol": "g_rs7_ns",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_PegOwnedZF": {
+    "hex": "51 50 8b 44 24 0c 85 c0 74 11 b9 40 00 00 00 3b 04 8d bc 19 16 5e 74 06 49 75 f4 83 c9 01 58 59 c2 04 00",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_pegsets",
+        "addend": -4,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_CLBM": {
+    "hex": "f7 84 82 48 09 00 00 00 10 00 00 ff 25 bc f7 15 5e",
+    "fixups": [
+      {
+        "offset": 13,
+        "symbol": "g_rs7_resume_CLBM",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_CLBA": {
+    "hex": "69 c0 84 01 00 00 8d 84 08 88 09 00 00 ff 25 c0 f7 15 5e",
+    "fixups": [
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_CLBA",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_CLGU": {
+    "hex": "3c 06 72 33 80 fa ff 74 28 60 0f b6 d0 6a 01 52 51 e8 fa fe ff ff 83 c4 0c 85 c0 74 13 89 44 24 18 61 0f b6 d0 ff 35 c4 f7 15 5e 83 04 24 04 c3 61 68 14 3f 7e 00 c3 3a 46 0b 73 f5 80 fa ff 74 f0 0f b6 d0 8b 4c 91 1c ff 35 c4 f7 15 5e 83 04 24 04 c3",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "Rs7ChordLoops_Target",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 39,
+        "symbol": "g_rs7_resume_CLGU",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 74,
+        "symbol": "g_rs7_resume_CLGU",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_CLGE": {
+    "hex": "80 f9 06 72 26 60 0f b6 c9 6a 01 51 52 e8 3e ff ff ff 83 c4 0c 85 c0 74 0b 89 44 24 18 61 ff 25 c8 f7 15 5e 61 68 73 43 7e 00 c3 3a 4e 0b 73 f5 0f b6 c9 8b 4c 8a 1c ff 25 c8 f7 15 5e",
+    "fixups": [
+      {
+        "offset": 14,
+        "symbol": "Rs7ChordLoops_Target",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 32,
+        "symbol": "g_rs7_resume_CLGE",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 57,
+        "symbol": "g_rs7_resume_CLGE",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_CLVB": {
+    "hex": "80 f9 06 72 2b 60 0f b6 c9 6a 00 51 50 e8 9e fe ff ff 83 c4 0c 85 c0 74 0b 89 44 24 04 61 ff 25 cc f7 15 5e 61 ff 35 cc f7 15 5e 83 04 24 05 c3 3a 4a 0b 73 f0 0f b6 c9 8b 74 88 04 ff 25 cc f7 15 5e",
+    "fixups": [
+      {
+        "offset": 14,
+        "symbol": "Rs7ChordLoops_Target",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 32,
+        "symbol": "g_rs7_resume_CLVB",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 39,
+        "symbol": "g_rs7_resume_CLVB",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 62,
+        "symbol": "g_rs7_resume_CLVB",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_NG1": {
+    "hex": "0f b6 4d 08 0f b6 55 0c 83 f9 08 73 15 83 fa 1a 73 10 6b c1 1a 03 c2 05 47 03 00 00 ff 25 cc 1a 16 5e dd d8 5f 8b e5 5d c2 10 00",
+    "fixups": [
+      {
+        "offset": 30,
+        "symbol": "g_rs7_resume_NG1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_NG9": {
+    "hex": "60 ff b5 8c ef ff ff ff b5 90 ef ff ff ff b5 94 ef ff ff ff 75 0c 53 8d 85 a0 ef ff ff 50 e8 7d fe ff ff 83 c4 18 85 c0 78 09 50 e8 00 fe ff ff 83 c4 04 61 83 bd b4 fc ff ff 00 5f 5e 74 13 8b 95 a8 fc ff ff 52 8d 8d a4 fc ff ff ff 25 d4 1a 16 5e ff 25 d8 1a 16 5e",
+    "fixups": [
+      {
+        "offset": 31,
+        "symbol": "Rs7_NeckRow6N",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 44,
+        "symbol": "Rs7_NeckLog",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 78,
+        "symbol": "g_rs7_resume_NG9",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 84,
+        "symbol": "g_rs7_target_NG9",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_FGRB": {
+    "hex": "60 ff 75 0c ff 75 08 e8 64 fe ff ff 83 c4 08 61 b8 02 00 00 00 ff 25 cc 02 16 5e",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Fg_BuildExtra",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 23,
+        "symbol": "g_rs7_resume_FGRB",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_DGB": {
+    "hex": "9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 74 ff 75 08 e8 a2 b8 ff ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 8b 74 24 50 8d 8c 24 b8 01 00 00 ff 25 74 fa 15 5e",
+    "fixups": [
+      {
+        "offset": 26,
+        "symbol": "Rs7Diagram_Bind",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 54,
+        "symbol": "g_rs7_resume_DGB",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_DGM": {
+    "hex": "9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 8d 56 24 0f b6 42 3f 50 ff 75 10 ff 75 0c ff 72 58 ff 72 5c ff 72 50 e8 d1 b9 ff ff 83 c4 18 0f ae 0c 24 8b e6 61 9d 83 c4 04 8d 4c 24 74 ff 25 68 fa 15 5e",
+    "fixups": [
+      {
+        "offset": 43,
+        "symbol": "Rs7Diagram_Manifest",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 67,
+        "symbol": "g_rs7_resume_DGM",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_DGS": {
+    "hex": "9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 75 0c ff 75 08 e8 b2 b8 ff ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 8b 8c 24 80 01 00 00 ff 25 6c fa 15 5e",
+    "fixups": [
+      {
+        "offset": 26,
+        "symbol": "Rs7Diagram_Loaded",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 50,
+        "symbol": "g_rs7_resume_DGS",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TP13": {
+    "hex": "83 3d 20 f8 15 5e 00 74 20 50 52 8b d0 8b 86 94 00 00 00 e8 18 63 01 00 5a 59 8d 0c c9 8b 96 94 00 00 00 ff 25 70 fa 15 5e 8b 96 94 00 00 00 8d 0c c0 8d 04 ca ff 25 70 fa 15 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_diagrams",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 20,
+        "symbol": "@Rs7_NsTplAt",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 37,
+        "symbol": "g_rs7_resume_TP13",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 55,
+        "symbol": "g_rs7_resume_TP13",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_AT": {
+    "hex": "83 3d 18 2c 16 5e 00 74 14 60 56 e8 00 cf ff ff 83 c4 04 85 c0 61 74 05 b0 01 c2 0c 00 55 8b ec 51 80 be 98 00 00 00 00 ff 25 c0 31 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_tuner_auto",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 12,
+        "symbol": "Rs7_TunerAutotune",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 42,
+        "symbol": "g_rs7_resume_AT",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TU8INIT": {
+    "hex": "60 56 e8 f9 f9 ff ff 83 c4 04 61 8b c6 5b 8b e5 5d c3",
+    "fixups": [
+      {
+        "offset": 3,
+        "symbol": "Rs7Tuner8_InitSession",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TU8FREE": {
+    "hex": "83 ec 04 60 56 e8 16 f9 ff ff 83 c4 04 89 44 24 20 61 ff 25 b8 31 16 5e",
+    "fixups": [
+      {
+        "offset": 6,
+        "symbol": "Rs7Tuner8_FreeSessionSize",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 20,
+        "symbol": "g_rs7_resume_TU8FREE",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TU8H": {
+    "hex": "83 ec 04 60 50 6a 00 e8 d4 d1 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TU8C": {
+    "hex": "83 ec 04 60 56 6a 01 e8 14 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TU8A": {
+    "hex": "83 ec 04 60 51 6a 02 e8 34 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8SEL": {
+    "hex": "83 ec 04 60 54 6a 00 e8 d4 d1 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8STA": {
+    "hex": "83 ec 04 60 54 6a 01 e8 b4 d1 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8STB": {
+    "hex": "83 ec 04 60 54 6a 02 e8 94 d1 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8M2E": {
+    "hex": "83 ec 04 60 54 6a 03 e8 34 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8MD2": {
+    "hex": "83 ec 04 60 54 6a 04 e8 d4 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8MD0": {
+    "hex": "83 ec 04 60 54 6a 05 e8 14 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8MD1": {
+    "hex": "83 ec 04 60 54 6a 06 e8 f4 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8MD3": {
+    "hex": "83 ec 04 60 54 6a 07 e8 b4 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8FIN": {
+    "hex": "83 ec 04 60 54 6a 08 e8 14 d4 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8FOU": {
+    "hex": "83 ec 04 60 54 6a 09 e8 f4 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PLS": {
+    "hex": "83 ec 04 60 54 6a 0a e8 f4 d1 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PEK": {
+    "hex": "83 ec 04 60 54 6a 0b e8 94 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8LET": {
+    "hex": "83 ec 04 60 54 6a 0c e8 b4 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8LPL": {
+    "hex": "83 ec 04 60 54 6a 0d e8 74 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8LRL": {
+    "hex": "83 ec 04 60 54 6a 0e e8 54 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PKS": {
+    "hex": "83 ec 04 60 54 6a 0f e8 14 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PKR": {
+    "hex": "83 ec 04 60 54 6a 10 e8 34 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PKP": {
+    "hex": "83 ec 04 60 54 6a 11 e8 54 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8PKL": {
+    "hex": "83 ec 04 60 54 6a 14 e8 74 d2 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8LOF": {
+    "hex": "83 ec 04 60 54 6a 15 e8 94 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TS8HNT": {
+    "hex": "83 ec 04 60 54 6a 16 e8 d4 d3 ff ff 83 c4 08 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Tuner8_SessTarget",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBCL": {
+    "hex": "9c 83 ec 04 60 51 6a 00 e8 b3 f3 ff ff 83 c4 08 89 44 24 20 61 ff 74 24 04 9d c2 04 00",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "Rs7Publish_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBTO": {
+    "hex": "9c 83 ec 04 60 56 6a 01 e8 93 f3 ff ff 83 c4 08 89 44 24 20 61 ff 74 24 04 9d c2 04 00",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "Rs7Publish_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBWU": {
+    "hex": "9c 83 ec 04 60 57 6a 02 e8 73 f3 ff ff 83 c4 08 89 44 24 20 61 ff 74 24 04 9d c2 04 00",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "Rs7Publish_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBNL": {
+    "hex": "50 9c 60 ff 74 24 2c 6a 00 e8 12 fa ff ff 83 c4 08 89 44 24 24 61 9d c3",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "Rs7PublishPitch_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBAN": {
+    "hex": "50 9c 60 ff 74 24 2c 6a 01 e8 32 fa ff ff 83 c4 08 89 44 24 24 61 9d c3",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "Rs7PublishPitch_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBAC": {
+    "hex": "50 9c 60 ff 74 24 2c 6a 02 e8 52 fa ff ff 83 c4 08 89 44 24 24 61 9d c3",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "Rs7PublishPitch_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGS": {
+    "hex": "3a 47 0b 73 06 ff 25 74 26 16 5e ff 25 94 26 16 5e",
+    "fixups": [
+      {
+        "offset": 7,
+        "symbol": "g_rs7_resume_PUBGS",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 13,
+        "symbol": "g_rs7_target_PUBGS",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGE1": {
+    "hex": "3a 56 0b 73 06 ff 25 78 26 16 5e ff 25 98 26 16 5e",
+    "fixups": [
+      {
+        "offset": 7,
+        "symbol": "g_rs7_resume_PUBGE1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 13,
+        "symbol": "g_rs7_target_PUBGE1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGC": {
+    "hex": "8a 48 0b 80 f9 06 76 02 b1 06 8a 50 0c ff 25 80 26 16 5e",
+    "fixups": [
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_PUBGC",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGO": {
+    "hex": "8a 50 0b 80 fa 06 72 02 b2 08 83 ec 24 ff 25 a0 26 16 5e",
+    "fixups": [
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_PUBGO",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGB": {
+    "hex": "60 ff 75 0c ff 75 08 e8 74 f5 ff ff 83 c4 08 89 44 24 1c 61 ff 25 84 26 16 5e",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Publish_GridBuild",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 22,
+        "symbol": "g_rs7_resume_PUBGB",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGA": {
+    "hex": "80 7c 24 04 06 72 21 80 7c 24 04 08 73 17 60 8b ec ff 75 28 ff 75 24 51 e8 43 3b 00 00 83 c4 0c 89 45 1c 61 c3 33 c0 c3 55 8b ec 83 ec 4c ff 25 88 26 16 5e",
+    "fixups": [
+      {
+        "offset": 25,
+        "symbol": "Rs7Gs_AttachExt",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 48,
+        "symbol": "g_rs7_resume_PUBGA",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBGF": {
+    "hex": "83 3d e0 24 16 5e 00 74 19 60 8b ec ff 75 28 57 ff 75 24 e8 88 f4 ff ff 83 c4 0c 89 45 1c 61 c2 08 00 55 8b ec 53 56 ff 25 8c 26 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_native_publish",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 20,
+        "symbol": "Rs7Publish_FingerSpan",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 41,
+        "symbol": "g_rs7_resume_PUBGF",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PUBEDGE": {
+    "hex": "60 0f b6 c9 51 50 e8 15 f5 ff ff 83 c4 08 89 44 24 1c 61 ff 25 90 26 16 5e",
+    "fixups": [
+      {
+        "offset": 7,
+        "symbol": "Rs7Publish_Edge",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 21,
+        "symbol": "g_rs7_resume_PUBEDGE",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSFR": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 50 6a 00 e8 6c f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSBD": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 01 e8 f9 f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSUL": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 02 e8 89 f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSLD": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 03 e8 e9 f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSFO": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 57 6a 04 e8 8c f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSFI": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 57 6a 05 e8 ac f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSXF": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 06 e8 09 f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSWD": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 57 6a 07 e8 2c f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSUP": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 56 6a 08 e8 6c f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSRS": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 57 6a 09 e8 ac f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 16,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSPK": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 0a e8 c9 f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSVB": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 0b e8 49 f0 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSIC": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c ff 74 24 30 6a 0c e8 09 f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSDM": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 6a 00 6a 0d e8 cb f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 17,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSGL": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 6a 00 6a 0e e8 4b f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 17,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GSHC": {
+    "hex": "83 ec 04 60 ff 74 24 2c ff 74 24 2c 6a 00 6a 0f e8 2b f1 ff ff 83 c4 10 89 44 24 20 61 c3",
+    "fixups": [
+      {
+        "offset": 17,
+        "symbol": "Rs7Gs_Target",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GRM1": {
+    "hex": "60 8b 45 08 ff 70 04 e8 e4 eb ff ff 83 c4 04 89 45 ec 61 ff 25 cc 2b 16 5e",
+    "fixups": [
+      {
+        "offset": 8,
+        "symbol": "Rs7Gs_MeshCount",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 21,
+        "symbol": "g_rs7_resume_GRM1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_GRM2": {
+    "hex": "66 81 78 3a 52 37 75 12 81 b8 ac 00 00 00 52 53 37 47 75 06 8b 44 01 40 eb 04 8b 44 01 04 8b 40 04 ff 25 d0 2b 16 5e",
+    "fixups": [
+      {
+        "offset": 35,
+        "symbol": "g_rs7_resume_GRM2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_LT1": {
+    "hex": "60 57 e8 d9 82 ff ff 83 c4 04 a3 b8 19 16 5e 61 32 c0 38 05 b8 19 16 5e ff 25 b0 19 16 5e",
+    "fixups": [
+      {
+        "offset": 3,
+        "symbol": "Rs7Asset_LetterInline",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 11,
+        "symbol": "g_rs7_lt1_inline",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 20,
+        "symbol": "g_rs7_lt1_inline",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 26,
+        "symbol": "g_rs7_resume_LT1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PSU1": {
+    "hex": "57 e8 0a ff ff ff 75 0c 66 83 f9 08 73 12 ff 25 78 19 16 5e 66 3b 4f 04 73 06 ff 25 78 19 16 5e ff 25 7c 19 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSU1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSU1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSU1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PSU2": {
+    "hex": "57 e8 da fe ff ff 75 0c 66 83 fb 08 72 12 ff 25 80 19 16 5e 66 3b 5f 04 72 06 ff 25 80 19 16 5e ff 25 84 19 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSU2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSU2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSU2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_PSM1": {
+    "hex": "50 e8 6a ff ff ff 75 0c 66 83 f9 08 73 12 ff 25 8c 19 16 5e 66 3b 48 04 73 06 ff 25 8c 19 16 5e ff 25 90 19 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "@Rs7_PegOwnedZF",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 16,
+        "symbol": "g_rs7_resume_PSM1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 28,
+        "symbol": "g_rs7_resume_PSM1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 34,
+        "symbol": "g_rs7_target_PSM1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_AL1": {
+    "hex": "83 3d a8 03 16 5e 00 75 10 55 8b ec a1 ac 27 16 5e 8b 00 ff 25 b4 19 16 5e e9 72 91 ff ff",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_asset_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 13,
+        "symbol": "g_rs7_frame_global",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 21,
+        "symbol": "g_rs7_resume_AL1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 26,
+        "symbol": "Rs7_NifHandler",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_TICK": {
+    "hex": "83 3d e0 31 16 5e 00 74 29 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 2c ff 76 28 e8 79 fe ff ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 55 8b ec 83 e4 c0 ff 25 d0 31 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_vg_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "Rs7Vg_OnTick",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 58,
+        "symbol": "g_rs7_resume_TICK",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_JUD1": {
+    "hex": "83 3d e0 31 16 5e 00 74 29 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 04 ff 76 10 e8 e9 fd ff ff 83 c4 08 0f ae 0c 24 8b e6 61 9d c6 83 c3 00 00 00 01 ff 25 d4 31 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_vg_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "Rs7Vg_OnJudge",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 59,
+        "symbol": "g_rs7_resume_JUD1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_JUD2": {
+    "hex": "83 3d e0 31 16 5e 00 74 2e 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 28 ff 76 14 0f b6 46 18 50 e8 34 fe ff ff 83 c4 0c 0f ae 0c 24 8b e6 61 9d 55 8b ec 83 e4 c0 ff 25 d8 31 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_vg_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 40,
+        "symbol": "Rs7Vg_OnScore",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 63,
+        "symbol": "g_rs7_resume_JUD2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  },
+  "Rs7_Stub_AUD1": {
+    "hex": "83 3d e0 31 16 5e 00 74 29 9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 10 ff 76 04 e8 99 fd ff ff 83 c4 08 0f ae 0c 24 8b e6 61 9d 8b 46 04 85 c0 ff 25 dc 31 16 5e",
+    "fixups": [
+      {
+        "offset": 2,
+        "symbol": "g_rs7_vg_on",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "Rs7Vg_OnInput",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 57,
+        "symbol": "g_rs7_resume_AUD1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "stubs as built at 9c0e44f (refactor step 7 batch 5)"
+  }
+}

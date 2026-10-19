@@ -1,0 +1,176 @@
+{
+  "Rs7_Stub_TM1": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_TM2": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_TM3": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_TM4": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_TM5": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_TM6": {
+    "hex": "3c 08 72 05 32 c0 c2 04 00 0f b6 c0 8b 94 81 48 09 00 00 23 54 24 04 33 c0 3b c2 1b c0 f7 d8 c2 04 00",
+    "fixups": [],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_EV1": {
+    "hex": "81 44 24 04 58 02 00 00 ff 25 d0 86 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "g_rs7_target_EV1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_EV2": {
+    "hex": "81 44 24 04 58 02 00 00 ff 25 d4 86 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "g_rs7_target_EV2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_EV3": {
+    "hex": "81 44 24 04 58 02 00 00 ff 25 d8 86 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "g_rs7_target_EV3",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_EV4": {
+    "hex": "81 44 24 04 58 02 00 00 ff 25 dc 86 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "g_rs7_target_EV4",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_EV5": {
+    "hex": "81 44 24 04 58 02 00 00 ff 25 e0 86 16 5e",
+    "fixups": [
+      {
+        "offset": 10,
+        "symbol": "g_rs7_target_EV5",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_S4": {
+    "hex": "60 56 50 53 e8 87 fb ff ff 83 c4 0c 61 ff 25 98 87 16 5e",
+    "fixups": [
+      {
+        "offset": 5,
+        "symbol": "Rs7_OnSongTuning",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 15,
+        "symbol": "g_rs7_target_S4",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_PC2": {
+    "hex": "83 fe 06 72 2f 85 c9 74 2b 50 51 52 8d 41 bc 6a 00 50 e8 a9 fa ff ff 83 c4 08 85 c0 5a 59 58 74 13 8d 49 14 ff 74 24 04 e8 53 ff ff ff 83 c4 04 8d 49 ec c3 ff 25 80 87 16 5e",
+    "fixups": [
+      {
+        "offset": 19,
+        "symbol": "Rs7Pitch_Tailed",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 41,
+        "symbol": "Rs7_Pitch_Raw8",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 54,
+        "symbol": "g_rs7_target_PC2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_PC3": {
+    "hex": "83 fe 06 72 32 85 c9 74 2e 50 51 52 8d 81 c0 ec ff ff 6a 01 50 e8 66 fa ff ff 83 c4 08 85 c0 5a 59 58 74 13 8d 49 78 ff 74 24 04 e8 10 ff ff ff 83 c4 04 8d 49 88 c3 ff 25 84 87 16 5e",
+    "fixups": [
+      {
+        "offset": 22,
+        "symbol": "Rs7Pitch_Tailed",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 44,
+        "symbol": "Rs7_Pitch_Raw8",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 57,
+        "symbol": "g_rs7_target_PC3",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  },
+  "Rs7_Stub_PSL2": {
+    "hex": "ff 74 24 04 ff 15 c8 7c 16 5e c6 43 08 01 60 53 e8 ab fe ff ff 83 c4 04 61 c2 04 00",
+    "fixups": [
+      {
+        "offset": 6,
+        "symbol": "g_rs7_target_PSL2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 17,
+        "symbol": "Rs7_PegSetLoaded",
+        "addend": 0,
+        "relative": true
+      }
+    ],
+    "source": "b6071a8 (main before batch 4 of the call sites; Rs7_OnSongTuning exported)"
+  }
+}

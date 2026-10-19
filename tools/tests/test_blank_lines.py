@@ -109,7 +109,7 @@ def test_asm_blocks_and_runs_of_asm_statements():
 
 
 def test_asm_contents_are_never_touched():
-    src = "RS7_STUB(Stub) {\n    __asm {\n        push eax\n\n        pop eax\n    lbl:\n        ret\n    }\n}\n"
+    src = 'extern "C" __declspec(dllexport) __declspec(naked) void Stub() {\n    __asm {\n        push eax\n\n        pop eax\n    lbl:\n        ret\n    }\n}\n'
     check(src)
 
 
@@ -122,7 +122,7 @@ def test_stub_heads_and_calling_conventions_parse():
         "DWORD WINAPI Worker(LPVOID) {\n    const int t = 1;\n    run(t);\n}\n",
         "DWORD WINAPI Worker(LPVOID) {\n    const int t = 1;\n\n    run(t);\n}\n",
     )
-    check("RS7_STUB(Stub) {\n    __asm { ret }\n}\n")
+    check('extern "C" __declspec(dllexport) __declspec(naked) void Stub() {\n    __asm { ret }\n}\n')
 
 
 def test_comments_stay_attached_to_the_following_statement():
@@ -199,11 +199,11 @@ def test_crlf_files_get_crlf_blank_lines():
 
 
 def test_sanitize_keeps_length_and_newlines():
-    src = b'extern "C" __declspec(dllexport) int __cdecl F() {\n  __asm {\n    nop\n  }\n  RS7_STUB(x) \n}\n'
+    src = b'extern "C" __declspec(dllexport) int __cdecl F() {\n  __asm {\n    nop\n  }\n  use(x); \n}\n'
     text, asm = bl.sanitize(src)
     assert len(text) == len(src)
     assert [i for i, c in enumerate(text) if c == 10] == [i for i, c in enumerate(src) if c == 10]
-    assert list(asm.values()) == [src.index(b"}\n  RS7") + 1]
+    assert list(asm.values()) == [src.index(b"}\n  use") + 1]
 
 
 def tracked_cpp() -> list[Path]:

@@ -1,0 +1,76 @@
+# Gates that need no game executable. The tests that read the user's own Rocksmith exe or memory snapshot skip
+# (RS7_GAME_FILES points at an empty folder, tools/game_files.py); they, sitecheck.py and the in-game checks stay
+# local (docs/DEVELOPMENT.md, "Continuous integration").
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # every push to main finishes its run
+
+env:
+  PYTEST_ADDOPTS: -p no:faulthandler
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install clang-format (pinned to the version the sources are formatted with)
+        shell: pwsh
+        run: |
+          uv tool install clang-format==23.1.1
+          (uv tool dir --bin) | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Python environment (dev group with pytest, ruff, tree-sitter)
+        run: uv sync
+
+      # Format + layout check, DLL + native unit tests, the unit tests again under AddressSanitizer. -Toolset auto:
+      # v145 when the runner has it, else its newest toolset (the project files are not changed).
+      - name: Build, native tests, ASan tests
+        shell: pwsh
+        run: .\build.ps1 -Toolset auto -Asan -SkipAnalysis
+
+      - name: Exports of the built DLL
+        run: uv run python tools\check_exports.py bin\Release\dinput8.dll
+
+      - name: Python tests (the game-file tests skip)
+        shell: pwsh
+        run: .\scripts\pytest_nogame.ps1
+
+  # The /analyze baseline (tools/analyze_baseline.json) was recorded with MSVC 14.51 (VS 2026 Build Tools). Another
+  # MSVC (the hosted images ship VS 2022, 14.4x) reports a different set, so this job may fail without a real
+  # regression: informational until the runner image has the same MSVC, then drop continue-on-error. build.ps1
+  # runs the gate locally on every build.
+  analysis:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Python environment
+        run: uv sync
+
+      - name: MSVC version
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          Get-ChildItem "$vs\VC\Tools\MSVC" -Directory | ForEach-Object Name
+
+      - name: Static analysis gate
+        shell: pwsh
+        run: .\build.ps1 -Toolset auto -NoTests -SkipFormatCheck

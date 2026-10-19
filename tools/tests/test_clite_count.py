@@ -1,6 +1,6 @@
 """fix/clite3: static checks behind docs/ARCHITECTURE.md.
 
-- Door (b): every return address in core/clite.h kRetModeEntries is a `call 0x5B6030` (Play_Tuning_SetPlayerTargetTuning)
+- Door (b): every return address in features/clite/clite.h kRetModeEntries is a `call 0x5B6030` (Play_Tuning_SetPlayerTargetTuning)
   in the game, and every caller of 0x5B6030 is classified (song select, mode entry, or deliberately left out).
 - Door (a): the byte shapes the audit's verdicts rest on (InstrumentInfo per-string flag fill 0x58AC20 stays inside the
   native 0x48-byte InstrumentInfo; the Session Mode harmony readers index [6][26]-sized rows with info+0Bh).
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 import struct
-import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,10 +17,9 @@ import capstone
 import pefile
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import gen_fncopy  # noqa: E402
+import gen_fncopy
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "core"
+SRC = Path(__file__).resolve().parents[2] / "src" / "features" / "clite"
 TARGET_TUNING = 0x5B6030
 SONG_SELECT = 0x697A24
 # Callers of 0x5B6030 that must NOT rebuild (they can run around a 7-string song): the tuner's in-session re-stores
@@ -35,7 +33,7 @@ LEFT_OUT = {
 }
 
 
-# fix/menutuner: the tuning-list screen's stores rebuild to the picked tuning (core/clite.h kRetTunerMenu).
+# fix/menutuner: the tuning-list screen's stores rebuild to the picked tuning (features/clite/clite.h kRetTunerMenu).
 TUNER_MENU = {
     0x745E46: "TuningOptionsMenu select 0x745D90 (player 0)",
     0x745EC3: "TuningOptionsMenu select 0x745D90 (MP)",
@@ -158,7 +156,7 @@ def test_instrumentinfo_flag_fill_stays_inside_the_native_info():
     assert _bytes(0x58AC26, 3) == bytes.fromhex("8A 51 0B")  # mov dl,[ecx+0Bh]
     assert _bytes(0x58AC85, 4) == bytes.fromhex("89 54 B1 20")  # mov [ecx+esi*4+20h],edx
     assert _bytes(0x58AC8B, 3) == bytes.fromhex("3A 41 0B")  # cmp al,[ecx+0Bh]
-    h = (SRC / "gsnative.h").read_text(encoding="utf-8")
+    h = (SRC.parent / "strings" / "strings.h").read_text(encoding="utf-8")
     size = int(re.search(r" kInfoSize = (0x[0-9A-F]+)", h).group(1), 16)
     active = int(re.search(r"kInfoActive = (0x[0-9A-F]+)", h).group(1), 16)
     stock = int(re.search(r"kStockInfoSize = (0x[0-9A-F]+)", h).group(1), 16)

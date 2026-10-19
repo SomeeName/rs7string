@@ -16,6 +16,7 @@ import itertools
 from pathlib import Path
 
 import capstone
+import game_files
 import pefile
 
 from sitetable import REF_KINDS, Site, load, parse_pattern
@@ -24,11 +25,11 @@ from sitetable import REF_KINDS, Site, load, parse_pattern
 # field "native" means written only when the switch is 1, "" always (the "legacy" variants went in 1.0).
 # native_colours has no site field: the CM* sites are written with 1 only.
 SWITCH_NAMES = ("strings", "fretgrid", "colours", "pitch", "nextgrid", "publish", "chordloops", "tuner", "clite")
-# clite ([neck] clite, core/clite.h): the GK* sites; GKC replaces PSQ1 (it writes the peg word itself).
+# clite ([neck] clite, features/clite/clite.h): the GK* sites; GKC replaces PSQ1 (it writes the peg word itself).
 # publish (native_publish) is effective only with all five layouts on: PUBLISH_LAYOUTS.
 PUBLISH_LAYOUTS = ("strings", "fretgrid", "colours", "pitch", "nextgrid")
 CHORDLOOPS_OFF = frozenset({"N22", "N23", "NF2", "NF3", *[f"CT{i}" for i in range(4, 12)]})
-# tuner (native_tuner, core/tuner8.h): effective only with strings, fretgrid, colours.
+# tuner (native_tuner, features/tuner/hooks.h): effective only with strings, fretgrid, colours.
 
 
 def written_under(site: Site, state: dict[str, bool]) -> bool:
@@ -61,9 +62,8 @@ def written_under(site: Site, state: dict[str, bool]) -> bool:
     return True
 
 
-ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SITES = Path(__file__).resolve().parents[1] / "sites.json"  # this checkout
-DEFAULT_EXE = ROOT / "original" / "Rocksmith2014.analysis.exe"
+DEFAULT_EXE = game_files.ANALYSIS_EXE
 
 
 def find_all(data: bytes, pattern: list[int | None]) -> list[int]:

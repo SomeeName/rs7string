@@ -1,4 +1,4 @@
-"""[neck] native_pitch (issue #18 stage 5 area 3, core/pitch8.h) in Unicorn on the game snapshot.
+"""[neck] native_pitch (issue #18 stage 5 area 3, features/pitch/pitch.h) in Unicorn on the game snapshot.
 
 Three emulators: stock (no site written), `cur` (today's default build: every site but the P* ones,
 string 6 through S1/S2/S3/I1) and `nat` (also the P* sites, g_rs7_native_pitch = 1, _msize replaced by
@@ -25,7 +25,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
-from test_emu import ALL_REGS, CODE, DATA, RET_MAGIC, STACK, Emu, site_va
+from emu_harness import ALL_REGS, CODE, DATA, RET_MAGIC, STACK, Emu, site_va
 
 MSIZE_CODE = CODE + 0x1000
 MSIZE_VAL = DATA + 0xE0000
@@ -137,7 +137,18 @@ def test_pe0_string_past_the_vector_takes_the_stock_failure_path(emus3, string, 
     assert nat.read(esp, 8) == stock.read(esp, 8)  # return 0x873F13 + the 119C8A8h argument
 
 
-# ---- Rs7_Pitch_Raw8: 0x873F80 port (raw int16 pointer) -------------------------------------------
+# ---- the PUBAN copy's expected pitch over the tail (Rs7_Mid_PubTailPitch, a light call entry; was Rs7_Pitch_Raw8)
+
+
+def tail_pitch_entry(emu: Emu) -> int:
+    """The light call entry the publication builds for the PUBAN copy (Before placement, callee 0x873F80 never runs),
+    built by the DLL's own emitter."""
+    out, esp = CODE + 0xE8000, STACK + 0x70000  # below RET_MAGIC (CODE + 0xF0000)
+    callback = emu.exports["Rs7_Mid_PubTailPitch"]
+    emu.uc.mem_write(esp, struct.pack("<9I", RET_MAGIC, out, 256, out, EXPECT_RAW, out, callback, 1, 0))
+    emu.run(emu.exports["Rs7Mid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: esp})
+    assert emu.uc.reg_read(UC_X86_REG_EAX) > 0
+    return out
 
 
 def call_raw(emu: Emu, start: int, ptr: int, instrument: int, string: int, fret: int):
@@ -170,7 +181,7 @@ def test_raw8_equals_stock_on_six_entries(emus3, instrument, string):
     tuning = [3, -1, 0, 2, -5, 1, 7, 9]
     for emu in (stock, nat):
         emu.uc.mem_write(RAW, struct.pack("<8h", *tuning))
-    raw8 = nat.exports["Rs7_Pitch_Raw8"]
+    raw8 = tail_pitch_entry(nat)
     for fret in (0, 5):
         assert call_raw(nat, raw8, RAW, instrument, string, fret) == call_raw(
             stock, EXPECT_RAW, RAW, instrument, string, fret
@@ -183,7 +194,7 @@ def test_raw8_equals_stock_on_six_entries(emus3, instrument, string):
 def test_raw8_strings_6_7_read_the_tail(emus3):
     _, _, nat = emus3
     nat.uc.mem_write(RAW, struct.pack("<8h", 0, 0, 0, 0, 0, 0, -2, 1))
-    raw8 = nat.exports["Rs7_Pitch_Raw8"]
+    raw8 = tail_pitch_entry(nat)
     assert call_raw(nat, raw8, RAW, 1, 6, 4)[0] == 35 - 2 + 4
     assert call_raw(nat, raw8, RAW, 0, 7, 4)[0] == 30 + 1 + 4
     assert i32(call_raw(nat, raw8, RAW, 2, 6, 4)[0]) == 3  # bass: stock fret - 1
@@ -194,7 +205,17 @@ def test_raw8_strings_6_7_read_the_tail(emus3):
 PC_OFF = {"PC1": (MAT, 0x44), "PC2": (MAT, 0x44), "PC3": (DET, 0x1340), "PC4": (MAT, 0x44)}
 
 
+def register_tails(emu: Emu):
+    """The DLL's own tail writers (PM0 Rs7Pitch_MatNew, PR0 Rs7Pitch_DetReset) on MAT / DET: they record the objects in
+    the registry of tailed allocations that Rs7Pitch_Tailed reads, if _msize reports the native block size."""
+    for name, obj in (("Rs7Pitch_MatNew", MAT), ("Rs7Pitch_DetReset", DET)):
+        esp = STACK + 0x80000
+        emu.uc.mem_write(esp, struct.pack("<II", RET_MAGIC, obj))
+        emu.run(emu.exports[name], RET_MAGIC, {UC_X86_REG_ESP: esp})
+
+
 def native_objects(emu: Emu, t8: list[int], magic=MAGIC):
+    register_tails(emu)
     emu.uc.mem_write(MAT + MAT_T8, struct.pack("<8h", *t8))
     emu.uc.mem_write(MAT + MAT_MAGIC, struct.pack("<I", magic))
     emu.uc.mem_write(DET + DET_T8, struct.pack("<8h", *t8))
@@ -211,7 +232,7 @@ def test_pc_strings_0_to_5_run_the_stock_function(emus3, sid, string):
     t8 = [3, -1, 0, 2, -5, 1, -2, 4]
     native_objects(nat, t8)
     native_objects(stock, t8)
-    stub = nat.exports[f"Rs7_Stub_{sid}"]
+    stub = nat.hook_entry(sid)
     assert call_raw(nat, stub, base + off, 1, string, 7) == call_raw(stock, EXPECT_RAW, base + off, 1, string, 7)
 
 
@@ -222,29 +243,24 @@ def test_pc_string_6_of_a_native_object_is_the_current_hook_value(emus3, sid, t6
     _, _, nat = emus3
     base, off = PC_OFF[sid]
     native_objects(nat, [0, 0, 0, 0, 0, 0, t6, -1])
-    regs = call_raw(nat, nat.exports[f"Rs7_Stub_{sid}"], base + off, 1, 6, 5)
+    regs = call_raw(nat, nat.hook_entry(sid), base + off, 1, 6, 5)
     assert regs[0] == 35 + t6 + 5
     assert regs[2] == base + off  # ECX restored for the caller
     assert regs[3] == 0xFFFFFFFF  # EDX = instrument - 2, as the stock function leaves it
-    assert i32(call_raw(nat, nat.exports[f"Rs7_Stub_{sid}"], base + off, 1, 7, 5)[0]) == 30 - 1 + 5
+    assert i32(call_raw(nat, nat.hook_entry(sid), base + off, 1, 7, 5)[0]) == 30 - 1 + 5
 
 
 @pytest.mark.parametrize("sid", sorted(PC_OFF))
 @pytest.mark.parametrize("case", ["no_magic", "stock_size"])
 def test_pc_without_a_tail_or_null_goes_to_the_stock_function(emus3, sid, case):
-    """stock_size: an object allocated before PA1/PA2 (the magic bytes past its block happen to match):
-    _msize says stock size, so the stub must not use (or read) anything past it."""
+    """stock_size: an object allocated before PA1/PA2 (the magic bytes past its block happen to match): _msize said
+    stock size when the DLL's writers saw it, so it is not in the registry of tailed allocations and the hook must not
+    use (or read) anything past it."""
     _, _, nat = emus3
     base, off = PC_OFF[sid]
-    native_objects(nat, [0] * 8, magic=0 if case == "no_magic" else MAGIC)
     if case == "stock_size":
         set_msize(nat, 0x13B8 if base == DET else 0x58)
-    assert nat.uc.mem_read(nat.exports[f"g_rs7_target_{sid}"], 4) == struct.pack("<I", EXPECT_RAW)
-    # The stock target is swapped for a never-translated sentinel: Unicorn bakes `until` into translated
-    # blocks, and the block at 0x873F80 is cached from earlier calls.
-    sentinel = CODE + 0x2000
-    var = nat.exports[f"g_rs7_target_{sid}"]
-    nat.uc.mem_write(var, struct.pack("<I", sentinel))
+    native_objects(nat, [0] * 8, magic=0 if case == "no_magic" else MAGIC)
     stock_end = base + (0x13B8 if base == DET else 0x58)
     past = []
     hook = nat.uc.hook_add(
@@ -254,14 +270,13 @@ def test_pc_without_a_tail_or_null_goes_to_the_stock_function(emus3, sid, case):
         for ptr in (base + off, 0):
             esp = STACK + 0x80000
             nat.uc.mem_write(esp, struct.pack("<II", RET_MAGIC, 5))
-            nat.run(
-                nat.exports[f"Rs7_Stub_{sid}"],
-                sentinel,
+            nat.run_to_callee(
+                nat.hook_entry(sid),
+                EXPECT_RAW,
                 {UC_X86_REG_ESP: esp, UC_X86_REG_ECX: ptr, UC_X86_REG_EDX: 1, UC_X86_REG_ESI: 6},
             )
             assert nat.regs(UC_X86_REG_ESP, UC_X86_REG_ECX) == (esp, ptr)
     finally:
-        nat.uc.mem_write(var, struct.pack("<I", EXPECT_RAW))
         set_msize(nat, 0x10000)
         nat.uc.hook_del(hook)
     if case == "stock_size":
@@ -414,7 +429,7 @@ def test_pm0_matcher_ctor_tail(emus3):
     nat.uc.mem_write(MAT, b"\xcd" * MAT_SIZE)
     esp = STACK + 0x80000
     resume = site_va("PM0") + 7
-    nat.run(nat.exports["Rs7_Stub_PM0"], resume, {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: MAT, UC_X86_REG_ECX: 0})
+    nat.run(site_va("PM0"), resume, {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: MAT, UC_X86_REG_ECX: 0})
     m = nat.read(MAT, MAT_SIZE)
     assert struct.unpack_from("<i", m, 0x40)[0] == -1
     assert m[MAT_T8 : MAT_T8 + 16] == bytes(16)

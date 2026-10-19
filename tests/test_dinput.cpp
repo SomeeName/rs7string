@@ -1,6 +1,6 @@
 #include "test.h"
 #define DIRECTINPUT_VERSION 0x0800
-#include "core/dinput.h"
+#include "dinput_wrap.h"
 #include <dinput.h>
 
 TEST(dinput_background_holds_keyboard_and_mouse_to_foreground) {
@@ -52,4 +52,32 @@ TEST(dinput_parse_key_line_rejects_integer_overflow) {
     CHECK(!Rs7Dinput_ParseKeyLine("k 1E 4294967297", &dik, &down));
     CHECK(!Rs7Dinput_ParseKeyLine("k 100000000000000000000000000000001 1", &dik, &down));
     CHECK(dik == 7 && down);
+}
+
+TEST(dinput_mask_mouse_keeps_movement_and_clears_wheel_and_buttons) {
+    DIMOUSESTATE2 s{};
+
+    s.lX = 5;
+    s.lY = -3;
+    s.lZ = 120;
+    s.rgbButtons[0] = 0x80;
+    s.rgbButtons[7] = 0x80;
+    Rs7Dinput_MaskMouseState(&s, sizeof s);
+    CHECK(s.lX == 5 && s.lY == -3 && s.lZ == 0);
+    CHECK(s.rgbButtons[0] == 0 && s.rgbButtons[7] == 0);
+
+    DIMOUSESTATE v1{};
+
+    v1.rgbButtons[1] = 0x80;
+    Rs7Dinput_MaskMouseState(&v1, sizeof v1);
+    CHECK(v1.rgbButtons[1] == 0);
+    Rs7Dinput_MaskMouseState(nullptr, sizeof v1);
+}
+
+TEST(dinput_mouse_click_or_wheel_events_are_wheel_and_buttons_only) {
+    CHECK(!Rs7Dinput_IsMouseClickOrWheel(DIMOFS_X));
+    CHECK(!Rs7Dinput_IsMouseClickOrWheel(DIMOFS_Y));
+    CHECK(Rs7Dinput_IsMouseClickOrWheel(DIMOFS_Z));
+    CHECK(Rs7Dinput_IsMouseClickOrWheel(DIMOFS_BUTTON0));
+    CHECK(Rs7Dinput_IsMouseClickOrWheel(DIMOFS_BUTTON7));
 }

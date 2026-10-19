@@ -16,6 +16,7 @@ from unicorn.x86_const import *
 import gen_fncopy as fc
 import gen_publish as pub
 import sitetable
+from emu_harness import callin_entry, site_mid_entry
 
 DLL = pub.REPO / "bin/Release/dinput8.dll"
 pytestmark = pytest.mark.skipif(not DLL.exists() or not fc.EXE.exists(), reason="needs offline exe and built DLL")
@@ -56,6 +57,7 @@ class Machine:
             u.mem_write(base + s.VirtualAddress, s.get_data())
         self.exports = {s.name.decode(): base + s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols if s.name}
         self.sizes = {MAT: 0x6C, DET: 0x13E0}
+        self.entries = {}
         self.reads = []
         self.u32(self.exports["g_rs7_publish_ports"], 1)
         self.u32(self.exports["g_rs7_fn_msize"], FAKE)
@@ -75,7 +77,7 @@ class Machine:
                     e.write
                     if not e.sym
                     else b"\xe8"
-                    + struct.pack("<i", self.exports[e.sym] - (va + e.off + 5))
+                    + struct.pack("<i", self.callin(e.sym) - (va + e.off + 5))
                     + b"\x90" * (len(e.expect) - 5)
                 )
                 out[e.off : e.off + len(e.expect)] = wr
@@ -99,6 +101,20 @@ class Machine:
         sp = u.reg_read(UC_X86_REG_ESP)
         p = self.get32(sp + 4)
         u.reg_write(UC_X86_REG_EAX, self.sizes.get(p, 0))
+
+    def entry(self, sid):
+        """The mid-hook entry of `sid` (built once), as the game's patched entry jump reaches it."""
+        if sid not in self.entries:
+            out = COPIES + 0x8000 + 0x100 * len(self.entries)
+            self.entries[sid] = site_mid_entry(self.uc, self.exports, sid, out, STACK + 0x1F000, RET)
+        return self.entries[sid]
+
+    def callin(self, sym):
+        """The call-in entry a copy's call edit goes to (built once), as Rs7Fn_Build writes it."""
+        if sym not in self.entries:
+            out = COPIES + 0x8000 + 0x100 * len(self.entries)
+            self.entries[sym] = callin_entry(self.uc, self.exports, sym, out, STACK + 0x1F000, RET)
+        return self.entries[sym]
 
     def u32(self, a, v):
         self.uc.mem_write(a, struct.pack("<I", v & 0xFFFFFFFF))
@@ -182,7 +198,7 @@ def test_tolerance_copy_and_guard_preserve_six_string_formula_and_stack(m, pitch
     m.uc.mem_write(DET + 0x13C8, struct.pack("<h", 40 + offset))
     m.uc.mem_write(MAT + 0x50, struct.pack("<f", 0.45))
     out = []
-    for entry in (0x4E58E0, m.exports["Rs7_Stub_PUBTO"]):
+    for entry in (0x4E58E0, m.entry("PUBTO")):
         m.call(entry, (pitch,), {UC_X86_REG_ESI: MAT})
         out.append((m.uc.reg_read(UC_X86_REG_FP0), m.uc.reg_read(UC_X86_REG_FPSW), m.uc.reg_read(UC_X86_REG_ESP)))
     assert out[0] == out[1]
@@ -214,7 +230,7 @@ def test_wire_update_visits_only_active_records(m, n):
         m.uc.mem_write(rec, b"\x01")
         for off in (8, 12, 28, 32):
             m.u32(rec + off, 1)
-    m.call(m.exports["Rs7_Stub_PUBWU"], (cells,), {UC_X86_REG_EAX: row, UC_X86_REG_EDI: GRID})
+    m.call(m.entry("PUBWU"), (cells,), {UC_X86_REG_EAX: row, UC_X86_REG_EDI: GRID})
     for s in range(8):
         assert bytes(m.uc.mem_read(row + 0xA0 + 0x30 * s, 1)) == bytes((0 if s < n else 1,))
 

@@ -13,6 +13,6 @@ def test_extrapolated_attach_meets_string_size_7_nut_end(tmp_path):
 def test_segment_7_node_is_not_sheared():
     # The old workaround wrote a shear into string_size_7's local rotate (+4Ch) / translate (+70h), 0.30 at
     # the nut end: more than the end radius (0.20), the visible gap at the nut. The model's node stays as is.
-    source = (ROOT / "src/core/assetload.cpp").read_text()
+    source = "".join(p.read_text() for p in sorted((ROOT / "src/core").glob("assetload_*.cpp")))
     assert "kSeg7NutDrop" not in source
     assert "h.seg7 + 0x4C" not in source and "h.seg7 + 0x70" not in source

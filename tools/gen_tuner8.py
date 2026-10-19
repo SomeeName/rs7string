@@ -9,7 +9,7 @@ uv run python tools/gen_tuner8.py
 from pathlib import Path
 import gen_fncopy as fc
 
-OUT = Path(__file__).resolve().parents[1] / "src/core/tuner8_specs.generated.h"
+OUT = Path(__file__).resolve().parents[1] / "src/features/tuner/tuner8_specs.generated.h"
 FNS = [
     fc.Fn(
         "TU8H",
@@ -45,7 +45,7 @@ FNS = [
             # PUBEDGE (feat/publish, 0x7E72D0..DC) lives inside this range: the copy calls the helper that
             # does the stock expression on the active count, or publish's physical edge when native_publish
             # is on (it replaces the former `mov al,[eax+0Bh]` -> [eax+40h] edit at 0x7E72D8).
-            0x7E72D0: ("call", "Rs7_Call_PubEdge", 13),
+            0x7E72D0: ("call", "g_rs7_callin_PubEdge", 13),
             0x7E7465: ("bytes", "8B 44 86 04", "8B 44 86 40"),
             0x7E749C: ("bytes", "8B 44 8E 04", "8B 44 8E 40"),
             # Stock signed JL accepts -1 and later narrows it to 255. Unsigned JB
