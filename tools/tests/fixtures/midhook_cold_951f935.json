@@ -442,8 +442,8 @@
     "fixups": [
       {
         "offset": 2,
-        "symbol": "g_rs7_pegsets",
-        "addend": -8,
+        "symbol": "g_rs7_pegnames",
+        "addend": 0,
         "relative": false
       },
       {

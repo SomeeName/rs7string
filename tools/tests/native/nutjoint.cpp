@@ -6,7 +6,7 @@
 // T(3.85, -68.85, -1.143) (the measured world end of string_size_7: (0.000, -53.642, 5.628)).
 #include <cmath>
 #include <cstdio>
-#include "core/gsnative.h"
+#include "features/strings/strings.h"
 
 static int fails = 0;
 static void Check(bool ok, const char* what, double got, double want) {

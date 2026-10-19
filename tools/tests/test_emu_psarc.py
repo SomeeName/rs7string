@@ -1,6 +1,6 @@
-"""The plain-PSARC unit (core/plainpsarc.h, sites PP_TOC / PP_SNGF / PP_SNGD) in Unicorn on the game snapshot.
+"""The plain-PSARC unit (features/psarc/psarc.h, sites PP_TOC / PP_SNGF / PP_SNGD) in Unicorn on the game snapshot.
 
-Stock and patched emulators (test_emu.Emu: the patched one has every site written, the PP_* ones
+Stock and patched emulators (emu_harness.Emu: the patched one has every site written, the PP_* ones
 included). Encrypted inputs must take the stock path with the stock register state; plain inputs (PSARC
 archiveFlags bit 4 clear, SNG flags 1) take the plain path of the plain-PSARC enabler build (PR #1).
 Nothing is decrypted: the SNG decrypt the stub falls through to is replaced by a marker function.
@@ -24,7 +24,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
-from test_emu import CODE, DATA, STACK, Emu, site_va
+from emu_harness import CODE, DATA, STACK, Emu, site_va
 
 TOC = site_va("PP_TOC")  # 0x8A3643, mov ecx,10h
 SNGF = site_va("PP_SNGF")  # 0x558C1A, cmp [esp+68h],3
@@ -107,7 +107,7 @@ def run_sngf(emu: Emu, flags: int) -> int:
     stop = emu.uc.hook_add(UC_HOOK_CODE, lambda uc, a, s, u: uc.emu_stop(), begin=SNGF_REJECT, end=SNGF_REJECT)
     try:
         emu.uc.reg_write(UC_X86_REG_ESP, esp)
-        emu.uc.emu_start(SNGF, SNGF_OK, count=50)
+        emu.uc.emu_start(SNGF, SNGF_OK, count=2000)  # the mid-hook thunk runs a few hundred
     finally:
         emu.uc.hook_del(stop)
     assert emu.uc.reg_read(UC_X86_REG_ESP) == esp

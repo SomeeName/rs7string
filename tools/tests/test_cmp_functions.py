@@ -130,11 +130,12 @@ def test_parse_map_reads_publics_statics_and_section_classes(tmp_path: Path):
     )
     syms, classes = c.parse_map(m)
     assert classes == {1: "CODE", 2: "DATA"}
+    canon = c.Names().canon  # names are stored normalised (demangled where dbghelp can)
     assert [(s.name, s.func, s.va) for s in syms] == [
-        ("?Foo@@YAXXZ", True, 0x5E001010),
-        ("?Inl@@YAXXZ", True, 0x5E001020),
-        ("?g@@3HA", False, 0x5E002030),
-        ("?Stat@@YAXXZ", True, 0x5E001040),
+        (canon("?Foo@@YAXXZ"), True, 0x5E001010),
+        (canon("?Inl@@YAXXZ"), True, 0x5E001020),
+        (canon("?g@@3HA"), False, 0x5E002030),
+        (canon("?Stat@@YAXXZ"), True, 0x5E001040),
     ]
 
 
@@ -146,7 +147,12 @@ def test_the_line_number_argument_of_the_test_fail_call_is_masked():
         code += b"\x68" + struct.pack("<I", BASE + 0x9010)  # push <__FILE__>
         code += b"\xe8" + struct.pack("<i", fail - (at + len(code) + 5))  # call rs7test::Fail
         code += b"\xc3"
-        names = {at: "?T@@YAXXZ", fail: "?Fail@rs7test@@YAXPBDH0@Z", BASE + 0x9000: "$SG1", BASE + 0x9010: "$SG2"}
+        names = {
+            at: "?T@@YAXXZ",
+            fail: c.Names().canon("?Fail@rs7test@@YAXPBDH0@Z"),
+            BASE + 0x9000: "$SG1",
+            BASE + 0x9010: "$SG2",
+        }
         return FakeImage({at: code}, names), at, at + len(code)
 
     a, sa, ea = build(BASE + 0x1000, b"\x6a\x09")  # push 9

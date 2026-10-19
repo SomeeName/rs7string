@@ -9,7 +9,7 @@ than a Python model.
 import struct
 import pytest
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP
-from test_emu import Emu, CODE, DATA, STACK, RET_MAGIC
+from emu_harness import Emu, CODE, DATA, STACK, RET_MAGIC
 
 SESSION, GUITAR, GS, INFO = (DATA + n for n in (0x10000, 0x12000, 0x14000, 0x16000))
 DET, INPUT, MAT, VEC = (DATA + n for n in (0x20000, 0x24000, 0x26000, 0x28000))
@@ -33,7 +33,7 @@ def call(e, name, *args):
 def setup(tuning, built=None, bass=False, enabled=True):
     e = Emu(patched=False)
     required = ("Rs7Song_WidenDetector", "Rs7Pitch_SetSongCount", "Rs7Pitch_SongCount")
-    assert all(n in e.exports for n in required), "Rebuild DLL with publish_state.cpp before the song-setup tests"
+    assert all(n in e.exports for n in required), "Rebuild DLL with publish/hooks_song.cpp before the song-setup tests"
     for name, value in [
         ("g_rs7_native_publish", enabled),
         ("g_rs7_publish_ports", 1),
@@ -60,6 +60,10 @@ def setup(tuning, built=None, bass=False, enabled=True):
     put(e, DET + 0x13D8, "II", 4 if bass else 6, 0x38503752)
     put(e, VEC, "II", VEC + 0x100, VEC + 0x100 + 2 * len(tuning))
     put(e, VEC + 0x100, "h" * len(tuning), *tuning)
+    # The DLL's tail writers (PM0, PR0) record MAT / DET in the registry of tailed allocations Rs7Pitch_Tailed reads;
+    # they leave the magic and the stock count written above.
+    call(e, "Rs7Pitch_MatNew", MAT)
+    call(e, "Rs7Pitch_DetReset", DET)
     return e
 
 
@@ -96,7 +100,7 @@ def test_a_guitar_built_with_another_count_is_not_widened(built):
 
 def test_a_failed_neck_is_not_widened():
     # Review F3: GridBuild gave up on this guitar (5 s timeout without cells 6/7) -> its wait entry is marked failed
-    # (WaitEntry: grid +0, owner +32, failed +36, 40 bytes; static_assert in publish_grid.cpp).
+    # (WaitEntry: grid +0, owner +32, failed +36, 40 bytes; static_assert in features/publish/hooks_grid.cpp).
     e = setup([0] * 7)
     entry = e.exports["g_rs7_publish_wait"]
     put(e, entry, "I", DATA + 0x30000)

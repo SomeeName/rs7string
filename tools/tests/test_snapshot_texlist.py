@@ -1,4 +1,4 @@
-"""Pin the engine texture-list layout (src/core/texlist.h, plan "Offline findings") in the memory snapshot.
+"""Pin the engine texture-list layout (src/d3d/texlist.h, plan "Offline findings") in the memory snapshot.
 
 Walks Gamebryo's global NiTexture list from [0x1360B00] with the rs7tex constants parsed out of
 texlist.h, the way Rs7Tex_Walk does, and checks the stock colour ramps the Step 2 swap relies on.
@@ -16,12 +16,12 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+import game_files
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-SNAPSHOT = ROOT / "rskeys" / "snapshot"
-TEXLIST_H = Path(__file__).resolve().parents[2] / "src" / "core" / "texlist.h"  # this checkout
-sys.path.insert(0, str(ROOT / "scripts"))
+SNAPSHOT = game_files.SNAPSHOT
+TEXLIST_H = Path(__file__).resolve().parents[2] / "src" / "d3d" / "texlist.h"  # this checkout
+sys.path.insert(0, str(game_files.SCRIPTS))
 
 pytestmark = pytest.mark.skipif(not (SNAPSHOT / "memory.bin").exists(), reason="needs the memory snapshot")
 

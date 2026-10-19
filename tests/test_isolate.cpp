@@ -1,14 +1,15 @@
-#include "core/colournative.h"
-#include "core/diagrams.h"
-#include "core/fretgrid.h"
-#include "core/gsnative.h"
-#include "core/nextgrid.h"
-#include "core/pitch8.h"
-#include "core/publish.h"
-#include "core/resolve.h"
-#include "core/tuner8.h"
+#include "features/colours/colours.h"
+#include "features/diagrams/diagrams.h"
+#include "features/fretgrid/fretgrid.h"
+#include "features/nextgrid/nextgrid.h"
+#include "features/pitch/pitch.h"
+#include "features/publish/publish.h"
+#include "features/strings/strings.h"
+#include "features/tuner/tuner.h"
 #include "generated/sites.generated.h"
-#include "hooks/isolate.h"
+#include "hook_rules.h"
+#include "platform/isolate.h"
+#include "platform/resolve.h"
 #include "test.h"
 #include <cstring>
 
@@ -25,8 +26,8 @@ struct Fixture {
         Rs7PatchOps o;
 
         o.count = 4;
-        o.feature = [=](size_t i) {
-            return Rs7_FeatureOf(*hooks[i]);
+        o.group = [=](size_t i) {
+            return Rs7_Group(Rs7_FeatureOf(*hooks[i]));
         };
         o.name = [this](size_t i) {
             return ids[i];
@@ -86,7 +87,7 @@ TEST(isolation_failing_colour_site_is_a_unit_failure_and_aborts) {
     f.failPrepare[2] = true;  // CMBUILD cannot be relocated
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(f.Ops(hooks), written) == Rs7PatchResult::CoreFailed);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, f.Ops(hooks), written) == Rs7PatchResult::CoreFailed);
     CHECK(!f.written[0] && !f.written[1] && !f.written[2] && !f.written[3]);
     bool named = false;
 
@@ -116,7 +117,7 @@ TEST(isolation_failing_diagram_site_disables_only_diagrams) {
     f.failApply[3] = true;  // the diagram site's write fails after the others were written
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(f.Ops(hooks), written) == Rs7PatchResult::Ok);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, f.Ops(hooks), written) == Rs7PatchResult::Ok);
     CHECK(f.restored >= 3);  // the round is undone, then rewritten without Diagrams
     CHECK(f.written[0] && f.written[1] && f.written[2] && !f.written[3]);
     CHECK(Rs7_FeatureDisabled(Rs7Feature::Diagrams) && g_rs7_diagrams == 0);
@@ -143,7 +144,7 @@ TEST(isolation_core_failure_still_aborts_and_restores) {
     f.failPrepare[0] = true;  // R1 is core
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(f.Ops(hooks), written) == Rs7PatchResult::CoreFailed);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, f.Ops(hooks), written) == Rs7PatchResult::CoreFailed);
     CHECK(!f.written[0] && !f.written[1] && !f.written[2] && !f.written[3]);
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = saved;
@@ -179,18 +180,18 @@ TEST(isolation_resolve_failure_of_a_colour_site_aborts) {
     Rs7ResolveResult res{false, {}, {"CMUV: 0 matches (need 1)"}, {Rs7Resolved{core, 0x401000, 0, {}}}, {cm}};
     std::vector<std::string> log;
 
-    CHECK(!Rs7_IsolateResolveFailures(res, [&](const std::string& m) { log.push_back(m); }));
+    CHECK(!Rs7_IsolateResolveFailures(res, kRs7Groups, [&](const std::string& m) { log.push_back(m); }));
     CHECK(!log.empty() && log[0].find("CMUV") != std::string::npos);
     Rs7_ResetFeatureFailures();
     Rs7ResolveResult other{false, {}, {"DGM: 0 matches (need 1)"}, {Rs7Resolved{core, 0x401000, 0, {}}}, {dg}};
 
-    CHECK(Rs7_IsolateResolveFailures(other, [](const std::string&) {}));
+    CHECK(Rs7_IsolateResolveFailures(other, kRs7Groups, [](const std::string&) {}));
     CHECK(other.ok && other.sites.size() == 1);
     CHECK(Rs7_FeatureDisabled(Rs7Feature::Diagrams) && !Rs7_FeatureDisabled(Rs7Feature::Colours));
     Rs7_ResetFeatureFailures();
     Rs7ResolveResult bad{false, {}, {"R1: 0 matches (need 1)"}, {}, {core}};
 
-    CHECK(!Rs7_IsolateResolveFailures(bad, [](const std::string&) {}));
+    CHECK(!Rs7_IsolateResolveFailures(bad, kRs7Groups, [](const std::string&) {}));
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = saved;
     g_rs7_diagrams = savedDg;

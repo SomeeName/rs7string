@@ -26,7 +26,12 @@
 - Switches are `0` (off) or `1` (on). At startup any nonzero number counts as on; the overlay accepts
   only `0` or `1`.
 - Edit the file with the game closed, then start Rocksmith.
-- Press **F9** to open the overlay. **Save to rs7string.ini** writes only the keys you changed and
+- Press **F9** to open the overlay. It shows the everyday settings in plain words: the seventh-string
+  colours, the RSMods Extended Range colour, the guitar's look, the tuner and tuning names, and the menu
+  size and key, one tab each (hover the `(?)` for a hint). Everything else is under the **Advanced** tab, with
+  the key names.
+- Settings marked `*` in the overlay apply after you restart the game; the overlay also says when a
+  change is waiting for a restart. **Save to rs7string.ini** writes only the keys you changed and
   keeps the other keys and comments.
 
 **Columns:**
@@ -65,7 +70,7 @@
 
 | Key | Default | Effect | Apply | F9 | Exp. |
 |---|---|---|---|---|---|
-| `lowrange` | `0` | Opt-in: in seven-string tuner sessions, the wrong-instrument warning and the lowest detected open note follow the arrangement's lowest note, so Drop A, A Standard and G Standard do not warn. | Live | no | yes |
+| `lowrange` | `1` | In seven-string tuner sessions, the wrong-instrument warning and the lowest detected open note follow the arrangement's lowest note, so Drop A, A Standard and G Standard do not warn. | Live | yes | yes |
 | `names` | `1` | Shows seven-string tuning names (for example `B Standard`) in the song list, song pages and tuner. `0` shows the stock names. | Restart | yes | no |
 | `name_prefix` | empty | Text before a seven-string tuning name (`7Str` gives `7Str B Standard`). Printable ASCII, at most 31 characters; invalid text uses the default. | Restart | yes | no |
 | `name_suffix` | `7Str` | Text after a seven-string tuning name (`B Standard 7Str`). Empty means no suffix. Printable ASCII, at most 31 characters; invalid text uses the default. | Restart | yes | no |
@@ -148,6 +153,7 @@ lines. Never share generated `.nif` files.
 | `diagrams_trace` | `0` | Logs chord-diagram recipe loading and movie swaps. Only used with `[chords] diagrams7=1`. | Restart | no | yes |
 | `spin_probe` | `0` | Starts a watchdog that samples busy threads (suspends and resumes them briefly). | Restart | no | yes |
 | `plain_delay_ms` | `0` | Test only: starts rs7string's plain PSARC patches this many milliseconds late (at most 30000), so a CDLC enabler with its own plain PSARC support patches first. rs7string then logs `provided by the CDLC enabler`. | Restart | no | yes |
+| `log_redact` | `1` | `rs7string.log` hides your Windows user name (`<user>`), your user folder (`%USERPROFILE%`) and your computer name (`<pc>`). `0` writes them as they are; only for your own debugging, never post such a log. | Restart | no | yes |
 | `publish_trace` | `0` | Logs the readiness waits of the native layouts while a seven- or eight-string guitar is built. | Restart | no | yes |
 
 </details>
@@ -177,6 +183,19 @@ DLL and summaries to the log. Synthetic hits do not prove that a chart plays wel
 | `vguitar_chord6` | `play` | Seventh-string note of a chord: `play`; `omit` drops it; `only` plays only that note; `+N` / `-N` shifts it by N semitones (1-24); `omitlow` / `omithigh` drop the chord's lowest or highest note. | Next song | no | yes |
 
 </details>
+
+## Test speed-up: `[test]`
+
+> [!WARNING]
+> Test only, for automated in-game tests. Keep `fast=0` for real playing: with `fast=1` a song ends on its
+> song page and the results screen is not shown.
+
+| Key | Default | Effect | Apply | F9 | Exp. |
+|---|---|---|---|---|---|
+| `fast` | `0` | A song ends on its song page instead of the results screen. | Restart | no | yes |
+| `force_colourblind` | `0` | `1`: colourblind mode for this session. Your profile keeps its own setting. | Restart | no | yes |
+| `force_lefty` | `0` | `1`: left-handed guitar for this session. Your profile keeps its own setting. | Restart | no | yes |
+| `force_headstock` | (empty) | `33` (3+3) or `6` (6 in-line): headstock type for this session; empty: your profile's. | Restart | no | yes |
 
 > [!NOTE]
 > Keys without an overlay control can still be changed in the file. Which keys stay public in later

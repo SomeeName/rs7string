@@ -1,4 +1,4 @@
-"""Native N-slot GuitarStrings copies (tools/gen_fncopy.py, core/gsnative.h).
+"""Native N-slot GuitarStrings copies (tools/gen_fncopy.py, features/strings/strings.h).
 
 The generated header must match the unpacked exe; a copy must behave like the stock function on a
 native GuitarStrings with six strings and drive string 6 too when the count is seven (Unicorn).
@@ -7,18 +7,14 @@ native GuitarStrings with six strings and drive string 6 too when the count is s
 from __future__ import annotations
 
 import struct
-import sys
-from pathlib import Path
 
-import pytest
-from unicorn import UC_ARCH_X86, UC_MODE_32, UC_PROT_ALL, Uc
+from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_MODE_32, UC_PROT_ALL, Uc
 from unicorn.x86_const import UC_X86_REG_EDI, UC_X86_REG_ESP
 
-TOOLS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOLS))
-import gen_fncopy  # noqa: E402
+import gen_fncopy
+from emu_common import needs_exe
 
-pytestmark = pytest.mark.skipif(not gen_fncopy.EXE.exists(), reason="needs original/Rocksmith2014.unpacked.exe")
+pytestmark = needs_exe
 
 
 def test_generated_header_is_current():
@@ -121,3 +117,91 @@ def test_reset_copy_resets_string_six_with_seven_loaded():
     assert copy[6] == stock[0]  # main string 6 reset like string 0
     assert copy[14] == stock[8]  # its ghost like ghost 0
     assert copy[7] != stock[0]  # string 7 (not loaded) untouched
+
+
+# ---- UpdateTransforms 0x59A920 (GSXF; EDI = owner, arg1 = GuitarStrings): pluck swing euler per string ----
+OWNER_XF, INFO_XF, ENTITIES = 0x13000, 0x14000, 0x40000
+CALL_POS, CALL_ROT = 0x007ADF70, 0x007AE1A0  # position / rotation setters, replaced by a `ret` that records
+EULER_FLIP, EULER_DEFAULT = 0x01224C0C, 0x013610C8  # 180.0f / the zero default triple
+STOCK_MODES = [1, 1, 1, 0, 0, 0]  # perStringMode of the stock guitar: strings 0-2 turned 180 degrees about y
+FLIPPED, UNROTATED = (0.0, 180.0, 0.0), (0.0, 0.0, 0.0)
+
+
+def run_transforms(native: bool, count: int, modes: list[int], left_handed: bool = False):
+    """The euler triple each rotation call received, per (string, main/ghost) in call order."""
+    text, base = gen_fncopy.load_text()
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    for a, n in (
+        (GS, 0x1000),
+        (OWNER_XF, 0x1000),
+        (INFO_XF, 0x1000),
+        (KIDS, 0x10000),
+        (ENTITIES, 0x10000),
+        (STACK - 0x10000, 0x20000),
+        (RET, 0x1000),
+        (EULER_FLIP & ~0xFFF, 0x1000),
+        (EULER_DEFAULT & ~0xFFF, 0x1000),
+    ):
+        uc.mem_map(a, n, UC_PROT_ALL)
+    uc.mem_write(RET, b"\xf4")  # hlt
+    uc.mem_write(EULER_FLIP, struct.pack("<f", 180.0))
+    fn, copy = build_copy("GSXF")
+    if native:
+        uc.mem_map(CALL_POS & ~0xFFF, 0x2000, UC_PROT_ALL)
+        uc.mem_map(CODE_COPY, 0x10000, UC_PROT_ALL)
+        uc.mem_write(CODE_COPY, copy)
+        entry = CODE_COPY
+    else:
+        entry = fn.start
+        uc.mem_map(base, (len(text) + 0xFFF) & ~0xFFF, UC_PROT_ALL)
+        uc.mem_write(base, text)
+    uc.mem_write(CALL_POS, b"\xc3")  # the setters become a bare `ret` (the rotation one is recorded below)
+    uc.mem_write(CALL_ROT, b"\xc3")
+    kid = [KIDS + 0x200 * i for i in range(16)]  # main 0..7, ghost 8..15
+    for i, k in enumerate(kid):
+        uc.mem_write(k + 4, struct.pack("<I", ENTITIES + 0x100 * i))
+    uc.mem_write(OWNER_XF + 0x24, struct.pack("<I", INFO_XF))
+    for s, m in enumerate(modes[:6]):
+        uc.mem_write(INFO_XF + 0x20 + 4 * s, struct.pack("<I", m))
+    uc.mem_write(INFO_XF + 0x09, bytes([int(left_handed)]))
+    uc.mem_write(INFO_XF + (0x41 if native else 0x0B), bytes([count]))
+    main_off, ghost_off = (0x40, 0x60) if native else (0x04, 0x1C)
+    for s in range(min(count, 8 if native else 6)):
+        uc.mem_write(GS + main_off + 4 * s, struct.pack("<I", kid[s]))
+        uc.mem_write(GS + ghost_off + 4 * s, struct.pack("<I", kid[8 + s]))
+    seen = []
+
+    def on_rot(uc_, addr, size, _data):
+        esp = uc_.reg_read(UC_X86_REG_ESP)
+        ent, euler = struct.unpack("<II", bytes(uc_.mem_read(esp + 4, 8)))
+        seen.append((ent, struct.unpack("<3f", bytes(uc_.mem_read(euler, 12)))))
+
+    uc.hook_add(UC_HOOK_CODE, on_rot, begin=CALL_ROT, end=CALL_ROT)
+    uc.mem_write(STACK, struct.pack("<II", RET, GS))
+    uc.reg_write(UC_X86_REG_ESP, STACK)
+    uc.reg_write(UC_X86_REG_EDI, OWNER_XF)
+    uc.emu_start(entry, RET, count=100000)
+    assert len(seen) == 2 * count
+    return [e for _, e in seen[0::2]], [e for _, e in seen[1::2]]  # main, ghost per string
+
+
+def test_transforms_copy_equals_stock_for_six_strings():
+    stock = run_transforms(False, 6, STOCK_MODES)
+    assert stock[0] == [FLIPPED] * 3 + [UNROTATED] * 3  # the premise of the test
+    assert run_transforms(True, 6, STOCK_MODES) == stock
+
+
+def test_transforms_extra_strings_take_string_zero_mode():
+    # Strings 6 and 7 (the seventh and eighth) turn like string 0 (swing toward the neck's middle), main and ghost.
+    main, ghost = run_transforms(True, 8, STOCK_MODES)
+    assert main[6] == main[7] == main[0] == FLIPPED
+    assert ghost[6] == ghost[7] == ghost[0] == FLIPPED
+    assert main[:6] == [FLIPPED] * 3 + [UNROTATED] * 3  # strings 0-5 as in the stock function
+
+
+def test_transforms_extra_strings_follow_whatever_mode_string_zero_has():
+    main, ghost = run_transforms(True, 8, [0, 1, 1, 0, 0, 0])  # e.g. an inverted layout
+    assert main[0] == ghost[0] == UNROTATED
+    assert main[6] == main[7] == ghost[6] == ghost[7] == UNROTATED
+    main, ghost = run_transforms(True, 8, [1, 0, 0, 0, 0, 0])
+    assert main[6] == main[7] == ghost[6] == ghost[7] == FLIPPED

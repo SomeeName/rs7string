@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static analysis (MSVC /analyze, AGENTS.md "Build and gates"): on only when build.ps1 passes /p:Rs7Analyze=true.
+     Its own object folder, so the normal build is untouched; each source leaves a .nativecodeanalysis.xml that
+     tools/check_analyze.py compares with tools/analyze_baseline.json. Off: deliberate catch-all SEH guards
+     (C6320 filter is EXCEPTION_EXECUTE_HANDLER, C6322 empty __except) and C28159 (use GetTickCount64). -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Rs7Analyze)' == 'true'">
+    <IntDir>$(MSBuildThisFileDirectory)obj\analyze\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Rs7Analyze)' == 'true'">
+    <ClCompile>
+      <EnablePREfast>true</EnablePREfast>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/analyze:WX- /wd6320 /wd6322 /wd28159 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <!-- Not analysed: vendored code, and the tests project's copies of src/ (the DLL project analyses those). -->
+  <ItemGroup Condition="'$(Rs7Analyze)' == 'true'">
+    <ClCompile Remove="third_party\**" />
+    <ClCompile Remove="..\src\**" Condition="'$(ProjectName)' == 'rs7string_tests'" />
+  </ItemGroup>
+  <!-- /analyze writes its .xml next to the object file but does not create a per-folder ObjectFileName directory. -->
+  <Target Name="Rs7AnalyzeDirs" BeforeTargets="ClCompile" Condition="'$(Rs7Analyze)' == 'true'">
+    <MakeDir Directories="@(ClCompile->'%(ObjectFileName)'->DirectoryName()->Distinct())" />
+  </Target>
+</Project>

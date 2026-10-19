@@ -10,7 +10,8 @@ void* operator new[](size_t n) {
     throw std::bad_alloc();
 }
 void operator delete[](void* p) noexcept { std::free(p); }
-#include "core/nslot.cpp"
+#include "features/nslot/records.cpp"
+#include "features/nslot/hooks.cpp"
 extern "C" uintptr_t g_rs7_diagrams = 0, g_rs7_publish_ports = 0, g_rs7_eight = 0;
 void Rs7Log(const char*, ...) {}
 void Rs7Alloc_Inc(Rs7AllocKind) {}

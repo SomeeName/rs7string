@@ -1,0 +1,140 @@
+{
+  "Rs7_Stub_BD1": {
+    "hex": "80 f9 06 72 16 75 1a 0f b6 d1 83 78 20 00 75 11 ff 35 10 7d 14 5e 83 04 24 0a c3 ff 25 10 7d 14 5e ff 25 14 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 18,
+        "symbol": "g_rs7_resume_BD1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 29,
+        "symbol": "g_rs7_resume_BD1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "g_rs7_target_BD1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  },
+  "Rs7_Stub_BD2": {
+    "hex": "80 f9 06 72 13 75 17 0f b6 d1 8b 48 20 ff 35 18 7d 14 5e 83 04 24 0e c3 ff 25 18 7d 14 5e ff 25 1c 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 15,
+        "symbol": "g_rs7_resume_BD2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 26,
+        "symbol": "g_rs7_resume_BD2",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 32,
+        "symbol": "g_rs7_target_BD2",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  },
+  "Rs7_Stub_BD3": {
+    "hex": "80 fb 06 72 1c 75 20 8b 8f 7c 03 00 00 8b 51 24 0f b6 c3 8b 7a 20 ff 35 20 7d 14 5e 83 04 24 17 c3 ff 25 20 7d 14 5e ff 25 24 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 24,
+        "symbol": "g_rs7_resume_BD3",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 35,
+        "symbol": "g_rs7_resume_BD3",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 41,
+        "symbol": "g_rs7_target_BD3",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  },
+  "Rs7_Stub_BD4": {
+    "hex": "80 fb 06 72 19 75 1d 8b 50 24 0f b6 cb 8b 42 20 89 45 e8 ff 35 28 7d 14 5e 83 04 24 20 c3 ff 25 28 7d 14 5e ff 25 2c 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 21,
+        "symbol": "g_rs7_resume_BD4",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 32,
+        "symbol": "g_rs7_resume_BD4",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 38,
+        "symbol": "g_rs7_target_BD4",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  },
+  "Rs7_Stub_D5": {
+    "hex": "9c 80 7b 0c 06 74 06 80 7b 0c 00 75 10 60 8d 44 24 40 50 53 e8 d7 49 fe ff 83 c4 08 61 9d d9 43 14 8b 44 24 10 ff 25 08 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 21,
+        "symbol": "Rs7_DiagGemPos",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 39,
+        "symbol": "g_rs7_resume_D5",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  },
+  "Rs7_Stub_B1": {
+    "hex": "60 ff 75 0c ff 75 08 50 e8 c3 21 06 00 83 c4 0c 61 8b 75 18 50 ff 15 64 7d 14 5e ff 25 60 7d 14 5e",
+    "fixups": [
+      {
+        "offset": 9,
+        "symbol": "Rs7Chord_OnBoxGeom",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 23,
+        "symbol": "g_rs7_target_B1",
+        "addend": 0,
+        "relative": false
+      },
+      {
+        "offset": 29,
+        "symbol": "g_rs7_resume_B1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "0cf5874 (+ Rs7_DiagGemPos exported) MSVC v145 Release"
+  }
+}

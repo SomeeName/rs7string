@@ -33,8 +33,9 @@ class Site:
     pitch: str = ""  # "native": written only with [neck] native_pitch=1 (issue #18 stage 5 area 3)
     nextgrid: str = ""  # "native": written only with the native next-note grid
     publish: str = ""  # "native": request + all five native layouts
-    tuner: str = ""  # "native": written only with the native tuner (core/tuner8.h)
-    group: str = ""  # "psarc": the plain-PSARC unit (core/plainpsarc.h), patched early on its own, not in kRs7Sites
+    tuner: str = ""  # "native": written only with the native tuner (features/tuner/hooks.h)
+    group: str = ""  # "psarc": the plain-PSARC unit (features/psarc/psarc.h), "fast": [test] fast (features/testdrive/testdrive.h); both
+    # patched early on their own, not in kRs7Sites
 
 
 def parse_pattern(text: str) -> list[int | None]:
@@ -118,8 +119,8 @@ def load(path) -> tuple[int, list[Site]]:
         if tuner not in ("", "native"):
             raise SiteError(f"{sid}: tuner must be native (the legacy tuner went in 1.0)")
         group = raw.get("group", "")
-        if group not in ("", "psarc"):
-            raise SiteError(f"{sid}: group must be psarc")
+        if group not in ("", "psarc", "fast"):
+            raise SiteError(f"{sid}: group must be psarc or fast")
         sites.append(
             Site(
                 sid,

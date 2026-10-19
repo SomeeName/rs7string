@@ -1,0 +1,106 @@
+{
+  "src/d3d/swap_texio.cpp::rs7swap::WriteAndCheck::C6387": {
+    "count": 2,
+    "note": "pBits is non-null once LockRect succeeded (LockLevel returns false otherwise); FitsLevel checks size and format"
+  },
+  "src/features/allocstats/allocstats.cpp::Rs7Alloc_Snapshot::C28112": {
+    "count": 1,
+    "note": "plain read of an aligned volatile LONG counter for a log line; atomic on x86"
+  },
+  "src/features/nslot/match.cpp::Rs7Ns_MatchStats::C28112": {
+    "count": 3,
+    "note": "plain reads of aligned volatile LONG counters for the overlay; atomic on x86"
+  },
+  "src/features/nslot/match.cpp::rs7match::`anonymous-namespace'::ScoreCandidates::C6011": {
+    "count": 1,
+    "note": "row[i] is non-null exactly when loc[i] > -1 (MatchN builds both), so the guard skips every null row"
+  },
+  "src/overlay/overlay.cpp::`anonymous-namespace'::SetVisible::C28112": {
+    "count": 1,
+    "note": "plain read of an aligned volatile LONG flag; atomic on x86, the write is Interlocked"
+  },
+  "src/platform/fncopy.cpp::Rs7Fn_Build::C6385": {
+    "count": 1,
+    "note": "the analyser only counts memcpy(t, src, entry) as initialising t; t[entry] and Rel32's 4 bytes complete the entry + 5 bytes FlushInstructionCache reads (it ignores writes through the unannotated Rel32; building the trampoline in a local buffer reports the same)"
+  },
+  "src/platform/freeze.cpp::`anonymous-namespace'::Init::C6387": {
+    "count": 1,
+    "note": "WaitForSingleObject(g_done) runs only when g_reader exists, which is created only when g_done is non-null"
+  },
+  "src/platform/freeze.cpp::`anonymous-namespace'::Reader::C6001": {
+    "count": 1,
+    "note": "g_frozen is a zero-initialised global, filled up to g_count before it is read"
+  },
+  "src/platform/freeze.cpp::`anonymous-namespace'::ResumeAll::C6001": {
+    "count": 1,
+    "note": "g_frozen is a zero-initialised global, filled up to g_count before it is read"
+  },
+  "src/platform/freeze.cpp::`anonymous-namespace'::RunJob::C6001": {
+    "count": 1,
+    "note": "g_frozen is a zero-initialised global, filled up to g_count before it is read"
+  },
+  "src/platform/spinprobe.cpp::`anonymous-namespace'::Sample::C6011": {
+    "count": 1,
+    "note": "the stack read from the sampled ESP is inside __try/__except by design (diagnostic probe)"
+  },
+  "tests/colours/test_native.cpp::`anonymous-namespace'::CmFixture::OnOtherThread::C6387": {
+    "count": 2,
+    "note": "test: CreateThread failure would fail the test anyway"
+  },
+  "tests/colours/test_native.cpp::native_colour_publication_keeps_stock_columns_and_owns_both_extra_palettes::C6262": {
+    "count": 1,
+    "note": "test: large stack fixture on the test thread (1 MB stack)"
+  },
+  "tests/colours/test_native.cpp::native_colour_rsmods_six_column_abi_shares_the_correct_rgb_values::C6011": {
+    "count": 1,
+    "note": "test: legacy is written through only when it equals a stock[m][st][s] pointer, which the fixture sets non-null"
+  },
+  "tests/d3d_fixture.h::rs7d3d::MakeTex::C6387": {
+    "count": 1,
+    "note": "test: pBits is non-null once LockRect succeeded"
+  },
+  "tests/diag/test_diag.cpp::`anonymous-namespace'::TwoPages::{ctor}::C6387": {
+    "count": 1,
+    "note": "test: VirtualAlloc of two pages; failure would crash the test, not the DLL"
+  },
+  "tests/diag/test_diag.cpp::safecopy_handles_only_access_violations::C6387": {
+    "count": 1,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  },
+  "tests/headstock/test_assetload.cpp::assetload_shared_build_runs_once_for_concurrent_left_and_right_jobs::C6387": {
+    "count": 2,
+    "note": "test: CreateThread failure would fail the test anyway"
+  },
+  "tests/psarc/test_psarc.cpp::`anonymous-namespace'::ExecPage::{ctor}::C6387": {
+    "count": 1,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  },
+  "tests/test_config.cpp::config_relative_ini_is_read_from_the_current_directory::C6262": {
+    "count": 1,
+    "note": "test: large stack buffers on the test thread (1 MB stack)"
+  },
+  "tests/test_d3d_ramp.cpp::d3d_dxt1_refused_unless_allow_inexact::C6387": {
+    "count": 1,
+    "note": "test: pBits is non-null once LockRect succeeded"
+  },
+  "tests/test_freeze.cpp::`anonymous-namespace'::Parked::{dtor}::C6258": {
+    "count": 1,
+    "note": "test: TerminateThread ends a deliberately parked thread at teardown"
+  },
+  "tests/test_patch.cpp::`anonymous-namespace'::ExecPage::{ctor}::C6387": {
+    "count": 1,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  },
+  "tests/test_patch.cpp::write_ptr_atomic_swaps_a_readonly_slot_and_restores_protection::C6011": {
+    "count": 1,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  },
+  "tests/test_patch.cpp::write_ptr_atomic_swaps_a_readonly_slot_and_restores_protection::C6387": {
+    "count": 1,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  },
+  "tests/test_restore.cpp::`anonymous-namespace'::Page::{ctor}::C6387": {
+    "count": 2,
+    "note": "test: VirtualAlloc of one page; failure would crash the test, not the DLL"
+  }
+}

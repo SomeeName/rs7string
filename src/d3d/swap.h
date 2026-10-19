@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rampstate.h"
+#include "features/colours/colours.h"
 #include <windows.h>
 #include <cstdint>
 #include <d3d9.h>
@@ -9,10 +9,19 @@
 // the worker), Process copies it into a same-size MANAGED texture with the string-6 band and, after the
 // self-check, binds the copy in its place; GetTexture returns the stock again. Any refusal or fault:
 // pass-through and V6 off. Uses only COM vtables (no d3d9.lib in the DLL).
+//
+// Parts (each file one job; this header is the public interface of all of them):
+//   swap_hook.cpp     the vtable hook: thunks, install / recheck, GetTexture hiding
+//   swap_ramp.cpp     the stock ramps: candidate processing, recolour, retire, overlay status
+//   swap_foreign.cpp  RSMods' own note ramps
+//   swap_texio.cpp    texture level reads, copy build and write-back with read-back check
 
 struct Rs7SwapCfg {
     uint32_t rgb[2];
     bool allowInexact;
+    // RSMods is installed: its own note ramps (custom string colours, Extended Range) bound on stage 1 get
+    // a copy with string 6's lines too (same build + self-check; see swap_foreign.cpp).
+    bool rsmods = false;
 };  // rgb[mode] = 0xRRGGBB
 
 void Rs7Swap_Configure(const Rs7SwapCfg&);
@@ -34,19 +43,8 @@ void Rs7Swap_UpdateV6(const char* reason);
 // SetTexture call (only the render thread may Release D3D objects it bound).
 void Rs7Swap_RequestRetire();
 
-// Overlay ([color] string6_color / _cb live, any thread): the render thread's next SetTexture on the
-// hooked device rebuilds string 6's lines of every live copy with these colours (same build and
-// self-check as the first copy) and drops cached copies no candidate uses. Later copies use them too.
-void Rs7Swap_RequestRecolour(const uint32_t rgb[2]);
-
-// Overlay status (render thread).
-struct Rs7SwapStats {
-    bool installed, deviceOk;
-    unsigned copies, active, refused, retry, pending;
-    uint32_t rgb[2];
-};
-
-void Rs7Swap_Stats(Rs7SwapStats* out);
+// Rs7Swap_RequestRecolour, Rs7SwapStats and Rs7Swap_Stats (overlay and settings) are declared in
+// features/colours/colours.h, the feature's public header.
 
 // Hot-patchable thunks (first 5 bytes 8B FF 55 8B EC), the values written into the slots.
 extern "C" void Rs7_Thunk_SetTexture();

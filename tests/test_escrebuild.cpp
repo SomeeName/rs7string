@@ -1,8 +1,8 @@
-#include "core/allocstats.h"
-#include "core/assetload.h"
-#include "core/clite.h"
-#include "core/string7.h"
-#include "core/tuner.h"
+#include "features/allocstats/allocstats.h"
+#include "features/clite/clite.h"
+#include "features/headstock/headstock.h"
+#include "features/string7/string7.h"
+#include "features/tuner/tuner.h"
 #include "test.h"
 #include <cstdint>
 #include <cstring>

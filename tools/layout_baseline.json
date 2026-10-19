@@ -1,0 +1,30 @@
+{
+  "asm": {
+    "src/d3d/present.cpp": 2,
+    "src/d3d/swap_hook.cpp": 2,
+    "src/features/chords/hooks_stubs.cpp": 1,
+    "src/features/clite/clite.cpp": 1,
+    "src/features/diagrams/hooks.cpp": 3,
+    "src/features/fretgrid/hooks.cpp": 3,
+    "src/features/frets/hooks.cpp": 1,
+    "src/features/headstock/assetload_segs.cpp": 1,
+    "src/features/headstock/assetload_tex.cpp": 2,
+    "src/features/headstock/headstockread.cpp": 1,
+    "src/features/headstock/hooks_game.cpp": 5,
+    "src/features/headstock/hooks_stubs.cpp": 1,
+    "src/features/nextgrid/hooks.cpp": 1,
+    "src/features/nextgrid/hooks_stubs.cpp": 1,
+    "src/features/nslot/hooks_stubs_tracker.cpp": 18,
+    "src/features/nslot/match.cpp": 2,
+    "src/features/pitch/hooks_stubs_mode.cpp": 2,
+    "src/features/publish/hooks_grid.cpp": 1,
+    "src/features/string7/hooks.cpp": 1,
+    "src/features/strings/hooks_game.cpp": 4,
+    "src/features/tuner/hooks_names.cpp": 4,
+    "tests/diagrams/test_bind.cpp": 7,
+    "tests/test_midhook.cpp": 6,
+    "tests/test_midhook_bench.cpp": 3
+  },
+  "file_lines": {},
+  "function_lines": {}
+}

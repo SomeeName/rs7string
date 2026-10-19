@@ -1,5 +1,5 @@
 #pragma once
-#include "core/ramp.h"
+#include "features/colours/colours.h"
 #include <algorithm>
 #include <cstdint>
 #include <vector>

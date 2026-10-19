@@ -1,8 +1,8 @@
-"""Emulator harness for the native tuner session copies (core/tuner8.h, tools/gen_tuner8s.py).
+"""Emulator harness for the native tuner session copies (features/tuner/hooks.h, tools/gen_tuner8s.py).
 
 The unpacked game image and the built DLL are mapped; a copied UI_PlayerTuner method runs either as the
 stock function (session arrays at +38h.., count at InstrumentInfo +0Bh) or as its generated copy (arrays
-in the 380h session's tail, count and order there; Rs7Tu8_Advance is the DLL's). Every call that leaves
+in the 380h session's tail, count and order there; the order step is the DLL's call-in Tu8Advance). Every call that leaves
 the function into game code is recorded (target, registers, stack arguments) and returns at once with
 a chosen EAX and the callee's own stack cleanup (its first `ret n`). Equivalence: the same calls and the
 same session state with the tail in place of the stock arrays.
@@ -17,6 +17,8 @@ from pathlib import Path
 
 import capstone
 import pefile
+from emu_common import DLL, EXE, REPO, dll_image
+from emu_harness import callin_entry
 from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_HOOK_MEM_UNMAPPED, UC_MODE_32, UC_PROT_ALL, Uc
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -30,11 +32,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
-REPO = Path(__file__).resolve().parents[2]
-ROOT = REPO.parent
-EXE = ROOT / "original" / "Rocksmith2014.unpacked.exe"
-DLL = REPO / "bin" / "Release" / "dinput8.dll"
-HEADER = REPO / "src" / "core" / "tuner8s.generated.h"
+HEADER = REPO / "src" / "features" / "tuner" / "tuner8s.generated.h"
 TEXT_LO, TEXT_HI = 0x401000, 0x10B7000
 
 SESSION = 0x20000000
@@ -43,8 +41,16 @@ WORLD = 0x20100000  # zero-filled scratch the remaining pointers lead to
 STACK = 0x21000000
 COPY = 0x22000000
 RET = 0x23000000  # the caller's return address: hlt
+CALLIN_AT = COPY + 0xC000  # call-in entries
 SYN = 0x70000000
-SYMS = ["Rs7Tu8_Advance", "Rs7Tu8_OnSelect", "Rs7Tu8_First", "g_rs7_tu8_labels", "Rs7Asset_LetterInline"]
+# the targets of the synthetic calls SYN + i (hooks_copies.cpp SymAddress): call-in entries or DLL exports
+SYMS = [
+    "g_rs7_callin_Tu8Advance",
+    "Rs7Tu8_OnSelect",
+    "g_rs7_callin_Tu8First",
+    "g_rs7_tu8_labels",
+    "Rs7Asset_LetterInline",
+]
 
 ARRAYS = [
     (0x38, 0x280, 0x18),
@@ -102,15 +108,6 @@ def image():
     return pe, [(pe.OPTIONAL_HEADER.ImageBase + s.VirtualAddress, s.get_data()) for s in pe.sections]
 
 
-@lru_cache(maxsize=1)
-def dll_image():
-    pe = pefile.PE(str(DLL))
-    base = pe.OPTIONAL_HEADER.ImageBase
-    blobs = [(base, pe.header)] + [(base + s.VirtualAddress, s.get_data()) for s in pe.sections]
-    exports = {e.name.decode(): base + e.address for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name}
-    return base, (pe.OPTIONAL_HEADER.SizeOfImage + 0xFFF) & ~0xFFF, blobs, exports
-
-
 @lru_cache(maxsize=None)
 def cleanup(target: int) -> int:
     """Bytes the callee pops: its first `ret n` (MSVC functions return one way)."""
@@ -161,6 +158,7 @@ class Machine:
         self.default_ret: dict[int, int] = {}
         self.spawned = 0
         self.fn_range = (0, 0)
+        self.callins: dict[str, int] = {}
         self.put(self.exports["g_rs7_native_tuner"], 1)
         # Rs7Tu8_OnSelect logs / reads the detector: a plain `ret` here (cdecl, its own tests in C++).
         uc.mem_write(self.exports["Rs7Tu8_OnSelect"], b"\xc3")
@@ -191,6 +189,8 @@ class Machine:
         lo, hi = self.fn_range
         if lo <= address < hi or self.dll_lo <= address < self.dll_hi or address == RET:
             return
+        if CALLIN_AT <= address < CALLIN_AT + 0x1000:  # a call-in entry (the DLL's thunk does the rest)
+            return
         esp = uc.reg_read(UC_X86_REG_ESP)
         ret, *args = struct.unpack("<5I", uc.mem_read(esp, 20))
         regs = tuple(
@@ -205,6 +205,15 @@ class Machine:
             self.effects[address](self, regs, args)
         uc.reg_write(UC_X86_REG_ESP, esp + 4 + pops)
         uc.reg_write(UC_X86_REG_EIP, ret)
+
+    def sym(self, name: str) -> int:
+        """A synthetic call's target: the call-in entry (built once, as SymAddress builds it) or the DLL export."""
+        if not name.startswith("g_rs7_callin_"):
+            return self.exports[name]
+        if name not in self.callins:
+            out = CALLIN_AT + 0x40 * len(self.callins)
+            self.callins[name] = callin_entry(self.uc, self.exports, name, out, STACK - 0x8000, RET)
+        return self.callins[name]
 
     # memory
     def read(self, a: int, n: int) -> bytes:
@@ -270,7 +279,7 @@ class Machine:
                 if t >= SYN + 0x40:  # a call into another copy: its stock function (recorded)
                     t = specs()[ordered[t - SYN - 0x40]][0]
                 elif t >= SYN:
-                    t = self.exports[SYMS[t - SYN]]
+                    t = self.sym(SYMS[t - SYN])
                 if ab:
                     patched[off : off + 4] = struct.pack("<I", t)
                 else:

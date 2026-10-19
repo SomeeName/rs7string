@@ -1,4 +1,4 @@
-#include "core/resolve.h"
+#include "platform/resolve.h"
 #include "test.h"
 #include <cstring>
 #include <vector>

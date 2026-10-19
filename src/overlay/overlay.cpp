@@ -1,12 +1,13 @@
 #include "overlay/overlay.h"
 #include "backends/imgui_impl_dx9.h"
 #include "backends/imgui_impl_win32.h"
-#include "core/overlaycmd.h"
-#include "core/settings.h"
 #include "d3d/present.h"
 #include "imgui.h"
-#include "log.h"
+#include "overlay/capture.h"
+#include "overlay/overlaycmd.h"
 #include "overlay/ui.h"
+#include "platform/log.h"
+#include "platform/settings.h"
 #include <cstdio>
 #include <cstring>
 #include <d3d9.h>
@@ -60,6 +61,9 @@ void SetVisible(bool on, const char* by) {
     }
 
     InterlockedExchange(&g_visible, on ? 1 : 0);
+    if (!on) {
+        Rs7Overlay_SetCapture(false, false);  // hidden: the game gets all input again
+    }
     Rs7Log("overlay: %s (%s)", on ? "shown" : "hidden", by);
 }
 
@@ -151,6 +155,10 @@ bool InitImGui(IDirect3DDevice9* dev) {
 void ApplyScale() {
     float s = Rs7Set_Float("overlay.scale");
 
+    if (s > 0.0f && s < 0.5f) {
+        s = 0.5f;  // dragging the slider off "Automatic" must not make the menu unreadable
+    }
+
     if (s <= 0.0f) {
         RECT r{};
 
@@ -189,12 +197,9 @@ void RunCommand(const Rs7Cmd& c) {
             Rs7Log("overlay: cmd hide -> ok");
             break;
         case Rs7CmdKind::Tab: {
-            const int t = Rs7OverlayUi_TabIndex(c.key.c_str());
+            const bool ok = Rs7OverlayUi_RequestTab(g_ui, c.key.c_str());
 
-            if (t >= 0) {
-                g_ui.tabRequest = t;
-            }
-            Rs7Log("overlay: cmd tab %s -> %s", c.key.c_str(), t >= 0 ? "ok" : "unknown tab");
+            Rs7Log("overlay: cmd tab %s -> %s", c.key.c_str(), ok ? "ok" : "unknown tab");
             break;
         }
         case Rs7CmdKind::Set: {
@@ -260,6 +265,7 @@ void Draw(IDirect3DDevice9* dev) {
     ImGui::Render();
     g_wantMouse = io.WantCaptureMouse;
     g_wantKeys = io.WantCaptureKeyboard;
+    Rs7Overlay_SetCapture(g_wantMouse, g_wantKeys);
 
     IDirect3DSurface9* back = nullptr;
     IDirect3DSurface9* rt = nullptr;

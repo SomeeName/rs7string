@@ -4,7 +4,8 @@
 static uint64_t nowMs = 0;
 static uint64_t TestClock() { return nowMs; }
 #define GetTickCount64 TestClock
-#include "core/publish_grid.cpp"
+#include "features/publish/grid.cpp"
+#include "features/publish/hooks_grid.cpp"
 #undef GetTickCount64
 extern "C" uintptr_t g_rs7_native_fretgrid = 1, g_rs7_fg_row = rs7fg::kRowNative;
 extern "C" uintptr_t g_rs7_publish_ports = 1;

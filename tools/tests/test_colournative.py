@@ -1,10 +1,7 @@
 """Stage 5 ColourManager: exact address ports, stock-column equivalence."""
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import gen_colournative as cm
+from emu_common import needs_exe
 
 
 def test_layout_preserves_every_stock_state_and_mode():
@@ -20,6 +17,7 @@ def test_layout_preserves_every_stock_state_and_mode():
                     seen.add(new)
 
 
+@needs_exe
 def test_six_key_walk_and_auxiliary_bounds_are_not_widened():
     ports = cm.ports()
     addresses = {p.va for p in ports}
@@ -27,6 +25,7 @@ def test_six_key_walk_and_auxiliary_bounds_are_not_widened():
     assert {0x518B1E, 0x51971F, 0x518AC4, 0x518571} <= addresses
 
 
+@needs_exe
 def test_generated_sites_are_current():
     import json
 

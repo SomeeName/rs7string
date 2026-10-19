@@ -1,11 +1,14 @@
-#include "core/diagrams.h"
-#include "core/fretgrid.h"
-#include "core/nextgrid.h"
-#include "core/pitch8.h"
-#include "core/publish.h"
-#include "core/publish_grid.h"
+#include "features/diagrams/diagrams.h"
+#include "features/fretgrid/fretgrid.h"
+#include "features/headstock/headstock.h"
+#include "features/nextgrid/nextgrid.h"
+#include "features/pitch/pitch.h"
+#include "features/publish/publish.h"
+#include "features/strings/strings.h"
+#include "features/testdrive/testdrive.h"
+#include "features/tuner/tuner.h"
 #include "generated/sites.generated.h"
-#include "hooks/registry.h"
+#include "hook_rules.h"
 #include "test.h"
 #include <cstring>
 
@@ -34,9 +37,16 @@ TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
             continue;
         }
 
-        if (h->callback) {
-            CHECK(s.kind == Rs7Kind::Jmp);
+        const bool wrap = h->midCall == Rs7Mid::Call::Wrap;
+
+        CHECK(s.kind == Rs7Kind::Call || h->midCall == Rs7Mid::Call::Before ||
+              (wrap && s.kind == Rs7Kind::Jmp));  // a Wrap on a jmp site wraps the function it enters
+        CHECK(wrap || h->midBefore == nullptr);
+
+        if (h->IsMid()) {
+            CHECK(s.kind == Rs7Kind::Jmp || s.kind == Rs7Kind::JmpAtomic8 || s.kind == Rs7Kind::Call);
             CHECK(h->stub == nullptr);  // resume / target stay bound for callbacks that set ctx.jump
+            CHECK(s.kind != Rs7Kind::Call || wrap || h->target != nullptr);  // the callee (a Wrap entry calls it)
             continue;
         }
 
@@ -46,7 +56,7 @@ TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
         }
 
         // TA ends SelectString itself (`mov esp,ebp; pop ebp; ret`): no resume.
-        // GS* entries of the copied functions (gsnative.h) jump to their copy or trampoline instead.
+        // GS* entries of the copied functions (features/strings/strings.h) jump to their copy or trampoline instead.
         const bool gsEntry = h->strs == kRs7StrNative && h->resume == nullptr;
         if (h->tuner == kRs7TunerNative) {
             continue;  // whole-function copy, no resume variable
@@ -76,13 +86,13 @@ TEST(ref_sites_are_never_written) {
         CHECK(h && !Rs7_ShouldPatch(*h, true) && !Rs7_ShouldPatch(*h, false));
     }
 
-    CHECK_EQ(refs, 12);      // X_CM, X_TCS, X_THEAD, X_DT (7th string line)
+    CHECK_EQ(refs, 13);      // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
                              // + X_VGSLOT, X_VGDI (virtual guitarist)
                              // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
                              // + X_DDSH (the 7-string model's textures)
                              // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
     CHECK_EQ(callRefs, 37);  // X_SPAWN, X_ADV3 (neck targets, N9) + the string object calls the native strings use
-                             // + X_WORLD, X_ROOT (entity root nodes, string7diag)
+                             // + X_WORLD, X_ROOT (entity root nodes, features/scene)
                              // + X_SETSCALE (F1/F2 fret bars), X_EULER (peg placement)
                              // + X_PEGSELECT, X_PEGPLACE, X_PEGLAYER (N-slot PegSet)
                              // + X_PULSE, X_LSPAWN, X_DESPAWN, X_BLACK, X_PEGRESET, X_MSG, X_FADEIN,
@@ -125,7 +135,7 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
             continue;
         }
         if (h->vgOnly) {
-            continue;  // vguitar_only_hooks_are_the_four_vg_sites
+            continue;  // vguitar_only_hooks_are_the_four_vg_sites (tests/vguit)
         }
         if (h->pegs) {
             continue;  // peg_hooks_follow_native_pegset
@@ -137,7 +147,7 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
             continue;  // fretgrid_hooks_follow_native_fretgrid
         }
         if (!std::strncmp(h->id, "CM", 2)) {
-            continue;  // colour_hooks_follow_native_colours (test_colournative.cpp)
+            continue;  // colour_hooks_are_the_cm_sites (tests/colours)
         }
         if (h->pitch) {
             continue;  // pitch_hooks_follow_native_pitch
@@ -157,6 +167,12 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
         if (!std::strncmp(h->id, "GK", 2)) {
             continue;  // clite_sites_follow_the_switch (test_clite.cpp)
         }
+        if (!std::strcmp(h->id, "GLW")) {
+            continue;  // glow_hook_follows_the_rsmods_glow_switch (tests/colours)
+        }
+        if (!std::strncmp(h->id, "TV", 2)) {
+            continue;  // test_variant_hooks_are_off_by_default
+        }
 
         const bool diag =
             std::strcmp(h->id, "D2") == 0 || std::strcmp(h->id, "D3") == 0 || std::strcmp(h->id, "D5") == 0;
@@ -169,6 +185,18 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
 
     CHECK_EQ(diagOnly, 3);
     g_rs7_diagrams = savedDiagrams;
+}
+
+TEST(test_variant_hooks_are_off_by_default) {
+    CHECK(!Rs7Variant_Get().Any());
+
+    for (const char* id : {"TVCB", "TVGP"}) {
+        const Rs7Hook* h = Rs7_FindHook(id);
+
+        CHECK(h != nullptr);
+        CHECK(h && h->IsMid());
+        CHECK(h && !Rs7_ShouldPatch(*h, true));
+    }
 }
 
 TEST(diagram_hooks_are_all_unpatched_by_default_and_enabled_together) {
@@ -236,32 +264,6 @@ TEST(string_hooks_follow_native_strings) {
     }
 
     CHECK_EQ(native, 26);
-}
-
-TEST(vguitar_only_hooks_are_the_four_vg_sites) {
-    int vg = 0;
-
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
-        if (!h || h->ref) {
-            continue;
-        }
-
-        const bool want = !std::strcmp(h->id, "TICK") || !std::strcmp(h->id, "JUD1") || !std::strcmp(h->id, "JUD2") ||
-                          !std::strcmp(h->id, "AUD1");
-
-        CHECK_EQ(h->vgOnly, want);
-        if (!want) {
-            continue;
-        }
-
-        ++vg;
-        CHECK(!h->diagOnly);
-        CHECK(!Rs7_ShouldPatch(*h, false) && !Rs7_ShouldPatch(*h, true));            // [test] vguitar=0
-        CHECK(Rs7_ShouldPatch(*h, false, true) && Rs7_ShouldPatch(*h, true, true));  // vguitar=1
-    }
-
-    CHECK_EQ(vg, 4);
 }
 
 TEST(integrated_side_hooks_follow_both_string_modes) {

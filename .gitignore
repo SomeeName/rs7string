@@ -6,6 +6,12 @@ src/generated/
 __pycache__/
 docs/evidence/
 dist/
+# libFuzzer findings written to the working folder by a manual replay (scripts/fuzz.ps1 uses obj/fuzz/artifacts)
+crash-*
+leak-*
+timeout-*
+oom-*
+slow-unit-*
 
 # Job 3 verification scratch
 /pytest-*/

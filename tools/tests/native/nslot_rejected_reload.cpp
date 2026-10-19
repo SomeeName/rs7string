@@ -17,7 +17,8 @@ void* TestHeapAlloc(HANDLE heap, DWORD flags, SIZE_T n) {
     return HeapAlloc(heap, flags, n);
 }
 #define HeapAlloc TestHeapAlloc
-#include "core/nslot.cpp"
+#include "features/nslot/records.cpp"
+#include "features/nslot/hooks.cpp"
 #undef HeapAlloc
 extern "C" uintptr_t g_rs7_diagrams = 0, g_rs7_publish_ports = 0, g_rs7_eight = 0;
 static int arrays = 0;

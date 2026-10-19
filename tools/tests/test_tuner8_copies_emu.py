@@ -187,7 +187,7 @@ def test_every_copy_entry_has_its_site_row():
     import json
 
     rows = {s["id"]: s for s in json.loads((h.REPO / "sites.json").read_text(encoding="utf-8"))["sites"]}
-    ids = (h.REPO / "src" / "core" / "tuner8s_ids.generated.h").read_text(encoding="utf-8")
+    ids = (h.REPO / "src" / "features" / "tuner" / "tuner8s_ids.generated.h").read_text(encoding="utf-8")
     import re
 
     for fid in re.findall(r"X\((TS8\w+), \d+\)", ids):

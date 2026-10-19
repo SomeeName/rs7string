@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include "core/plainpsarc_logic.cpp"
+#include "features/psarc/psarc.cpp"
 uintptr_t g_rs7_target_PP_SNGD = 0;
 #include "sngstub.inc"
 bool Short(const uint8_t* src, uint32_t len) {

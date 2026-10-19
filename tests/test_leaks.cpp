@@ -1,8 +1,8 @@
 // Leak audit (README, [debug] alloc_stats): the lifetime of what the DLL allocates, per song.
-#include "core/allocstats.h"
-#include "core/assetload.h"
-#include "core/nslot.h"
-#include "core/sidestore.h"
+#include "features/allocstats/allocstats.h"
+#include "features/headstock/headstock.h"
+#include "features/nslot/nslot.h"
+#include "features/pitch/pitch.h"
 #include "test.h"
 #include <windows.h>
 #include <cstdint>

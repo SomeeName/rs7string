@@ -2,8 +2,8 @@
 // from the stock texture and from our copy, must give the same pixels. This retires the "hardware
 // filter" part of the bit-exactness claim offline. A failure here is a hardware finding: it prints the
 // failing (k, filter, V, x) and both pixel values.
-#include "core/ramp.h"
 #include "d3d_fixture.h"
+#include "features/colours/colours.h"
 #include "ramp_fixture.h"
 #include "test.h"
 #include <cstdio>

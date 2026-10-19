@@ -9,8 +9,10 @@ void* operator new(size_t n) {
     throw std::bad_alloc();
 }
 void operator delete(void* p) noexcept { std::free(p); }
-#include "core/extblock.cpp"
+#include "model/extblock.cpp"
+#include "features/nslot/hooks_extblock.cpp"
 void Rs7Log(const char*, ...) {}
+extern "C" void __cdecl Rs7Mid_Fldcw(uint32_t) {}  // midhook_thunks.asm (Rs7Mid::GameFcw in XB1)
 void Rs7Ns_OnSngLoaded(void*) {}
 void Rs7Ns_OnSongFree(void*) {}
 bool rs7chord::FromTemplateBytes(const uint8_t*, Ext*) { return false; }

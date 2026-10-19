@@ -9,7 +9,7 @@ from contextlib import contextmanager
 import pytest
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
-from test_emu import Emu, emus, DATA, STACK, RET_MAGIC, ALL_REGS, ns_set, site_va
+from emu_harness import ALL_REGS, DATA, RET_MAGIC, STACK, Emu, ns_set, site_va
 
 BASE = DATA + 0x70000
 FAKE = BASE + 0x1000
@@ -173,8 +173,7 @@ def test_tp13_resolves_registered_t8_and_preserves_stride_registers(emus, on, in
 def test_dgb_passes_exact_song_and_uuid_attributes_then_replays_registers(emus):
     _, emu = emus
     sid = "DGB"
-    stub = emu.exports["Rs7_Stub_DGB"]
-    fn = emu._stub_calls(stub)[0]
+    fn = emu.exports["Rs7Diagram_Bind"]  # called by the DGB mid-hook (features/diagrams/hooks_mid.cpp)
     saved = emu.read(fn, 1)
     seen = []
     sp = STACK + 0xC000

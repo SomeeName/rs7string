@@ -4,31 +4,45 @@
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · **Changelog**
 
-## 1.0.0-beta.2
+## 1.0.0-beta.3
 
-**Beta update focused on RSMods colour compatibility and tuner fixes.**
+### New
+
+- Make the F9 menu easier for players: one tab bar (Seventh string, Guitar, Tuner, Menu, Advanced) opens on the
+  everyday settings in plain words (string colours, guitar look, tuner, menu size and key), each with a `(?)` hint on
+  hover and no scrolling. Technical settings are under the **Advanced** tab, and settings that need a game restart
+  are marked `*`.
+- Stop the tuner's wrong-instrument warning in seven-string Drop A, A Standard and G Standard. This is on by default
+  (`[tuner] lowrange`); set it to `0` for the old behaviour.
+- Use RSMods' Extended Range low B colour for the seventh string by default when that mode is enabled.
+  Turn off `color.rsmods_extended_range` to use your own normal and colourblind colours.
+- Keep personal data out of `rs7string.log` by default: your Windows user name, user folder and computer name are
+  replaced by `<user>`, `%USERPROFILE%` and `<pc>`, so the log can be shared as it is. `[debug] log_redact=0` turns
+  it off.
 
 ### Fixes
 
-- Fix incorrect colours with RSMods custom colours, Extended Range mode and colourblind mode,
-  including headstock pegs and fret numbers.
-- Keep the selected tuning peg and its coloured glow synchronized when RSMods changes the palette.
-- Fix the seven-string tuner switching back to E after initially selecting low B.
+- Stop clicks, the mouse wheel and typing in the F9 menu from also reaching the game behind it.
+- Show seventh-string notes in the seventh string's colour when RSMods custom string colours or
+  Extended Range are on. They were grey or white before.
+- Fix RSMods custom, Extended Range and rainbow string colours addressing the wrong colours
+  with rs7string, including colourblind mode, headstock pegs and fret numbers.
+- Detect RSMods' Extended Range colour before its proxy DLL loads, including when Windows' XInput DLL is also loaded.
+- Give the selected tuner peg of a 3+3 headstock a glow in the shape of the in-line peg that is
+  shown. It followed the hidden stock peg before.
+- Keep the seventh peg's tuner glow in the seventh string's colour. Bright colours such as RSMods'
+  Extended Range low B turned cyan.
+- Keep the selected tuner peg and its coloured glow in sync when RSMods applies Extended Range colours.
+- Keep the seven-string tuner on low B when entering from a mode that selects the starting string twice.
+- Show the glow outline of a pure red string (such as a low E of `800000`) with RSMods custom string
+  colours. RSMods gave it a near-black glow, so the outline was invisible.
+- Mark double stops like the stock game in songs whose chord data rs7string did not convert.
+- Bend the seventh and eighth strings toward the neck's middle when plucked, like the low E.
 
-### Improvements
+### For testers
 
-- Automatically use RSMods' configured Extended Range low B colour for the seventh string.
-- Detect RSMods reliably regardless of DLL loading order.
-- Add an F9 setting to disable automatic colour matching and use your own saved colours.
-
-### Updating
-
-Close Rocksmith and back up your existing installation. Extract the ZIP and copy everything inside
-`bin/Release/` into the game folder. Keep your existing `rs7string.ini` to preserve your settings;
-new settings use their defaults.
-
-RSMods still controls Extended Range activation timing. A brief colour transition when moving from
-the tuner into a song may remain.
+- Add test-only settings `force_colourblind`, `force_lefty` and `force_headstock` for automated in-game tests.
+  They change only the running game; your profile keeps its own settings.
 
 ## 1.0
 

@@ -27,12 +27,13 @@ before the repository went public. They remain in the git history (last commit t
 |---|---|---|---|
 | 1 | [What the mod does](#1-what-the-mod-does) | 8 | [Tuner and tuning names](#8-tuner-and-tuning-names) |
 | 2 | [Patch mechanism](#2-patch-mechanism) | 9 | [Chord diagrams](#9-chord-diagrams-chords-diagrams7) |
-| 3 | [The string-count model (C-lite)](#3-the-string-count-model-c-lite-neck-clite1) | 10 | [Plain (unencrypted) PSARC loading](#10-plain-unencrypted-psarc-loading) |
+| 3 | [The string-count model (C-lite)](#3-the-string-count-model-c-lite) | 10 | [Plain (unencrypted) PSARC loading](#10-plain-unencrypted-psarc-loading) |
 | 4 | [Native capacity-8 layouts](#4-native-capacity-8-layouts) | 11 | [Window, input, overlay, logging](#11-window-input-overlay-logging) |
 | 5 | [Rendering the seventh string](#5-rendering-the-seventh-string) | 12 | [Virtual guitarist](#12-virtual-guitarist-test-mode-test-vguitar1) |
 | 6 | [Detection and scoring](#6-detection-and-scoring) | 13 | [Eight strings](#13-eight-strings) |
 | 7 | [Chords with the 7th string](#7-chords-with-the-7th-string-native-n-slot) | 14 | [Known limitations and open risks](#14-known-limitations-and-open-risks-10) |
 | | | 15 | [Mid-hook contract and cold-site conversion](#15-mid-hook-contract-and-cold-site-conversion) |
+| | | 16 | [Source layout](#16-source-layout) |
 
 ## 1. What the mod does
 
@@ -58,13 +59,13 @@ Resolution is **all or nothing**: any missing or mismatching site patches nothin
 copy of the game image and also checks that each site covers whole instructions and has no inbound
 branch.
 
-**Stubs** (`src/hooks/stubs*.cpp`) are naked functions that replay the displaced stock
+**Stubs** (`src/features/<name>/hooks_stubs*.cpp`) are naked functions that replay the displaced stock
 instructions. They are checked against the stock code in the Unicorn emulator
 (`tools/tests/test_emu*.py`).
 
-**Mid-hooks** (`src/hooks/midhook.*`, CONFIRMED by unit and emulator tests) give new sites a plain
+**Mid-hooks** (`src/platform/midhook.*`, CONFIRMED by unit and emulator tests) give new sites a plain
 C++ callback `void __cdecl Callback(Rs7Mid::Context&)` instead of hand-written assembly. One common
-naked thunk saves GPRs, EFLAGS and x87/SSE state, clears DF, calls C++, restores, and returns into a
+thunk (`src/platform/midhook_thunks.asm`) saves GPRs, EFLAGS and x87/SSE state, clears DF, calls C++, restores, and returns into a
 relocated copy of the displaced instructions, which jumps back to `site + stolen length`.
 `ctx.esp` is the original game ESP; registers and flags are mutable; assigning `ctx.jump` skips the
 replay. The relocator whitelists common ALU/MOV/LEA/TEST, register PUSH/POP, immediates,
@@ -72,15 +73,23 @@ MOVZX/MOVSX/SETcc and relative CALL/JMP/Jcc; it rejects prefixes, LOOP/JCXZ, ind
 unknown opcodes, branches into instruction interiors, internal calls and call/pop. There is no
 blind-copy fallback. Callees that inspect their return address need a hand-written hook (contract,
 conversion method and status: section 15). Cost
-measured on one machine: about 150 ns per call (microbenchmark, not frame time). Live detach is
-not supported. D2/D3 in `mid_examples.cpp` show the registration pattern. To add one: add a `jmp`
-site (5..16 bytes, whole instructions), implement the callback, set `Rs7Hook::callback`, add an
-emulator comparison, run the gates.
+measured on one machine: about 150 ns per call (microbenchmark, not frame time); the light mode
+(`Rs7Hook::midMode = Rs7Mid::Mode::Light`, no floating-point save, for callbacks without x87/SSE code) costs
+about 25 ns, and the sse mode (`Rs7Mid::Mode::Sse`, XMM0-7 and MXCSR only, for callbacks with SSE float math and no
+x87) about 20-31 ns (CONFIRMED, `tests/test_midhook_bench.cpp`, five runs). Besides `jmp` sites a mid-hook can sit
+on a `call rel32` (section 15 "Call sites"): **Before** (callback at the callee's entry; `Rs7Mid::Ret` / `Return` replace the callee), **After** (callback after the callee returned) and
+**Wrap** (`Rs7Mid::Call::Wrap`: the callee runs on copies of its arguments between an optional before and an after
+callback that both see the originals, section 15 "Wrap placement"); `jmp_atomic8` sites take a mid-hook too, and
+`Context::St0` / `PushSt0` edit the saved x87 stack. Live detach is not supported. D2/D3 in `features/diag/hooks.cpp` show the registration pattern. To
+add one: add a `jmp` site (5..16 bytes, whole instructions), implement the callback, set
+`Rs7Hook::callback`, add an emulator comparison, run the gates.
 
 **Copied game functions.** Some stock functions are copied byte for byte from the game image with
 only array displacements and count bytes moved to the capacity-8 layouts (`tools/gen_fncopy.py`,
-`gen_tuner8s.py`, `gen_publish*.py` -> `src/core/*generated.h`). The copies are checked against the
-live code at startup (FNV-1a) and in the emulator against the stock function.
+`gen_tuner8s.py`, `gen_publish*.py` -> `src/features/<name>/*generated.h`). The copies are checked against the
+live code at startup (FNV-1a) and in the emulator against the stock function. A copy's call into rs7string (a call edit
+in place of one stock instruction or call) goes to a call-in entry, a C++ callback with the copy's registers
+(`Rs7Mid::CallIn`, section 15 "Call-in entries"), or to one of the few asm helpers left.
 
 **Coexistence and safety.**
 - Writes use one `lock cmpxchg8b` on an 8-byte window inside a cache line. Each site is classified
@@ -153,7 +162,7 @@ All rows are members of the native 7-string unit (no ini switch since 1.0; `Rs7_
 | PegSet | `g_rs7_native_pegset` | 8 slots; peg 7 is slot 6, so stock fade/layer/tint loops cover it. |
 | Colour manager | `g_rs7_native_colours` | `*0x135F58C`: original six-slot tables retained for RSMods; appended eight-slot tables (both colour modes). |
 | FretGrid | `g_rs7_native_fretgrid` | cells of 264h per row instead of 1CCh; hooks FGR*, PUBGC/GO/GB/GA/GF/EDGE/GP. Answers `Rnd_FretGrid_GetCellPos` `0x58FE00` from native cells for strings 0-7. |
-| Pitch | `g_rs7_native_pitch` | detector grown to `13E0h` (int16 tuning8 `+13B8h`, openMidi8 `+13C8h`, active count `+13D8h`), matcher to `6Ch`; `0x873E90` replaced by a port with an 8-entry base table (35 / 30 for strings 6 / 7); strings >= 6 of `0x873F80` calls go to `Rs7_Pitch_Raw8`. |
+| Pitch | `g_rs7_native_pitch` | detector grown to `13E0h` (int16 tuning8 `+13B8h`, openMidi8 `+13C8h`, active count `+13D8h`), matcher to `6Ch`; `0x873E90` replaced by a port with an 8-entry base table (35 / 30 for strings 6 / 7); strings >= 6 of `0x873F80` calls of a tailed object are answered over the tail (PC1-PC4, `rs7p::ExpectedPitch8`). Tails are written only in blocks `_msize` reports large enough; the writers record each such object in a registry of tailed allocations (128 entries; CONFIRMED peak in game: 2 objects, 0 evictions; least recently written evicted and logged once; a writer that finds a stock-size block drops a stale entry), which `Rs7Pitch_Tailed` reads, so the hot readers call no CRT function and stay light-safe. |
 | Next-note grid | `g_rs7_native_nextgrid` | 8 time rows (sites NGB*). |
 | Tuner | `g_rs7_native_tuner` | see section 8. |
 | Chords | `[chords] native_chordloops` (not a unit member), N-slot sites | see section 7. |
@@ -195,6 +204,10 @@ extra-colour snapshot. Taken flags, named indices and animation scalars at `+0x2
 `0x543910` glow blur, so stale RGB affects both the peg and its coloured bloom. The black quads
 at `0x544610` are a separate path. **HYPOTHESIS:** the RGB/intensity mismatch explains the
 reported difference in glow width; verify the appearance in the same tuner stage in game.
+The pass doubles that RGB, so `NamedColour` caps the seventh peg's brightest channel at 0.5 (the
+peak of the stock named colours logged in game): with RSMods' 00C68E and a state-4/state-1 ratio near 1
+the doubled colour exceeded 1 in two channels and the glow turned cyan (HYPOTHESIS: clamped by an 8-bit
+target; the ×2 is CONFIRMED in `0x543150`, the target format is not).
 
 **RSMods seventh-string default (CONFIRMED by RSMods source and native tests).** At startup,
 inspect the game directory's XInput proxy as resource data, identify its RSMods version resource, and read
@@ -203,6 +216,20 @@ With `ExtendedRange=on`, use `string0_CB` for custom-colour mode 2, or RSMods' d
 `00C68E` for modes 0/1. Apply it to both profile colour modes. Missing/invalid configuration falls
 back to rs7string's own colours. `[color] rsmods_extended_range=0` explicitly selects those saved
 colours; toggling the preference never overwrites them. RSMods configuration changes need a restart.
+
+**RSMods pure red glow (CONFIRMED by RSMods source `CollectColors.cpp` and emulator tests; not yet seen
+in game).** RSMods' custom string colours write each string's Glow every tick as HSL(hue - 4, 1, 0.5) of
+its Enabled colour (int hue from its `RGB2HSL`). For a hue of 0..3 (e.g. `800000`) the hue is negative,
+its `HSL2RGB` matches no sextant and keeps a stale near-black colour, so the string's glow outline is
+invisible. rs7string corrects the read side, not RSMods' table (RSMods rewrites it every tick):
+`Rnd_StringRenderer_UpdateGlow` `0x5441A0` loads the glow RGB pointer at `0x544384` and copies it at
+`0x54438B`. GLW (mid-hook at `0x54438B`, stock function) and `Rs7_CallIn_GlowColour` (the GSGL copy's call-in)
+replace the pointer with `Rs7_GlowFixPtr`'s answer: for strings 0-5 whose Enabled (state 1, same mode,
+stock or native layout) has an RSMods hue of 0..3, a buffer with HSL((hue - 4 + 360) % 360, 1, 0.5),
+RSMods' own conversions float for float (`src/features/colours/glow.cpp`); any other colour keeps the pointer.
+Only with `g_rs7_glow_fix`: the XInput proxy is RSMods and its `RSMods.ini` has `CustomStringColors=2`
+without `UseExactColors=on` (read once at startup), so stock and Zag colours are never touched. GLW is
+its own failure group (Glow): a failed site turns only the correction off.
 
 **Tuner menu entry (CONFIRMED by live log and generated-copy emulator).** TS8M2E at `0x5B0135`
 normalizes a menu start (submode 0/string 0) to `order[0]`. It must update both EDI and the string
@@ -222,10 +249,38 @@ V6 = 57/128 (normal) and 121/128 (colourblind) are repainted. A self-check (CPU 
 must pass before string 6 switches to V6; anything unexpected keeps V6 at 0 so string 6 shows the
 stock grey preview row and strings 0-5 stay stock. d3d9.dll gives each device its own vtable copy and
 rewrites it at times (e.g. at song load); the worker re-checks every second. Limits: with 3 or more
-mip levels the colour is pure only on mips 0-1; RSMods' custom note colours override string 6 with
-its row 7.
+mip levels the colour is pure only on mips 0-1.
 
-**7th string line** (`string7_line`, `src/core/gsnative.*`, per-guitar state in `src/core/string7.*`): string 6
+**RSMods note ramps** (CONFIRMED by RSMods source `D3DHooks.cpp` / `Settings.cpp` and the in-game
+log): with custom string colours or Extended Range, RSMods' draw hooks bind their own generated ramp
+(256x128 A8R8G8B8 MANAGED, rows 6/7 and 14/15 fixed greys) on stage 1 after the game bound the stock
+one, so string 6 at V6 sampled RSMods' grey row 7 / 15. When the installed `xinput1_3.dll` identifies as
+RSMods (`rs7rsmods::Present`) and V6 is on, the SetTexture hook gives each such texture (stage 1,
+256x128 A8R8G8B8 MANAGED, rows 7 and 15 grey) its own copy with the V6 lines repainted, with the same
+build and self-check (any failure: RSMods' texture stays bound), hides it from `GetTexture` and holds a
+reference on the source (a rebuilt RSMods texture is a new address; at most 8 cached). A colour change
+rebuilds them at the next bind. Limit: more than 32 distinct RSMods ramps (e.g. rainbow notes) turn this
+path off for the session; string 6 then shows RSMods' row again.
+
+**Ramp swap source files** (`src/d3d/`, public interface `swap.h`): `swap_hook.cpp` (vtable slots 64/65, thunks,
+re-check, GetTexture hiding; `HookState`), `swap_ramp.cpp` (candidate processing, recolour, retire, overlay
+status; `RampState`), `swap_foreign.cpp` (the RSMods ramps above), `swap_texio.cpp` (level reads, copy build
+with self-check, write with read-back), `hookutil.cpp` (log and module-name helpers shared with `present.cpp`).
+Tests: `tests/test_d3d_hook.cpp`, `test_d3d_ramp.cpp`, `test_d3d_foreign.cpp` on `tests/swap_fixture.h`.
+
+**Colour source files** (`src/features/colours/`, public interface `colours.h`; the D3D side above includes only
+that): logic `rgb.cpp` (colour text, channels, ramp-line recolour), `native.cpp` (the eight-column layout and
+`Publish`), `ramp.cpp` (the ramp copy model), `rampstate.cpp` (candidate table, V6 rule), `rsmods.cpp` (RSMods
+proxy and `RSMods.ini`), `glow.cpp` (RSMods' glow conversions); glue `hooks.cpp` (CMUV / CMIX / CMFALL, GLW,
+`Rs7_GlowFixPtr`, `Rs7Colour_Start` / `Rs7Colour_CheckManager`), `hooks_publish.cpp` (CMINIT / CMBUILD and which
+thread may write the manager); `state.h` (one `State`); `registration.cpp` (`kRs7ColourHooks` with the generated
+`colour_hooks.generated.h` from `tools/gen_colournative.py`, group Colours; `kRs7GlowHooks`, group Glow). Tests:
+`tests/colours/`. `settings.cpp` holds the `[color]` settings table and its startup read (`Rs7Colour_ReadIni`); `LoadConfig` in
+startup still logs the values. `g_rs7_v6`, `g_rs7_fx_rgb` (`native.cpp`) and
+the data references X_CM, X_TCS, X_THEAD (`kRs7ColourRefHooks`, group Core) are the feature's too; the CM / GLW write
+conditions stay in `Rs7_ShouldPatch` (`src/hook_rules.cpp`) with the other write conditions.
+
+**7th string line** (`string7_line`, `src/features/strings/`, per-guitar state in `src/features/string7/`): string 6
 is a stock 0x110 string object of the native GuitarStrings (slot 6 of its capacity-8 arrays, ghost included),
 driven by the stock string loops; atlas row V = `[neck] string7_v` (default 0.4 = string 0's row; 0.0-0.3 are
 the bass rows). The game's own section dimming lights it (SNG section string mask bit 6: N12 `0x55CC71` / N13
@@ -235,13 +290,13 @@ DLL-owned string object S7 (with its own placement, colour, glow, noteway draw-l
 N2-N4, N6, N7, N10, N11, N14-N17) was removed in 1.0. Limit: after `Rnd_GuitarStrings_ResetState` `0x59AC20`
 (restart/seek) a running ghost bend is only released by the next string-6 note end.
 
-**Fret bars** (`src/core/frets.*`, F1 `0x58FB20`): on a guitar built with 7/8 strings every bar (and
+**Fret bars** (`src/features/frets/`, F1 `0x58FB20`): on a guitar built with 7/8 strings every bar (and
 the nut) moves half a string spacing towards string 6 and is scaled uniformly by
 `k = (L + d/2)/L` with `[neck] fret_halflen` L (4.61, the mesh's half length); measured d 1.6079,
 k 1.1744. Bars are about 17 % thicker. Locators and span data are never written. Chord frames
 (B1 `0x7A2BCA`, B2 `0x7A91E4`) get a string-axis scale and shift from the guitar's lane positions.
 
-**Headstock model** (`src/core/assetload.*`, `hsbuild.*`, `[assets] headstock7`): the guitar and its
+**Headstock model** (`src/features/headstock/assetload*`, `hsbuild.*`, `[assets] headstock7`): the guitar and its
 frame entity load once at boot, so the 7-string model (brandless "Facet", authored for this project)
 is merged next to the stock one: when the game's nif handler (AL1 `0x4A8560`) loads a guitar frame,
 the model is loaded with the same handler under the same resource name, renamed `rs7_alt`, culled
@@ -266,7 +321,7 @@ unlit, so the texture is the only brightness control).
   (`epi_whilshire_cherry_lh.nif`, the right-handed model mirrored in NIF Y; CONFIRMED by comparing the
   files) has its own package and artifact `rs7_inline7_lh.nif`. Offline regeneration:
   `tools/gen_headstock.py` (needs the maintainer's extracted templates and pipeline outputs).
-- **Layouts** (`kLayouts` in `assetload.cpp`): "6 in Reihe" (`guitar_standard_inline`, stock part
+- **Layouts** (`kLayouts` in `assetload_paths.cpp`): "6 in Reihe" (`guitar_standard_inline`, stock part
   `Wilshire_RH/LH`, pegs `epi_whilshire_peg.nif`) and "3+3" (`guitar_standard/gib_lespaul*.nif`, pegs
   `peg_bakelite.nif`). With 3+3 the in-line model sits correctly on the Les Paul neck; the pegs
   follow the profile option, not the frame, so the mod swaps in the in-line peg model
@@ -276,7 +331,11 @@ unlit, so the texture is the only brightness control).
   the native tuner's copy) reports such a guitar as in-line (CONFIRMED in game).
 - **Peg and knob tint.** The 7th peg is slot 6 of the native PegSet, so the stock peg highlight pass
   `0x543150` tints its knob like the others (the stage-2 mirrored peg and its PH1/PH2 tint hooks were
-  removed in 1.0).
+  removed in 1.0). The pass draws the mesh list `Rnd_StringRenderer_Setup` `0x541880` collected per
+  peg clone with NiNode `0x9E1360`, which ignores the cull flag, and never checks the flag itself
+  (CONFIRMED by disassembly): every 3+3 clone carries both the bakelite knob and `rs7_alt`, so the
+  hidden knob got the glow too (the wider bakelite shape). PGH1 `0x5431DC` skips a mesh whose
+  culled ancestor is `rs7_alt` or one of its siblings (`Rs7Asset_PegMeshHidden`).
 - Limits: the stock headstock shows for about 0.1 s when the pre-song tuner hands over to the song;
   the 8-string model (`rs7_inline8.nif`) is not used; with the reversed string order the headstock
   strings 1-6 fade out before the posts do.
@@ -309,7 +368,8 @@ zero calls vtable `+4`); the stock holder destructor `0x58DAB0` releases them la
 
 ## 7. Chords with the 7th string (native N-slot)
 
-`src/core/nslot.*`, `nsmatch.*`, `nstracker.*`, `src/hooks/stubs_nslot.cpp`. The game's own chord
+`src/features/nslot/` (records, matcher port, tracker aggregation, the RS7X store and their stubs); the chord frame span (B1/B2), the old
+M4 codec and `[chords] native_chordloops` (CL* sites) are `src/features/chords/`. The game's own chord
 code runs over N-slot data for every song (6-string and bass songs get the same records with slots
 6/7 empty).
 
@@ -337,7 +397,7 @@ code runs over N-slot data for every song (6-string and bass songs get the same 
   16/16 with `wide_misses=2`; 6-string controls unchanged. Techniques on string 6 render in the 7th
   lane; their detection (bend target, slide end) is lightly tested.
 
-**RS7X extension block** (`src/core/extblock.*`, site XB1; format: [RS7X-SPEC](release/RS7X-SPEC.md)).
+**RS7X extension block** (parser `src/model/extblock.*`, per-song store and site XB1 in `src/features/nslot/`; format: [RS7X-SPEC](release/RS7X-SPEC.md)).
 Strings beyond the six stock slots live in a block appended to the SNG body after MetaData, inside the
 zlib stream. The stock loader never reads it (CONFIRMED: `SNG_Song_Load` `0x558BD0` only checks the
 inflated size against the container's size field and returns after MetaData without comparing the
@@ -348,7 +408,7 @@ extended string is a double stop.
 
 ## 8. Tuner and tuning names
 
-**Native 8-slot tuner** (mandatory since 1.0, `src/core/tuner8.*`, `gen_tuner8s.py`; the six-slot B-phase tuner was removed). Sessions are
+**Native 8-slot tuner** (mandatory since 1.0, `src/features/tuner/`, `gen_tuner8s.py`; the six-slot B-phase tuner was removed). Sessions are
 allocated with `380h` (TU8ALLOC/TU8INIT/TU8FREE); a 7/8-string target (manifest keys `Rs7String6`,
 `Rs7String7`, or a published count) makes the session native at TS `0x5AF200`: its six per-string
 arrays move to a capacity-8 tail, strings 7/8 are slots 6/7 of every native layout, and the tuning order
@@ -363,7 +423,7 @@ left-handed profiles; two players sharing the two extra label strings.
 the 8th); add it with `tools/manifest_key.py IN.psarc OUT.psarc [--t6 N]`. Never use the key
 `string6`, which crashes the song list.
 
-**Low range** (`[tuner] lowrange=1`, opt-in): the stock "wrong instrument" check
+**Low range** (`[tuner] lowrange=1`, default on): the stock "wrong instrument" check
 (`UI_PlayerTuner_CheckWrongInstrument`, site W `0x5B2DDE`, `fcomp float [34.0]`) uses a session
 threshold `min(34, lowest open MIDI - 1)`; the detector's lowest-open filter (`+11F8h`) is lowered on
 each selection of a 7-string session. A bass B0 (MIDI 23) is not handled.
@@ -371,7 +431,7 @@ each selection of a 7-string session. A bass B0 (MIDI 23) is not handled.
 **Tuner arrow keys** switch strings only in the precision view (a played note or Space brings it up);
 the stock 6-string tuner behaves the same.
 
-**Tuning names** (`[tuner] names=1`, `src/core/tuningname.*`). For an arrangement whose `Tuning` has
+**Tuning names** (`[tuner] names=1`, `src/features/tuner/tuningname.*`, `hooks_names.cpp`). For an arrangement whose `Tuning` has
 `Rs7String6` the song list row, song/arrangement pages and the tuner show a 7-string name: for strings
 0-5 all at k and the 7th at k: `+1 C Standard`, `0 B Standard`, `-1 Bb Standard`, ... `-9 D Standard`;
 7th at k-2: `C Drop Bb`, `Drop A`, `Bb Drop Ab`, ... `D Drop C`; plus Extended Drop D/C/B (`-2 0 0 0 0 0 |
@@ -389,6 +449,8 @@ then assign the display output (row `+138h`) and raw token (row `+150h`). Englis
 
 ## 9. Chord diagrams (`[chords] diagrams7`)
 
+Source: `src/features/diagrams/` (public interface `diagrams.h`).
+
 The chord book, song panel and lesson scene draw chord diagrams from Scaleform movies
 (`gfxassets/libs/commonlib.gfx`, `gfxassets/views/contentpanel.gfx`, `gfxassets/views/ge_game.gfx`).
 Seven-row diagrams need a changed ActionScript class (DoInitAction tag, type 59, class sprites
@@ -398,7 +460,7 @@ Seven-row diagrams need a changed ActionScript class (DoInitAction tag, type 59,
   `LowBFret/LowB_Finger/LowB_Color` and `LowFsFret/LowFs_Finger/LowFs_Color` (colours `0x808080` and a
   provisional `0x00FFFF`) from the native T8 record after the stock serializers have run, recomputing the
   fret window over N strings. TP13 `0x7578BC` routes the loaded-song template lookup through
-  `Rs7_NsTplAt`; DGB `0x55A02C` binds PostProcess's UUID-selected attributes to the exact SNG song.
+  `Rs7Ns_TplRecord`; DGB `0x55A02C` binds PostProcess's UUID-selected attributes to the exact SNG song.
   Six-string and bass shapes emit no changes. Not covered (stock output): generic database chords,
   catalogue songs whose SNG is not loaded, missing RS7X/CHDT blocks, mismatched six-column projections.
 - **Movie swap.** The Scaleform `FileOpener::OpenFile` slot (data word `0x121F2D0`, vtable `0x121F2C4`
@@ -416,7 +478,7 @@ Seven-row diagrams need a changed ActionScript class (DoInitAction tag, type 59,
 
 ## 10. Plain (unencrypted) PSARC loading
 
-`[psarc] plain=1` (`src/core/plainpsarc*.cpp`, sites group `psarc`). Three sites, CONFIRMED by emulator and in
+`[psarc] plain=1` (`src/features/psarc/`, the first feature in the target layout, section 16; sites group `psarc`). Three sites, CONFIRMED by emulator and in
 game: PP_SNGD `0x558CD4` (the call of the SNG AES-CTR decrypt `0xE3EA10`: for magic `0x4A` + flags 1
 copy the payload after the 16-byte IV slot, else call the game's decrypt), PP_SNGF `0x558C1A` (the
 `cmp [esp+68h],3` flags check: flags 1 pass), PP_TOC `0x8A3643` (start of the TOC decrypt block
@@ -459,9 +521,38 @@ event (type 3), the leave-state call, or a NULL song object while playing. A str
 seconds into a song ends it about 7 s later through the first route with the song clock still at 0
 (game behaviour; HYPOTHESIS: also stock).
 
+**UI state** (`src/features/testdrive/uistate.*`, always on, log only): a thread polls the game's current UI state
+every 100 ms and logs `ui: OLD -> NEW` (`MainMenu`, `LearnASong_Songs`, `LearnASong_SongOptions`,
+`LearnASong_PreSongTuner`, `LearnASong_Game`, `LearnASong_Pause`, `LearnASong_SongReview`, `Tuner`, ...).
+The state lives at global `0x135F62C` +28h, its name at +8Ch (CONFIRMED static: `0x766580` compares it
+with `_stricmp`; in-game log 2026-10-17). In-game test drivers wait on these lines instead of fixed delays.
+A screen's state is logged when it opens, before it takes keys (about 1.5 s of intro animation).
+
+**Test speed-up** (`src/features/testdrive/fastmode.*`, `[test] fast=1`, default off; sites.json group `fast`, resolved and
+written on their own after plain PSARC): `FST_REVIEW` `0x623BC1` `jz` -> `nop nop` in the after-song menu pick
+`0x623B60`, so a song ends on `LearnASong_SongOptions`, not `LearnASong_SongReview` (CONFIRMED branch and in-game
+run, about 19 s saved per song; whether the review screen saves anything the profile needs: HYPOTHESIS, not checked).
+Tried and dropped (measured 2026-10-17): a faster Flash clock (Scaleform `TimerOverride*` `0x133B19C`) or Flash
+timeline (dt in the advance wrapper `0xC29E10`) does not shorten the menus' ~1.5 s key lock or the boot.
+
+**Test variants** (`src/features/testdrive/variants.cpp`, `hooks_variants.cpp`; `[test] force_colourblind=1`,
+`force_lefty=1`, `force_headstock=33|6`, default off; TVCB / TVGP written only when one is on). The profile's settings
+store holds `ColorBlindMode`, `LeftHandGuitar` and `GuitarTypeMP` (`6-IN-LINE` or not); the game copies them into
+runtime objects, and only those copies get the forced values (CONFIRMED static):
+- TVCB `0x519687` in `Rnd_ColorMgr_SetColorBlindMode` `0x519680`: EBX (a temporary copy of the setting text, from
+  0x519750 or 0x601820) becomes `ColorBlindMild`, so the colour manager's mode (`+348h + 4 * player`) is 1.
+- TVGP `0x593D4A` in `Rnd_GuitarProfile_Load` `0x593B00` (ESI the runtime GuitarProfile): `+11h` lefty, `+13h`
+  in-line (AL before its store) and `+15h` colourblind. `Rnd_InstrumentInfo_FromProfile` `0x58ABD0` copies +11h / +13h
+  into InstrumentInfo `+9` / `+0Ah`, which the headstock frame choice and the assetload log read.
+
+Nothing writes the store back from these copies: its setters run from the options menus (for example `0x891050`
+sets `LeftHandGuitar` from the handedness option's text), so the owner's profile keeps its values. Not covered: UI
+code that reads `LeftHandGuitar` from the store itself (for example the chord-diagram colours `0x75812F`).
+
 ## 12. Virtual guitarist (test mode, `[test] vguitar=1`)
 
-`src/core/vguit.*`, `vgsynth.*`. Plays the chart into the game's own input path with a synthesized
+`src/features/vguit/` (section 16: logic in `config`, `plan`, `report`, `player`, `synth`; game glue in
+`hooks*.cpp`; tests in `tests/vguit/`). Plays the chart into the game's own input path with a synthesized
 guitar and logs how the game judged every note, so charts can be tested without a guitarist. TICK
 `0x7E2880` copies live note objects (`session+41Ch`, about 3 s ahead) into a schedule; AUD1 `0xC4618C`
 (`SndIn_PA_Read`, inside the input device `Read` `0xC460C0`) writes synthesized samples into the 48 kHz
@@ -513,16 +604,31 @@ headstock model with `Locator_Peg_8` and `string_size_8`-style material paramete
 
 ## 15. Mid-hook contract and cold-site conversion
 
-Design record of the generic mid-hook (`src/hooks/midhook.*`) and of converting hand-written naked
+Design record of the generic mid-hook (`src/platform/midhook.*`) and of converting hand-written naked
 stubs to it. Tags as above; measurements are one machine and one microbenchmark.
 
+**Source.** The per-site entries are emitted at runtime by `Rs7Mid_Build`, `Rs7Mid_BuildLight` and `Rs7Mid_BuildCall`
+(`midhook.cpp`). The two shared thunks they jump to, `Rs7Mid_Thunk` and `Rs7Mid_ThunkLight`, are one MASM file,
+`src/platform/midhook_thunks.asm` (ml.exe, wired into `rs7string.vcxproj` and `tests/rs7string_tests.vcxproj`
+through the `masm` build customisation, exported with `PROC EXPORT`), not inline `__asm`; the WOW64 syscall of
+`Rs7_Protect` is `src/platform/protect_syscall.asm` the same way, so `src/platform/` has no inline assembly. Why a
+MASM file: the thunks stay ordinary code in the image's `.text` with the same exports, so the native tests, the
+emulator tests (which load the DLL and run the exported thunks in Unicorn) and the benchmark use them unchanged, and
+the assembler reads like the old inline block with labels, comments and a `FOR` macro for the light thunk's unrolled
+copy. Emitting the thunk bodies as bytes at runtime would need executable storage and a byte emitter for about 70
+instructions, hide them from the export table and the emulator harness, and buy nothing in speed. The move changed no
+byte: CONFIRMED, both thunks in `dinput8.dll` are byte-identical to the inline-asm build (`f7cb7e8`, 92 and 159
+bytes), and the benchmark below is unchanged (full 150-157 ns, light 21-25 ns before and after, three runs each).
+
 **Contract.** `Rs7Mid::Context` is 44 bytes: EDI, ESI, EBP, original ESP, EBX, EDX, ECX, EAX, EFLAGS
-(nine dwords), then a private callback slot and the writable `jump`. Compile-time offset assertions
+(nine dwords), then the thunk-owned `fpu` slot (the callback address on entry; while the callback runs the FXSAVE
+image in full mode, 0 in light mode, the result block with bit 0 set in sse mode) and the writable `jump`. Compile-time offset assertions
 bind it to the thunk. GPRs, ESP, flags and `jump` are writable; the callback is `cdecl`, must return
-normally and must not throw. Segments are the process ABI. x87/MMX/SSE/MXCSR are saved with FXSAVE
-and restored with FXRSTOR, so a callback cannot change the resumed floating-point state (AVX upper
-halves and privileged state are outside the game's ABI). The generated 15-byte entry pushes the replay
-address and the callback, then jumps to the shared thunk: it saves GPRs and flags, copies the context,
+normally and must not throw. Segments are the process ABI. In full mode x87/MMX/SSE/MXCSR are saved with FXSAVE
+and restored with FXRSTOR, so a callback changes the resumed floating-point state only through the x87 accessors
+(below); light mode saves no floating-point state, sse mode only XMM0-7 and MXCSR (their own paragraphs below; AVX
+upper halves and privileged state are outside the game's ABI). The generated 15-byte entry pushes the replay
+address and the callback, then jumps to the shared thunk; the full thunk saves GPRs and flags, copies the context,
 aligns a 512-byte FXSAVE area, clears DF, initialises x87, calls C++, restores floating-point state
 and copies the edited register frame under the requested ESP (direction-aware for overlapping
 frames), then POPAD/POPFD/RET. ESP is the site's pointer, not PUSHAD's; at least 40 writable bytes
@@ -536,9 +642,17 @@ the middle of an instruction or the hook's own entry. A trailing displaced `RET`
 directly. `Context::Compare32(lhs, rhs)` reproduces the arithmetic flags of `cmp` and keeps every
 other flag; use it when the stub being replaced left comparison flags that a continuation could read.
 
-**Relocator.** Whitelist only (see section 2): rejects prefixes, `RET imm`, indirect transfers, unknown
-opcodes, branches into instruction interiors and internal calls; widens relative branches and remaps
-internal ones; no blind-copy fallback. `tools/sitecheck.py` still checks whole instructions and inbound
+**Relocator.** Whitelist only (see section 2), a table of position-independent operand forms (ModRM, imm8,
+operand-sized immediate, moffs32, allowed ModRM.reg values) plus the relative transfers: accepts one
+operand-size prefix `66` except on transfers, x87 and `SETcc`; rejects every other prefix,
+indirect transfers, unknown opcodes, branches into instruction interiors and internal calls; widens
+relative branches and remaps internal ones; no blind-copy fallback. `tools/midhook_survey.py` runs the
+built relocator over every jmp site and lists the rejected ones with the first rejected encoding: 22 of
+210 before `INC`/`DEC r/m8`, `IMUL` (`0F AF`, `6B`, `69`), `TEST r/m,imm` (`F6`/`F7 /0`) and `66` were added,
+2 after (W: `fcomp`, BT1: `RET imm16`); `RET imm16` is now copied as a terminal instruction like `RET` (position
+independent, only as the last displaced instruction), and FCOMP m32 (`D8 /3`, memory forms only: a memory operand is
+position independent in 32-bit code) is accepted, so none is left. CONFIRMED by `tools/tests/test_midhook_relocate.py`: the relocated
+copies of 14 of those sites execute like the stock bytes in Unicorn (GPRs, EFLAGS, exit, writes). `tools/sitecheck.py` still checks whole instructions and inbound
 branches. A relocated `CALL` runs from the thunk's copy, so the callee sees a different return address
 than at the original site (stubs that tail-jump into the callee kept the original one). Live unload
 needs thread quiescence and is unsupported.
@@ -567,24 +681,239 @@ flags that no continuation reads ("dead") the hook leaves the incoming ones; eve
 **What converts and what stays.** HYPOTHESIS (estimate, not measured runtime frequency): load, free,
 setup, song-start and teardown hooks with straight replay run rarely enough that the thunk's
 fixed cost is irrelevant. Hot per-note, per-frame, lane, grid, colour, pitch and audio-thread hooks stay
-hand-written until profiling justifies full-context overhead. Also stay hand-written: wrappers that call
-the original and do work after it returns, callee `RET imm` cleanups and epilogues, replaced `CALL` sites
-that tail-jump, sites whose displaced bytes use a prefix or INT3 padding, custom saved-frame consumers,
+hand-written until profiling justifies full-context overhead (or convert to the light mode below once its callback is integer-only). Wrappers that call the original and do work
+around it use the Wrap placement (below). Also stay hand-written: callee `RET imm` cleanups and epilogues, replaced `CALL` sites
+that tail-jump, sites whose displaced bytes use a prefix other than `66` or INT3 padding, custom saved-frame consumers,
 stack probes and return-address-sensitive callees (table below). A converted site either leaves the
 replay alone (the callback only observes or calls a helper) or skips it (`jump = resume`) and performs the
 stock instruction's effect itself; where the old stub left compare flags, the callback reproduces them
 (`Context::Compare`).
 
-**Cost.** Native QPC microbenchmark (`tests/test_midhook.cpp`, 7 x 300,000 no-op hits, three runs of the
-final build): 140.8-143.2 ns added per hit before callback work (stock 2.2 ns, no-op hook 143-145 ns),
-even with the feature switch off (the thunk always saves state; earlier builds measured 150-190 ns). Not
-frame time, and the callback's own work is extra (a 64-entry table scan for the PegSet sites, a short
-loop for GSSS/GSSE). At 10,000 hits per frame that would be about 1.4 ms per frame, hence the cold-only
-rule. HYPOTHESIS (hit counts not measured in game): the converted sites run a few to a few dozen times
+**Light mode.** `Rs7Hook::midMode = Rs7Mid::Mode::Light` (`Rs7Mid_BuildLight`) uses the same 15-byte entry,
+`Context` layout and continuation rules, so converting a stub is only writing the callback. Its thunk
+(`Rs7Mid_ThunkLight`) saves GPRs and EFLAGS, places the context 44 bytes below the entry slots as the full
+thunk does (a callback may still `Push` up to eleven dwords), clears DF, calls C++ and writes the edited frame
+back with unrolled moves (no REP MOVSD, no STD). It does no FXSAVE, FNINIT or FXRSTOR and no 16-byte stack
+alignment. Contract: the callback and everything it calls execute no x87, MMX or SSE instruction (they would
+change the game's live floating-point state). In MSVC with `/arch:SSE2` that excludes not only `float`/`double`
+but also zero-initialised structs and arrays and struct copies, which the compiler emits as `xorps`/`movups`/`movq`
+(several existing cold callbacks contain exactly that). Enforcement: a site listed in `LIGHT_CALLBACKS`
+(`tools/tests/emu_harness.py`, kept in sync with the registration) is built with the light builder in the
+emulator tests, and `test_light_callbacks_use_no_fp` disassembles its callback and every direct callee
+(recursive descent) and fails on any x87/MMX/SSE instruction or unverifiable indirect jump. CONFIRMED (emulator,
+`test_light_thunk_executes_no_fp_and_keeps_fp_state`): with CR0.TS set, so that any floating-point instruction
+would raise #NM, the light thunk runs to the continuation, preserves all GPRs and EFLAGS and leaves the FXSAVE
+image unchanged; the full thunk faults under the same setting. The generic emulator tests (real-site replay,
+relocated JCC/CALL, register/flag/ESP/jump edits) run against both thunks.
+
+**Sse mode.** `Rs7Hook::midMode = Rs7Mid::Mode::Sse` (`Rs7Mid_BuildSse`; mode 2 for `Rs7Mid_BuildCall` /
+`Rs7Mid_BuildWrap`) is for hot sites whose callback computes with floats: the light thunk's frame handling plus
+XMM0-7 (MOVUPS, unaligned) and MXCSR (STMXCSR / LDMXCSR) around the callback, which runs with MXCSR `1F80h` (round to
+nearest, exceptions masked, no FTZ / DAZ) whatever the game set. No FXSAVE, no FNINIT: the game's x87 stack stays
+live, so the callback and its callees execute no x87 or MMX instruction. With MSVC `/arch:SSE2` that rules out a
+non-inlined function returning `float` / `double` (the x86 ABI returns them in ST0; `Rs7S7_ExtrapolateLane` is inline
+for this) and CRT math. An x87 result goes through `Rs7Mid::LoadSt0(c, value)`: `Context::fpu` points at a result block
+(`Rs7Mid::SseResult`, bit 0 set; the x87 accessors see no image and fail), and after restoring the thunk does
+`fld dword` of the value, as a displaced `fld dword [..]` would (one load per hit; a full stack faults like the game's
+own `fld`). The gap below the entry slots is 52 bytes, so the block and the context tail stay below the eleven dwords
+a callback may `Push`. Enforcement: `SSE_CALLBACKS` (`tools/tests/emu_harness.py`) selects the builder in the emulator
+tests, and `test_sse_callbacks_use_no_x87_or_mmx` runs the light check's scan allowing XMM instructions, with no
+exemption: R2's D1 logger `Rs7_DiagNoteHead` only queues the line (integer, a lock-free 16-slot ring) and the full-mode
+diagnostic hooks D2 D3 D5, written under the same `[debug] diagnostics=1`, log it (`Rs7Diag_FlushNoteHeads`). CONFIRMED:
+`tests/test_midhook_sse.cpp` (hardware: the loaded value, XMM / MXCSR / x87 state around the hook, `LoadSt0` fails in
+the other modes), `test_midhook_emu.py` (Unicorn: registers, flags, ESP edits and real-site replay against all three
+thunks; the callback sees MXCSR `1F80h` and the game's x87 stack). Cost: see the table under "Cost". `Context::Add32`
+(ADD's flags, like `Compare`) and `Context::CompareSt0` (the exact order of the 80-bit ST0 against a float, as `fcom`;
+`St0()` rounds to double) were added for R2 / R6 and W; both are checked against the hardware.
+
+What the converted float sites guarantee (`tools/tests/test_midhook_sse_sites.py`, against the frozen stubs and the
+stock bytes): R2 and R6 run to the game's next `fstp dword` (R2 `0x79E730`, R6 `0x7A8C30`, CONFIRMED by disassembly),
+and the stored float, registers, flags (the `add`'s, `Add32`) and memory equal the old stubs' for exact, inexact,
+overflowing and signed-zero lanes; the extrapolation is correctly rounded once (53 bits >= 2 x 24 + 2), as the old
+x87 code's float was. Not covered: the x87 precision / underflow / denormal flags (contract `fsw="sticky"`, and no
+denormal lane coordinates in the matrix: an x87 load of one raises DE), NaN payloads (x87 and SSE propagate different
+NaNs when both inputs are NaN), and the game's x87 control word: the oracle runs with the FNINIT default (64-bit
+precision, round to nearest); HYPOTHESIS: the game runs round to nearest at 24-bit or higher precision, where the
+stored float is the same. W compares the 80-bit mean exactly (a mean one 64-bit ulp off 34.0 included); its replay
+and the remap read the game's constant k at `0x1224C6C` (its address from the ref site `X_WTHR`, the operand of W's
+`fcomp`), CONFIRMED 34.0 in the unpacked image; ST0 becomes k - 1, k or k + 1 (the old stub used its own 34.0f,
+`g_rs7_wrong_stock`, retired). The sse thunk on a full x87 stack loads like the game's `fld` (stack fault, compared
+with the hardware), and `BuildCall` / `BuildWrap` run with mode 2 in their emulator tests.
+
+**Call sites.** A `Rs7Kind::Call` site is a `call rel32` whose rel32 startup retargets to the hook's entry
+(`Rs7Hook::callback` on a call site, `Rs7Mid::Hook::PrepareCall`, `Rs7Mid_BuildCall`). Nothing is relocated, and the
+game's own `call` pushes the real return address. Same thunks, `Context`, full/light rules and flag contract as jump
+sites; only the entry and the meaning of `jump` differ, chosen per hook by `Rs7Hook::midCall`:
+
+| Placement | Entry | When the callback runs | `jump` starts at |
+|---|---|---|---|
+| `Rs7Mid::Call::Before` (default) | `push callee; push callback; jmp thunk` (15 bytes) | at the callee's entry: `esp` points at the return address (site + 5), arguments at `esp + 4` | the original callee |
+| `Rs7Mid::Call::After` | `lea esp,[esp+4]` (drops the game's return address, keeps the flags); `call callee; push site+5; push callback; jmp thunk` (24 bytes) | after the callee returned: EAX/EDX/flags are the callee's, `esp` is past its own `ret N` cleanup | site + 5 |
+
+Before: leaving `jump` tail-jumps into the callee with the game's stack and return address unchanged (what the old
+`jmp g_rs7_target_X` stubs did); another `jump` replaces the callee (same convention); `Rs7Mid::Return(c, value,
+argBytes)` skips it: EAX = value, the return address and `argBytes` of a `ret N` callee are popped, and execution
+continues at site + 5. After: the callback may replace the integer return value (EAX, EDX); the callee sees a return
+address inside the entry, so return-address-sensitive callees (table above) cannot use it, as with a relocated
+`CALL`. An x87 return value (ST0) can be replaced by a full-mode callback (`Context::SetSt0`, below), not by a light
+one. The callee address is the first entry slot (Before) or bound to the hook's `target`
+variable (both). After cannot read the pre-call arguments (they are below the live stack after the callee returned and
+the thunk's scratch overwrites them); wrappers that need them use the Wrap placement below.
+CONFIRMED by `tests/test_midhook_call.cpp` (native: registers, flags, stack, call / skip / `ret N` skip / replaced
+return value, both placements and modes) and `tools/tests/test_midhook_call_emu.py` (the same in Unicorn against both
+thunks). First converted site: SF1 (Before, full mode: the song destructor runs on a loader thread too), compared
+with its frozen stub in `tools/tests/test_midhook_nslot.py`.
+
+**Call-in entries.** The calls written into relocated function copies (platform/fncopy.h; a call edit replaces one
+stock instruction or call with `call` + NOPs) are not sites: nothing is relocated and there is no callee. A
+`Rs7Mid::CallIn {callback, mode, argBytes}` builds the call entry with no callee (`Rs7Mid_BuildCallIn`, 16 or 18
+bytes): `push continuation; push callback; jmp thunk`, the continuation a `ret` / `ret argBytes` right after it. The
+callback runs with the copy's registers and flags, `esp` at the copy's return address, arguments at `esp + 4`.
+Leaving `jump` returns to the copy with the edited `Context` (registers, flags) and pops `argBytes` (a stdcall helper's
+`ret N`); assigning it tail-jumps (into the stock callee, with the copy's stack: `Rs7_CallIn_Attach` for strings 0-5).
+A callback that must run a game function and continue afterwards pushes copies of its arguments and a second call-in
+entry as the return address (`Rs7_CallIn_Shape` / `Rs7_CallIn_ShapeDone`), so the game function runs with the game's
+own x87 state. The generators name the call-in object instead of a DLL function (`g_rs7_callin_<name>`, the edit row's
+`Rs7FnEdit::callin`); `Rs7Fn_Build` writes `CallIn::Entry()` (built on first use, before the copy) into the copy. Same
+thunks, full / light rules and cost budget as sites; a light call-in callback is checked for x87/SSE code like a light
+site (`test_light_and_sse_callins_use_no_fp`). An x87 result (ST0 left for the copy) comes from an Sse-mode call-in
+with `Rs7Mid::LoadSt0`: the SSE thunk does the `fld` after restoring (`Rs7_CallIn_GlowRead`, the GSGL copy's glow
+read; frozen at `06733ba`). **Game code from a full-mode callback** runs under `Rs7Mid::GameFcw` (`midhook.h`): the thunk's FNINIT
+control word (37Fh, 64-bit precision) is replaced for the scope by the game's own from the saved image (the D3D9 device
+sets 24-bit precision), as under the naked stubs these callbacks replaced. Audit (2026-10-18, every full-mode callback
+that reaches a game function through `call` or a function-pointer cast): `Rs7_CallIn_Attach`, AUD1, DGB, DGM, F1, FGHK,
+GKT (around the rebuild: the callback uses `__try`), GSC1, IN1, MD1 (before), N5, NG9, PL1, PSL2, PUBGA, PUBGB, SF1,
+TJ (both), TK, TN (both), TU, TUT, XB1. CONFIRMED by `midhook_game_fcw_runs_game_code_with_the_callers_control_word`
+and the call-in oracle (it runs with the game control word 27Fh and records the one Rs7Gs_AttachExt and the attach
+stand-in see). CONFIRMED by `tests/test_midhook_call.cpp` (sizes, rejections,
+the `ret N` return with edited registers in both modes) and `tools/tests/test_midhook_callin.py` (`callin_oracle.py`:
+each call against its frozen asm helper and the edit's stock bytes in Unicorn).
+
+**Wrap placement.** `Rs7Mid::Call::Wrap` is for the wrappers After cannot express: the callback needs the callee's
+arguments or the registers it was called with after it returned, skips it conditionally, or passes it arguments it
+builds itself. The entry runs the callee as a subroutine on **copies** of its stack arguments, so the originals stay
+live above the game's return address for the whole call; nothing is added to `Context` and the thunks are unchanged.
+Per site the hook row declares `Rs7Hook::midWrap`, an `Rs7Mid::Wrap {args, conv, locals}`: the stack argument dwords
+to copy, who cleans them up (`Conv::Stdcall`, also for a thiscall callee: the callee's `ret 4 * args`; `Conv::Cdecl`: the
+caller) and the bytes of scratch the callbacks may use (a multiple of 4, at most 256). The same constant is the
+callbacks' view of the frame. The callbacks are `Rs7Hook::midBefore` (optional) and `Rs7Hook::callback` (after;
+optional when there is a before callback), one mode for both. Entry (`Rs7Mid_BuildWrap`), at the game's `call`:
+
+```
+push edx; push ecx; push eax; push 0     ; the frame: user dword, then EAX/ECX/EDX at the call
+lea  esp, [esp - locals]                 ; scratch (omitted when 0)
+[push C1; push before; jmp thunk]        ; before: jump = C1
+C1: push dword [esp + locals + 16 + 4 * args]   (args times: the copies, last argument first)
+call callee
+[lea esp, [esp + 4 * args]]              ; cdecl: drop the copies the callee left
+[push T; push after; jmp thunk]          ; after: jump = T
+T:  lea  esp, [esp + locals + 16]
+    ret  4 * args  |  ret                 ; the cleanup the game expects from the callee
+```
+
+Both callbacks see `Context::esp` at the frame, `Rs7Mid::Frame(c, wrap)` (`midhook.h`):
+
+| `c.esp + ...` | Content |
+|---|---|
+| 0 | `locals` bytes of scratch (`Rs7Mid::Locals(c)`), uninitialised |
+| `locals` | `user`: 0 at the call; the before callback may leave a value for the after callback (a handle) |
+| `locals + 4 / 8 / 12` | EAX, ECX, EDX as the game called (not the before callback's edits) |
+| `locals + 16` | the game's return address (site + 5) |
+| `locals + 20 + 4 * i` | argument `i` (`Frame::Arg(i)`): the caller's own slot, which the callee never sees |
+
+Before callback: the registers, flags and arguments the callee gets. It may edit registers (resumed into the callee)
+and arguments (copied after it returns, so the callee sees the edits; a built argument may point into `Locals`), set
+`user`, or skip the callee: `Rs7Mid::WrapReturn(c, wrap, value)` (EAX = value, frame, return address and the callee's
+cleanup popped, continue at the return address). After callback: EAX/EDX/ECX/flags and the x87 stack (full mode:
+`St0` / `SetSt0`) are the callee's, ESP is the frame (the callee's copies are gone), the arguments and `user` are
+readable; it may replace the return value; `jump` = T. A **jmp site at a function entry** may use the same placement
+(`Rs7Mid::Hook::Prepare` with a `Wrap`): the entry's callee is the relocated prologue followed by a jump to site +
+length, i.e. the stock function, and T returns from the function. Limits: the callee runs with a return address inside
+the entry and its arguments 16 + `locals` + 4 * `args` bytes lower than at the site (return-address-sensitive callees
+and callees that read past their declared arguments cannot use it); register arguments are whatever the registers hold
+(nothing to declare). An edit of `Frame::Arg(i)` lands in the caller's own slot: after the call that slot is popped
+(stdcall) or dead (cdecl: the caller only drops it). Cost: one thunk pass per callback (two with a before callback),
+the copies are a few pushes. CONFIRMED by `tests/test_midhook_wrap.cpp` (native: the original arguments after the call
+under the callee's scribble, the frame registers, `user`, argument and register edits, skip with both cleanups, a
+replaced return value, an argument built in the scratch, a function-entry wrap with its prologue replayed, an x87
+result read and replaced in full mode, both modes) and `tools/tests/test_midhook_wrap_emu.py` (the same in Unicorn
+against both thunks, the light entry under CR0.TS). Converted: PP1, IN1, F1, PSN2, AM1, TJ, TU, TN (conversion status
+below), then MD1 (the oracle's `Spec.clobbers` declares ECX/EDX dead caller-saved registers at its return: the old stub
+left the C helper's there). A call site whose old stub was a jmp over game code before the `call` (GSA1 `push 40h; call`)
+is compared with `Spec.lead`: the old stub starts at site - lead, the new and the stock runs execute the original bytes
+from there with the call retargeted.
+
+**x87 ST0 (full mode).** The full thunk hands the callback its FXSAVE image (`Context::fpu`), and the accessors edit
+the x87 stack in it before FXRSTOR: `FpuDepth()` (valid registers), `HasSt0()`, `St0()` (the 80-bit ST0 rounded to
+double, round to nearest even; a quiet NaN on an empty stack), `SetSt0(v)` (replace ST0, depth unchanged; fails on an
+empty stack) and `PushSt0(v)` (what `fld` does: TOP - 1, the value in ST0, C1 = 0, the tag bit set; fails when all
+eight registers are valid, where `fld` would overflow). The image keeps ST(i) in stack order and the abridged tag
+byte by physical register, so a push shifts ST0..ST6 down and updates TOP and the tag together; FXRSTOR then loads
+a consistent stack. The conversions are integer code (no x87 instruction, no dependence on the callback's control
+word): double -> 80 bits is exact (a signalling NaN is quietened, as `fld qword` does), 80 bits -> double rounds as
+`fstp qword` does under the FNINIT control word (unnormals give the default NaN). Light mode has no image: `fpu` is 0,
+`FpuDepth()` is 0 and every edit fails, and a light callback still must not execute floating-point code (the accessors
+take and return `double`). CONFIRMED by `tests/test_midhook_st0.cpp` (native, real entries): round trips of zero,
+signed zero, normal, `DBL_MIN`/`DBL_MAX`, the smallest and largest denormal, infinities and NaNs with payload (TOP and
+tag unchanged), `SetSt0` bytes equal to the hardware `fld` of the same value, round-to-nearest-even ties and the carry
+into the exponent, push / full-stack refusal and the light-mode case. Jump-site callbacks run before the replay, so an
+x87 result of the displaced code is produced by skipping the replay and pushing it (`PushSt0`), as R3a-R3c and R4 do
+(`features/string7/hooks_lanes.cpp`, string 6: `2 * cell0 - cell1` (`Rs7S7_ExtrapolateLane`) into the scratch vec3,
+EAX = the scratch, ST0 = its x, R4 also its `pop esi`). On a full x87 stack `PushSt0` refuses (both edits are
+`[[nodiscard]]`); the hook then rebases EAX so that the replayed `lea; fld` loads the scratch, overflow included,
+which is what the old stub did, and logs it once. Their float result equals the old x87 code's for finite results (both correctly
+rounded: 53 and 64 bits are at least 2 x 24 + 2); the sticky x87 exception flags (precision) the old arithmetic
+raised are not reproduced, which the oracle contract `fsw="sticky"` states (Unicorn does not raise the precision
+flag, so the emulator cannot show that difference; HYPOTHESIS: the game reads no sticky x87 flag). Cost: HYPOTHESIS
+within the budget, they run from `Rnd_NoteFx_Spawn` / `Rnd_NoteFeedback_Spawn` (CONFIRMED call graph), once per
+spawned effect, not per frame. R2 (note head z, per note and frame) and R6 (lane offset, `Rnd_GemLaneOffset_Update`,
+per gem and frame) also leave an x87 result but are over the full mode's budget: sse mode (below).
+
+**Atomic sites.** A `jmp_atomic8` site is a 5-byte jmp inside one aligned qword, written with one locked exchange
+(the code may run on another thread while it is patched). A mid-hook is prepared for it as for a `jmp` site, with the
+whole `expect` span as the replay (the jmp ends inside an instruction, which the relocator would reject), and startup
+writes the entry with the same locked exchange (`PrepareMid` / `Apply` in `startup.cpp`; one condition more). S3 and
+PT1 (the guitar / bass exits `mov [eax+1356h],cx|dx; ret` of `Play_Detector_SetTuning`, cold) are the first: the
+callback does the store itself, calls the helper, which sees the finished detector as before, and returns for the
+function (`Rs7Mid::Ret`); the old stubs left the helper's flags at the return, where no one reads them (contract
+"dead"). Compared with their frozen stubs in `tools/tests/test_midhook_x87.py` (fixture `midhook_318618f.json`, with
+R3a-R3c and R4).
+
+**Cost.** Native QPC microbenchmark (`tests/test_midhook_bench.cpp`, dummy `mov eax,7; ret` site, no-op
+callback, median of 7 x 200,000 hits, several runs, Ryzen 7 5800X, Release Win32). The rows are the production
+thunks and ablated copies of the full thunk:
+
+| Variant | ns per hit | Over stock |
+|---|---|---|
+| stock code / direct `call` to the callback | 1.3-2.7 / 2.2-3.6 | - / about 1 |
+| full thunk (production) | 149-162 | 146-160 |
+| full without FNINIT | 123-137 | 122-135 |
+| full without FXSAVE / FNINIT / FXRSTOR | 64-72 | 62-70 |
+| **light thunk (production)** | **19-26** | **17-25** |
+| **sse thunk (production)** | **20-31** | **18-30** |
+| PUSHFD / PUSHAD / call / POPAD / POPFD only (lower bound, not a valid thunk) | 18-24 | 15-21 |
+
+Breakdown of the full thunk's about 150 ns: FXSAVE + FXRSTOR about 65 ns, FNINIT about 20 ns, the two REP MOVSD
+context copies with STD/CLD about 45 ns, the register save and call about 20 ns. The HYPOTHESIS that most of the
+cost is FXSAVE/FXRSTOR is partly CONFIRMED: the floating-point handling is the largest part (about 57 % with
+FNINIT, 42 % without), but the string copies are a third of it, which is why the light thunk also unrolls them.
+Not frame time, and the callback's own work is extra (a 64-entry table scan for the PegSet sites, a short
+loop for GSSS/GSSE). At 10,000 hits per frame the full thunk would cost about 1.5 ms per frame and the light one
+about 0.25 ms, hence the cost budget: full mode where hits per frame x 150 ns stays well under about 20 us (per-frame drivers, a few calls per frame, per song or load, once per event); light mode (or asm) for sites with many hits per frame (per note, gem or mesh, audio thread), whose callback must be integer-only. HYPOTHESIS (hit counts not measured in game): the converted sites run a few to a few dozen times
 per guitar load, tuner session or song (PSM2 at most 8 per renderer setup), i.e. well under 10 microseconds
 per song.
 
-**Conversion status.** 25 sites were converted from naked stubs (the SE pilot's 3 and 22 cold sites); 3 of them (N2, N3, N7) went with the legacy S7 object in 1.0, as did 37 hand-written stubs. "stub" = still hand-written.
+**Remaining stubs.** The few naked stubs left (listed in the maintainer's handover notes) keep these rules, which used to head the
+deleted `platform/stub_macros.h`: a stub is a naked function the patcher jumps to from a game address; it replays
+the displaced instructions, does its work and jumps back. It is exported as `Rs7_Stub_<ID>` with its link variables
+`g_rs7_resume_<ID>` (site + length; the stub ends with `jmp g_rs7_resume_<ID>`) and `g_rs7_target_<ID>` (an
+original branch / call target), all plain `extern "C" __declspec(dllexport)` declarations in the stub's file. It
+preserves every register and flag the stock code reads afterwards (flags only where the comment says "flags dead"),
+leaves the x87 / SSE state alone unless the comment says it is saved, and never names an inline-asm operand like a
+register or mnemonic (C4405 is an error). The comment above a stub says where (site, address, function), what the
+stock code does and what changes. No new stub where a mid-hook does the job.
+
+**Conversion status.** 25 sites were converted from naked stubs (the SE pilot's 3 and 22 cold sites), then 6 in refactor step 7 batch 1, 5 in batch 2 and 28 in batch 3, SF1 as the first call site (Before placement) and 15 call sites in batch 4, then R3a-R3c and R4 (x87 ST0) and S3 and PT1 (atomic sites), and 81 sites in batch 5, then 8 wrappers with the Wrap placement, 10 sites in the asm-reduction pass 9 in its part 2 (PC1, PC4, PUBZ0-PUBZ6, plus the PUBAN copy's expected-pitch call) and 2 in part 3 (PP_TOC, PP_SNGF); 3 of them (N2, N3, N7) went with the legacy S7 object in 1.0, as did 37 hand-written stubs. "stub" = still hand-written.
 
 | Family | Sites | Status |
 |---|---|---|
@@ -593,8 +922,143 @@ per song.
 | pool request counts, GuitarStrings / InstrumentInfo / PegSet free sizes | N1, N21, GSZ1, GIZ1, PSA2 | mid-hook |
 | native PegSet destructor / unload / ctor / load | PSD1, PSD2, PSU3, PSC1, PSL1 | mid-hook |
 | native PegSet mesh latch / colour reset / colour name; GuitarStrings dimming at song start / end | PSM2, PSR1, PSN1, GSSS, GSSE | mid-hook |
-| relocator rejects the displaced bytes | S3 (operand-size prefix), PSU1, PSU2, PSM1 (operand-size prefix on `cmp r16,[mem]`), and TF1, W, V2, CP1, CP2, BT1, CS1, CC3, UP1-UP3, PD2-PD5, PT1, NG1, PUBEDGE, CLBM, CLBA | stub (measured before the 1.0 removals: `Rs7Mid_Build` over the game bytes rejected 29 of 246 jump sites) |
-| call-kind sites (the mid-hook writes jump sites only; a relocated call also changes the return address) | S4, SF1, PP1, PP_SNGD, PSL2, PSN2, IN1, B2, AM1, EV1-EV5, PC1-PC4, TM1-TM6 | stub |
-| wrappers that run the original and add work around it, or replace an allocator call | F1, TJ, TU, TN, GSA1, GSC1, GIA1 | stub |
-| per-frame, per-note, audio thread, copied-function entries, custom conventions | R2-R6, BD1-BD4, V2, S1, S2, I1, N5, N12, N13, N18-N20, N22, N23, PL1, GS* entries, FGRB, NG*, P* ports, PUB*, chord tracking (TP*, CP*, TM*, MD1, WC2, EV*, AG*, UP*, PD*, RL*, LU3), TS8*/TU8*, TICK/JUD1/JUD2/AUD1 | stub (hot or custom ABI) |
-| cold or diagnostic, same shape as converted ones, not converted in this pass | AT, LT1, DS1, D5, AL1 (tail jump into a C wrapper) | stub (per-chord load loop; candidates for the same pattern) |
+| relocator rejected the displaced bytes before PR #54 (`66`, `INC`/`DEC r/m8`, `IMUL`, `TEST r/m,imm`); `fcomp` since the sse pass | W | mid-hook, full mode (`features/tuner/hooks.cpp`: the replayed `fcomp [34.0]` on ST0 remapped to 33 / 34 / 35 by `Context::CompareSt0` against the session threshold; BT1 went with `RET imm16`; PSU1, PSU2, PSM1, NG1, PUBEDGE, CLBM, CLBA in batch 5) |
+| sse pass (stubs frozen at `7f80b7b`, `tools/tests/fixtures/midhook_7f80b7b.json`, `tools/tests/test_midhook_sse_sites.py`, frozen stubs and stock bytes): string 6's note head z and lane offset y per note / gem and frame (`LoadSt0`); the per-cell position query, the whole function (`Rs7Mid::Ret`) | R2, R6; PUBGP (R1) | mid-hook, sse mode (`features/string7/hooks_lanes.cpp`, `features/publish/hooks_gridsites.cpp`) |
+| call-kind sites that stay asm: call game functions with a custom convention (B2), a cdecl C++ function that replaces the callee directly, no stub (PP_SNGD) | PP_SNGD, B2 | stub (reasons in the stubs' header comments) |
+| call sites, batch 4: string-mask test (callee replaced, `Rs7Mid::Return`) and eval target arrays (one callback each, light); song tuning, tailed expected pitch of a tracked note / an analysed mistake (full); PegSet load complete (After placement, full) | TM1-TM6, EV1-EV5; S4, PC2, PC3; PSL2 | mid-hook (`features/nslot/hooks_calls.cpp`, `features/pitch/hooks_calls.cpp`, `features/headstock/hooks_mid.cpp`; stubs frozen at `b6071a8`, `tools/tests/fixtures/midhook_b6071a8.json`, `tools/tests/test_midhook_calls.py`) |
+| Wrap placement (full mode): wrappers that read the callee's arguments or the registers it was called with after it returned (PP1, IN1, F1), skip it (PSN2), build its arguments in the scratch (AM1), hand a handle from before to after (TJ, TU, TN; within the budget, CONFIRMED in game with a temporary per-second hit counter, 2026-10-18: TJ about 194 calls once per song-list build, then 0 while the list or a song is shown; TU 1 per song start; TN 1 every 2-3 s in the pause tuner and the menu tuner, 0 during a song. Never per frame: the largest burst costs about 60 us once) | PP1, IN1, F1, PSN2, AM1, TJ, TU, TN | mid-hook (`features/nslot/hooks_wrap.cpp`, `features/frets/hooks_wrap.cpp`, `features/headstock/hooks_mid.cpp`, `features/tuner/hooks_wrap.cpp`; stubs frozen at `b72bc52`, `tools/tests/fixtures/midhook_b72bc52.json`, `tools/tests/test_midhook_wrap_sites.py`, which also runs their stock-bytes references) |
+| asm-reduction pass (stubs frozen at `b72bc52` / `c15ca8d`, `tools/tests/test_midhook_asm_sites.py`, frozen stubs and stock bytes): the guitar ctor's allocations and GuitarStrings ctor re-sited to their `call` (GSA1 Before: the size argument; GSC1 Wrap: the entry runs the stock ctor with the game's x87 state, Rs7Gs_Construct adds the native layout after it; GIA1 Wrap: size before, extension after), MD1 (Wrap, a function entry), GRM3 (`PushSt0`, cold), BT1 (the relocated `ret 14h` epilogue, full: memcpy), AG1-AG3 and PE0 (whole functions answered by a light callback, `Rs7Mid::Ret`; PE0 per note) | GSA1, GSC1, GIA1, MD1, GRM3, BT1, AG1-AG3, PE0 | mid-hook (`features/strings/hooks_mid.cpp`, `hooks_wrap.cpp`, `features/nslot/hooks_wrap.cpp`, `hooks_eval.cpp`, `features/pitch/hooks_mid.cpp`) |
+| asm reduction part 2 (stubs frozen at `72da588`, `tools/tests/fixtures/midhook_72da588.json`, `tools/tests/test_midhook_asm_sites2.py`, frozen stubs and stock bytes): the per-frame tailed expected pitch of a tracked note (PC1, PC4: light call sites, Before; `Rs7Pitch_Tailed` reads the registry of tailed allocations instead of `_msize`), the standard-zero expected pitch (PUBZ0, PUBZ4-6 call sites, PUBZ1-3 jmp sites whose replay is the relocated `jmp`; one light callback for the old `Rs7_Publish_ZeroRaw`) and the PUBAN copy's call of the expected pitch over the tail (a light call entry built at copy time, `Rs7_Mid_PubTailPitch`, for the old `Rs7_Pitch_Raw8`) | PC1, PC4, PUBZ0-PUBZ6 | mid-hook (`features/pitch/hooks_calls.cpp`, `features/publish/hooks_pitch.cpp`) |
+| bend direction guards (light mode); gem position log, chord frame marks (full mode, their helpers use SSE) | BD1-BD4; D5, B1 | mid-hook (refactor step 7, stubs frozen at `0cf5874`, `tools/tests/fixtures/midhook_0cf5874.json`) |
+| string 6 in the SNG section mask (song load); native pitch tails at matcher creation, detector reset, matcher tuning | N12, N13; PM0, PR0, PM1 | mid-hook, full mode (refactor step 7 batch 2, stubs frozen at `24bfba8`, `tools/tests/fixtures/midhook_24bfba8.json`) |
+| tuner camera reference string, slide end cell stride (light) | TF1, V2 | mid-hook (refactor step 7 batch 3, `features/tuner/hooks_camera.cpp`, `features/fretgrid/hooks_slide.cpp`; stubs frozen at `b8c0ed7`, `tools/tests/fixtures/midhook_b8c0ed7.json`) |
+| N-slot template / ChordNotes redirects (one callback, a per-site register table); eval arrays, tails, mask test, child slots; technique-check latches (light; TP11, DS1 on the loader thread and PL1 with its FP pluck helper: full) | TP1-TP8, TP11, TP12, CP1, CP2, DS1; LU3, WC2, CS1, CC3, CH3, PL1; UP1-UP3, PD2-PD5 | mid-hook (batch 3, `features/nslot/hooks_records.cpp`, `hooks_eval.cpp`, `hooks_latches.cpp`; `tools/tests/test_midhook_nslot.py`) |
+| N-slot sites that call game code from the live tracker state | RL1, RL2 | stub (reasons in the header of `features/nslot/hooks_stubs_tracker.cpp`) |
+| calls written into the GuitarStrings copies, call-in entries: template record (TP2), glow ramp, headstock segment flag / colour, shape lookup (light); glow colour, attach point (full: float helpers); glow read (sse: the x87 result via `LoadSt0`, frozen at `06733ba`); the helper `Rs7_NsTplAt` went with TP2 | `Rs7_Call_TP2`, `_GlowSetup`, `_GlowColour`, `_HsLoaded`, `_HsSeg`, `_Attach`, `_Shape`, `_GlowRead` | call-in (`features/strings/hooks_callin.cpp`; helpers frozen at `304b9d3`, `tools/tests/fixtures/midhook_304b9d3.json`, `tools/tests/test_midhook_callin.py`) |
+| calls written into the publication, pitch-reader and tuner copies, call-in entries: base pitch, wire count, reverse tail (light; `sub` flags via `Context::Compare32`); classification, chord tail, tuner edge, the session copies' stdcall steps (full: C helpers, per analysed note / frame / key press) | `Rs7_Call_PubBaseG`, `_PubBaseB`, `_PubClassify`, `_PubWireCount`, `_PubChordTail`, `_PubEdge`, `Rs7_Publish_ReverseTail`, `Rs7Tu8_Advance`, `Rs7Tu8_First` | call-in (`features/publish/hooks_callin.cpp`, `features/tuner/hooks_callin.cpp`; same fixture, `tools/tests/test_midhook_callin2.py`) |
+| song destructor (call site, Before placement) | SF1 | mid-hook, full mode (`features/nslot/hooks_free.cpp`; stub frozen at `44135a2`, `tools/tests/fixtures/midhook_44135a2.json`) |
+| jmp_atomic8 sites (one locked qword write over `mov [eax+1356h],r16; ret`) | S3, PT1 | mid-hook, full mode (`features/pitch/hooks_mid.cpp`; stubs frozen at `318618f`, `tools/tests/fixtures/midhook_318618f.json`) |
+| string-6 lane position of spawned note effects (x87 result via `Context::PushSt0`) | R3a-R3c, R4 | mid-hook, full mode (`features/string7/hooks_lanes.cpp`; same fixture) |
+| per-frame driver, string-6 bends while held (full: a few hits per frame); string-6 releases (light, integer-only Rs7_S7BendObject); inverse pitch of string 6 (full, once per analysed mistake) | N5, N18, N22; N19, N20, N23; I1 | mid-hook (batch 2b, stubs frozen at `6d1a62c`, `tools/tests/fixtures/midhook_6d1a62c.json`) |
+| per-frame, per-note, audio thread, copied-function entries, custom conventions | S1 (rel32 branch target, helper not light-safe), S2 (legacy fallback without PE0), NGP (stack probe) | stub (hot, x87 or custom ABI) |
+| cold or diagnostic, same shape as converted ones, not converted in this pass | (AT, LT1, AL1 went in batch 5) | - |
+| feature stubs of refactor step 7 batch 5: chord loops (light); next-note grid NG1 (light), NG9; FretGrid FGRB; chord diagrams DGB, DGM, DGS, TP13; tuner entries TU8H/C/A and the 21 TS8*, TU8INIT, TU8FREE, AT; publication entries PUBCL/TO/WU/NL/AN/AC, guards PUBGS/GE1/GE2, PUBGC, PUBGO, PUBEDGE (light) and PUBGB, PUBGA, PUBGF; PegSet PSU1, PSU2, PSM1, LT1, AL1 (continues in a C wrapper); virtual guitarist TICK, JUD1, JUD2, AUD1; GuitarStrings entries GSFR-GSHC, GRM1, GRM2 | CLBM, CLBA, CLGU, CLGE, CLVB; NG1, NG9; FGRB; DGB, DGM, DGS, TP13; TU8H, TU8C, TU8A, TS8*, TU8INIT, TU8FREE, AT; PUB*; PSU1, PSU2, PSM1, LT1, AL1; TICK, JUD1, JUD2, AUD1; GS* entries, GRM1, GRM2 | mid-hook (`features/*/hooks_cl.cpp`, `hooks_mid.cpp`, `hooks_entries.cpp`, `hooks_gridsites.cpp`, `hooks_build.cpp`; stubs frozen at `9c0e44f`, `tools/tests/fixtures/midhook_9c0e44f.json`, `tools/tests/test_midhook_features.py`) |
+| the plain-PSARC unit's jmp_atomic8 sites (cold: per archive / SNG load), written by the unit with its own qword CAS next to the CDLC enabler; the unit builds their entries with `Rs7_PrepareMid` (the whole `expect` replayed) | PP_TOC, PP_SNGF | mid-hook, full mode (asm reduction part 3, `features/psarc/hooks_mid.cpp`; stubs frozen at `fdfddcf`, `tools/tests/fixtures/midhook_fdfddcf.json`, `tools/tests/test_midhook_asm_sites3.py`) |
+
+## 16. Source layout
+
+Decided 2026-10-17; the rules are in [AGENTS.md "Code structure"](../AGENTS.md#code-structure) and
+`tools/check_layout.py` checks them.
+
+**Why feature modules on a shared core, not pure vertical slices.** Most features patch different game code and can
+live in their own folder with their sites, hooks, logic, settings and tests (a vertical slice). The seven-string
+features are not independent, though: they share one model of the instrument (string count, tunings, the
+7-string unit that fails as a whole, section 3). That model is a layer of its own (`src/model/`), next to the
+platform (`src/platform/`: patching, resolve, mid-hook, protection, log, config), so no feature duplicates it and
+no feature reaches into another.
+
+```
+src/
+  platform/           no game knowledge
+  model/              the string-count model, no game addresses
+  features/<name>/    <name>.h (public), logic (<name>.cpp, <part>.cpp), hooks*.cpp, registration.cpp, settings.cpp
+  d3d/  overlay/      device hooks, F9 overlay
+  startup.cpp         wires platform, model and features together: Rs7_Startup is a list of phases (config, wait
+                      for the game, isolated features, resolve, bind, 7-string unit checks, patch rounds, report,
+                      device worker); feature steps are the features' own Rs7<X>_Start / _Configure / _Prepare
+  startup_sites.cpp   the main batch: site writers, isolated patch rounds, deferred FretGrid sites, per-site log
+```
+
+Inside a feature the logic is plain C++ over values (unit-tested natively), the hooks are thin glue between the
+game's registers or memory and that logic. The site list stays one file (`sites.json`, `tools/gen_sites.py`); each
+feature's hook rows are its own table (`registration.cpp`), and `src/registry.cpp` lists the tables once.
+
+**Migration (done 2026-10-18).** The old layout (`src/core/`, `src/hooks/`) is gone; every file is in one of the
+layers above. Where things ended up:
+
+- `platform/`: patch, pattern, resolve, protect, sites, midhook (+ `midhook_wrap`, the MASM thunks), fncopy, log,
+  retry, safecopy, config (ini helpers), settings (the store, no keys), uilayout, freeze, dxt, spinprobe, hooktable
+  (`Rs7Hook` / `Rs7HookTable` and the lookup), isolate (the patch rounds; groups are plain integers, `Rs7Group`).
+  No shared stub layer: the few remaining naked stubs declare themselves ("Remaining stubs", section 15).
+- `model/`: eight, tuning, stringcolour, extblock (RS7X), status (overlay status board), groups (`Rs7Feature`,
+  `Rs7_Group`, the 7-string unit).
+- `features/`: allocstats, chords, clite, colours, diag, diagrams, fretgrid, frets, headstock, nextgrid, nslot, pitch,
+  psarc, publish, scene, songend, string7, strings, testdrive, tuner, vguit, window - each with its hook table(s),
+  settings table and tests. Every hook row lives in its feature; a group is its table's group (data references are
+  Core), so `Rs7_FeatureOf` has no id or flag rules.
+- App layer: `startup.cpp` / `startup_sites.cpp`, `registry.cpp` (table list, `Rs7_FindHook`, `kRs7Groups`),
+  `hook_rules.cpp` (`Rs7_DisableFeature` cascade as a table, `Rs7_ShouldPatch`), `settings_tables.cpp`,
+  `settings_removed.cpp`, `dinput_wrap`, `d3d/`, `overlay/`. The plain-PSARC unit gets the lookup and the groups from
+  startup (`Rs7PlainHost`), so no feature includes the app layer.
+
+Every move was a layout change with unchanged machine code (`scripts\compare_builds.ps1 -NoOpt`). The per-step history
+is in the git log (pull requests #40 to #80).
+
+**Moving or adding a feature** (`src/features/psarc/` is the template):
+
+| File | Contents |
+|---|---|
+| `<name>.h` | The public header, the only one other code includes: the startup entry, what the overlay or log reads, `extern const Rs7HookTable kRs7<Name>Hooks;` (forward-declared `struct Rs7HookTable;`). Below it the logic's declarations, for the feature's tests. |
+| `<name>.cpp`, `<part>.cpp` | Logic: values in, values out. No Win32, no game addresses, no registers. |
+| `hooks.cpp`, `hooks_<part>.cpp` | Glue: the stubs / mid-hook callbacks and the code that resolves and writes the sites. Reads its own ini keys. |
+| `settings.cpp` | The feature's settings table: its `Rs7SetDef` rows (section, key, type, when, default, range, overlay label, help, the live `apply` and optionally `startup`) as `const Rs7SetTable kRs7<Name>Settings = {kDefs, count, Read};`, and its typed startup read (`Rs7<Name>_ReadIni`, a struct with the values and their validity for the log, kept for `Rs7<Name>_Config()`). Where it has overlay controls, its overlay items (`const Rs7UiTable kRs7<Name>Ui`, "Overlay tabs" below). |
+| `registration.cpp` | The feature's `Rs7Hook` entries in an anonymous-namespace array, exported as `const Rs7HookTable kRs7<Name>Hooks = {Rs7Feature::<Group>, kHooks, count};`. |
+| `tests/<name>/` | Native tests (`TEST(...)`, the test project compiles `tests/**`). |
+
+1. Move the files with `git mv` (history follows) and keep function names, so `scripts\compare_builds.ps1 -NoOpt` matches
+   them; `-Alias` only for code that leaves an anonymous namespace for a named one.
+2. Put the feature's rows into `registration.cpp` and add its table to `kTables` in `src/registry.cpp` (one line).
+   `Rs7_FindHook` searches every table; `Rs7_FeatureOf` returns the table's group. Write conditions are in
+   `Rs7_ShouldPatch` (`src/hook_rules.cpp`).
+3. Startup calls the feature through `<name>.h` only. Reading the feature's ini keys moves into the feature
+   (`Rs7Plain_StartFromIni`); its keys go into its settings table (`settings.cpp`, below).
+4. Update the paths in `tools/` (generators, `tools/tests/`), `tools/layout_baseline.json` (a moved entry keeps its
+   size under the new path), AGENTS.md and this document.
+5. Gates: `scripts\format.ps1`, `build.ps1` (includes `check_layout`), pytest, `sitecheck`, `check_exports`, and
+   `scripts\compare_builds.ps1 -Old origin/main -New HEAD -NoOpt` with every difference listed in the pull request.
+
+**Settings.** `platform/settings` is the settings store the overlay and the pipe commands edit; it knows no key. Every
+feature owns an `Rs7SetTable` (above); `src/settings_tables.cpp` lists every table once (`kRs7SettingTables`, like
+`kTables` for the hooks). Decided 2026-10-18: one table per feature and the list as the only central order. The list
+order is the order of the keys (`Rs7Set_Def`, `Rs7Set_Save`) and of the startup reads; the release template
+(`scripts\package.ps1 -TemplateOnly`, and with it `docs/release/SETTINGS.md`) orders the ini sections itself and keeps
+the list order inside a section, so the list is ordered to keep each section's key order of 1.0 (the comment in
+`settings_tables.cpp` says how). Per-key order numbers would be a second order to keep in step; a central list of keys
+would be the old catalogue again. `Rs7Set_ReadIni` runs every table's `read` (startup, and again in
+`Rs7Set_InitFromIni`, as before); a row's `startup` hands the feature's own validated value to the store (string 6's
+colourblind colour follows string 6's colour, the atlas row, the fret half length, the autotune clamp). The keys removed in
+1.0 are in `src/settings_removed.cpp` (a table without rows whose read logs each one present), the overlay's own in
+`overlay/overlay_settings.cpp`. Keys read only by their feature at startup (`[chords] frame_axis`,
+`[test] vguitar*`, ...) have no row; `scripts/package.ps1` lists them for the template.
+
+**Overlay tabs.** Each feature also owns its part of the F9 overlay, as data: an `Rs7UiTable` (`platform/uilayout.h`)
+next to its settings table in `settings.cpp`, exported as `kRs7<Name>Ui`. Its items say which of its settings show, in
+which tab, in which order, under which section titles, and its live rows (a `Row` or an `OnOff` with a small reader
+that formats the feature's counters). `src/settings_tables.cpp` lists every table once (`kRs7UiTables`); a tab shows
+its items in list order. `overlay/ui.cpp` keeps the generic part: the tab bar, a setting's control from its
+`Rs7SetDef` (type, label, help, badges), the status board (build, sites, song, overlay) with the features' `Status`
+items under "features", and the log. Decided 2026-10-18: data instead of per-feature ImGui functions, so features do
+not include ImGui and the layout has native tests (`tests/test_uilayout.cpp` pins every tab's items). A setting without
+an item (`[window] console_quickedit_off`, ...) has no control, as before. The item's tab is also the player/advanced
+split: `Rs7UiTab::Player` items (`Rs7UiPlayer(id, label, hint)`, a plain label and a one-line hint the test checks for
+key names and developer terms) form the default view; everything in the real tabs is under the "Advanced" tab.
+Decided 2026-10-19: the split is data in the feature's table, not a list in `ui.cpp`. Decided 2026-10-19 (after the
+first player view scrolled too much): each `Rs7UiPlayerSection(title, tabLabel)` in the Player items is one tab of the
+overlay's single tab bar (`Rs7Ui_PlayerTabs`), Advanced is the last tab, and a hint is a `(?)` tooltip.
+
+Both projects compile `src/features/**` into one object folder per source folder (`ObjectFileName`), because every
+feature has a `hooks.cpp` and a `registration.cpp`.
+
+**Inline assembly.** A patch site needs a few instructions that save the game's registers and enter C++; MSVC
+x86 C++ cannot express that, so that code exists, but it should exist once (the mid-hook thunks, now MASM in
+`src/platform/midhook_thunks.asm`, section 15) or come from a generator, not be written per site. Plan, in this order:
+
+1. Relocator: the operand-size prefix and `inc` / `dec r8` forms (about 30 sites rejected today, section 15).
+2. Call-kind sites: relocate a `call` by pushing the original return address and jumping to the target.
+3. Wrappers: C++ detours through typed function pointers.
+4. Done: the light mid-hook mode (section 15, about 25 ns instead of 150 ns per hit, no floating-point save, all
+   GPRs kept so the `Context` stays identical). Measure one hot site in game before converting hot sites.
+5. Done: `stub_macros.h` is gone; what remains is listed in the maintainer's handover notes (custom calling conventions,
+   game calls with register arguments).
+
+Every conversion keeps its emulator comparison against the stock bytes.

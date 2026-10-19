@@ -5,9 +5,9 @@ from test_nslot_lock import ROOT, compile_harness
 
 
 def test_manifest_numeric_reader_boundaries_and_bad_nodes(tmp_path):
-    source = (ROOT / "src/core/tuner.cpp").read_text()
+    source = (ROOT / "src/features/tuner/hooks.cpp").read_text()
     start = source.index("using JsonFind =")
-    end = source.index("bool SessionAlive(", start)
+    end = source.index("// ---- end of the manifest key reader", start)
     (tmp_path / "readkey.inc").write_text(source[start:end])
     harness = tmp_path / "manifest_readkey.cpp"
     harness.write_text((ROOT / "tools/tests/native/manifest_readkey.cpp").read_text())

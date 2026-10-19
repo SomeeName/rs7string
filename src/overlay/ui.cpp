@@ -1,27 +1,49 @@
 #include "overlay/ui.h"
-#include "core/color.h"
-#include "core/frets.h"
-#include "core/headstock.h"
-#include "core/settings.h"
-#include "core/status.h"
-#include "core/string7.h"
-#include "core/tuner.h"
-#include "core/tuner8.h"
-#include "core/window.h"
 #include "d3d/present.h"
-#include "d3d/sehread.h"
-#include "d3d/swap.h"
-#include "hooks/registry.h"
+#include "features/colours/colours.h"
+#include "features/window/window.h"
 #include "imgui.h"
-#include "log.h"
+#include "model/status.h"
+#include "platform/log.h"
+#include "platform/settings.h"
+#include "platform/uilayout.h"
 #include "version.h"
+#include <algorithm>
+#include <cctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
 namespace {
-const char* const kTabs[] = {"status", "colour", "neck", "tuner", "debug", "window", "log"};
+// The tabs, by index: the first ones are the Rs7UiTab values (platform/uilayout.h), the log tab follows them.
+struct Tab {
+    const char* name;  // "o tab <name>"
+    const char* label;
+};
+
+constexpr Tab kTabs[] = {{"status", "Status"}, {"colour", "Colour"}, {"neck", "Neck"}, {"tuner", "Tuner"},
+                         {"debug", "Debug"},   {"window", "Window"}, {"log", "Log"}};
 constexpr int kTabCount = int(sizeof kTabs / sizeof kTabs[0]);
+constexpr int kLogTab = int(Rs7UiTab::Window) + 1;
+
+constexpr bool TabIs(Rs7UiTab t, const char* name) {
+    const char* a = kTabs[int(t)].name;
+
+    while (*a && *a == *name) {
+        ++a;
+        ++name;
+    }
+
+    return *a == *name;
+}
+
+static_assert(TabIs(Rs7UiTab::Status, "status") && TabIs(Rs7UiTab::Colour, "colour") && TabIs(Rs7UiTab::Neck, "neck") &&
+                  TabIs(Rs7UiTab::Tuner, "tuner") && TabIs(Rs7UiTab::Debug, "debug") &&
+                  TabIs(Rs7UiTab::Window, "window"),
+              "kTabs follows Rs7UiTab");
+static_assert(kLogTab == kTabCount - 1, "the log tab is the last one");
+// The one restart note: restart-only settings carry " *" in their label (Edit).
+constexpr char kRestartNote[] = "Settings marked * apply after you restart the game.";
 const ImVec4 kGreen(0.45f, 0.90f, 0.45f, 1.0f), kYellow(0.95f, 0.80f, 0.30f, 1.0f), kOrange(1.0f, 0.55f, 0.30f, 1.0f),
     kRed(1.0f, 0.35f, 0.35f, 1.0f), kGrey(0.65f, 0.65f, 0.65f, 1.0f);
 
@@ -48,31 +70,71 @@ void Help(const Rs7SetDef& d) {
     ImGui::EndTooltip();
 }
 
-void Badge(int i) {
+// The state after a control. Restart-only keys carry " *" in their label (kRestartNote) instead of a tag; the player
+// view shows no tags and no ini values.
+void Badge(int i, bool player) {
     const Rs7SetDef& d = Rs7Set_Def(i);
 
-    ImGui::SameLine();
-    if (d.when == Rs7SetWhen::Live) {
-        ImGui::TextColored(kGreen, "[live]");
-    } else if (d.when == Rs7SetWhen::NextSession) {
-        ImGui::TextColored(kYellow, "[next session]");
-    } else {
-        ImGui::TextColored(kGrey, "[startup]");
+    if (!player && d.when != Rs7SetWhen::Restart) {
+        ImGui::SameLine();
+        if (d.when == Rs7SetWhen::Live) {
+            ImGui::TextColored(kGreen, "[live]");
+        } else {
+            ImGui::TextColored(kYellow, "[next session]");
+        }
+        Help(d);
     }
-    Help(d);
 
     if (Rs7Set_NeedsRestart(i)) {
         ImGui::SameLine();
-        ImGui::TextColored(kOrange, "restart required (running: %s)",
-                           Rs7Set_Format(i, Rs7Set_State(i).running).c_str());
+        if (player) {
+            ImGui::TextColored(kOrange, "restart the game to apply");
+        } else {
+            ImGui::TextColored(kOrange, "restart required (running: %s)",
+                               Rs7Set_Format(i, Rs7Set_State(i).running).c_str());
+        }
     }
 
     if (Rs7Set_Dirty(i)) {
         ImGui::SameLine();
-        ImGui::TextColored(kYellow, "*");
-        if (ImGui::IsItemHovered()) {
+        ImGui::TextColored(kYellow, "not saved");
+        if (!player && ImGui::IsItemHovered()) {
             ImGui::SetTooltip("changed, not saved (saved: %s)", Rs7Set_Format(i, Rs7Set_State(i).saved).c_str());
         }
+    }
+}
+
+// The player view's hint: a "(?)" after the control with the hint as its tooltip.
+void HintMarker(const char* hint) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+
+    if (!ImGui::IsItemHovered()) {
+        return;
+    }
+
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+    ImGui::TextUnformatted(hint);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+
+// After a control: the table's help as a tooltip and the tags, or in the player view the "(?)" hint and the badge. A
+// locked control keeps its reason as text below, because that text is what explains the disabled control.
+void Decorate(const Rs7UiItem& it, int i, bool locked) {
+    const bool player = it.tab == Rs7UiTab::Player;
+
+    if (!player) {
+        Help(Rs7Set_Def(i));
+    } else if (it.hint) {
+        HintMarker(it.hint);
+    }
+
+    Badge(i, player);
+
+    if (locked && it.lockedHint) {
+        ImGui::TextDisabled("%s", it.lockedHint);
     }
 }
 
@@ -81,9 +143,41 @@ void LogUiSet(int i, Rs7SetResult r) {
            Rs7Set_ResultName(r));
 }
 
+// A colour as #RRGGBB; its width leaves room for the label.
+bool EditRgb(const char* label, Rs7SetValue& v) {
+    float c[3];
+
+    Rs7_RgbToFloats(v.rgb, c);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
+
+    if (!ImGui::ColorEdit3(label, c, ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_InputRGB)) {
+        return false;
+    }
+
+    uint32_t rgb = 0;
+
+    for (float f : c) {
+        rgb = (rgb << 8) | uint32_t(f <= 0 ? 0 : f >= 1 ? 255 : int(f * 255.0f + 0.5f));
+    }
+
+    v.rgb = rgb;
+
+    return true;
+}
+
+// A player slider is narrow, so its label, "(?)" and badges fit the line.
+void NarrowFor(bool player) {
+    if (player) {
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+    }
+}
+
 // One control per setting, typed by the table; every change goes through Rs7Set_Commit (the same path
-// as "o set"). Text keys commit on Enter or when the field loses focus.
-void Edit(const char* id) {
+// as "o set"). Text keys commit on Enter or when the field loses focus. A Player item brings its own plain label and
+// hint (platform/uilayout.h); other items use the table's label and help.
+void Edit(const Rs7UiItem& it) {
+    const char* id = it.text;
+    const bool player = it.tab == Rs7UiTab::Player;
     const int i = Rs7Set_Find(id);
 
     if (i < 0) {
@@ -95,15 +189,21 @@ void Edit(const char* id) {
     Rs7SetValue v = Rs7Set_State(i).value;
     static Rs7SetResult last[64];
     static bool editing[64];
+    char label[160];
 
+    std::snprintf(label, sizeof label, "%s%s", player && it.label ? it.label : d.label,
+                  d.when == Rs7SetWhen::Restart ? " *" : "");
     ImGui::PushID(i);
     bool changed = false;
+    const bool locked = player && it.locked && it.locked();
+
+    ImGui::BeginDisabled(locked);
 
     switch (d.type) {
         case Rs7SetType::Bool: {
             bool b = v.i != 0;
 
-            if (ImGui::Checkbox(d.label, &b)) {
+            if (ImGui::Checkbox(label, &b)) {
                 v.i = b ? 1 : 0;
                 changed = true;
             }
@@ -111,29 +211,19 @@ void Edit(const char* id) {
             break;
         }
         case Rs7SetType::Int:
-            changed = ImGui::SliderInt(d.label, &v.i, int(d.lo), int(d.hi));
+            NarrowFor(player);
+            changed = ImGui::SliderInt(label, &v.i, int(d.lo), int(d.hi));
             break;
         case Rs7SetType::Float:
-            changed = ImGui::SliderFloat(d.label, &v.f[0], d.lo, d.hi, "%.3f");
+            NarrowFor(player);
+            changed = ImGui::SliderFloat(label, &v.f[0], d.lo, d.hi,
+                                         !player                         ? "%.3f"
+                                         : it.zeroText && v.f[0] == 0.0f ? it.zeroText
+                                                                         : "%.2f");
             break;
-        case Rs7SetType::Rgb: {
-            float c[3];
-
-            Rs7_RgbToFloats(v.rgb, c);
-
-            if (ImGui::ColorEdit3(d.label, c, ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_InputRGB)) {
-                uint32_t rgb = 0;
-
-                for (float f : c) {
-                    rgb = (rgb << 8) | uint32_t(f <= 0 ? 0 : f >= 1 ? 255 : int(f * 255.0f + 0.5f));
-                }
-
-                v.rgb = rgb;
-                changed = true;
-            }
-
+        case Rs7SetType::Rgb:
+            changed = EditRgb(label, v);
             break;
-        }
         case Rs7SetType::Text: {
             static char bufs[64][kRs7SetTextMax];
             char* buf = bufs[i % 64];
@@ -142,7 +232,7 @@ void Edit(const char* id) {
                 std::snprintf(buf, kRs7SetTextMax, "%s", v.text);
             }
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
-            const bool enter = ImGui::InputText(d.label, buf, kRs7SetTextMax, ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool enter = ImGui::InputText(label, buf, kRs7SetTextMax, ImGuiInputTextFlags_EnterReturnsTrue);
 
             editing[i % 64] = ImGui::IsItemActive();
 
@@ -157,6 +247,8 @@ void Edit(const char* id) {
             break;
         }
     }
+
+    ImGui::EndDisabled();
 
     if (changed) {
         const Rs7SetResult r = Rs7Set_Commit(i, v);
@@ -173,8 +265,7 @@ void Edit(const char* id) {
     if (d.type != Rs7SetType::Bool && d.type != Rs7SetType::Text && ImGui::IsItemDeactivatedAfterEdit()) {
         LogUiSet(i, last[i % 64]);
     }
-    Help(d);
-    Badge(i);
+    Decorate(it, i, locked);
     ImGui::PopID();
 }
 
@@ -201,19 +292,44 @@ void OnOff(const char* name, bool on, const char* detail) {
     }
 }
 
-int ColourMode() {  // the colour manager's mode for player 0 (0 normal, 1 colourblind), -1 unknown
-    const Rs7SehReader mem{};
-    uint32_t mgr = 0, mode = 0;
-    if (!g_rs7_colormgr || !mem.Read(g_rs7_colormgr, &mgr, 4) || !mgr || !mem.Read(mgr + 0x348, &mode, 4)) {
-        return -1;
-    }
-
-    return mode <= 1 ? int(mode) : -1;
-}
-
 void Section(const char* title) {
     ImGui::Spacing();
     ImGui::SeparatorText(title);
+}
+
+// The features' items of one tab (platform/uilayout.h), in list order.
+void Items(Rs7UiTab tab) {
+    const Rs7UiItem* items[kRs7UiMaxTabItems];
+    int n = Rs7Ui_TabItems(tab, items, kRs7UiMaxTabItems);
+
+    n = n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+
+    for (int i = 0; i < n; ++i) {
+        const Rs7UiItem& it = *items[i];
+        char buf[kRs7UiRowBuf];
+
+        switch (it.kind) {
+            case Rs7UiKind::Section:
+                Section(it.text);
+                break;
+            case Rs7UiKind::Setting:
+                Edit(it);
+                break;
+            case Rs7UiKind::Row:
+                it.live(buf, sizeof buf);
+                Row(it.text, "%s", buf);
+                break;
+            case Rs7UiKind::OnOff: {
+                const bool on = it.live(buf, kRs7UiOnOffBuf);
+
+                OnOff(it.text, on, buf);
+                break;
+            }
+            case Rs7UiKind::Note:
+                ImGui::TextWrapped("%s", it.text);
+                break;
+        }
+    }
 }
 
 void TabStatus(const Rs7OverlayUi& ui) {
@@ -258,45 +374,10 @@ void TabStatus(const Rs7OverlayUi& ui) {
         Row("song setups", "%ld this run", s.songs);
     }
 
-    const int cm = ColourMode();
-
-    Row("colour mode", "%s", cm == 0 ? "normal" : cm == 1 ? "colourblind" : "unknown");
+    Row("colour mode", "%s", Rs7Colour_ModeName());
 
     Section("features");
-    Rs7SwapStats sw{};
-
-    Rs7Swap_Stats(&sw);
-    char b[160];
-
-    std::snprintf(b, sizeof b, "hooks %s, %u copies, candidates: %u active / %u refused / %u retry / %u pending",
-                  sw.installed ? "on" : "off", sw.copies, sw.active, sw.refused, sw.retry, sw.pending);
-    OnOff("ramp copy (V6)", g_rs7_v6[0] != 0.0f, b);
-    Rs7S7Stats s7{};
-
-    Rs7S7_Stats(&s7);
-    std::snprintf(b, sizeof b, "%d GuitarStrings, %d guitar(s) marked 7-string", s7.guitars, s7.sevenGuitars);
-    OnOff("7th string line", g_rs7_s7_on != 0, b);
-    Rs7FretsStats fr{};
-
-    Rs7Frets_Stats(&fr);
-    std::snprintf(b, sizeof b, "%d guitar(s) applied, L = %.3f", fr.applied, double(g_rs7_fret_halflen));
-    OnOff("fret extend", g_rs7_frets_on != 0, b);
-
-    {
-        Rs7HeadStats hs{};
-
-        Rs7Head_Stats(&hs);
-        std::snprintf(b, sizeof b, "native PegSet: %d built, %d loaded with 7 pegs, %d with peg 7 active%s", hs.pegsets,
-                      hs.loaded7, hs.active7, hs.liveOwned ? ", experiments from the overlay" : "");
-    }
-
-    OnOff("7th tuning peg", g_rs7_head_on != 0, b);
-    Rs7TunerStats ts{};
-
-    Rs7Tuner_Stats(&ts);
-    std::snprintf(b, sizeof b, "%d native session(s)", ts.sessions);
-    OnOff("7-string tuner", g_rs7_native_tuner != 0, b);
-    OnOff("diagnostics", g_rs7_diag != 0, "");
+    Items(Rs7UiTab::Status);
 
     Section("overlay");
     char k[16];
@@ -306,82 +387,10 @@ void TabStatus(const Rs7OverlayUi& ui) {
     Row("window", "%p, window thread %lu, render thread %lu", static_cast<void*>(ui.hwnd), ui.wndTid, ui.renderTid);
     Row("focus", "%s",
         GetForegroundWindow() == ui.hwnd ? "game window is foreground (mouse input on)"
-                                         : "not foreground (no mouse/keyboard input)");
+                                         : "game window not in foreground");
     Row("background mode", "%s", Rs7Window_Background() ? "on (pipe commands)" : "off");
     Row("RSMods", "%s", GetModuleHandleW(L"xinput1_3.dll") ? "loaded (xinput1_3.dll)" : "not loaded");
     Row("ini", "%ls", ui.iniPath);
-}
-
-void TabColour() {
-    Section("string 6 colour");
-    Edit("color.rsmods_extended_range");
-    Edit("color.string6_color");
-    Edit("color.string6_color_cb");
-    Rs7SwapStats sw{};
-
-    Rs7Swap_Stats(&sw);
-    const int cm = ColourMode();
-
-    Row("ramp copy", "%s; copies hold %06X / %06X",
-        g_rs7_v6[0] != 0.0f ? "V6 ON (gems use the copies)" : "V6 off (gems show the preview row)", unsigned(sw.rgb[0]),
-        unsigned(sw.rgb[1]));
-    Row("colour mode", "%s", cm == 0 ? "normal" : cm == 1 ? "colourblind" : "unknown");
-    ImGui::TextWrapped("Colour changes reach sparks, hit/miss text, the 7th string line, its glow and the tuner at "
-                       "once; the gem ramps are repainted at the next texture bind.");
-    Section("ramp copy (Step 2)");
-    Edit("color.ramp_swap");
-    Edit("color.allow_inexact");
-}
-
-void TabNeck() {
-    Section("7th string line");
-    Edit("neck.string7_line");
-    Edit("neck.string7_v");
-    Section("fret wires");
-    Edit("neck.fret_extend");
-    Edit("neck.fret_halflen");
-    Section("7-string headstock model");
-    Edit("assets.headstock7");
-    Edit("assets.headstock7_file");
-    Edit("assets.headstock7_wood");
-    Edit("assets.dir");
-    Edit("assets.suffix");
-    Section("7th tuning peg");
-    Edit("neck.headstock_peg");
-    Section("headstock experiments");
-    Edit("debug.head_cull");
-    Edit("debug.head_stretch");
-    Edit("debug.head_stretch_mode");
-}
-
-void TabTuner() {
-    Section("7-string tuner");
-    Edit("debug.tuner_autotune");
-    Rs7TunerStats ts{};
-
-    Rs7Tuner_Stats(&ts);
-    Row("sessions", "%d native session(s) now, tuner hooks %s", ts.sessions, ts.any ? "active" : "idle");
-    Section("7-string tuning names");
-    Edit("tuner.names");
-    Edit("tuner.name_prefix");
-    Edit("tuner.name_suffix");
-}
-
-void TabDebug() {
-    Section("diagnostics");
-    Edit("debug.diagnostics");
-    Edit("debug.song_end_log");
-}
-
-void TabWindow() {
-    Section("window (test driving)");
-    Edit("window.background");
-    Edit("window.screen");
-    Section("overlay");
-    Edit("overlay.enabled");
-    Edit("overlay.hotkey");
-    Edit("overlay.open");
-    Edit("overlay.scale");
 }
 
 void TabLog(Rs7OverlayUi& ui) {
@@ -412,40 +421,9 @@ void TabLog(Rs7OverlayUi& ui) {
     }
     ImGui::EndChild();
 }
-}  // namespace
 
-int Rs7OverlayUi_TabIndex(const char* name) {
-    if (!name) {
-        return -1;
-    }
-    if (!std::strcmp(name, "color")) {
-        return 1;
-    }
-
-    for (int i = 0; i < kTabCount; ++i) {
-        if (!std::strcmp(name, kTabs[i])) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-void Rs7OverlayUi_Draw(Rs7OverlayUi& ui, bool* open) {
-    const float f = ImGui::GetFontSize();
-
-    ImGui::SetNextWindowPos(ImVec2(f * 1.5f, f * 1.5f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(f * 58.0f, f * 36.0f), ImGuiCond_FirstUseEver);
-    char k[16];
-    char title[64];
-
-    std::snprintf(title, sizeof title, "rs7string %s  (%s)###rs7overlay", RS7_VERSION, KeyName(ui.hotkey, k, sizeof k));
-
-    if (!ImGui::Begin(title, open)) {
-        ImGui::End();
-        return;
-    }
-
+// Save button, its result and the restart banner.
+void SaveBar(Rs7OverlayUi& ui) {
     const int dirty = Rs7Set_DirtyCount();
 
     ImGui::BeginDisabled(dirty == 0);
@@ -476,48 +454,162 @@ void Rs7OverlayUi_Draw(Rs7OverlayUi& ui, bool* open) {
 
     if (restart) {
         ImGui::SameLine();
-        ImGui::TextColored(kOrange, "%d change(s) need a game restart", restart);
+        ImGui::TextColored(kOrange, "%d change(s) apply after you restart the game", restart);
+    }
+}
+
+// The technical tabs, inside the Advanced tab.
+void TechnicalTabs(Rs7OverlayUi& ui) {
+    if (!ImGui::BeginTabBar("tabs")) {
+        return;
     }
 
-    if (ImGui::BeginTabBar("tabs")) {
-        static const char* const kLabels[] = {"Status", "Colour", "Neck", "Tuner", "Debug", "Window", "Log"};
-
-        for (int t = 0; t < kTabCount; ++t) {
-            const ImGuiTabItemFlags fl = ui.tabRequest == t ? ImGuiTabItemFlags_SetSelected : 0;
-            if (!ImGui::BeginTabItem(kLabels[t], nullptr, fl)) {
-                continue;
-            }
-
-            switch (t) {
-                case 0:
-                    TabStatus(ui);
-                    break;
-                case 1:
-                    TabColour();
-                    break;
-                case 2:
-                    TabNeck();
-                    break;
-                case 3:
-                    TabTuner();
-                    break;
-                case 4:
-                    TabDebug();
-                    break;
-                case 5:
-                    TabWindow();
-                    break;
-                case 6:
-                    TabLog(ui);
-                    break;
-            }
-
-            ImGui::EndTabItem();
+    for (int t = 0; t < kTabCount; ++t) {
+        const ImGuiTabItemFlags fl = ui.tabRequest == t ? ImGuiTabItemFlags_SetSelected : 0;
+        if (!ImGui::BeginTabItem(kTabs[t].label, nullptr, fl)) {
+            continue;
         }
 
-        ui.tabRequest = -1;
-        ImGui::EndTabBar();
+        switch (t) {
+            case 0:
+                TabStatus(ui);
+                break;
+            case kLogTab:
+                TabLog(ui);
+                break;
+            default:
+                Items(Rs7UiTab(t));
+                break;
+        }
+
+        ImGui::EndTabItem();
     }
 
+    ui.tabRequest = -1;
+    ImGui::EndTabBar();
+}
+
+// The Settings of one player tab.
+void PlayerTab(const Rs7UiPlayerTab& tab) {
+    const Rs7UiItem* items[kRs7UiMaxTabItems];
+    int n = Rs7Ui_TabItems(Rs7UiTab::Player, items, kRs7UiMaxTabItems);
+
+    n = n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+
+    for (int i = tab.first; i < tab.first + tab.count && i < n; ++i) {
+        Edit(*items[i]);
+    }
+}
+
+// The overlay's one tab bar: the player tabs (from the tables), then Advanced with the technical tabs.
+void MainTabs(Rs7OverlayUi& ui, const Rs7UiPlayerTab* tabs, int n) {
+    if (!ImGui::BeginTabBar("main")) {
+        return;
+    }
+
+    for (int t = 0; t <= n; ++t) {
+        const bool advanced = t == n;
+        const ImGuiTabItemFlags fl = ui.mainRequest == t ? ImGuiTabItemFlags_SetSelected : 0;
+
+        if (!ImGui::BeginTabItem(advanced ? "Advanced" : tabs[t].label, nullptr, fl)) {
+            continue;
+        }
+
+        if (advanced) {
+            TechnicalTabs(ui);
+        } else {
+            PlayerTab(tabs[t]);
+        }
+
+        ImGui::EndTabItem();
+    }
+
+    ui.mainRequest = -1;
+    ImGui::EndTabBar();
+}
+
+// The same name, ignoring case; a space and '-' are the same.
+bool SameName(const char* a, const char* b) {
+    for (; *a && *b; ++a, ++b) {
+        const int x = *a == ' ' ? '-' : std::tolower(static_cast<unsigned char>(*a));
+        const int y = *b == ' ' ? '-' : std::tolower(static_cast<unsigned char>(*b));
+
+        if (x != y) {
+            return false;
+        }
+    }
+
+    return *a == *b;
+}
+
+// The default window height: title bar, save bar, note, tab bar and the longest player tab with its locked hints.
+// Computed from the tables, so a tab with more settings makes the window taller instead of making it scroll.
+float DefaultHeight(const Rs7UiPlayerTab* tabs, int n) {
+    float tallest = 0;
+
+    for (int t = 0; t < n; ++t) {
+        tallest = std::max(tallest, float(tabs[t].count) * ImGui::GetFrameHeightWithSpacing() +
+                                        float(tabs[t].locked) * ImGui::GetTextLineHeightWithSpacing());
+    }
+
+    return ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2 + ImGui::GetFrameHeightWithSpacing() * 2 +
+           ImGui::GetTextLineHeightWithSpacing() + tallest;
+}
+}  // namespace
+
+bool Rs7OverlayUi_RequestTab(Rs7OverlayUi& ui, const char* name) {
+    if (!name) {
+        return false;
+    }
+
+    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
+    const int n = std::min(Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs), kRs7UiMaxPlayerTabs);
+    const bool player = !std::strncmp(name, "player-", 7);
+
+    if (!player) {
+        if (SameName(name, "advanced")) {
+            ui.mainRequest = n;
+            return true;
+        }
+
+        for (int i = 0; i < kTabCount; ++i) {
+            if (SameName(name, kTabs[i].name) || (i == int(Rs7UiTab::Colour) && SameName(name, "color"))) {
+                ui.tabRequest = i;
+                ui.mainRequest = n;
+                return true;
+            }
+        }
+    }
+
+    for (int i = 0; i < n; ++i) {
+        if (SameName(name + (player ? 7 : 0), tabs[i].label)) {
+            ui.mainRequest = i;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void Rs7OverlayUi_Draw(Rs7OverlayUi& ui, bool* open) {
+    const float f = ImGui::GetFontSize();
+    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
+    const int n = std::min(Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs), kRs7UiMaxPlayerTabs);
+
+    ImGui::SetNextWindowPos(ImVec2(f * 1.5f, f * 1.5f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(f * 58.0f, DefaultHeight(tabs, n)), ImGuiCond_FirstUseEver);
+    char k[16];
+    char title[64];
+
+    std::snprintf(title, sizeof title, "rs7string %s  (%s)###rs7overlay", RS7_VERSION, KeyName(ui.hotkey, k, sizeof k));
+
+    if (!ImGui::Begin(title, open)) {
+        ImGui::End();
+        return;
+    }
+
+    SaveBar(ui);
+    ImGui::TextDisabled("%s", kRestartNote);
+    MainTabs(ui, tabs, n);
     ImGui::End();
 }

@@ -1,5 +1,5 @@
 #pragma once
-#include "core/texlist.h"
+#include "d3d/texlist.h"
 #include <windows.h>
 #include <cstdint>
 

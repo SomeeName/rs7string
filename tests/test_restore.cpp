@@ -1,7 +1,8 @@
-#include "core/diagrams.h"
-#include "core/patch.h"
-#include "core/protect.h"
-#include "hooks/isolate.h"
+#include "features/diagrams/diagrams.h"
+#include "hook_rules.h"
+#include "platform/isolate.h"
+#include "platform/patch.h"
+#include "platform/protect.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>
@@ -61,8 +62,8 @@ struct Batch {
         Rs7PatchOps o;
 
         o.count = 3;  // 0: Core, 1: Diagrams, 2: Diagrams
-        o.feature = [](size_t i) {
-            return i == 0 ? Rs7Feature::Core : Rs7Feature::Diagrams;
+        o.group = [](size_t i) {
+            return Rs7_Group(i == 0 ? Rs7Feature::Core : Rs7Feature::Diagrams);
         };
         o.name = [](size_t i) {
             static const char* n[3] = {"S0", "S1", "S2"};
@@ -131,7 +132,7 @@ void UnrecoverableCase(bool frozen) {
     b.failRestoreAt = b.Site(1);  // ... and S1 cannot be put back
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(b.Ops(frozen), written) == Rs7PatchResult::Unrecoverable);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, b.Ops(frozen), written) == Rs7PatchResult::Unrecoverable);
     CHECK_EQ(b.applies, 3);  // one round only: no retry over an unrestored site
     CHECK_EQ(b.restores, 2);
     CHECK_EQ(written.size(), size_t(1));  // S1 is still ours, and recorded as such
@@ -165,7 +166,7 @@ TEST(isolate_verified_rollback_still_isolates_and_retries) {
     b.failApplyAt = b.Site(2);  // S2 cannot be written; the rollback of S0/S1 succeeds
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(b.Ops(true), written) == Rs7PatchResult::Ok);
+    CHECK(Rs7_PatchIsolated(kRs7Groups, b.Ops(true), written) == Rs7PatchResult::Ok);
     CHECK_EQ(written.size(), size_t(1));  // round 2: S0 only (Diagrams disabled)
     CHECK(std::memcmp(reinterpret_cast<void*>(b.Site(1)), kOrig, 5) == 0);
     CHECK(!b.Logged("UNRECOVERABLE"));

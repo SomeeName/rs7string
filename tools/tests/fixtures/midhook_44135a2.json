@@ -1,0 +1,20 @@
+{
+  "Rs7_Stub_SF1": {
+    "hex": "9c 60 8b f4 81 ec 00 02 00 00 83 e4 f0 0f ae 04 24 db e3 ff 76 04 e8 65 e6 ff ff 83 c4 04 0f ae 0c 24 8b e6 61 9d ff 25 ec 72 16 5e",
+    "fixups": [
+      {
+        "offset": 23,
+        "symbol": "Rs7Ns_OnSongFree",
+        "addend": 0,
+        "relative": true
+      },
+      {
+        "offset": 40,
+        "symbol": "g_rs7_target_SF1",
+        "addend": 0,
+        "relative": false
+      }
+    ],
+    "source": "44135a2 (main before the call-site mid-hooks)"
+  }
+}

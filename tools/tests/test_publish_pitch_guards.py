@@ -4,7 +4,7 @@ import struct
 import pytest
 from unicorn import UC_HOOK_MEM_READ
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESI, UC_X86_REG_ESP
-from test_emu import Emu, CODE, DATA, STACK, RET_MAGIC
+from emu_harness import Emu, CODE, DATA, STACK, RET_MAGIC, callin_entry, site_mid_entry
 
 DET = DATA + 0x10000
 MAT = DATA + 0x20000
@@ -36,11 +36,23 @@ def machine():
     return e
 
 
+def detector_block(e, size: int):
+    """DET as the DLL's reset (PR0, Rs7Pitch_DetReset) leaves it in a block of `size` bytes: the native size writes the
+    tail and records DET in the registry of tailed allocations, the stock size forgets it. Then an 8-string count and
+    the magic (also past a stock block, where they must never be trusted)."""
+    e.uc.mem_write(DATA + 0xF0000, p(size))
+    sp = STACK + 0x80000
+    e.uc.mem_write(sp, p(RET_MAGIC, DET))
+    e.run(e.exports["Rs7Pitch_DetReset"], RET_MAGIC, {UC_X86_REG_ESP: sp})
+    e.uc.mem_write(DET + 0x13DC, p(0x38503752))
+    e.uc.mem_write(DET + 0x13D8, p(8))
+
+
 @pytest.mark.parametrize("kind", range(3))
 @pytest.mark.parametrize("size", [0x13B8, 0x13E0])
 def test_guard_never_reads_stock_tail(machine, kind, size):
     e = machine
-    e.uc.mem_write(DATA + 0xF0000, p(size))
+    detector_block(e, size)
     reads = []
     hook = e.uc.hook_add(
         UC_HOOK_MEM_READ, lambda uc, a, addr, n, v, u: reads.append(addr), begin=DET + 0x13B8, end=DET + 0x13DF
@@ -63,7 +75,7 @@ def test_inverse_native_tail(machine, s, base):
     sp = STACK + 0x80000
     e.uc.mem_write(sp, p(RET_MAGIC, 0))
     e.run(
-        e.exports["Rs7_Publish_ReverseTail"],
+        callin_entry(e.uc, e.exports, "g_rs7_callin_ReverseTail", CODE + 0xD1000, STACK + 0x60000, RET_MAGIC),
         RET_MAGIC,
         {
             UC_X86_REG_ESP: sp,
@@ -75,18 +87,19 @@ def test_inverse_native_tail(machine, s, base):
     assert e.uc.reg_read(UC_X86_REG_EAX) == 8 and e.uc.reg_read(UC_X86_REG_ESP) == sp + 4
 
 
+@pytest.mark.parametrize("sid", ["PUBZ0", "PUBZ1"])  # a call site and a jmp site (after the caller's `pop ebp`)
 @pytest.mark.parametrize("native", [0, 1])
 @pytest.mark.parametrize("instrument,s", [(0, 3), (0, 6), (0, 7), (1, 6), (2, 3), (2, 6)])
-def test_zero_table_call_and_tail_return(machine, native, instrument, s):
+def test_zero_table_call_and_tail_return(machine, sid, native, instrument, s):
+    """The PUBZ mid-hook (Rs7_Mid_PUBZ, light) with the stack both kinds of site have: [esp] = the caller's return
+    address, [esp+4] = the fret. Guitar strings 6/7 with the ports: the eight-entry bases; else the stock 0x873F80."""
     e = machine
     e.uc.mem_write(e.exports["g_rs7_publish_ports"], p(native))
     sp = STACK + 0x80000
+    start = site_mid_entry(e.uc, e.exports, sid, CODE + 0xD0000, STACK + 0x60000, RET_MAGIC)
     e.uc.mem_write(sp, p(RET_MAGIC, 5))
-    # The wrapper serves CALL sites and already-popped-EBP JMP sites with this same stack.
     e.run(
-        e.exports["Rs7_Publish_ZeroRaw"],
-        RET_MAGIC,
-        {UC_X86_REG_ESP: sp, UC_X86_REG_ECX: 0x1199D2C, UC_X86_REG_EDX: instrument, UC_X86_REG_ESI: s},
+        start, RET_MAGIC, {UC_X86_REG_ESP: sp, UC_X86_REG_ECX: 0x1199D2C, UC_X86_REG_EDX: instrument, UC_X86_REG_ESI: s}
     )
     if instrument == 2:
         base = [28, 33, 38, 43][s] if s < 4 else -1
@@ -101,14 +114,16 @@ def test_zero_table_call_and_tail_return(machine, native, instrument, s):
 def test_entry_tail_transfer_preserves_original_stack(machine, kind, name, native):
     e = machine
     e.uc.mem_write(e.exports["g_rs7_publish_ports"], p(native))
-    e.uc.mem_write(DATA + 0xF0000, p(0x13E0))
+    detector_block(e, 0x13E0)
     sp = STACK + 0x80000
     obj = MAT if kind == 0 else TRACK
     e.uc.mem_write(sp, p(RET_MAGIC, obj, DATA + 0x40000, DATA + 0x50000))
     until = CODE + (0x2000 if native else 0x3000) + 0x100 * kind
+    # The mid-hook entry (built before the registers are set: the emitter runs in the same emulator).
+    start = site_mid_entry(e.uc, e.exports, name, CODE + 0xC0000 + 0x100 * kind, STACK + 0x60000, RET_MAGIC)
     top = e.fpu_top()
     e.run(
-        e.exports["Rs7_Stub_" + name],
+        start,
         until,
         {
             UC_X86_REG_ESP: sp,

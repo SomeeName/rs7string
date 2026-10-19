@@ -18,7 +18,8 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $root = Split-Path -Parent $PSScriptRoot
-$settingsCpp = Join-Path $root 'src\core\settings.cpp'
+$tablesCpp = Join-Path $root 'src\settings_tables.cpp'   # kRs7SettingTables: every feature's table, in order
+# The template's sections; inside a section the keys keep the table order of kRs7SettingTables.
 $sectionOrder = 'overlay', 'debug', 'color', 'neck', 'assets', 'chords', 'tuner', 'psarc', 'window', 'test'
 
 # Keys the code reads outside the settings table (no table row, so the default and comment are here).
@@ -33,6 +34,7 @@ $extraRows = @(
     [pscustomobject]@{ sec = 'debug'; key = 'diagrams_trace'; def = '0'; desc = 'Diagnostic: logs chord-diagram recipe loading and movie swaps. Only used with [chords] diagrams7=1. Read at startup.' }
     [pscustomobject]@{ sec = 'debug'; key = 'spin_probe'; def = '0'; desc = 'Diagnostic: starts a watchdog that samples busy threads (suspends and resumes them briefly). Read at startup.' }
     [pscustomobject]@{ sec = 'debug'; key = 'plain_delay_ms'; def = '0'; desc = 'Test only: starts the plain-PSARC patches this many ms late (at most 30000), so an enabler with its own plain-PSARC support patches first. Read at startup.' }
+    [pscustomobject]@{ sec = 'debug'; key = 'log_redact'; def = '1'; desc = 'rs7string.log hides your Windows user name, user folder and computer name. 0 writes them as they are (own debugging only, never post such a log). Read at startup.' }
     [pscustomobject]@{ sec = 'debug'; key = 'publish_trace'; def = '0'; desc = 'Diagnostic: logs the GridBuild readiness waits of the native layouts (a guitar built with 7/8 strings). Read at startup.' }
     [pscustomobject]@{ sec = 'debug'; key = 'skip_sites'; def = ''; desc = 'Test bisection: comma-separated site IDs that are resolved but not written at startup. Leave empty.' }
     [pscustomobject]@{ sec = 'assets'; key = 'selfbuild'; def = '1'; desc = '1 = build the 7-string headstock model from your own game files at the first guitar load (once; cached in dir). Stock headstock on any failure.' }
@@ -44,6 +46,10 @@ $extraRows = @(
     [pscustomobject]@{ sec = 'test'; key = 'vguitar_mix'; def = '0'; desc = '0 replaces the real input during a song; 1 adds the synthesised notes to it.' }
     [pscustomobject]@{ sec = 'test'; key = 'vguitar_trace'; def = '0'; desc = 'Logs the detector frame after each synthesised onset (diagnostic).' }
     [pscustomobject]@{ sec = 'test'; key = 'vguitar_chord6'; def = 'play'; desc = 'Seventh-string note of a chord: play, omit, only, +N or -N (semitones), omitlow or omithigh.' }
+    [pscustomobject]@{ sec = 'test'; key = 'fast'; def = '0'; desc = 'Test only: a song ends on its song page (no results screen).' }
+    [pscustomobject]@{ sec = 'test'; key = 'force_colourblind'; def = '0'; desc = 'Test only: colourblind mode for this session; the profile keeps its setting.' }
+    [pscustomobject]@{ sec = 'test'; key = 'force_lefty'; def = '0'; desc = 'Test only: left-handed guitar for this session; the profile keeps its setting.' }
+    [pscustomobject]@{ sec = 'test'; key = 'force_headstock'; def = ''; desc = 'Test only: headstock type for this session, 33 (3+3) or 6 (6 in-line); empty: the profile''s.' }
 )
 
 function Get-CStringValue([string]$raw) {
@@ -57,12 +63,30 @@ function Get-CStringValue([string]$raw) {
     $sb.ToString()
 }
 
+function Get-SettingsBlocks {
+    # The Rs7SetDef array of every table listed in kRs7SettingTables, in list order (a table without rows has none).
+    $list = Get-Content -Raw -LiteralPath $tablesCpp
+    $start = $list.IndexOf('kRs7SettingTables[] = {')
+    if ($start -lt 0) { throw "kRs7SettingTables not found in $tablesCpp" }
+    $names = [regex]::Matches($list.Substring($start, $list.IndexOf('};', $start) - $start), '&(kRs7\w+Settings)') | ForEach-Object { $_.Groups[1].Value }
+    $files = Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File -Filter *.cpp
+    foreach ($name in $names) {
+        $defRx = [regex]('const Rs7SetTable ' + $name + ' = \{(\w+),')
+        $hits = @($files | ForEach-Object { $t = Get-Content -Raw -LiteralPath $_.FullName; $m = $defRx.Match($t); if ($m.Success) { [pscustomobject]@{ text = $t; arr = $m.Groups[1].Value } } })
+        if ($hits.Count -ne 1) { throw "settings table ${name}: defined $($hits.Count) times in src/" }
+        if ($hits[0].arr -eq 'nullptr') { continue }
+        $a = $hits[0].text.IndexOf('const Rs7SetDef ' + $hits[0].arr + '[] = {')
+        $b = $hits[0].text.IndexOf("`n};", [Math]::Max($a, 0))
+        if ($a -lt 0 -or $b -lt 0) { throw "rows $($hits[0].arr) of $name not found" }
+        $hits[0].text.Substring($a, $b - $a)
+    }
+}
+
 function Read-SettingsTable {
-    $cpp = Get-Content -Raw -LiteralPath $settingsCpp
-    $start = $cpp.IndexOf('const Rs7SetDef kDefs[] = {')
-    $stop = $cpp.IndexOf('constexpr int kCount', [Math]::Max($start, 0))
-    if ($start -lt 0 -or $stop -lt 0) { throw "settings table not found in $settingsCpp" }
-    $block = $cpp.Substring($start, $stop - $start)
+    foreach ($block in Get-SettingsBlocks) { Read-SettingsBlock $block }
+}
+
+function Read-SettingsBlock([string]$block) {
     $entryRx = [regex]'\{"(?<id>[a-z0-9_.]+)",\s*L"(?<sec>\w+)",\s*L"(?<key>\w+)",\s*T::\w+,\s*W::\w+,\s*"(?<def>(?:[^"\\]|\\.)*)",[^"]*"(?:[^"\\]|\\.)*",\s*(?<desc>(?:"(?:[^"\\]|\\.)*"\s*)+)'
     $found = $entryRx.Matches($block)
     $declared = ([regex]::Matches($block, '\{"[a-z0-9_.]+"')).Count
@@ -96,7 +120,7 @@ function New-IniTemplate([string]$commit) {
     $all = @($rows) + @($extraRows)
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add('; rs7string settings. Put this file beside dinput8.dll. Missing keys use the defaults.')
-    $lines.Add("; Generated by scripts/package.ps1 for commit $commit from the defaults in src/core/settings.cpp")
+    $lines.Add("; Generated by scripts/package.ps1 for commit $commit from the settings tables in src/settings_tables.cpp")
     $lines.Add('; and the keys read elsewhere in src/. 0 = off, 1 = on. SETTINGS.md explains each key in plain words.')
     $placed = 0
     foreach ($s in $sectionOrder) {

@@ -1,6 +1,6 @@
 #pragma once
-#include "core/texlist.h"
 #include "d3d/swap.h"
+#include "d3d/texlist.h"
 #include <windows.h>
 
 // Runs forever on the startup worker thread (plan Task 9): every 2 s until hooked, then every 10 s,

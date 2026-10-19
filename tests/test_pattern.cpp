@@ -1,4 +1,4 @@
-#include "core/pattern.h"
+#include "platform/pattern.h"
 #include "test.h"
 
 TEST(pattern_parses_bytes_and_wildcards) {

@@ -39,7 +39,7 @@ Push-Location (Join-Path $PSScriptRoot '..')
 try {
     $tracked = @(git ls-files) | ForEach-Object { $_.Replace('\', '/') }
     $keep = { param($p) -not (Test-Excluded $p $PermanentExclude) }
-    $cpp = @($tracked | Where-Object { $_ -match '^(src|tests)/.*\.(cpp|h)$' -and (& $keep $_) })
+    $cpp = @($tracked | Where-Object { $_ -match '^(src|tests|fuzz)/.*\.(cpp|h)$' -and (& $keep $_) })
     $py = @($tracked | Where-Object { $_ -match '^(tools|scripts)/.*\.py$' -and (& $keep $_) })
     $bad = 0
 

@@ -1,4 +1,4 @@
-#include "core/dxt.h"
+#include "platform/dxt.h"
 #include "test.h"
 #include <cstring>
 
@@ -40,7 +40,7 @@ TEST(dxt1_four_colour_block) {
     Colour(blk, 0xF800, 0x001F, idx);  // c0 > c1: four colours
     uint32_t out[16] = {};
 
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out, sizeof out / sizeof out[0]));
     CHECK_EQ(out[0], 0xFFFF0000u);
     CHECK_EQ(out[1], 0xFF0000FFu);
     CHECK_EQ(out[2], 0xFFAA0055u);
@@ -55,7 +55,7 @@ TEST(dxt1_three_colour_block_has_transparent_black) {
     Colour(blk, 0x001F, 0xF800, idx);  // c0 <= c1: three colours + transparent black
     uint32_t out[16] = {};
 
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out, sizeof out / sizeof out[0]));
     CHECK_EQ(out[0], 0xFF0000FFu);
     CHECK_EQ(out[1], 0xFFFF0000u);
     CHECK_EQ(out[2], 0xFF7F007Fu);  // (255 + 0) / 2 = 127
@@ -71,7 +71,7 @@ TEST(dxt5_eight_alpha_and_six_alpha_modes) {
     Colour(blk + 8, 0xFFFF, 0xFFFF, cidx);  // c0 == c1: DXT5 still decodes four colours (opaque white)
     uint32_t out[16] = {};
 
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 16, 4, 4, true, out));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 16, 4, 4, true, out, sizeof out / sizeof out[0]));
     CHECK_EQ(out[0] >> 24, 255u);
     CHECK_EQ(out[1] >> 24, 0u);
     CHECK_EQ(out[2] >> 24, (6u * 255 + 3) / 7);  // 219
@@ -80,7 +80,7 @@ TEST(dxt5_eight_alpha_and_six_alpha_modes) {
     CHECK_EQ(out[0] & 0xFFFFFFu, 0xFFFFFFu);
 
     Alpha(blk, 0, 255, aidx);  // a0 <= a1: six alphas plus 0 and 255
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 16, 4, 4, true, out));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 16, 4, 4, true, out, sizeof out / sizeof out[0]));
     CHECK_EQ(out[2] >> 24, (1u * 255 + 2) / 5);  // 51
     CHECK_EQ(out[6] >> 24, 0u);
     CHECK_EQ(out[7] >> 24, 255u);
@@ -91,13 +91,28 @@ TEST(dxt_decode_small_levels) {
     const uint8_t idx[4] = {Row(0, 1, 0, 0), 0, 0, 0};
 
     Colour(blk, 0xF800, 0x001F, idx);
-    uint32_t two[2] = {}, one[1] = {};
+    uint32_t two[2] = {}, one[1] = {}, five[5] = {};
 
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 2, 1, false, two));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 2, 1, false, two, sizeof two / sizeof two[0]));
     CHECK_EQ(two[0], 0xFFFF0000u);
     CHECK_EQ(two[1], 0xFF0000FFu);
-    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 1, 1, false, one));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 1, 1, false, one, sizeof one / sizeof one[0]));
     CHECK_EQ(one[0], 0xFFFF0000u);
-    CHECK(!Rs7_DecodeDxt(blk, 7, 8, 1, 1, false, one));           // short source
-    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 8, 5, 1, false, one));  // needs two blocks
+    CHECK(!Rs7_DecodeDxt(blk, 7, 8, 1, 1, false, one, sizeof one / sizeof one[0]));  // short source
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 16, 5, 1, false, five, 5));                // two blocks, the source holds one
+}
+
+TEST(dxt_rejects_bad_sizes) {
+    uint8_t blk[16] = {};
+    uint32_t out[16] = {}, tall[32] = {};
+
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out, 15));         // output one texel short
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 4, 4, 4, false, out, 16));         // pitch below one block row
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 16, 4, 8, true, tall, 32));        // second DXT5 block row missing
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, SIZE_MAX, 4, 8, false, out, 16));  // (bh - 1) * pitch overflows
+    CHECK(!Rs7_DecodeDxt(blk, sizeof blk, 8, 0xFFFFFFFFu, 1, false, out,
+                         16));  // bw * block bytes overflows (32-bit size_t)
+    // A source big enough for 65535 x 65535 (checked before anything is read), but w * h > the output.
+    CHECK(!Rs7_DecodeDxt(blk, size_t(16384) * 131072, 131072, 0xFFFFu, 0xFFFFu, false, out, 16));
+    CHECK(Rs7_DecodeDxt(blk, sizeof blk, 8, 4, 4, false, out, 16));
 }

@@ -20,7 +20,7 @@ def test_built_dll_passes():
 def test_built_dll_imports_only_expected_windows_libraries():
     import pefile
 
-    # user32: the [window] options (src/core/window.cpp); the game has it loaded anyway.
+    # user32: the [window] options (src/features/window/window.cpp); the game has it loaded anyway.
     # bcrypt: verify owner movie/tag hashes; no bundled crypto or encryption keys.
     assert check_exports.imports(pefile.PE(str(DLL))) == {"kernel32.dll", "user32.dll", "bcrypt.dll"}
 

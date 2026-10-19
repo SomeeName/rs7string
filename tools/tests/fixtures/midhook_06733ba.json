@@ -1,0 +1,7 @@
+{
+  "Rs7_Call_GlowRead": {
+    "hex": "50 8b 43 04 d9 84 90 80 00 00 00 58 c3",
+    "fixups": [],
+    "source": "06733ba"
+  }
+}
