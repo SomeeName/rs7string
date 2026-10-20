@@ -13,6 +13,11 @@ seven-string charts on a seven-string highway, and notes on the low B string are
 like any other note. Six-string songs and bass songs are not changed. The mod plays charts made for
 seven strings; it does not convert six-string charts.
 
+> [!TIP]
+> Want to chart your own seven-string songs? [DotCharter](https://github.com/SomeeName/DotCharter)
+> is a free charting editor that exports seven-string arrangements in the format rs7string plays.
+> See [Making seven-string charts](#making-seven-string-charts).
+
 <img width="1922" height="1107" alt="showcase" src="https://github.com/user-attachments/assets/f8ecad58-917e-4565-abb6-996a14270a64" />
 
 <details>
@@ -56,7 +61,7 @@ The full list is in the [changelog](docs/release/CHANGELOG.md).
 | Rocksmith 2014 Remastered for PC (Steam) | **September 2022 build** only. Learn & Play is not supported. The mod checks the build at startup. |
 | A CDLC enabler for that build | Still needed so the game accepts custom songs. rs7string does not replace it. |
 | A seven-string guitar | And a working Rocksmith audio input. |
-| Seven-string charts | Made for rs7string. See [Making seven-string charts](#making-seven-string-charts). |
+| Seven-string charts | Made for rs7string, for example with [DotCharter](https://github.com/SomeeName/DotCharter). See [Making seven-string charts](#making-seven-string-charts). |
 
 > [!NOTE]
 > RSMods and RS_ASIO are optional. rs7string works with or without them, and both were tested
@@ -98,6 +103,33 @@ Technical limits are in [ARCHITECTURE.md](docs/ARCHITECTURE.md#14-known-limitati
 
 Seven-string charts use the game's normal Lead or Rhythm arrangements with a seven-entry tuning.
 
+### With DotCharter (recommended)
+
+[DotCharter](https://github.com/SomeeName/DotCharter) is a free charting editor and guitar game for
+Windows. It edits seven-string guitar arrangements like any other and exports them in the layout
+rs7string reads.
+
+1. Download the latest [DotCharter release](https://github.com/SomeeName/DotCharter/releases/latest)
+   and unzip it.
+2. Create or import a song (audio, Guitar Pro, Editor on Fire, Rocksmith XML or MIDI).
+3. In the arrangement's settings, set **Strings** to 7 and the tuning, for example B Standard.
+4. Chart as usual. The low B string is the seventh row in the editor and on the 3D highway.
+5. Export as a Rocksmith package and copy the `*_p.psarc` into the game's `dlc` folder.
+
+Good to know:
+
+- Seven-string arrangements are written as **plain (unencrypted) packages**. rs7string's built-in
+  plain-PSARC loading plays them together with a CDLC enabler for the September 2022 build.
+- Chord notes on the seventh string are stored in the song file's **RS7X block**, so chords stay
+  chords. For an rs7string build from before the RS7X block, turn on **Split 7th-string chords** in
+  the export dialog; those chord notes are then written as single notes.
+- Seven-string arrangements play on **Windows only**. Mac packages are six-string only.
+- Eight-string guitar arrangements are recognised, but not exported yet; rs7string plays seven
+  strings.
+- Bass arrangements and six-string arrangements in the same song export normally.
+
+### By hand or with your own tools
+
 - **Chart authors:** read the [charting guide](docs/release/CHARTING.md).
 - **Tool authors:** the chord data format is in the [RS7X specification](docs/release/RS7X-SPEC.md).
 - **rs7chart**, the chart build and check tool, will be published later.
@@ -135,6 +167,14 @@ Only player 1 gets the seven-string guitar. Player 2 plays with six strings.
 <summary><b>Can it play my six-string charts on a seven-string guitar?</b></summary>
 
 No. It plays charts made for seven strings. Renaming or retuning a six-string chart does not convert it.
+
+</details>
+
+<details>
+<summary><b>How do I make my own seven-string charts?</b></summary>
+
+Use [DotCharter](https://github.com/SomeeName/DotCharter): set the arrangement to seven strings,
+chart it, and export a Rocksmith package. See [Making seven-string charts](#making-seven-string-charts).
 
 </details>
 
