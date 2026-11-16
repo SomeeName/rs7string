@@ -31,7 +31,7 @@ flowchart TD
   serializers. From the native T8 record they add `LowBFret/LowB_Finger/LowB_Color` (string 7) and
   `LowFsFret/LowFs_Finger/LowFs_Color` (string 8), with colours `0x808080` and a provisional
   `0x00FFFF`, and recompute the fret window over all N strings (`src/features/diagrams/diagrams.cpp`).
-- TP13 `0x7578BC` routes the loaded-song template lookup through `Rs7Ns_TplRecord`.
+- TP13 `0x7578BC` routes the loaded-song template lookup through `Rs7Ns_FindTplRecord`; a lookup miss keeps the stock pointer.
 - DGB `0x55A02C` binds PostProcess's UUID-selected attributes to the exact SNG song.
 - Six-string and bass shapes get no extra keys.
 - Not covered (stock output): generic database chords, catalogue songs whose SNG is not loaded,

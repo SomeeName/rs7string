@@ -79,7 +79,7 @@ In this guide, **the game folder** is the folder that contains `Rocksmith2014.ex
    | `rs7string_headstock_bass.bin` | Data for the headstock builder (five- and six-string bass). |
    | `rs7string_headstock_bass_lh.bin` | Data for the headstock builder (bass, left-handed). |
    | `rs7string_headstock.LICENSE.md` | Licence of the headstock data. |
-   | `chord-diagrams` folder | Recipes for the seven-row chord diagrams. Copy the whole folder. |
+   | `chord-diagrams` folder | Recipes for the seven- and eight-row chord diagrams. Copy the whole folder. |
 
 > [!TIP]
 > The `chord-diagrams` folder holds `commonlib.rs7da`, `contentpanel.rs7da`, `ge_game.rs7da`,
@@ -141,9 +141,9 @@ Rules:
 - Copying `rs7_peg.nif` alone does not replace the peg. The stock peg is used unless a file with the
   naming above is supplied. The headstock builder writes `rs7_peg.nif`, but the game does not
   necessarily load it.
-- If a primary model file is missing, `selfbuild=1` (the default) builds the standard in-line models. If
-  `selfbuild` is off or the build fails, the mod tries an edited file with the naming above, and
-  otherwise keeps the stock model.
+- If a standard primary model file is missing, `selfbuild=1` (the default) builds the standard in-line models.
+  A model file you named yourself is never built. If `selfbuild` is off, the build fails or your own file is
+  missing, the mod tries an edited file with the naming above, and otherwise keeps the stock model.
 - An empty value, `none`, `off` or `0` for `headstock8_file` or `headstock8_file_lh` turns off the guitar
   headstock builder for that hand. The seven-peg keys only disable the secondary models. `selfbuild=0` turns
   off all headstock builds, including bass.
@@ -187,8 +187,8 @@ Rules:
 1. Close Rocksmith.
 2. Replace `dinput8.dll`, the four `.bin` files, `rs7string_headstock.LICENSE.md` and the
    `chord-diagrams` folder with the new release files. Keep your own `rs7string.ini` if you changed it.
-3. Rename the `rs7string\headstock` folder to a backup name, so the headstock is rebuilt with the new
-   version on the next start.
+3. Leave the `rs7string\headstock` folder as it is. Headstock models built from your game files are rebuilt
+   by themselves when the new version ships a changed headstock, and your own models are kept.
 
 ## Compatibility
 
@@ -208,9 +208,9 @@ Rules:
 | No overlay and no log | `dinput8.dll` and `rs7string.ini` must be in the game folder, beside `Rocksmith2014.exe`. Check the DLL file name and the game build. Make sure another mod has not replaced `dinput8.dll`. |
 | The log reports patch or site failures | Check that the game is the September 2022 build. Keep the log for an issue report. |
 | F9 does nothing, but the log exists | Check `enabled=1` and `hotkey` under `[overlay]`, and the RSMods keybindings. File changes need a restart. |
-| The chart is missing or fails to load | The chart must be a PC plain PSARC in `dlc`, with a CDLC enabler and `[psarc] plain=1`. The log should have a `plain psarc: provided by rs7string` or `plain psarc: provided by the CDLC enabler` line. An enabler with its own plain PSARC support may log `Plain PSARC: pattern not found` when rs7string patched first; that is expected. Ask the chart author to check the tuning entries and `Rs7String` keys for your instrument in the [charting guide](CHARTING.md). |
+| The chart is missing or fails to load | The chart must be a PC plain PSARC in `dlc`, with a CDLC enabler. Plain PSARC loading comes from rs7string (`[psarc] plain=1`, the default) or from an enabler that has it. The log should have a `plain psarc: provided by rs7string` or `plain psarc: provided by the CDLC enabler` line. An enabler with its own plain PSARC support may log `Plain PSARC: pattern not found` when rs7string patched first; that is expected. Ask the chart author to check the tuning entries and `Rs7String` keys for your instrument in the [charting guide](CHARTING.md). |
 | The chart loads with the wrong number of strings | The chart must be made for your extended instrument. Renaming an ordinary chart does not convert it. Check the string count in the overlay or the log after the song loads. |
-| Stock headstock, or no headstock build | Check that the `.bin` files are next to `dinput8.dll`, that `headstock7=1` and `selfbuild` is not `0` under `[assets]`, and the `hsbuild:` lines in the log. For your own model, check `headstock7_file` and that the `.dds` textures sit beside the model. Restart after changing asset settings. To retry a build, close the game and rename `rs7string\headstock`. |
+| Stock headstock, or no headstock build | Check that the `.bin` files are next to `dinput8.dll`, that `headstock7=1` and `selfbuild` is not `0` under `[assets]`, and the `hsbuild:` lines in the log. For your own model, check `headstock8_file` (and `headstock7_file` for the seven-string model) and that the `.dds` textures sit beside the model. Restart after changing asset settings. To retry a build, close the game and rename `rs7string\headstock`. |
 | Wrong gem colour on an extra string | Check the `[color]` settings. RSMods custom note colours can override the gem colours. |
 | A song stops after about seven seconds with orange speaker rings | A game or audio-device issue. Check your normal Rocksmith audio setup with a six-string song. If you use RS_ASIO, check its settings and log too. |
 | No sound or poor detection on all strings | First check your normal Rocksmith input setup with a six-string song. If you use RS_ASIO, check its settings and log too. |

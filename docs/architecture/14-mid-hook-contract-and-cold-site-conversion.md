@@ -36,7 +36,7 @@ Builders create per-site entries that jump to shared MASM thunks. Native tests, 
 <summary><b>Source and implementation evidence</b></summary>
 
 The per-site entries are emitted at runtime by `Rs7Mid_Build`, `Rs7Mid_BuildLight` and `Rs7Mid_BuildCall`
-(`midhook.cpp`). The two shared thunks they jump to, `Rs7Mid_Thunk` and `Rs7Mid_ThunkLight`, are one MASM file,
+(`midhook.cpp`). The three shared thunks they jump to, `Rs7Mid_Thunk`, `Rs7Mid_ThunkLight` and `Rs7Mid_ThunkSse`, are one MASM file,
 `src/platform/midhook_thunks.asm` (ml.exe, wired into `rs7string.vcxproj` and `tests/rs7string_tests.vcxproj`
 through the `masm` build customisation, exported with `PROC EXPORT`), not inline `__asm`; the WOW64 syscall of
 `Rs7_Protect` is `src/platform/protect_syscall.asm` the same way, so `src/platform/` has no inline assembly. Why a
@@ -420,7 +420,7 @@ A `jmp_atomic8` site is installed with one locked qword exchange, because the co
 A `jmp_atomic8` site is a 5-byte jmp inside one aligned qword, written with one locked exchange
 (the code may run on another thread while it is patched). A mid-hook is prepared for it as for a `jmp` site, with the
 whole `expect` span as the replay (the jmp ends inside an instruction, which the relocator would reject), and startup
-writes the entry with the same locked exchange (`PrepareMid` / `Apply` in `startup.cpp`; one condition more). S3 and
+writes the entry with the same locked exchange (`Rs7_PrepareMid` in `platform/hooktable.cpp`, called and applied from `startup_sites.cpp`; one condition more). S3 and
 PT1 (the guitar / bass exits `mov [eax+1356h],cx|dx; ret` of `Play_Detector_SetTuning`, cold) are the first: the
 callback does the store itself, calls the helper, which sees the finished detector as before, and returns for the
 function (`Rs7Mid::Ret`); the old stubs left the helper's flags at the return, where no one reads them (contract

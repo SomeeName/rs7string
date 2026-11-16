@@ -13,7 +13,7 @@ Generate from the offline patcher output (`tools/gfxpatch`):
 
 ```powershell
 # From the repository root; reads the Desktop copies, writes data only in this checkout.
-uv run python tools\diagram_patch.py
+uv run python tools\diagram_patch.py --edited "$env:USERPROFILE\Desktop\rocksmith-assets\edited\gfx"
 ```
 
 The generator never edits the patcher folder (`tools\gfxpatch`). Its `--original` and

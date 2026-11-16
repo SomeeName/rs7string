@@ -16,11 +16,12 @@ Part of the [rs7string architecture](../ARCHITECTURE.md).
 | Settings and input | Overlay editing narrows text to ASCII. Table settings fail closed; a few debug switches read directly treat any nonzero value as on (documented). While the overlay uses the mouse or keyboard, that input is masked from the game ([chapter 11](11-window-input-overlay-logging.md)). |
 | Tuner and UI | Names are English only; filter and sort use six-string offsets. A rare `GridBuild` timeout keeps the neck marked failed until a six-string selection. |
 | Verification | Overlay device Reset is unit-tested but had not been hit in game. Real-guitar bends, slides and harmonics on string 6 and chord techniques still need a final check. |
+| Player-visible limits | The three limits listed for players in the [changelog](../release/CHANGELOG.md#known-limits): the co-op low B colours, the song length in the co-op arrangement list, and a Riff Repeater tail colour on six-string bass. |
 | Very low tunings | Some subharmonic-table reads below MIDI 22 are unchecked; see below. Open strings below G0 are undetectable. |
 
 ## Settings outside the documented range
 
-Settings in the settings tables fail closed (`src/platform/settings.cpp`, `Rs7Config_ReadInt`): a `Bool` or `Int`
+Settings in the settings tables fail closed (`src/platform/settings.cpp`, with `Rs7Config_ReadInt` from `src/platform/config.cpp`): a `Bool` or `Int`
 value that is not an integer or lies outside its range reads as 0 (off) and is logged; an invalid `Float`, `Text` or
 colour value uses the row's default. The remaining direct `GetPrivateProfileIntW` reads are debug and diagnostic keys
 (`[debug] veh_log`, `spin_probe`, `publish_trace`, `log_redact`, `[window] console_quickedit_off`, where any

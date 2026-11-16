@@ -63,7 +63,7 @@ processing to detect changes during the run.
 **CONFIRMED (research):** native serializers `0x757030` (manifest/database) and
 `0x757960` (loaded SNG/lessons) currently send the stock named fields, as recorded
 in the maintainer's research notes (not in this repository). This patcher changes movies
-only; **the DLL must still be extended on both routes**.
+only; the DLL supplies the new fields on both routes (the `DGM` and `DGS` hooks in `src/features/diagrams/`).
 
 **New patch-defined contract, proposed for the DLL:**
 
@@ -190,7 +190,8 @@ The edited folder itself is not demonstrated to be a loose-file override.
 
 **Runtime route:** a DLL could redirect Scaleform's movie bytes to these edited
 copies before each class registration, or inject an AVM1 prototype extension after
-loading. No hook or injection mechanism is implemented or verified here. All
+loading. This patcher has no hook or injection of its own; rs7string's diagrams feature (`src/features/diagrams/`)
+swaps the movies when the game opens them, from the shipped recipes. All
 three local class copies matter: a later movie's registration could replace an
 earlier prototype. Preserve CommonLib import linkage and register-time ordering.
 

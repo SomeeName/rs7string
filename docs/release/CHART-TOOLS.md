@@ -160,8 +160,8 @@ are in the [RS7X spec](RS7X-SPEC.md). For eight strings add index 7 in the same 
 
 ## 5. Manifest and HSAN
 
-In the arrangement manifest JSON and in the HSAN, every `Tuning` object keeps `string0` to `string5` and
-gets **`Rs7String6`** (spelt exactly like this) with the same value as the SNG's seventh entry:
+In the arrangement manifest JSON and in the HSAN, every `Tuning` object keeps `string0` to `string5`. A
+seven-string guitar gets **`Rs7String6`** (spelt exactly like this) with the same value as the SNG's seventh entry:
 
 ```json
 "Tuning": {
@@ -194,8 +194,10 @@ Other manifest fields (arrangement properties, tones, the tuning name text) need
 
 ## 7. Reading packages back
 
-A tool that imports packages (SNG to XML) should read the block, so a seven-string package opens with its
-seventh string:
+A tool that imports packages (SNG to XML) should read the block, so an extended package opens with its extra
+strings. The steps below are for a seven-string guitar. An eight-string guitar has a second column (string 7) in
+`CHDT` and `CHNT` and eight tuning entries. A bass block has `STRS` only: it says five or six strings, and the
+notes, chords and tuning of strings 4 and 5 are in the stock data.
 
 1. Read the stock sections as usual. If the body has bytes left after MetaData, check them against the
    validation rules in [RS7X spec section 3](RS7X-SPEC.md#3-validation-rules). On any failure, treat the
