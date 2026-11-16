@@ -52,7 +52,7 @@ Six-string guitar and four-string bass charts get none of this: no extra keys an
 | String numbering | Keep the stock strings as they are. Guitar: 0-5 are low E, A, D, G, B, high E; the low B is **index 6** and the eighth string (low F#) **index 7**. Bass: 0-3 are E, A, D, G; the low B is **index 4** and the high C **index 5**. Never shift existing string numbers. |
 | Pitch | Open pitch of a string is its open MIDI note (table above) **+ its tuning offset**; add the fret for fretted notes. Tuning offsets are semitones. |
 | SNG tuning | Guitar: the MetaData tuning has **exactly one entry per string**, seven or eight. B standard is `[0, 0, 0, 0, 0, 0, 0]`; Drop A changes only entry 6 to `-2`. Bass: **six entries**, as in a stock bass chart; entry 4 is the low B offset and entry 5 the high C offset. |
-| Manifest and HSAN | In each relevant `Tuning` object keep `string0` to `string5`, then add the instrument's `Rs7String` keys with the extra strings' offsets. They must agree with the SNG. Each bass key adds one string to the stock four. |
+| Manifest and HSAN | Every `Tuning` object keeps `string0` to `string5`. **Guitar:** add `Rs7String6` (and `Rs7String7`) with the offsets of the low B (and low F#), the same values as SNG entries 6 (and 7). **Bass:** the offsets are in `string4` (low B) and `string5` (high C), as in the SNG; add `Rs7String4` (and `Rs7String5`) with the same values. On bass these keys only say how many strings there are: one more string per key. |
 | RS7X block | Append it after MetaData inside the SNG body. Guitar: `STRS`, `CHDT` and `CHNT`, even with no chords. Bass: `STRS` only, which marks the arrangement as five- or six-string. See [Chords](#chords) and the [specification](RS7X-SPEC.md). |
 | Single notes | Ordinary note records with the extra string's index (`string=6` or `7` on guitar, `string=4` or `5` on bass). No extra data is needed. |
 | Section masks | Set the extra strings' bits in `StringMask` for sections that use them, chords included: guitar bit 6 (and bit 7 on eight strings), bass bits 4 and 5. The game also adds missing bits itself when the song loads. |
@@ -64,20 +64,44 @@ Low tunings need no workaround: no "low tuning fix" mod and no A220 reference pi
 lowest open string of the chart's tuning, as low as G0 (a five-string bass in drop G); lower open strings are not
 detected.
 
-The manifest and HSAN tuning objects in standard tuning (all offsets 0):
+### The `Tuning` object, key by key
+
+Guitar and bass use the `Rs7String` keys differently, because a stock `Tuning` object always has six `string`
+keys:
+
+- **Guitar** uses all six for its stock strings, and a seventh `string` key would crash the game. So the extra
+  strings' offsets are in the new keys: `Rs7String6` is the low B, `Rs7String7` the low F#.
+- **Bass** uses only `string0` to `string3`; `string4` and `string5` are there but unused. The low B's offset goes
+  in `string4` and the high C's in `string5`. `Rs7String4` and `Rs7String5` only tell rs7string that the bass has
+  five or six strings. Give them the same values as `string4` and `string5`.
+
+The number in an `Rs7String` key is always the string's index, the same number the notes use.
 
 ```jsonc
-// 7-string guitar, B standard
-{ "string0": 0, "string1": 0, "string2": 0, "string3": 0, "string4": 0, "string5": 0, "Rs7String6": 0 }
+// 7-string guitar, Drop A (low B tuned down two semitones)
+{
+  "string0": 0, "string1": 0, "string2": 0, "string3": 0, "string4": 0, "string5": 0, // E A D G B e, as stock
+  "Rs7String6": -2 // low B: its offset is here
+}
 
 // 8-string guitar, F# standard
-{ "string0": 0, "string1": 0, "string2": 0, "string3": 0, "string4": 0, "string5": 0, "Rs7String6": 0, "Rs7String7": 0 }
+{
+  "string0": 0, "string1": 0, "string2": 0, "string3": 0, "string4": 0, "string5": 0, // E A D G B e, as stock
+  "Rs7String6": 0, // low B
+  "Rs7String7": 0  // low F#
+}
 
-// 6-string bass, B standard with high C
-{ "string0": 0, "string1": 0, "string2": 0, "string3": 0, "string4": 0, "string5": 0, "Rs7String4": 0, "Rs7String5": 0 }
+// 6-string bass, low B tuned down to A, high C in standard
+{
+  "string0": 0, "string1": 0, "string2": 0, "string3": 0, // E A D G, as stock
+  "string4": -2,    // low B: its offset is here
+  "string5": 0,     // high C: its offset is here
+  "Rs7String4": -2, // "this bass has a low B": same value as string4
+  "Rs7String5": 0   // "and a high C": same value as string5
+}
 ```
 
-A five-string bass leaves out `Rs7String5`.
+A five-string bass leaves out `Rs7String5` and keeps `string5` at `0`.
 
 ## Chords
 

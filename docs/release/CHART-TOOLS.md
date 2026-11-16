@@ -176,6 +176,11 @@ gets **`Rs7String6`** (spelt exactly like this) with the same value as the SNG's
 > past it and crashes the stock game while it loads the song list. The stock game ignores
 > `Rs7String6`; rs7string reads it for the song list, the tuner and the tuning name.
 
+An eight-string guitar also gets `Rs7String7` with the SNG's eighth entry. Bass is different: the offsets stay in
+`string4` (low B) and `string5` (high C), and `Rs7String4` (five strings) and `Rs7String5` (six strings) only mark
+the string count. Write them with the same values as `string4` and `string5`. The charting guide has
+[an example of each](CHARTING.md#the-tuning-object-key-by-key).
+
 Other manifest fields (arrangement properties, tones, the tuning name text) need no change.
 
 ## 6. Package

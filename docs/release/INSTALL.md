@@ -228,11 +228,13 @@ Rules:
 | Area | Limitation |
 |---|---|
 | Co-op with an extended bass | With a guitar player in the song the bass's low B notes and string are grey, but its string glow, fret wires, scale markers and chord diagram dots use the guitar's B string colour. |
-| Game version | Learn & Play is not supported. Seven-row chord diagrams only on the September 2022 build. |
+| Co-op arrangement list | "Other arrangements" with more than eight arrangements: after scrolling, the song length in the header shows an extra digit ("1:001" for "1:00") until you leave the menu. |
+| Riff Repeater | Six-string bass: rarely, a note's tail is drawn in another string's colour. Pausing and resuming fixes it. |
+| Game version | Only the September 2022 build. Learn & Play is not supported. |
 | Chord diagrams | Some generic chords from the game's own chord database still show six rows. Highway chords always show the extra strings. |
-| Chord matching | By default a seven-note chord may miss up to two notes, including low B. Use `[chords] wide_misses=0` for strict checks. |
+| Chord matching | By default a seven- or eight-note chord may miss up to two notes, including the lowest strings. Use `[chords] wide_misses=0` for strict checks. |
 | Tuner | After a seven- or eight-string song, the menu tuner keeps the extra pegs until the guitar returns to six strings (next six-string song, or Session Mode, Guitarcade, Lessons or the technique hub). Arrow keys work only in the precision view. |
-| Tuning names | English only. Tuning filters and sorting still use the six-string tuning. Not every alternate tuning has a seven-string name. |
+| Tuning names | English only. Tuning filters and sorting still use the six-string tuning. Not every alternate tuning has its own name for the extended instruments. |
 | Headstock | The in-line model is shown with the game's 6-in-line headstock option (German UI: "6 in Reihe"). With the 3+3 option a seven- or eight-string guitar shows the same in-line model and pegs; six-string guitars keep the stock 3+3 headstock. With the reversed string order, headstock strings 1-6 fade out before the posts do. |
 | Colours | Distant gems on the extra strings can blend neighbouring colours on some textures. |
 

@@ -131,9 +131,9 @@ Details, checks, troubleshooting and uninstall: [install guide](docs/release/INS
 
 | Issue | What to do |
 |---|---|
-| Local co-op with a guitar and a five- or six-string bass: the bass's low B is green, not grey. | Cosmetic: both share one string colour while a guitar plays. Single-player bass shows it grey. |
+| Local co-op with a guitar and a five- or six-string bass: the low B's string glow, fret wires, scale markers and chord diagram dots use the guitar's B string colour. | Cosmetic. The low B's notes and string are grey, like in single-player bass. |
 | Some generic chords from the game's chord database show six-row diagrams. | Cosmetic. Chords from the chart itself show every string. |
-| Chord matching can accept low chords with missing notes. | A seven-note chord may miss up to two notes by default. See `[chords] wide_misses` in [SETTINGS](docs/release/SETTINGS.md). |
+| Chord matching can accept low chords with missing notes. | A seven- or eight-note chord may miss up to two notes by default. See `[chords] wide_misses` in [SETTINGS](docs/release/SETTINGS.md). |
 | Tuner arrow keys work only in the precision view. | Play a note or press Space to enter it. |
 | With the reversed string order, headstock strings 1-6 fade out before the posts do. | Cosmetic. |
 
