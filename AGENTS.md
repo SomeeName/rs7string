@@ -47,8 +47,8 @@ uv run python tools\check_exports.py bin\Release\dinput8.dll  # exports, image b
   do not disable it. If you run MSBuild yourself, pass `/p:PlatformToolset=v145` and
   `/p:PostBuildEventUseInBuild=false`.
 - `build.ps1` fails on unformatted sources: run `.\scripts\format.ps1` first.
-- `sitecheck.py` and the emulator tests need your own unpacked game executable and skip without it; say so in
-  the pull request. Never commit it.
+- `sitecheck.py` and the emulator tests need your own unpacked game executable. The emulator tests skip without it;
+  `sitecheck.py` cannot run without it. Say so in the pull request. Never commit it.
 - Docs-only changes: check that every relative link resolves (`mkdocs build --strict` does, see
   [docs/agents/docs-and-testing.md](docs/agents/docs-and-testing.md)).
 

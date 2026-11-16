@@ -114,7 +114,7 @@ RSMods (`rs7rsmods::Present`) and V6 is on, the SetTexture hook gives each such 
 256x128 A8R8G8B8 MANAGED, rows 7 and 15 grey) its own copy with the V6 lines repainted, with the same
 build and self-check (any failure: RSMods' texture stays bound), hides it from `GetTexture` and holds a
 reference on the source (a rebuilt RSMods texture is a new address; at most 8 cached). A colour change
-rebuilds them at the next bind. Limit: more than 32 distinct RSMods ramps (e.g. rainbow notes) turn this
+rebuilds them at the next bind. Limit: more than 32 distinct RSMods ramps within ten seconds (e.g. rainbow notes) turn this
 path off for the session; string 6 then shows RSMods' row again.
 
 ### Source files
@@ -150,8 +150,9 @@ the ghost string, `ghost_up_NN`, is CLGU/CLGE) and the chord pluck PL1 reach the
 ## Fret bars
 
 In `src/features/frets/` (F1 `0x58FB20`), on a guitar built with 7/8 strings every bar (and
-the nut) moves half a string spacing towards string 6 and is scaled uniformly by
-`k = (L + d/2)/L` with L = 4.61 (`rs7frets::kDefaultHalfLen`, the mesh's half length); measured d 1.6079,
+the nut) covers the extra lanes: one for seven strings, two for eight (`rs7frets::Compute` takes the shift and
+scale from the real lane positions). For seven strings it moves half a string spacing towards string 6 and is
+scaled uniformly by `k = (L + d/2)/L` with L = 4.61 (`rs7frets::kDefaultHalfLen`, the mesh's half length); measured d 1.6079,
 k 1.1744. Bars are about 17 % thicker. Locators and span data are never written. Chord frames
 (B1 `0x7A2BCA`, B2 `0x7A91E4`) get a string-axis scale and shift from the guitar's lane positions; on 7/8-string
 guitars they always reach the last string, like the extended bass's.

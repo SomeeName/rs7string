@@ -26,7 +26,7 @@
 - [How settings work](#how-settings-work)
 - Everyday settings: [Overlay](#overlay-overlay) · [Colour](#colour-color) · [Tuner](#tuner-tuner) ·
   [Chords](#chords-chords) · [Headstock files](#headstock-files-assets) ·
-  [Plain packages](#plain-packages-psarc) · [Window](#window-window)
+  [Plain packages](#plain-packages-psarc) · [Window](#window-window) · [Fixes](#fixes-fixes)
 - Advanced settings: [Neck](#neck-neck) · [Debug](#debug-debug)
 - [Removed settings](#removed-settings)
 
@@ -39,7 +39,8 @@
 - Missing keys use the defaults below.
 - Switches are `0` (off) or `1` (on). A switch or whole-number setting with any other value, or with text that is
   not a number, is read as `0` (off) and logged. A decimal, text or colour setting with an invalid value uses its
-  default instead. The overlay accepts only valid values.
+  default instead. The overlay accepts only valid numbers and switches. A `hotkey` name it does not know falls
+  back to F9 at the next start.
 - Exception: a few switches read once at startup, such as `[debug] log_redact` and `[window] console_quickedit_off`,
   count any nonzero number as on.
 - Edit the file with the game closed, then start Rocksmith.
@@ -62,16 +63,16 @@
 > [!NOTE]
 > The sections below are in a reading order. In `rs7string.ini` the sections are in this order:
 > `[overlay]`, `[debug]`, `[color]`, `[neck]`, `[assets]`, `[chords]`, `[tuner]`, `[psarc]`,
-> `[window]`.
+> `[window]`, `[fixes]`.
 
 ## Overlay: `[overlay]`
 
 | Key | Default | Effect | Apply | F9 | Exp. |
 |---|---|---|---|---|---|
 | `enabled` | `1` | Installs the overlay. `0` installs none of its hooks. | Restart | yes | no |
-| `hotkey` | `F9` | Key that shows or hides the overlay: F1-F24, INSERT, HOME, END, PAUSE, SCROLL, A-Z, 0-9, or `0xNN`. | Restart | yes | no |
+| `hotkey` | `F9` | Key that shows or hides the overlay: F1-F24, INSERT, DELETE, HOME, END, PGUP, PGDN, PAUSE, SCROLL, NUMLOCK, OEM_3, A-Z, 0-9, or a virtual-key code from `0x01` to `0xFE`. | Restart | yes | no |
 | `open` | `0` | `1` shows the overlay from the first frame. | Restart | yes | no |
-| `scale` | `0` | `0` sets the scale from the window height (height / 720, limited to 1-3). A positive value is a fixed scale, up to 4. | Live | yes | no |
+| `scale` | `0` | `0` sets the scale from the window height (height / 720, limited to 1-3). A positive value is a fixed scale from 0.5 to 4; a smaller one counts as 0.5. | Live | yes | no |
 
 ## Colour: `[color]`
 
@@ -157,7 +158,7 @@ does not replace them. Never share generated `.nif` files.
 | Key | Default | Effect | Apply | F9 | Exp. |
 |---|---|---|---|---|---|
 | `string7_line` | `1` | Shows the extra string line. `0` hides it. | Restart | yes | no |
-| `spacing_bass5` | `0` | Distance between the strings of a five-string bass on the neck and the note highway. `0` keeps the normal bass spacing (2.68); `2.01` makes the neck as wide as a four-string bass, `1.608` is the guitar spacing. Valid 0.1-4. The headstock narrows with it. Applies the next time the bass is built (a song with another instrument or string count, or a restart). | Next build | yes | no |
+| `spacing_bass5` | `0` | Distance between the strings of a five-string bass on the neck and the note highway. `0` keeps the normal bass spacing (2.68); `2.01` makes the neck as wide as a four-string bass, `1.608` is the guitar spacing. Valid 0.1-4; a value below 0.1 counts as `0`. The headstock narrows with it. Applies the next time the bass is built (a song with another instrument or string count, or a restart). | Next build | yes | no |
 | `spacing_bass6` | `0` | The same for a six-string bass. At the normal bass spacing its neck is two thirds wider than a guitar's; `1.608` (the guitar spacing) makes it as wide as a four-string bass. | Next build | yes | no |
 | `spacing_guitar7` | `0` | The same for a seven-string guitar. `0` keeps the guitar spacing (1.608); `1.34` makes the neck as wide as a six-string guitar. | Next build | yes | no |
 | `spacing_guitar8` | `0` | The same for an eight-string guitar. `0` keeps the guitar spacing (1.608); `1.15` makes the neck as wide as a six-string guitar. | Next build | yes | no |

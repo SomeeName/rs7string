@@ -28,7 +28,8 @@ very low tunings without workarounds. It also fixes the game getting stuck on th
   five- or six-string bass, and each player's notes, tuner and scoring follow their own arrangement.
 - **Low tunings without workarounds.** The game now listens as low as the lowest open string of the song's tuning,
   for bass and guitar. A five-string bass in A standard or drop G, or an eight-string guitar tuned down to B, no
-  longer needs the A220 reference pitch trick or a separate low tuning fix. Songs in standard tunings are unchanged.
+  longer needs the A220 reference pitch trick or a separate low tuning fix. The lowest open string that can be
+  detected is G0. Songs in standard tunings are unchanged.
 - **String spacing.** You can set how far apart the strings are for each extended instrument, for example to make a
   six-string bass as narrow as a four-string one. See `[neck] spacing_bass5`, `spacing_bass6`, `spacing_guitar7`
   and `spacing_guitar8` in the [settings](SETTINGS.md); `0`, the default, keeps the normal spacing.
@@ -40,8 +41,8 @@ very low tunings without workarounds. It also fixes the game getting stuck on th
 
 ### Changes
 
-- **The game keeps running if the mod hits a problem.** If a part of rs7string runs into an error while you play,
-  that part is switched off instead of crashing the game, and `rs7string.log` gets a line starting with
+- **The game keeps running if the mod hits a problem.** If a step of rs7string runs into an error while you play,
+  that step is skipped instead of crashing the game, and `rs7string.log` gets a line starting with
   `hook fault:`. Please include that line in bug reports.
 - **Fewer settings.** Settings that only changed internal values are gone, and the `rs7string.ini` in the release
   no longer lists developer and test keys. An old `rs7string.ini` still loads; the log names each key that is no
@@ -91,7 +92,7 @@ Colours and other mods:
 Headstocks:
 
 - Headstock models built from your game files are rebuilt once when a new rs7string version ships a changed
-  headstock. A model file you set yourself in `rs7string.ini` is never touched.
+  headstock. A model file of your own that you set in `rs7string.ini` is never touched.
 - An incomplete headstock build is repaired on the next start.
 
 Stability:

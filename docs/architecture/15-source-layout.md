@@ -33,8 +33,9 @@ Most features patch different game code and can
 live in their own folder with their sites, hooks, logic, settings and tests (a vertical slice). The seven-string
 features are not independent, though: they share one model of the instrument (string count, tunings, the
 7-string unit that fails as a whole, [chapter 3](03-the-string-count-model.md)). That model is a layer of its own (`src/model/`), next to the
-platform (`src/platform/`: patching, resolve, mid-hook, protection, log, config), so no feature duplicates it and
-no feature reaches into another.
+platform (`src/platform/`: patching, resolve, mid-hook, protection, log, config), so no feature duplicates it. A
+feature may include another feature's public header (`features/<name>/<name>.h`), never its internal ones;
+`tools/check_layout.py` checks this.
 
 ```
 src/
@@ -62,7 +63,7 @@ feature's hook rows are its own table (`registration.cpp`), and `src/registry.cp
   ranges), tuning, stringcolour, extblock (RS7X), status (overlay status board), groups (`Rs7Feature`,
   `Rs7_Group`, the 7-string unit).
 - `features/`: allocstats, arrangements, bass, chords, clite, colours, diag, diagrams, extras, fretgrid, frets,
-  headstock, nextgrid, nslot, pitch, psarc, publish, scene, songend, spacing, string7, strings, testdrive, tuner,
+  headstock, menuload, nextgrid, nslot, pitch, psarc, publish, scene, songend, spacing, string7, strings, testdrive, tuner,
   window. Each has its hook table(s) and settings table where it needs them; its tests are in `tests/<name>/`.
   `extras` holds the no-op hooks the public build uses for the private-only features. Every hook row lives in its feature; a group is its table's group (data references are
   Core), so `Rs7_FeatureOf` has no id or flag rules.
@@ -168,7 +169,7 @@ generator; it is not written per site. The mid-hook covers:
 - plain sites, with a relocator that also accepts the operand-size prefix `66` and the `INC` / `DEC r/m8` forms;
 - call sites, with the callback before or after the callee (`Rs7Mid::Call::Before` / `After`);
 - wrappers that see the callee's arguments (`Rs7Mid::Call::Wrap`, `src/platform/midhook_wrap.cpp`);
-- hot sites, through the light mode (about 25 ns instead of 150 ns per hit, no floating-point save, all GPRs kept so
+- hot sites, through the light mode (about 50 ns instead of 240 ns per hit with the fault guard, no floating-point save, all GPRs kept so
   the `Context` stays identical) and the sse mode. Measure one hot site in game before converting hot sites.
 
 The naked stubs that remain need a custom calling convention or call the game with register arguments.

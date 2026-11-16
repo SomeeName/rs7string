@@ -95,7 +95,7 @@ attaches the zip, checksums and notes.
 Requirements and failure handling:
 
 - The commit must already exist on GitHub, and `origin` and `gh` must refer to the intended repository.
-- If GitHub publication fails after tagging, the local tag remains. Inspect the failure and the
+- If GitHub publication fails after tagging, the script deletes the local tag again. Inspect the failure and the
   local/remote state before retrying.
 - The script refuses existing tags and does not overwrite an existing release.
 

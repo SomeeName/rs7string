@@ -119,7 +119,7 @@ section appears at most once.
 | Offset | Type | Field | Value |
 |---|---|---|---|
 | 0 | u8 | instrument | 0 = guitar, 1 = extended bass (5 / 6 strings, see below) |
-| 1 | u8 | stringCount | all strings of the instrument: 7 for a 7-string, 8 for an 8-string (max 16) |
+| 1 | u8 | stringCount | all strings of the instrument: 7 for a 7-string, 8 for an 8-string (the format allows up to 16; this release plays 7 and 8) |
 | 2 | u8 | columnCount | number of extended columns = stringCount - 6 for guitar |
 | 3 | u8 | reserved | 0 |
 | 4 | u8[columnCount] | strings | the string index of each column: guitar 6, 7, ... stringCount-1 |
@@ -198,6 +198,7 @@ A reader treats the block as absent (and falls back, see 5) when any rule fails:
 7. `CHNT`: recordCount == stock ChordNotes count; bendCount <= 32; slideTo and slideUnpitchTo in
    {-1, 0..24}; the entries consume the payload exactly.
 8. Each section's payload is consumed exactly (no trailing bytes inside a section).
+9. rs7string also ignores a block larger than 16 MiB.
 
 Absent `CHDT` = every extended column is -1. Absent `CHNT` = no extended techniques.
 
@@ -384,7 +385,7 @@ follows this list.
 8. **Manifest + HSAN:** guitar `Tuning` gets `Rs7String6` (and `Rs7String7` for 8 strings) after
    `string5`; bass gets `Rs7String4` (low B) and, for six strings, `Rs7String5` (high C). Never a key
    named `string6` or higher.
-9. **Package:** plain PSARC only (no Ubisoft keys), ASCII DLC keys and file names.
+9. **Package:** plain PSARC, built without Ubisoft keys, ASCII DLC keys and file names.
 10. **Import (round trip):** the tool's SNG reader should parse the block ([section 3](#3-validation-rules) rules) so an
     extended package opens with its extra strings; on a rule failure fall back to name[31] (old 7-string
     packages) and else to the stock six / four strings.
