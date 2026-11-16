@@ -4,6 +4,7 @@
 #include "hook_rules.h"
 #include "test.h"
 #include <cstring>
+#include <initializer_list>
 
 namespace {
 struct PaletteFixture {
@@ -61,13 +62,19 @@ TEST(peg_colour_follows_palette_edits_after_selection_without_changing_outline_a
 TEST(peg_colour_uses_each_players_current_mode_and_extended_slot) {
     PaletteFixture f;
 
-    f.Named(6, 9);
-    *reinterpret_cast<uint32_t*>(f.manager + 0x34C) = 1;
-    CHECK_EQ(rs7pegcolour::Refresh(f.pegs, f.manager, 1), 1u);
-    CHECK(std::memcmp(f.Slot(6) + rs7head::kSlotRgb, f.rgb[1][4][7], 12) == 0);
-    *reinterpret_cast<uint32_t*>(f.manager + 0x34C) = 0;
-    CHECK_EQ(rs7pegcolour::Refresh(f.pegs, f.manager, 1), 1u);
-    CHECK(std::memcmp(f.Slot(6) + rs7head::kSlotRgb, f.rgb[0][4][7], 12) == 0);
+    f.Named(5, 7);
+    f.Named(6, 9);  // the 8th peg: the same scaled, capped colour PSN2 sets (rs7head::NamedColour), not the raw copy
+
+    for (uint32_t mode : {1u, 0u}) {
+        float palette[6], want[3];
+
+        *reinterpret_cast<uint32_t*>(f.manager + 0x34C) = mode;
+        CHECK(rs7pegcolour::Refresh(f.pegs, f.manager, 1) >= 1u);  // slot 5 at least (blue = mode)
+        CHECK(std::memcmp(f.Slot(5) + rs7head::kSlotRgb, f.rgb[mode][4][5], 12) == 0);
+        CHECK(rs7head::NamedColour(f.manager, 1, rs7pegcolour::ExtraPalette(7, palette), want));
+        CHECK(std::memcmp(f.Slot(6) + rs7head::kSlotRgb, want, 12) == 0);
+        CHECK_EQ(rs7pegcolour::Refresh(f.pegs, f.manager, 1), 0u);
+    }
 }
 
 TEST(peg_colour_preserves_reset_and_success_meanings_and_ignores_unknown_names) {

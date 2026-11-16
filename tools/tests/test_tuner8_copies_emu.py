@@ -190,7 +190,9 @@ def test_every_copy_entry_has_its_site_row():
     ids = (h.REPO / "src" / "features" / "tuner" / "tuner8s_ids.generated.h").read_text(encoding="utf-8")
     import re
 
-    for fid in re.findall(r"X\((TS8\w+), \d+\)", ids):
+    fids = re.findall(r"X\((TS8\w+), \d+\)", ids)
+    assert fids, "no X(TS8..., n) entries in tuner8s_ids.generated.h"
+    for fid in fids:
         assert rows[fid]["tuner"] == "native" and rows[fid]["kind"] == "jmp"
         va, n, code, rels = h.specs()[fid]
         assert int(rows[fid]["note"].split()[1].rstrip(":"), 16) == va

@@ -1,4 +1,4 @@
-"""Old-vs-new equivalence of the call sites converted from naked stubs to C++ mid-hooks in refactor step 7 batch 4
+"""Old-vs-new equivalence of the call sites converted from naked stubs to C++ mid-hooks
 (stubs frozen at b6071a8, tools/tests/fixtures/midhook_b6071a8.json): TM1-TM6 and EV1-EV5 (features/nslot/
 hooks_calls.cpp, light), S4, PC2 and PC3 (features/pitch/hooks_calls.cpp) - all Before placement - and PSL2
 (features/headstock/hooks_mid.cpp, After placement). What is compared: midhook_oracle.py. Every case runs under 3
@@ -18,12 +18,11 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI,
 )
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT, site_va
 from midhook_oracle import Case, Helper, Spec, oracle_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 JUNK = 0x5A5A5A00

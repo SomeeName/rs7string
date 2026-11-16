@@ -1,14 +1,13 @@
 // Mid-hooks of the native N-slot GuitarStrings (strings.h, issue #18 stage 4): the entry dispatch of the 16 copied
 // functions and the renderer's mesh collection.
 //   GS<xx> entries   the stock function runs as a native copy (gen_fncopy.py) for a native GuitarStrings, the stock
-//   code
-//                    otherwise: Rs7Gs_Target(kind, the GuitarStrings at the entry or 0, [esp+4], [esp+8]) answers the
-//                    copy or the trampoline (the stock entry bytes + a jump back); every register and the entry stack
-//                    stay as the game left them
+//                    code otherwise: Rs7Gs_Target(kind, the GuitarStrings at the entry or 0, [esp+4], [esp+8]) answers
+//                    the copy or the trampoline (the stock entry bytes + a jump back); every register and the entry
+//                    stack stay as the game left them
 //   GRM1 GRM2        Rnd_StringRenderer_Setup 0x541880: main-string countdown 6 -> loaded count; main string from the
 //                    native array
 // Full mode (a few calls per frame and guitar; the dispatch logs and guards with SEH), converted from naked stubs
-// (refactor step 7 batch 5, frozen at 9c0e44f, tools/tests/test_midhook_features.py). Entry flags are dead (a call
+// (behaviour frozen by tools/tests/test_midhook_features.py). Entry flags are dead (a call
 // boundary) and the old stubs left the helper's; GRM1 / GRM2 left theirs where the next instruction rewrites them
 // (contracts "dead" / "free").
 #include "features/strings/hooks.h"
@@ -85,7 +84,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GRM1(Context& c) {
 // array (+40h) of a native GuitarStrings; its entity.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GRM2(Context& c) {
     const bool native = rs7gs::IsNative(Rs7Mid::Ptr(c.eax));
-    const uint32_t main = Dword(c.ecx + c.eax + (native ? 0x40 : 0x04));
+    const uint32_t main = Dword(c.ecx + c.eax + (native ? rs7gs::kMain : 0x04u));
 
     c.eax = Dword(main + 4);
     c.jump = static_cast<uint32_t>(g_rs7_resume_GRM2);

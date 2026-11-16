@@ -101,6 +101,7 @@ struct Slot {
 };
 
 Slot g_create[2], g_coop[2], g_acquire[2], g_state[2], g_data[2];
+SRWLOCK g_slotsLock = SRWLOCK_INIT;
 volatile LONG g_logBudget = 16;
 
 // Injected keyboard (background test driving): fed by the pipe thread, read by the game thread.
@@ -116,17 +117,23 @@ void* volatile g_mouse;
 void* volatile g_keyboard;
 
 void* OrigFor(Slot* slots, void** vt) {
+    AcquireSRWLockShared(&g_slotsLock);
+    void* orig = nullptr;
+
     for (int i = 0; i < 2; ++i) {
         if (slots[i].vt == vt) {
-            return slots[i].orig;
+            orig = slots[i].orig;
+            break;
         }
     }
 
-    return nullptr;
+    ReleaseSRWLockShared(&g_slotsLock);
+
+    return orig;
 }
 
 // Replaces vt[index] with `hook` once per vtable; false when the slot table is full or the write fails.
-bool PatchSlot(Slot* slots, void** vt, int index, void* hook) {
+bool PatchSlotLocked(Slot* slots, void** vt, int index, void* hook) {
     for (int i = 0; i < 2; ++i) {
         if (slots[i].vt == vt) {
             return true;
@@ -140,13 +147,22 @@ bool PatchSlot(Slot* slots, void** vt, int index, void* hook) {
 
             slots[i].orig = vt[index];
             slots[i].vt = vt;
-            vt[index] = hook;
+            InterlockedExchangePointer(&vt[index], hook);
             Rs7_Protect(&vt[index], sizeof(void*), old, &old);
             return true;
         }
     }
 
     return false;
+}
+
+bool PatchSlot(Slot* slots, void** vt, int index, void* hook) {
+    AcquireSRWLockExclusive(&g_slotsLock);
+    const bool ok = PatchSlotLocked(slots, vt, index, hook);
+
+    ReleaseSRWLockExclusive(&g_slotsLock);
+
+    return ok;
 }
 
 void** Vt(void* obj) {
@@ -219,9 +235,9 @@ void Push(uint8_t dik, bool down) {
 // (default pipe security). Only started in background mode.
 DWORD WINAPI PipeThread(LPVOID) {
     for (;;) {
-        const HANDLE p = CreateNamedPipeW(L"\\\\.\\pipe\\rs7string", PIPE_ACCESS_INBOUND,
-                                          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                                          1, 0, 4096, 0, nullptr);
+        const HANDLE p = CreateNamedPipeW(
+            L"\\\\.\\pipe\\rs7string", PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 0, 4096, 0, nullptr);
 
         if (p == INVALID_HANDLE_VALUE) {
             Rs7Log("dinput: cannot create the key pipe (%lu) - no injected keys", GetLastError());
@@ -383,18 +399,26 @@ HRESULT WINAPI SetCoopHook(void* dev, HWND hwnd, DWORD flags) {
                type == DI8DEVTYPE_MOUSE ? "mouse" : "keyboard", dev, ok ? "ON" : "OFF (hook failed)");
     }
 
-    if (type == DI8DEVTYPE_KEYBOARD && Rs7Window_Background() && !g_kbd) {
+    if (type == DI8DEVTYPE_KEYBOARD && Rs7Window_Background()) {
         const bool ok = g_keyboard && PatchSlot(g_acquire, vt, kAcquire, reinterpret_cast<void*>(&AcquireHook));
 
         if (ok) {
-            InitializeCriticalSection(&g_lock);
-            g_events = new std::deque<DIDEVICEOBJECTDATA>();
-            g_kbd = dev;
-            const HANDLE t = CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);
+            // The lock, queue and pipe thread are set up once; the device follows the game's
+            // latest keyboard (it can recreate the device, e.g. after a device reset).
+            static bool started;
 
-            if (t) {
-                CloseHandle(t);
+            if (!started) {
+                started = true;
+                InitializeCriticalSection(&g_lock);
+                g_events = new std::deque<DIDEVICEOBJECTDATA>();
+                const HANDLE t = CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);
+
+                if (t) {
+                    CloseHandle(t);
+                }
             }
+
+            g_kbd = dev;
         }
 
         Rs7Log("dinput: keyboard %p: injected keys via \\\\.\\pipe\\rs7string %s", dev,

@@ -2,9 +2,11 @@
 // swaps the three owner movies for an in-memory IFile holding the patched bytes (movie.cpp).
 #include "features/allocstats/allocstats.h"
 #include "features/diagrams/diagrams.h"
+#include "model/memoryfile.h"
 #include "platform/config.h"
 #include "platform/log.h"
 #include "platform/protect.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <algorithm>
 #include <array>
@@ -73,11 +75,8 @@ void Rs7DiagramMovie_Configure(const wchar_t* ini) {
 namespace {
 // VFS IFile ABI established by features/headstock/assetload_tex.cpp. Heap ownership allows Scaleform
 // to retain the file past the synchronous handler; the stock adapter remains stock.
-struct File {
-    const void* const* vt = nullptr;
-    volatile LONG refs = 1;
+struct File : rs7::MemoryFile {
     std::vector<uint8_t> bytes;
-    uint32_t pos = 0;
 
     File() { Rs7Alloc_Inc(kAkDiagFiles); }
 
@@ -87,16 +86,21 @@ struct File {
     File& operator=(const File&) = delete;
 };
 
-void __fastcall Destroy(File* f, void*, uint32_t) {
-    delete f;
+// Scalar deleting destructor (MSVC slot 0): bit 0 of flags asks for the free. File always comes from new
+// (std::make_unique in SwapWrapperFile), so delete matches the allocation; without the bit only destroy.
+void __fastcall Destroy(rs7::MemoryFile* base, void*, uint32_t flags) {
+    auto* f = static_cast<File*>(base);
+
+    if (flags & 1) {
+        delete f;
+    } else {
+        f->~File();
+    }
 }
 
-LONG __fastcall Add(File* f, void*) {
-    return InterlockedIncrement(&f->refs);
-}
-
-LONG __fastcall Release(File* f, void*) {
-    LONG n = InterlockedDecrement(&f->refs);
+long __fastcall Release(rs7::MemoryFile* base, void*) {
+    auto* f = static_cast<File*>(base);
+    const long n = rs7::MemoryFileOps::DropRef(f);
 
     if (!n) {
         delete f;
@@ -105,52 +109,8 @@ LONG __fastcall Release(File* f, void*) {
     return n;
 }
 
-uint32_t __fastcall Read(File* f, void*, void* p, uint32_t n) {
-    n = std::min(n, uint32_t(f->bytes.size()) - f->pos);
-
-    if (n) {
-        if (!p) {
-            return 0;
-        }
-
-        std::memcpy(p, f->bytes.data() + f->pos, n);
-        f->pos += n;
-    }
-
-    return n;
-}
-
-uint32_t __fastcall Size(File* f, void*) {
-    return uint32_t(f->bytes.size());
-}
-
-uint32_t __fastcall Tell(File* f, void*) {
-    return f->pos;
-}
-
-bool __fastcall Seek(File* f, void*, uint32_t pos) {
-    if (pos > f->bytes.size()) {
-        return false;
-    }
-
-    f->pos = pos;
-
-    return true;
-}
-
-uint64_t __fastcall Size64(File* f, void*) {
-    return f->bytes.size();
-}
-
-bool __fastcall True(File*, void*) {
-    return true;
-}
-
-const void* const kVt[] = {
-    reinterpret_cast<void*>(&Destroy), reinterpret_cast<void*>(&Add),    reinterpret_cast<void*>(&Release),
-    reinterpret_cast<void*>(&Read),    reinterpret_cast<void*>(&Size),   reinterpret_cast<void*>(&Tell),
-    reinterpret_cast<void*>(&Seek),    reinterpret_cast<void*>(&Size64), reinterpret_cast<void*>(&True),
-    reinterpret_cast<void*>(&True),    reinterpret_cast<void*>(&True),   reinterpret_cast<void*>(&True)};
+// Owned bytes: null reads fail without advancing; all status slots report true as before.
+const auto kVt = rs7::MemoryFileVtable<false, false>(Destroy, Release);
 using Get = uint32_t(__thiscall*)(void*);
 using FSeek = bool(__thiscall*)(void*, uint32_t);
 using FRead = uint32_t(__thiscall*)(void*, void*, uint32_t);
@@ -162,8 +122,9 @@ OpenFn g_open = nullptr;
 uintptr_t* g_slot = reinterpret_cast<uintptr_t*>(0x121F2D0);
 constexpr uintptr_t kOpenFile = 0xC30330;
 
-// Reads all n bytes of the game's IFile into *bytes and seeks back to `position`. May throw (allocation).
-bool ReadWholeFile(void* file, uint32_t n, uint32_t position, std::vector<uint8_t>* bytes, const char** why) {
+// Reads all n bytes of the game's IFile into *bytes and seeks back to 0 (the caller only swaps unread
+// streams). May throw (allocation).
+bool ReadWholeFile(void* file, uint32_t n, std::vector<uint8_t>* bytes, const char** why) {
     auto vt = *reinterpret_cast<void***>(file);
     auto seek = reinterpret_cast<FSeek>(vt[6]);
     auto read = reinterpret_cast<FRead>(vt[3]);
@@ -185,7 +146,7 @@ bool ReadWholeFile(void* file, uint32_t n, uint32_t position, std::vector<uint8_
         done += got;
     }
 
-    const bool restored = seek(file, position);
+    const bool restored = seek(file, 0);
 
     if (!restored) {
         *why = "stream position restore failed";
@@ -247,6 +208,13 @@ bool SwapWrapperFile(void* w, const char* url, const char** why) {
     const uint32_t position = tell(file), n = size(file);
     std::unique_ptr<File> replacement;
 
+    // The patched movie has a different layout, so a non-zero position has no equivalent in it; the
+    // replacement starts at 0 (adapter+4 is reset below), which is only correct for an unread stream.
+    if (position != 0) {
+        *why = "stream already read (position != 0)";
+        return false;
+    }
+
     try {
         if (n < 13 || n > kLimit) {
             *why = "size out of range";
@@ -254,7 +222,7 @@ bool SwapWrapperFile(void* w, const char* url, const char** why) {
         }
 
         std::vector<uint8_t> bytes, patched;
-        if (!ReadWholeFile(file, n, position, &bytes, why)) {
+        if (!ReadWholeFile(file, n, &bytes, why)) {
             return false;
         }
 
@@ -265,8 +233,10 @@ bool SwapWrapperFile(void* w, const char* url, const char** why) {
         }
 
         replacement = std::make_unique<File>();
-        replacement->vt = kVt;
+        replacement->vt = kVt.data();
         replacement->bytes = std::move(patched);
+        replacement->data = replacement->bytes.data();
+        replacement->size = uint32_t(replacement->bytes.size());
     } catch (...) {
         *why = "allocation/recipe failure";
         return false;
@@ -287,11 +257,12 @@ namespace {
 void* __fastcall OpenHook(void* self, void*, const char* url, void* heap, int flags, int mode) {
     void* w = g_open(self, url, heap, flags, mode);
 
+    // SwapWrapperFile checks the target again; this one only keeps non-target opens out of the log.
     if (w && g_rs7_diagrams && rs7diagram::MovieTarget(url) >= 0) {
         const char* why = "";
 
         if (!rs7diagram::SwapWrapperFile(w, url, &why)) {
-            Rs7Log("diagrams: refused %s (%s)", url ? url : "(null)", why);
+            Rs7Log("diagrams: refused %s (%s)", url, why);
         }
     }
 
@@ -320,7 +291,10 @@ bool InstallOpenHook(uintptr_t* slot, uintptr_t expect) {
     if (g_open) {
         return true;
     }
-    if (IsBadReadPtr(slot, 4) || *slot != expect) {
+
+    uintptr_t cur = 0;
+
+    if (!Rs7_SafeCopy(&cur, slot, sizeof cur) || cur != expect) {
         return false;
     }
 

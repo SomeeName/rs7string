@@ -1,4 +1,4 @@
-// Wrap-placement mid-hooks of the native N-slot chord code (ARCHITECTURE.md section 15 "Wrap placement"): the callee
+// Wrap-placement mid-hooks of the native N-slot chord code (ARCHITECTURE.md section 14 "Wrap placement"): the callee
 // runs on copies of its arguments, the callbacks read the caller's own. Converted from naked stubs (frozen at b72bc52,
 // tools/tests/test_midhook_wrap_sites.py).
 #include "features/nslot/hooks.h"

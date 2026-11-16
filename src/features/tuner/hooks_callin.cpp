@@ -1,4 +1,4 @@
-// The calls written into the tuner copies: call-in entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 15 "Call-in
+// The calls written into the tuner copies: call-in entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 14 "Call-in
 // entries") that run these callbacks with the copy's registers. They replaced the naked Rs7_Call_PubEdge (the TU8A
 // copy, tools/gen_tuner8.py) and the stdcall wrappers Rs7Tu8_Advance / Rs7Tu8_First (the session copies' synthetic
 // calls, tools/gen_tuner8s.py), frozen at 304b9d3 (tools/tests/test_midhook_callin2.py). Full: per frame or per key

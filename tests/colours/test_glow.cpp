@@ -100,6 +100,13 @@ TEST(rsmods_glow_ini_needs_custom_colours_without_exact_shading) {
     }
 
     CHECK(!rs7rsmods::ReadCustomGlow(nullptr));
+
+    // Audio Bridge has no UseExactColors option: the key is ignored there.
+    const auto exact = GlowIni("[Toggle Switches]\nCustomStringColors = 2\nUseExactColors = on\n");
+
+    CHECK(!rs7rsmods::ReadCustomGlow(exact.c_str()));
+    CHECK(rs7rsmods::ReadCustomGlow(exact.c_str(), false));
+    DeleteFileW(exact.c_str());
 }
 
 TEST(rsmods_glow_pointer_reads_enabled_in_both_layouts) {

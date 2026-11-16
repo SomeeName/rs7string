@@ -1,11 +1,13 @@
-// The PegSet's C++ mid-hook callbacks (formerly hooks/mid_cold.cpp): each replaced a naked stub on a cold path (the
-// PegSet's ctor, load, unload, destructor and free, the renderer's mesh collection, the tuner's colour selection).
-// They read the saved context, decide by the ownership table (pegset.h IsNative) and write the stock or the native
-// value back. Equivalence against the frozen stubs: tools/tests/test_midhook_cold.py. Callbacks must not throw.
+// The PegSet's C++ mid-hook callbacks: each replaced a naked stub on a cold path (the PegSet's ctor, load, unload,
+// destructor and free, the renderer's mesh collection, the tuner's colour selection). They read the saved context,
+// decide by the ownership table (pegset.h IsNative) and write the stock or the native value back. Equivalence against
+// the frozen stubs: tools/tests/test_midhook_cold.py. Callbacks must not throw.
 #include "features/headstock/assetload.h"
 #include "features/headstock/headstock.h"
 #include "features/headstock/hooks.h"
 #include "features/headstock/pegset.h"
+#include "features/headstock/state.h"
+#include "model/instrument.h"
 
 using Rs7Mid::Dword;
 using Rs7Mid::Push;
@@ -47,15 +49,18 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSC1(Rs7Mid::Context& c) {
 
 // PSL1 0x59C4D0 in Rnd_PegSet_Load 0x59C440 (EDI = instrument info, EBX = PegSet): `movzx eax,byte
 // [edi+0Bh]; xor ecx,ecx` = the count the load takes / binds / prepares. A 6-string guitar's native
-// PegSet loads g_rs7_peg_load (7) with [neck] headstock_peg on; bass (4) and everything else stock. The
+// PegSet loads g_rs7_peg_load (7); every other count loads itself. A guitar built
+// with 8 strings loads 8 on a native PegSet when the 8-peg model (rs7_inline8, Locator_Peg_8) is
+// the merged one, else 7: an 8th peg would be taken from the pool with nowhere to sit (rs7head::LoadCount). The
 // callback does both stock instructions itself. Flags dead (`xor edx,edx` follows).
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSL1(Rs7Mid::Context& c) {
-    uint32_t count = *reinterpret_cast<const uint8_t*>(c.edi + 0x0B);
+    const uint32_t strings = *reinterpret_cast<const uint8_t*>(c.edi + rs7::kInfoStrings);
+    const bool native = rs7head::IsNative(reinterpret_cast<const uint8_t*>(c.ebx));
+    const bool lefty = *reinterpret_cast<const uint8_t*>(c.edi + rs7::kInfoLefty) != 0;
+    const int kind = *reinterpret_cast<const uint8_t*>(c.edi + rs7::kInfoKind);
 
-    if (g_rs7_head_on && count == 6 && rs7head::IsNative(reinterpret_cast<const uint8_t*>(c.ebx))) {
-        count = uint32_t(g_rs7_peg_load);
-    }
-    c.eax = count;
+    c.eax = rs7head::LoadCount(strings, native, g_rs7_head_on != 0, uint32_t(g_rs7_peg_load),
+                               uint32_t(rs7head::g_head.modelPegs[lefty ? 1 : 0]), kind);
     c.ecx = 0;
     c.jump = uint32_t(g_rs7_resume_PSL1);
 }
@@ -66,7 +71,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSL1(Rs7Mid::Context& c) {
 // count 6, peg 7 culled). Full mode: once per guitar load, on a resource-loader job. Flags are dead. Not a jmp over
 // 0x59C611: 0x59C587 `jne 0x59C615` ([ebp+8] != 2) enters the second instruction there, and under `E9 rel32 90 90` that
 // is the rel32's top byte - 0x5D for any stub in this DLL (fixed base 0x5E000000) = `pop ebp`: EBP = the saved EDI,
-// `mov esp,ebp; pop ebp; ret 8` returned through the caller's EDI object (often to 0) - the issue #18 boot crash.
+// `mov esp,ebp; pop ebp; ret 8` returned through the caller's EDI object (often to 0): a boot crash.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSL2(Rs7Mid::Context& c) {
     const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
@@ -96,7 +101,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSM2(Rs7Mid::Context& c) {
 // 0x5B09A6). No flags are written, before or after.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSR1(Rs7Mid::Context& c) {
     c.ecx = Dword(c.esi + 0x2C);
-    c.edx = Dword(Dword(c.ecx + 0x18) + 0x0C);
+    c.edx = Dword(Dword(c.ecx + rs7::kGuitarHead) + 0x0C);
     c.eax = *reinterpret_cast<const uint16_t*>(c.edx + 4);
     c.jump = uint32_t(g_rs7_resume_PSR1);
 }
@@ -114,7 +119,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSN1(Rs7Mid::Context& c) {
     c.jump = uint32_t(g_rs7_resume_PSN1);
 }
 
-// ---- refactor step 7 batch 5 (frozen at 9c0e44f, tools/tests/test_midhook_features.py) ----
+// ---- slot bounds (frozen at 9c0e44f, tools/tests/test_midhook_features.py) ----
 // PSU1 / PSU2 / PSM1: a slot bound `cmp r16,[pegset+4]` with its branch, 8 for a native PegSet (every slot with an
 // entity, also above the active count). The callbacks compare (exact flags) and pick the branch themselves.
 namespace {
@@ -147,9 +152,19 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PSM1(Rs7Mid::Context& c) {
 // LT1 0x5B1B53 in UI_PlayerTuner_PlacePegLetters 0x5B1A10 (EDI = InstrumentInfo): `xor al,al; cmp [edi+0Ah],al`
 // (+0Ah = the in-line flag, CONFIRMED 0x58ABEC) decides which tuner letters are turned round (3+3: the pegs from
 // count/2 on). Rs7Asset_LetterInline answers 1 for a guitar that shows the 7-string in-line headstock on a 3+3 frame,
-// so its letters follow the in-line rule; else the stock byte. The answer stays in g_rs7_lt1_inline (the compared byte,
-// as before); the flags are that compare's, which the stock `jz` after the site reads.
+// so its letters follow the in-line rule; else the stock byte. The answer stays in g_rs7_lt1_inline (the compared
+// byte); the flags are that compare's, which the stock `jz` after the site reads.
 extern "C" __declspec(dllexport) uintptr_t g_rs7_lt1_inline = 0;
+
+// LT0 0x5B1AA0 in 0x5B1A10 (EAX = the PegSet record of slot EDX, 0 for an empty slot; ECX = PegSet): the replayed
+// `mov esi,[eax+4]; test esi,esi` reads [0+4] for an empty slot (CONFIRMED crash 0x5B1AA0, a 5/6-string bass whose
+// frame has no model of ours: stock 4 pegs). The empty slot takes the record of the nearest seated slot
+// (rs7head::LetterSeat), so its letter shares that peg instead of crashing.
+extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_LT0(Rs7Mid::Context& c) {
+    if (!c.eax) {
+        c.eax = rs7head::LetterSeat(Rs7Mid::Ptr<const uint8_t>(c.ecx), c.edx & 0xFF);
+    }
+}
 
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_LT1(Rs7Mid::Context& c) {
     g_rs7_lt1_inline = static_cast<uint32_t>(Rs7Asset_LetterInline(Rs7Mid::Ptr(c.edi)));

@@ -28,14 +28,7 @@ extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rs7_HeadLog(c
 }
 
 void Rs7Headstock_Configure(const wchar_t* iniPath) {
-    const Rs7HeadstockConfig& c = Rs7Headstock_Config();
-
-    g_rs7_head_on = c.headstockPeg ? 1 : 0;
-    g_rs7_native_pegset = 1;  // mandatory since 1.0
+    g_rs7_native_pegset = 1;  // always on
     Rs7Head_SetIni(iniPath);
-    Rs7Log("config: [neck] headstock_peg=%d -> 7th tuning peg %s", c.headstockPegRaw,
-           !c.headstockPeg
-               ? "off"
-               : "native 7-slot PegSet: 6-string guitars load 7 pegs, peg 7 active on 7-string songs / tuners");
     Rs7Asset_Configure(iniPath);
 }

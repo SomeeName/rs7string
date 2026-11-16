@@ -5,7 +5,7 @@ references) rewritten exactly as the DLL does (jmp/rel32/call into the DLL's stu
 variables set, ref variables bound to the dword at their site). S1 and S4
 call C code that uses the side store and are covered by the C++ unit tests (test_mode.cpp)
 instead; S3's C function is pure and runs in the emulator. The diagnostic
-logger calls (S2, and D1-D5 in R2, R1, D2, D3, D5) are neutralised (see VOID_C_CALLS, VOID_C_EXPORTS); the C
+logger calls (D1-D5 in R2, R1, D2, D3, D5) are neutralised (see VOID_C_CALLS, VOID_C_EXPORTS); the C
 loggers themselves are covered by test_diag.cpp.
 
 On Windows, pytest's faulthandler prints "Windows fatal exception: access violation" during the
@@ -31,6 +31,7 @@ from unicorn import (
     UC_MODE_32,
     UC_PROT_ALL,
     Uc,
+    UcError,
 )
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -54,7 +55,8 @@ from unicorn.x86_const import (
 import game_files
 import sitecheck
 import sitetable
-from emu_common import DLL, EXE, REPO, ROOT, SITES, load_dll, require_game_exe
+from emu_common import DLL, EXE, REPO, ROOT, SITES, load_dll, require_game_exe, call_after
+import private_features
 
 SNAPSHOT = game_files.SNAPSHOT
 sys.path.insert(0, str(game_files.SCRIPTS))
@@ -71,17 +73,23 @@ RET_MAGIC = 0x5D2F0000
 TEB = 0x5D300000  # fake TEB page (fs base), see Emu.__init__
 FLAGS_MASK = 0x8D5  # CF PF AF ZF SF OF
 
-# Stubs whose C calls are diagnostics only (S2 -> Rs7_NoteString6; D2, D3,
+# Stubs whose C calls are diagnostics only (D2, D3,
 # D5 -> Rs7_Diag*: void cdecl loggers; R2's D1 logger is in VOID_C_EXPORTS). The loggers need Win32 imports the emulator does not
 # provide, so their entries are replaced with `ret`; the stubs' own pushad / pushfd / push / call /
 # stack restore / popfd / popad still run.
-VOID_C_CALLS = ("S2", "D2", "D3", "D5")
+VOID_C_CALLS = ("D2", "D3", "D5")
 MID_CALLBACKS = {
     "D2": "Rs7_Mid_D2",
     "D3": "Rs7_Mid_D3",
     "SE1": "Rs7_Mid_SE1",
     "SE2": "Rs7_Mid_SE2",
     "SE3": "Rs7_Mid_SE3",
+    "ALTS": "Rs7_Mid_ALTS",
+    "ALTF": "Rs7_Mid_ALTF",
+    "ALTL": "Rs7_Mid_ALTL",
+    "ALTR": "Rs7_Mid_ALTR",
+    "COAT": "Rs7_Mid_COAT",
+    "COAS": "Rs7_Mid_COAS",
     # cold sites converted from naked stubs (features/*/hooks*.cpp, test_midhook_cold.py)
     "TK": "Rs7_Mid_TK",
     "TS": "Rs7_Mid_TS",
@@ -91,6 +99,7 @@ MID_CALLBACKS = {
     "N21": "Rs7_Mid_N21",
     "GSZ1": "Rs7_Mid_GSZ1",
     "GIZ1": "Rs7_Mid_GIZ1",
+    "GIP1": "Rs7_Mid_GIP1",
     "PSA2": "Rs7_Mid_PSA2",
     "PSD1": "Rs7_Mid_PSD1",
     "PSD2": "Rs7_Mid_PSD2",
@@ -104,20 +113,30 @@ MID_CALLBACKS = {
     "GSSE": "Rs7_Mid_GSSE",
     "PGH1": "Rs7_Mid_PGH1",  # 3+3 peg glow: skip meshes of the hidden peg part (features/headstock/assetload_pegs.cpp)
     "GLW": "Rs7_Mid_GLW",  # RSMods pure red glow (features/colours/hooks.cpp); a no-op while g_rs7_glow_fix = 0
-    # stubs of the former hooks/stubs.cpp converted in refactor step 7 (test_midhook_cold.py)
-    "BD1": "Rs7_Mid_BD1",  # bend direction guards (features/string7/hooks_benddir.cpp), light
+    "CBUV": "Rs7_Mid_CBUV",  # bass low-B colour slot per player (features/colours/hooks_bass.cpp), light
+    "CBRGB": "Rs7_Mid_CBRGB",
+    "CBSTR": "Rs7_Mid_CBSTR",
+    "BD1": "Rs7_Mid_BD1",  # former naked stubs from here on (test_midhook_cold.py); bend direction guards, light
     "BD2": "Rs7_Mid_BD2",
     "BD3": "Rs7_Mid_BD3",
     "BD4": "Rs7_Mid_BD4",
     "D5": "Rs7_Mid_D5",  # gem position log (features/diag/hooks.cpp)
+    "FRG1": "Rs7_Mid_FRG1",  # fret range glow ends (features/frets/hooks.cpp)
+    "FRG2": "Rs7_Mid_FRG2",  # fret range glow bar scale (features/frets/hooks.cpp)
     "B1": "Rs7_Mid_B1",  # chord frame marks (features/chords/hooks_frames.cpp)
     "N12": "Rs7_Mid_N12",  # string 6 in the SNG section mask (features/string7/hooks_mid.cpp)
     "N13": "Rs7_Mid_N13",
     "PM0": "Rs7_Mid_PM0",  # native pitch tails (features/pitch/hooks_mid.cpp)
     "PR0": "Rs7_Mid_PR0",
     "PM1": "Rs7_Mid_PM1",
-    # batch 3 (test_midhook_cold.py, test_midhook_nslot.py)
+    # N-slot sites (test_midhook_cold.py, test_midhook_nslot.py)
     "TF1": "Rs7_Mid_TF1",  # tuner camera reference string (features/tuner/hooks_camera.cpp), light
+    "SC1": "Rs7_Mid_SC1",  # song camera follows the frets floor (full mode)
+    "MenuMovieSetup": "Rs7_Mid_MenuMovieSetup",  # menu loading fix: track the title movie request
+    "MenuMovieResult": "Rs7_Mid_MenuMovieResult",  # the asset locator's answer (AL)
+    "MenuIndexPublish": "Rs7_Mid_MenuIndexPublish",  # a file joined the local index
+    "MenuLoadUpdate": "Rs7_Mid_MenuLoadUpdate",  # game thread: replay a rejected request
+    "TF2": "Rs7_Mid_TF2",  # tuner camera pan for right-handed 7/8-string guitars and 5/6-string basses (hooks_camera.cpp)
     "V2": "Rs7_Mid_V2",  # slide end cell stride (features/fretgrid/hooks_slide.cpp), light
     # native N-slot chords (features/nslot/hooks_records.cpp, hooks_eval.cpp, hooks_latches.cpp)
     "TP1": "Rs7_Mid_TP1",
@@ -146,25 +165,25 @@ MID_CALLBACKS = {
     "PD3": "Rs7_Mid_PD3",
     "PD4": "Rs7_Mid_PD4",
     "PD5": "Rs7_Mid_PD5",
-    # batch 2b (features/string7/hooks_mid.cpp, features/pitch/hooks_mid.cpp)
+    # string7 and pitch sites (features/string7/hooks_mid.cpp, features/pitch/hooks_mid.cpp)
     "N5": "Rs7_Mid_N5",
     "N18": "Rs7_Mid_N18",
     "N19": "Rs7_Mid_N19",
     "N20": "Rs7_Mid_N20",
-    "N22": "Rs7_Mid_N22",
-    "N23": "Rs7_Mid_N23",
     "I1": "Rs7_Mid_I1",
     "SF1": "Rs7_Mid_SF1",  # call site (Before placement): built with Rs7Mid_BuildCall
-    # batch 4, call sites (features/nslot/hooks_calls.cpp, features/pitch/hooks_calls.cpp, features/headstock/hooks_mid.cpp)
+    # call sites (features/nslot/hooks_calls.cpp, features/pitch/hooks_calls.cpp, features/headstock/hooks_mid.cpp)
     **{f"TM{i}": "Rs7_Mid_TM" for i in range(1, 7)},  # one callback, light
     **{f"EV{i}": "Rs7_Mid_EV" for i in range(1, 6)},  # one callback, light
     "S4": "Rs7_Mid_S4",
     "PC2": "Rs7_Mid_PC2",
     "PC3": "Rs7_Mid_PC3",
     "PSL2": "Rs7_Mid_PSL2",  # After placement
+    "PBH": "Rs7_Mid_PBH",  # After placement (features/pitch/hooks_calls.cpp)
     **{sid: f"Rs7_Mid_{sid}" for sid in ("PP1", "F1", "IN1", "PSN2", "TJ", "TU", "TN")},  # Wrap placement (CALL_WRAP)
     "AM1": "Rs7_Mid_AM1Before",  # Wrap placement, no after callback
     "MD1": "Rs7_Mid_MD1Before",
+    "PSN3": "Rs7_Mid_PSN3Before",
     "GIA1": "Rs7_Mid_GIA1",
     **{
         sid: f"Rs7_Mid_{sid}" for sid in ("GSA1", "GSC1", "GRM3", "BT1", "AG1", "AG2", "AG3", "PE0")
@@ -184,8 +203,9 @@ MID_CALLBACKS = {
     "S3": "Rs7_Mid_S3",
     "PT1": "Rs7_Mid_PT1",
 }
-# Call sites registered with Rs7Hook::midCall = Rs7Mid::Call::After (keep in sync with the registration tables).
-CALL_AFTER: set[str] = {"PSL2"}
+
+
+CALL_AFTER = call_after()
 # Sites registered with Rs7_WrapRow (Rs7Mid::Call::Wrap; keep in sync with the registration tables): sid -> (stack
 # argument dwords, bytes the callee pops, scratch bytes, before callback, after callback), callbacks as export names or
 # None. MID_CALLBACKS lists the after callback, or the before callback of a site without one.
@@ -195,6 +215,7 @@ CALL_WRAP: dict[str, tuple[int, int, int, str | None, str | None]] = {
     "IN1": (1, 4, 0, None, "Rs7_Mid_IN1"),
     "PSN2": (1, 4, 0, "Rs7_Mid_PSN2Before", "Rs7_Mid_PSN2"),
     "AM1": (4, 16, 32, "Rs7_Mid_AM1Before", None),
+    "PSN3": (1, 4, 0, "Rs7_Mid_PSN3Before", None),
     "MD1": (4, 16, 32, "Rs7_Mid_MD1Before", None),  # a function entry
     "GIA1": (2, 0, 0, "Rs7_Mid_GIA1Before", "Rs7_Mid_GIA1"),
     "GSC1": (1, 4, 0, None, "Rs7_Mid_GSC1"),
@@ -202,9 +223,10 @@ CALL_WRAP: dict[str, tuple[int, int, int, str | None, str | None]] = {
 }
 # Sites registered with Rs7Hook::midMode = Rs7Mid::Mode::Light; keep in sync with the registration tables. Their
 # entries are built with Rs7Mid_BuildLight, and test_midhook_emu.py checks their callbacks for x87/MMX/SSE code.
-LIGHT_CALLBACKS: set[
-    str
-] = {  # BD*, TF1, V2, N19/N20/N23, N-slot but TP11, DS1 (loader thread), PL1 (FP helper); TM*, EV*
+LIGHT_CALLBACKS: set[str] = {  # BD*, TF1, V2, N19/N20, N-slot but TP11, DS1 (loader thread), PL1 (FP helper); TM*, EV*
+    "CBUV",
+    "CBRGB",
+    "CBSTR",
     "AG1",
     "AG2",
     "AG3",
@@ -240,16 +262,15 @@ LIGHT_CALLBACKS: set[
     "PD5",
     "N19",
     "N20",
-    "N23",
     *(f"TM{i}" for i in range(1, 7)),
     *(f"EV{i}" for i in range(1, 6)),
     "PC1",
     "PC4",
     *(f"PUBZ{i}" for i in range(7)),
 }
-# Refactor step 7 batch 5: feature stubs converted to mid-hooks (test_midhook_features.py). Light ones in BATCH5_LIGHT.
+# Feature sites converted to mid-hooks (test_midhook_features.py). Light ones in BATCH5_LIGHT.
 BATCH5_MID = (
-    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB"),  # features/chords/hooks_cl.cpp
+    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "CLVE"),  # features/chords/hooks_cl.cpp
     *("NG1", "NG9", "FGRB"),  # features/nextgrid/hooks_mid.cpp, features/fretgrid/hooks_build.cpp
     *("DGB", "DGM", "DGS", "TP13"),  # features/diagrams/hooks_mid.cpp
     *("TU8H", "TU8C", "TU8A", "TU8INIT", "TU8FREE", "AT"),  # features/tuner/hooks_entries.cpp (+ the TS8* entries)
@@ -257,19 +278,20 @@ BATCH5_MID = (
     *("TS8PEK", "TS8LET", "TS8LPL", "TS8LRL", "TS8PKS", "TS8PKR", "TS8PKP", "TS8PKL", "TS8LOF", "TS8HNT"),
     *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC"),  # features/publish/hooks_entries.cpp
     *("PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBGB", "PUBGA", "PUBGF", "PUBEDGE"),  # hooks_gridsites.cpp
-    *("PSU1", "PSU2", "PSM1", "LT1", "AL1"),  # features/headstock/hooks_mid.cpp
-    *("TICK", "JUD1", "JUD2", "AUD1"),  # features/vguit/hooks_mid.cpp
+    *("PSU1", "PSU2", "PSM1", "LT0", "LT1", "AL1"),  # features/headstock/hooks_mid.cpp
+    *private_features.get("MID_SITES", ()),  # the private extras (tools/private_features.py)
     *("GSFR", "GSBD", "GSUL", "GSLD", "GSFO", "GSFI", "GSXF", "GSWD", "GSUP", "GSRS", "GSPK", "GSVB"),
     *("GSIC", "GSDM", "GSGL", "GSHC", "GRM1", "GRM2"),  # features/strings/hooks_entries.cpp
 )
 BATCH5_LIGHT = {
-    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "NG1"),
+    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "CLVE", "NG1"),
     *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC", "PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBEDGE"),
 }
 MID_CALLBACKS.update({sid: f"Rs7_Mid_{sid}" for sid in BATCH5_MID})
 LIGHT_CALLBACKS |= BATCH5_LIGHT
 # The sse pass (test_midhook_sse_sites.py): W (full), R2, R6 and PUBGP (site R1) in sse mode.
 MID_CALLBACKS.update({"W": "Rs7_Mid_W", "R2": "Rs7_Mid_R2", "R6": "Rs7_Mid_R6", "R1": "Rs7_Mid_PUBGP"})
+MID_CALLBACKS.update({"FRG2B": "Rs7_Mid_FRG2", "FRG3": "Rs7_Mid_FRG3"})  # fret range glow: moved bars, box
 # Sites registered with Rs7Hook::midMode = Rs7Mid::Mode::Sse; keep in sync with the registration tables. Built with
 # Rs7Mid_BuildSse (mode 2); test_midhook_emu.py checks their callbacks for x87/MMX code (SSE is allowed).
 SSE_CALLBACKS: set[str] = {"R2", "R6", "R1"}
@@ -305,6 +327,7 @@ REF_VARS = {
     "X_WORLD": "g_rs7_fn_world",
     "X_ROOT": "g_rs7_fn_root",
     "X_SETSCALE": "g_rs7_fn_setscale",
+    "MenuMovieRequest": "g_rs7_menu_request",
     "X_EULER": "g_rs7_fn_euler",
     "X_PEGNAMES": "g_rs7_pegnames",
     "X_PEGSELECT": "g_rs7_fn_pegselect",
@@ -317,12 +340,12 @@ REF_VARS = {
     "X_FADEOUT": "g_rs7_fn_fadeout",
     "X_FIXSTR": "g_rs7_fn_fixstr",
     "X_STRPARAMS": "g_rs7_fn_strparams",
+    "X_TBASS": "g_rs7_tuner_bassbase",
     "X_DDSH": "g_rs7_fn_dds",
     "X_NFCTOR": "g_rs7_fn_nfctor",
     "X_NFDTOR": "g_rs7_fn_nfdtor",
     "X_GETDET": "g_rs7_fn_getdet",
-    "X_VGSLOT": "g_rs7_vg_slotmap",
-    "X_VGDI": "g_rs7_vg_dimgr",
+    **private_features.get("EXPORTS", {}),  # the private extras
     "X_SST": "g_rs7_fn_sst",
     "X_STRCON": "g_rs7_fn_strcon",
     "X_STRASG": "g_rs7_fn_strasg",
@@ -337,8 +360,8 @@ REF_VARS = {
 }
 # Void cdecl loggers called by stubs that also call testable C code (NG9 -> Rs7_NeckRow6N runs for
 # real, its once-per-song logger Rs7_NeckLog needs Win32 and is replaced with `ret`).
-VOID_C_EXPORTS = ("Rs7_NeckLog", "Rs7_S7LogMask", "Rs7_HeadLog", "Rs7_DiagNoteHead")
-# Win32 clocks returning 0 (= "no clock": issue #27's N5 then skips its time-based rules).
+VOID_C_EXPORTS = ("Rs7_NeckLog", "Rs7_S7LogMask", "Rs7_HeadLog", "Rs7_DiagNoteHead", "Rs7Pitch_FloorLog")
+# Win32 clocks returning 0 (= "no clock": N5 then skips its time-based rules).
 ZERO_C_EXPORTS = ("Rs7_S7Now", "Rs7Song_Note", "Rs7Publish_GridWait")
 ALL_REGS = (
     UC_X86_REG_EAX,
@@ -433,7 +456,7 @@ def build_mid_entry(uc, exports, site, va: int, target: int, out: int, esp: int,
         builder = JMP_BUILDERS[mid_mode(site.id)]
     uc.mem_write(esp, struct.pack(f"<{len(args)}I", *args))
     uc.reg_write(UC_X86_REG_ESP, esp)
-    uc.emu_start(exports[builder], ret, count=5000)
+    uc.emu_start(exports[builder], ret, count=50000)
     assert uc.reg_read(UC_X86_REG_EIP) == ret and uc.reg_read(UC_X86_REG_EAX) > 0, f"mid-hook rejected {site.id}"
     return out
 
@@ -460,7 +483,7 @@ def build_callin_entry(uc, exports, callback: str, mode: int, arg_bytes: int, ou
     stop address."""
     uc.mem_write(esp, struct.pack("<7I", ret, out, 0x40, out, exports[callback], mode, arg_bytes))
     uc.reg_write(UC_X86_REG_ESP, esp)
-    uc.emu_start(exports["Rs7Mid_BuildCallIn"], ret, count=5000)
+    uc.emu_start(exports["Rs7Mid_BuildCallIn"], ret, count=50000)
     assert uc.reg_read(UC_X86_REG_EIP) == ret and uc.reg_read(UC_X86_REG_EAX) == (18 if arg_bytes else 16), callback
     return out
 
@@ -480,9 +503,29 @@ def site_mid_entry(uc, exports, sid: str, out: int, esp: int, ret: int) -> int:
     return build_mid_entry(uc, exports, site, va, target, out, esp, ret)
 
 
+def install_teb(uc) -> None:
+    """A minimal TEB at TEB, so DLL code with MSVC __try frames can register SEH (fs:[0] = end of chain). Every
+    mid-hook callback runs inside one (Rs7Mid_Guard), so every machine that runs DLL code needs it."""
+    try:
+        uc.mem_map(TEB, 0x1000, UC_PROT_ALL)
+    except UcError:
+        pass  # already mapped by the caller's own layout
+    uc.mem_write(TEB, struct.pack("<II", 0xFFFFFFFF, STACK + 0x100000) + struct.pack("<I", STACK))
+    uc.mem_write(TEB + 0x18, struct.pack("<I", TEB))
+    # 32-bit unicorn has no FS_BASE register: GDT entry 1 = flat-limit data segment at TEB.
+    gdt = TEB + 0x800
+    desc = 0xFFFF | (TEB & 0xFFFFFF) << 16 | 0x92 << 40 | 0xF << 48 | 0xC << 52 | (TEB >> 24) << 56
+    flat = 0xFFFF | 0x92 << 40 | 0xF << 48 | 0xC << 52  # entry 2: flat data (SS/DS/ES)
+    uc.mem_write(gdt + 8, struct.pack("<QQ", desc, flat))
+    uc.reg_write(UC_X86_REG_GDTR, (0, gdt, 0x18 - 1, 0))
+    uc.reg_write(UC_X86_REG_FS, 0x8)
+    for seg in (UC_X86_REG_SS, UC_X86_REG_DS, UC_X86_REG_ES):
+        uc.reg_write(seg, 0x10)
+
+
 class Emu:
     native_pitch = False  # test_emu_pitch.py: also write the [neck] native_pitch sites (P*)
-    native_chordloops = False  # test_emu_chordloops.py: opt in to CL* only
+    native_chordloops = False  # test_emu_chordloops.py: opt in to CL* (the game writes them with native strings)
 
     def __init__(self, patched: bool):
         self.mem = snapshot()
@@ -492,19 +535,7 @@ class Emu:
             self.uc.mem_map(base, 0x100000, UC_PROT_ALL)
         self.uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_FETCH_UNMAPPED, self._map)
         self.uc.mem_write(CODE, bytes.fromhex("D9 1D") + struct.pack("<I", DATA_OUT))  # fstp dword [out]
-        # Minimal TEB so DLL helpers with MSVC __try frames can register SEH (fs:[0] = end of chain).
-        self.uc.mem_map(TEB, 0x1000, UC_PROT_ALL)
-        self.uc.mem_write(TEB, struct.pack("<II", 0xFFFFFFFF, STACK + 0x100000) + struct.pack("<I", STACK))
-        self.uc.mem_write(TEB + 0x18, struct.pack("<I", TEB))
-        # 32-bit unicorn has no FS_BASE register: GDT entry 1 = flat-limit data segment at TEB.
-        gdt = TEB + 0x800
-        desc = 0xFFFF | (TEB & 0xFFFFFF) << 16 | 0x92 << 40 | 0xF << 48 | 0xC << 52 | (TEB >> 24) << 56
-        flat = 0xFFFF | 0x92 << 40 | 0xF << 48 | 0xC << 52  # entry 2: flat data (SS/DS/ES)
-        self.uc.mem_write(gdt + 8, struct.pack("<QQ", desc, flat))
-        self.uc.reg_write(UC_X86_REG_GDTR, (0, gdt, 0x18 - 1, 0))
-        self.uc.reg_write(UC_X86_REG_FS, 0x8)
-        for seg in (UC_X86_REG_SS, UC_X86_REG_DS, UC_X86_REG_ES):
-            self.uc.reg_write(seg, 0x10)
+        install_teb(self.uc)
         self.exports = load_dll(self.uc)
         for name in ZERO_C_EXPORTS:  # DLL-side, patched or not
             self.uc.mem_write(self.exports[name], bytes.fromhex("31 C0 C3"))  # xor eax, eax; ret
@@ -538,8 +569,6 @@ class Emu:
             if s.group == "fast":  # [test] fast=0 (default, features/testdrive/testdrive.h): unwritten
                 continue
             if s.id.startswith("CL") and not self.native_chordloops:
-                continue
-            if s.id in sitecheck.CHORDLOOPS_OFF and self.native_chordloops:
                 continue
             if s.id.startswith("CM"):  # [neck] native_colours=0 (legacy; shipped 1): the colour ports stay unwritten
                 continue
@@ -630,7 +659,7 @@ class Emu:
         try:
             for r, v in regs.items():
                 self.uc.reg_write(r, v)
-            self.uc.emu_start(start, 0xFFFFFFF0, count=5000)
+            self.uc.emu_start(start, 0xFFFFFFF0, count=50000)
         finally:
             self.uc.hook_del(hook)
         assert self.uc.reg_read(UC_X86_REG_EIP) == callee, f"stopped at {self.uc.reg_read(UC_X86_REG_EIP):#x}"
@@ -638,7 +667,7 @@ class Emu:
     def run(self, start: int, until: int, regs: dict[int, int]):
         for r, v in regs.items():
             self.uc.reg_write(r, v)
-        self.uc.emu_start(start, until, count=5000)
+        self.uc.emu_start(start, until, count=50000)
         assert self.uc.reg_read(UC_X86_REG_EIP) == until, f"stopped at {self.uc.reg_read(UC_X86_REG_EIP):#x}"
 
     def st0(self) -> float:

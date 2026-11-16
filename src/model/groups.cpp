@@ -1,5 +1,7 @@
 #include "model/groups.h"
 
+#include <cstddef>
+
 const char* Rs7_FeatureName(Rs7Feature f) {
     static const char* const n[] = {"core",
                                     "native colours",
@@ -9,14 +11,16 @@ const char* Rs7_FeatureName(Rs7Feature f) {
                                     "native pitch storage",
                                     "native next-note grid",
                                     "[diagrams]",
-                                    "[test] vguitar",
+                                    "[test] private extras",
                                     "[debug] diagnostics",
                                     "native publication ports",
-                                    "[chords] native_chordloops",
+                                    "chord loops",
                                     "native tuner",
                                     "[psarc] plain",
                                     "C-lite",
-                                    "RSMods glow correction"};
+                                    "RSMods glow correction",
+                                    "menu loading retry"};
+    static_assert(sizeof n / sizeof n[0] == size_t(Rs7Feature::Count), "one name per Rs7Feature");
 
     return size_t(f) < size_t(Rs7Feature::Count) ? n[size_t(f)] : "?";
 }

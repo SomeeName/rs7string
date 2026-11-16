@@ -1,5 +1,6 @@
 #include "platform/fncopy.h"
 #include "platform/midhook.h"
+#include "platform/pattern.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -31,28 +32,22 @@ uint8_t* Take(uint32_t n) {
     return p;
 }
 
-int Hex(const char* s, uint8_t* out, int max) {
-    int n = 0;
-
-    while (*s && n < max) {
-        while (*s == ' ') {
-            ++s;
-        }
-
-        if (!s[0] || !s[1]) {
-            break;
-        }
-
-        unsigned v = 0;
-        if (sscanf_s(s, "%2x", &v) != 1) {
-            return -1;
-        }
-
-        out[n++] = uint8_t(v);
-        s += 2;
+// Exactly `len` fixed hex bytes ("8B 74 BB 04", no wildcards) into out.
+bool HexBytes(const char* s, int len, uint8_t* out) {
+    Rs7Pattern p;
+    if (!Rs7_ParsePattern(s, p) || p.bytes.size() != static_cast<size_t>(len)) {
+        return false;
     }
 
-    return n;
+    for (const bool w : p.wild) {
+        if (w) {
+            return false;
+        }
+    }
+
+    std::memcpy(out, p.bytes.data(), p.bytes.size());
+
+    return true;
 }
 
 void Rel32(uint8_t* at, uintptr_t insnEnd, uintptr_t target) {
@@ -97,7 +92,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
     for (int i = 0; i < spec.nEdits; ++i) {
         const Rs7FnEdit& e = spec.edits[i];
         uint8_t exp[16], wr[16];
-        if (uint32_t(e.off) + e.len > spec.len || e.len > 16 || Hex(e.expect, exp, 16) != e.len ||
+        if (uint32_t(e.off) + e.len > spec.len || e.len > 16 || !HexBytes(e.expect, e.len, exp) ||
             std::memcmp(buf + e.off, exp, e.len) != 0) {
             return fail("edit bytes do not match");
         }
@@ -114,7 +109,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
             std::memset(buf + e.off, 0x90, e.len);
             buf[e.off] = 0xE8;
         } else {
-            if (Hex(e.write, wr, 16) != e.len) {
+            if (!HexBytes(e.write, e.len, wr)) {
                 return fail("bad edit");
             }
 

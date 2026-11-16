@@ -1,11 +1,12 @@
 #pragma once
 #include "features/headstock/headstock.h"
+#include "platform/field.h"
 #include "platform/midhook.h"
 #include <cstdint>
 #include <intrin.h>
 
 // The headstock's game glue inside the feature: the refs and link variables of its sites, the entry points the stubs
-// call, the game calls of the PegSet glue and the debug experiments. Not for code outside src/features/headstock/.
+// call, the game calls of the PegSet glue and the debug experiment. Not for code outside src/features/headstock/.
 
 extern "C" {
 // Refs (group Core, registration.cpp), bound by Rs7_Startup before any site is patched.
@@ -40,11 +41,13 @@ __declspec(dllexport) void __cdecl Rs7_Mid_PGH1(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_PSU1(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_PSU2(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_PSM1(Rs7Mid::Context&);
+__declspec(dllexport) void __cdecl Rs7_Mid_LT0(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_LT1(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_AL1(Rs7Mid::Context&);
 
 // PSN2, the named-colour dispatch 0x59BF80 (slot, `ret 4`): a Wrap site (hooks_wrap.cpp).
 __declspec(dllexport) void __cdecl Rs7_Mid_PSN2Before(Rs7Mid::Context&);
+__declspec(dllexport) void __cdecl Rs7_Mid_PSN3Before(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_PSN2(Rs7Mid::Context&);
 
 // Link variables of the sites (hooks_stubs.cpp), bound by Rs7_Startup from the sites' resume / target.
@@ -55,10 +58,11 @@ __declspec(dllexport) extern uintptr_t g_rs7_resume_PSA2, g_rs7_resume_PSD1, g_r
 }
 
 inline constexpr Rs7Mid::Wrap kRs7WrapPSN2{1, Rs7Mid::Conv::Stdcall};
+inline constexpr Rs7Mid::Wrap kRs7WrapPSN3{1, Rs7Mid::Conv::Stdcall};  // the same call at 0x5B09D2
 
 // PSN1 sees selections for every string/player, including stock six-string tuner sessions.
 void Rs7Head_TrackColourPlayer(uint8_t* session);
-// Startup: the ini [debug] head_cull / head_stretch are re-read from (nullptr / empty = never).
+// Startup: the ini [debug] head_cull is re-read from (nullptr / empty = never).
 void Rs7Head_SetIni(const wchar_t* path);
 
 namespace rs7head {
@@ -68,23 +72,15 @@ void GameShowEntity(uint8_t* entity, uint32_t show);  // 0x7AE370: EAX = entity,
 void GamePegSetCall(uintptr_t fn, uint8_t* pegset);   // 0x59C630 / 0x59C6E0: stdcall(PegSet)
 // ClipFade_FadeInEntity 0x824E70 / FadeOutEntity 0x825000 for one peg, as the PegSet fade loops call them.
 void GameFade(uintptr_t fn, uint8_t* entity, float seconds);
-// X_EULER of a 3x3 rotation, in degrees as Rnd_PegSet_ApplyTransforms 0x59C630 scales it (0x59C67D..0x59C6A5).
-void GameEuler(const uint8_t* rot, float* e);
-void GameSetVec(uintptr_t fn, uint8_t* entity, const float* v);  // X_SETPOS / X_SETROT: cdecl(entity, vec3)
-void GameSetScaleU(uint8_t* entity, float k);                    // Entity_SetScale 0x7AE2C0: EAX = entity
+// What Rnd_PegSet_ApplyTransforms 0x59C630 does per slot, over the first `count` slots: every taken slot's peg takes
+// its locator's world position and rotation (X_EULER, X_SETPOS, X_SETROT). SEH-guarded; false on a fault or without
+// the PegSet or a game function.
+bool GamePlacePegs(uint8_t* pegset, unsigned count);
 
-// ---- the debug experiments (hooks_debug.cpp)
+// ---- the debug experiment (hooks_debug.cpp)
 
-// Every N5 frame of a guitar built with 7/8 strings: [debug] head_cull / head_stretch, hot-reloaded.
-void DebugFrame(uint8_t* guitar, uint8_t* head, uint8_t* pegset);
+// Every N5 frame of a guitar built with 7/8 strings: [debug] head_cull, hot-reloaded.
+void DebugFrame(uint8_t* head);
 
-template <class T>
-T& At(uint8_t* base, uint32_t off) {
-    return *reinterpret_cast<T*>(base + off);
-}
-
-// A log-once flag: true for the first call.
-inline bool Once(volatile long* f) {
-    return _InterlockedExchange(f, 1) == 0;
-}
+using rs7mem::UncheckedField;
 }  // namespace rs7head

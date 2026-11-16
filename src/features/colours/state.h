@@ -1,30 +1,50 @@
 #pragma once
 #include "features/colours/colours.h"
+#include "platform/freeze.h"
 #include <windows.h>
 
 // Everything the colour feature keeps between calls. The switches and the palette other code reads by name
 // (g_rs7_native_colours, g_rs7_glow_fix; g_rs7_v6 / g_rs7_fx_rgb in native.cpp) stay named exports: the
 // emulator tests and the stubs bind them by symbol.
 namespace rs7colour {
-// The eighth string's placeholder colour per mode until its own colour exists: teal / colourblind orange.
-constexpr uint32_t kPlaceholder[2] = {0x00D6B2, 0xFF8C00};
-
 // A raw dword store into the manager (UV floats and indices are copied as bits).
 inline void PutBits(uint8_t* mgr, uint32_t off, uint32_t bits) {
     *reinterpret_cast<uint32_t*>(mgr + off) = bits;
 }
 
 struct State {
+    // Startup writes plain storage under the freeze and logs it only after every thread resumes.
+    const char* patchReason = "none";
+    const char* patchRange = "none";
+    Rs7FrozenRefusal patchRefusal{};
+    SRWLOCK paletteLock = SRWLOCK_INIT;
+    uint32_t pendingPalette[2] = {kRs7DefaultColour, kRs7DefaultColour};
+    bool palettePending = false;
     // The native matrix (native.cpp): only extra RGB values are owned here. Stock source-list pointers are never
     // copied, replaced or freed. Static storage survives teardown, rebuild and mode switches.
-    float rgb[2][28][2][3] = {};
-    uint32_t fallback7 = 0xC8C8C8;  // CMFALL: string 6's colour as 0xRRGGBB, set by Publish
+    float rgb[2][kStates][2][3] = {};
+    uint32_t fallback7[2] = {kRs7DefaultColour,
+                             kRs7DefaultColour};  // CMFALL: string 6's colour per mode as 0xRRGGBB, set by SetPalette
+    // An extended-bass song (SetBassLowB): colour slot 4 (the bass's low B) shows string 6's colours. The stock slot-4
+    // pointers and UV the swap replaced, and the values it wrote: the next Publish restores an entry only while it
+    // still holds what the swap wrote (the game's table build in between rewrites slot 4, hooks_publish.cpp).
+    volatile LONG bassLowB = 0;
+    bool bassSwapped = false;
+    uint8_t* swappedMgr =
+        nullptr;  // the ColourManager whose slot 4 is swapped (a new manager has its own stock slot 4)
+    float* savedPtr4[2][kStates] = {};
+    uint32_t savedUV4[2][kStates] = {};
+    float* swappedPtr4[2][kStates] = {};
+    uint32_t swappedUV4[2][kStates] = {};
+    // The eighth string's colour per mode as 0xRRGGBB ([color] string7_color / _cb, SetPalette8).
+    volatile uint32_t rgb8[2] = {kRs7DefaultColour7, kRs7DefaultColour7};
 
     // Publication (hooks_publish.cpp, CMINIT / CMBUILD): see the rules there.
     void* volatile built = nullptr;
     volatile LONG dirty = 0;
-    volatile DWORD cmTid = 0;  // thread that ran the last CMBUILD (0: none yet)
+    volatile DWORD cmTid = 0;  // manager thread established by CMINIT / CMBUILD (0: none yet)
     LONG loggedFault = 0, loggedForeign = 0;
+    unsigned publishFailures = 0;  // manager thread: quarantine after three consecutive faults, until CMBUILD
     void* volatile loggedInit = nullptr;
     void* volatile loggedBuild = nullptr;
 
@@ -45,4 +65,5 @@ struct State {
 };
 
 extern State g_colour;
+void ApplyPendingPalette();  // manager thread, or startup before CMINIT establishes it; releases lock before game reads
 }  // namespace rs7colour

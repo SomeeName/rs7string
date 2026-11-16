@@ -24,6 +24,21 @@ SYMS = [
 SYN = 0x70000000
 
 
+def swap(op, old, new):
+    """Replace an operand text that must be there (a moved operand would otherwise stay stock silently)."""
+    assert old in op, (op, old)
+    return op.replace(old, new)
+
+
+# The addresses each rewrite_* names: every one must be an instruction start of its function, or the rewrite
+# would silently never apply.
+REWRITE_VAS = {
+    "PUBNL": {0x4E6E93, 0x4E6F20, 0x4E6F39, 0x4E6FE2, 0x4E75D5, 0x4E764D},
+    "PUBAN": {0x8754A1, 0x875504, 0x8754AA, 0x875513, 0x875545, 0x87556B},
+    "PUBAC": {0x8755C3, 0x875630, 0x875654, 0x8756BE, 0x8756C8, 0x8756D5},
+}
+
+
 def rewrite_pubnl(i, op, rows):
     """PUBNL: the string arrays move and gain two slots; extra rows (appended to `rows`) score strings 7 and 8."""
     a = i.address
@@ -42,7 +57,7 @@ def rewrite_pubnl(i, op, rows):
         if new is not None:
             op = replace_disp(op, d, new)
     if a == 0x4E6F20:
-        op = op.replace("0x134c", "0x13c8")
+        op = swap(op, "0x134c", "0x13c8")
     if a == 0x4E6F39:
         op = "eax, dword ptr [edi + 0x13d8]"
     if a == 0x4E6FE2:
@@ -80,13 +95,13 @@ def rewrite_pubnl(i, op, rows):
 def rewrite_puban(i, op):
     a = i.address
     if a in (0x8754A1, 0x875504):
-        op = op.replace("0x1340", "0x13b8")
+        op = swap(op, "0x1340", "0x13b8")
     if a == 0x8754AA:
         op = hex(SYN)
     if a == 0x875513:
         op = hex(SYN + 2)
     if a == 0x875545:
-        op = op.replace("0x134c", "0x13c8")
+        op = swap(op, "0x134c", "0x13c8")
     if a == 0x87556B:
         op = "edx, dword ptr [esi + 0x13d8]"
     return op
@@ -107,7 +122,7 @@ def rewrite_pubac(i, op, rows):
     if a == 0x875654:
         op = "eax, 0x20"
     if a in (0x8756BE, 0x8756C8):
-        op = op.replace("0x134c", "0x13c8")
+        op = swap(op, "0x134c", "0x13c8")
     if a == 0x8756D5:
         op = "eax, dword ptr [esi + 0x13d8]"
     return op
@@ -135,6 +150,8 @@ def assemble(fn):
     md.detail = True
     insns = list(md.disasm(stock, start))
     assert sum(i.size for i in insns) == len(stock)
+    missing = REWRITE_VAS[ident] - {i.address for i in insns}
+    assert not missing, f"{ident}: rewrite addresses not instruction starts: {sorted(map(hex, missing))}"
     rows = []
     for i in insns:
         op = i.op_str

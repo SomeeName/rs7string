@@ -19,7 +19,7 @@ REQUIRED = [
     "DllUnregisterServer",
     "GetdfDIJoystick",
 ]
-# Colour data and stubs the emulator tests (test_emu.py) and the in-game log rely on.
+# Colour data and stubs the emulator tests (test_emu_*.py) and the in-game log rely on.
 REQUIRED_DATA = [
     "g_rs7_v6",
     "g_rs7_fx_rgb",
@@ -28,6 +28,8 @@ REQUIRED_DATA = [
     "g_rs7_pegsets",
     "Rs7_Mid_PP_TOC",
     "Rs7_Mid_PP_SNGF",
+    "Rs7_Mid_GIP1",
+    "Rs7_Mid_SC1",  # song-camera floor compensation (test_song_camera.py)
     "Rs7_Stub_PP_SNGD",
     "g_rs7_skip_PP_TOC",
     "g_rs7_plain_psarc",
@@ -47,16 +49,16 @@ IMAGE_BASE = 0x5E000000
 
 
 def exports(pe: pefile.PE) -> set[str]:
-    return {e.name.decode() for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name}
+    table = getattr(pe, "DIRECTORY_ENTRY_EXPORT", None)  # absent: no exports at all, reported as missing
+    return {e.name.decode() for e in table.symbols if e.name} if table else set()
 
 
 def imports(pe: pefile.PE) -> set[str]:
     return {e.dll.decode().lower() for e in getattr(pe, "DIRECTORY_ENTRY_IMPORT", [])}
 
 
-def problems(path: Path) -> list[str]:
-    """Every problem with the DLL at `path`, one line each (empty: fine)."""
-    pe = pefile.PE(str(path))
+def problems(pe: pefile.PE) -> list[str]:
+    """Every problem with the parsed DLL, one line each (empty: fine)."""
     have, deps = exports(pe), imports(pe)
     out = []
     missing = [n for n in REQUIRED + REQUIRED_DATA if n not in have]
@@ -72,12 +74,15 @@ def problems(path: Path) -> list[str]:
 
 def main(argv: list[str]) -> int:
     path = Path(argv[0]) if argv else DLL
-    pe = pefile.PE(str(path), fast_load=False)
+    if not path.is_file():
+        print(f"check_exports: {path} not found; build the Release configuration first")
+        return 1
+    pe = pefile.PE(str(path))
     print(
         f"{path.name}: {len(exports(pe))} exports, image base {pe.OPTIONAL_HEADER.ImageBase:#x}, "
         f"imports {', '.join(sorted(imports(pe)))}"
     )
-    found = problems(path)
+    found = problems(pe)
     for p in found:
         print(p)
     return 1 if found else 0

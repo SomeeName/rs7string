@@ -8,5 +8,5 @@
 bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt);
 // "syscall" or "VirtualProtect", for the log.
 const char* Rs7_ProtectMethod();
-// Tests (review #8): every Rs7_Protect call touching [lo, hi) fails until reset with (0, 0).
-void Rs7_ProtectInjectFailure(uintptr_t lo, uintptr_t hi);
+// Tests: calls touching [lo, hi) fail until reset with (0, 0); protection != 0 restricts the new protection.
+void Rs7_ProtectInjectFailure(uintptr_t lo, uintptr_t hi, DWORD protection = 0);

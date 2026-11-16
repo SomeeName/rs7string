@@ -3,6 +3,7 @@
 #include "hook_rules.h"
 #include "platform/patch.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstdlib>
 #include <cstring>
@@ -19,7 +20,8 @@ struct ExecPage {
     uint8_t* p;
 
     ExecPage() {
-        p = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        p = static_cast<uint8_t*>(
+            rs7test::Must(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), "VirtualAlloc"));
         std::memset(p, 0xCC, 4096);
     }
 
@@ -107,7 +109,7 @@ TEST(plain_sng_action) {
 }
 
 TEST(plain_sngd_stub_copies_or_decrypts) {
-    const uintptr_t was = g_rs7_target_PP_SNGD;
+    rs7test::Restore restore_g_rs7_target_PP_SNGD(g_rs7_target_PP_SNGD);
 
     g_rs7_target_PP_SNGD = reinterpret_cast<uintptr_t>(&FakeDecrypt);
     g_decryptCalls = 0;
@@ -125,7 +127,6 @@ TEST(plain_sngd_stub_copies_or_decrypts) {
     CHECK(Rs7_Stub_PP_SNGD(sng + 8, 20, "k", 1, out, sizeof out));
     CHECK_EQ(g_decryptCalls, 1);
     CHECK_EQ(out[0], uint8_t(0xDE));
-    g_rs7_target_PP_SNGD = was;
 }
 
 TEST(plain_cas_window) {

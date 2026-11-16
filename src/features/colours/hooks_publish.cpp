@@ -3,12 +3,14 @@
 #include "features/colours/state.h"
 #include "model/groups.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 
 // Publish() reads the stock colour pointers out of the manager. The game thread builds the manager (CMINIT,
 // CMBUILD); publishing from any other thread can meet a half-built manager -> access violation on that thread
-// (R2b, evidence/L1_7test.log "DIAG ... AV", the ramp thread died and the game hung; review #5).
-// Rules (review #5, docs/ARCHITECTURE.md):
-//  - only the thread that ran CMBUILD (State::cmTid, the game/render thread) ever writes into the manager;
+// (seen in a 7-string test log: the ramp thread died and the game hung).
+// Rules (docs/ARCHITECTURE.md):
+//  - only the manager's thread (State::cmTid, recorded by CMINIT / CMBUILD) writes into the manager;
 //  - every other caller only sets State::dirty (RequestPublish). The ramp worker never calls PublishCurrent:
 //    StoreV6 (rampstate.cpp) requests, and the game thread drains in CMBUILD, FGHK (0x592AC0, every guitar
 //    update) and the SetTexture hook (render thread) via DrainPending;
@@ -19,20 +21,49 @@
 namespace {
 using rs7colour::g_colour;
 
+void SetManagerThread() {
+    AcquireSRWLockExclusive(&g_colour.paletteLock);
+    g_colour.cmTid = GetCurrentThreadId();
+    ReleaseSRWLockExclusive(&g_colour.paletteLock);
+}
+
 uint8_t* Manager() {  // *X_CM; the caller checked g_rs7_colormgr
-    return *reinterpret_cast<uint8_t**>(g_rs7_colormgr);
+    uint8_t* mgr = nullptr;
+
+    Rs7_SafeCopyZero(&mgr, reinterpret_cast<const void*>(g_rs7_colormgr), sizeof mgr);
+
+    return mgr;
 }
 
 bool PublishGuarded(uint8_t* mgr) {
     __try {
         rs7colour::Publish(mgr);
         return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         if (!InterlockedExchange(&g_colour.loggedFault, 1)) {
-            Rs7Log("colour: publish faulted on thread %lu (manager %p) - skipped", GetCurrentThreadId(),
+            Rs7Log("colour: publish faulted on thread %lu (manager %p) - retry pending", GetCurrentThreadId(),
                    static_cast<void*>(mgr));
         }
         return false;
+    }
+}
+
+void PublishRequested(uint8_t* mgr) {
+    if (!InterlockedExchange(&g_colour.dirty, 0)) {
+        return;
+    }
+
+    if (PublishGuarded(mgr)) {
+        g_colour.publishFailures = 0;
+        return;
+    }
+
+    rs7colour::RequestPublish();
+
+    if (++g_colour.publishFailures >= 3) {
+        g_colour.built = nullptr;
+        Rs7Log("colour: manager %p failed publication three times - pending until the next build",
+               static_cast<void*>(mgr));
     }
 }
 }  // namespace
@@ -58,9 +89,7 @@ void rs7colour::DrainPending() {
         return;  // CMBUILD drains when it finishes this one
     }
 
-    if (InterlockedExchange(&g_colour.dirty, 0)) {
-        PublishGuarded(mgr);
-    }
+    PublishRequested(mgr);
 }
 
 void rs7colour::PublishCurrent() {
@@ -76,53 +105,46 @@ void rs7colour::PublishCurrent() {
                    "once)",
                    tid, static_cast<unsigned long>(g_colour.cmTid));
         }
-
-        RequestPublish();
-        return;
     }
 
-    uint8_t* mgr = Manager();
-    if (!mgr) {
-        return;
-    }
-
-    if (g_colour.built != mgr) {  // not (yet) fully built by the game thread: CMBUILD will pick the new values up
-        RequestPublish();
-        return;
-    }
-
-    InterlockedExchange(&g_colour.dirty, 0);
-    PublishGuarded(mgr);
+    RequestPublish();
+    DrainPending();
 }
 
 void __cdecl Rs7Colour_CMINIT(Rs7Mid::Context& c) {
+    SetManagerThread();
     g_colour.built = nullptr;
+    g_colour.publishFailures = 0;
+    g_colour.bassSwapped = false;  // a new manager (maybe at the old one's address): its slot 4 is stock
     void* const mgr = reinterpret_cast<void*>(c.esi);
 
-    if (g_colour.loggedInit != mgr) {  // L6, once per manager
+    if (g_colour.loggedInit != mgr) {  // once per manager
         g_colour.loggedInit = mgr;
         Rs7Log("colour: CMINIT %p tid %lu", mgr, GetCurrentThreadId());
     }
 
-    rs7colour::Publish(reinterpret_cast<uint8_t*>(c.esi));
+    if (!PublishGuarded(reinterpret_cast<uint8_t*>(c.esi))) {
+        rs7colour::RequestPublish();
+    }
 }
 
 void __cdecl Rs7Colour_CMBUILD(Rs7Mid::Context& c) {
     auto* mgr = reinterpret_cast<uint8_t*>(c.esi);
 
-    g_colour.cmTid = GetCurrentThreadId();
+    SetManagerThread();
 
-    if (g_colour.loggedBuild != mgr) {  // L6, once per manager
+    if (g_colour.loggedBuild != mgr) {  // once per manager
         g_colour.loggedBuild = mgr;
         Rs7Log("colour: CMBUILD %p tid %lu", static_cast<void*>(mgr), GetCurrentThreadId());
     }
 
-    InterlockedExchange(&g_colour.dirty, 0);  // this publish carries every request made so far
-    rs7colour::Publish(mgr);
+    // With bassLowB on, CMINIT's Publish swapped slot 4. The build in between rewrote slot 4 (CONFIRMED, 0x518AF0
+    // writes slots 0 to 5 of every state it fills), so this Publish keeps the build's entries and restores only the
+    // ones that still hold the swap's values (native.cpp RestoreSlot4).
     g_colour.built = mgr;
-    if (InterlockedExchange(&g_colour.dirty, 0)) {
-        rs7colour::Publish(mgr);  // a request arrived meanwhile
-    }
+    g_colour.publishFailures = 0;
+    rs7colour::RequestPublish();
+    PublishRequested(mgr);
 }
 
 void rs7colour::ResetThreadForTests() {
@@ -130,4 +152,6 @@ void rs7colour::ResetThreadForTests() {
     g_colour.dirty = 0;
     g_colour.built = nullptr;
     g_colour.loggedForeign = 0;
+    g_colour.loggedFault = 0;
+    g_colour.publishFailures = 0;
 }

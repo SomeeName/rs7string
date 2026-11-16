@@ -3,14 +3,12 @@
 #include <cstdint>
 
 struct Rs7HookTable;
-constexpr int kRs7FgNative =
-    1;  // Rs7Hook::fg: written only with the native capacity-8 FretGrid (issue #18 stage 5 area 1)
 // The native FretGrid hooks (group Fretgrid): the FGR<va> layout sites, FGRB, FGHK, FGCT.
 extern const Rs7HookTable kRs7FretgridHooks;
 extern const Rs7HookTable kRs7FretgridCoreHooks;  // V2 (group Core)
 
-// Native capacity-8 Rnd_FretGrid (issue #18 stage 5 area 1, docs/ARCHITECTURE.md
-// section 1), a member of the native 7-string unit (no ini switch since 1.0).
+// Native capacity-8 Rnd_FretGrid (docs/ARCHITECTURE.md section 1), a member of the native 7-string unit (no ini
+// switch).
 //
 // Layout (every FretGrid of the process, guitar and bass alike):
 //   cells   +4          26 rows of 4 + 8 * 4Ch = 264h (stock 6 * 4Ch = 1CCh); row byte 0 = row valid, cell s at
@@ -54,8 +52,12 @@ void Configure(bool native);
 // Startup: the switch is on but the layout is not yet in the code: the stride variable stays stock until the
 // deferred sites are written (OnGuitarUpdate).
 void ConfigureDeferred(bool native);
-// Startup: the resolved FGR sites are written by this function (restores them and returns false on failure).
-using ApplyFn = bool (*)();
+// Startup: the resolved FGR sites are written by this function (restores them on failure). Retry: the thread freeze
+// timed out and nothing was written; OnGuitarUpdate tries again kApplyRetryMs later, kApplyAttempts times in all
+// (lastAttempt set on the final one, which then fails for good).
+enum class ApplyResult { Applied, Failed, Retry };
+using ApplyFn = ApplyResult (*)(bool lastAttempt);
+constexpr unsigned kApplyAttempts = 5, kApplyRetryMs = 1000;
 // Until it is called, OnGuitarUpdate does nothing (FGHK can run before startup finishes the batch).
 void SetDeferredApply(ApplyFn apply);
 // True while native_fretgrid is on and the deferred layout is still to be written (not failed).
@@ -66,11 +68,12 @@ bool LayoutPending();
 void MigrateGrid(const uint8_t* old, uint8_t* fresh);
 // Native-grid registry (pointer set; stock-size blocks cannot be sized, the game's allocator is not the CRT's):
 // a grid is native iff it was built after the layout was written (OnGridCreated, FGCT) or already migrated.
-// Fixed-capacity (kRegistryCapacity, no allocation, oldest-generation eviction; see fretgrid.cpp for why there is
-// no per-destruction removal). Nothing here can throw.
+// Fixed-capacity (kRegistryCapacity, no allocation or eviction). Exhaustion disables migration rather than risk
+// mistaking a live native grid for a stock-size one; updates must skip unregistered grids then. Nothing here can throw.
 constexpr unsigned kRegistryCapacity = 256;
 void ResetRegistry() noexcept;
 bool MarkNative(const uint8_t* grid) noexcept;      // false: not registered (fail-safe: migration is off)
+bool IsNative(const uint8_t* grid) noexcept;        // registered native layout, even after a failure
 bool NeedsMigration(const uint8_t* grid) noexcept;  // non-null and not registered (false after a failure)
 unsigned RegistrySize() noexcept;
 bool RegistryFailed() noexcept;
@@ -80,7 +83,10 @@ void OnGridCreated(uint8_t* grid) noexcept;    // FGCT: registers once the layou
 // Every call (game thread, guitar update entry, before any FretGrid code of that frame): the first writes the
 // deferred FGR sites and switches the stride variable; each guitar whose FretGrid is not registered native (built
 // before the layout existed) gets a native one, once.
-void OnGuitarUpdate(uint8_t* guitar);
+// False: FGHK must return without running the update (native code cannot use a stock-size grid).
+bool OnGuitarUpdate(uint8_t* guitar);
+// Tests: replace the game allocator/constructor boundary; null restores each game function.
+void SetGridAllocatorForTests(void* (*allocate)(uint32_t), void* (*construct)(void*), void (*free)(void*, uint32_t));
 
 inline uint32_t RowStride() {
     return static_cast<uint32_t>(g_rs7_fg_row);

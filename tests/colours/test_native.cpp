@@ -1,14 +1,17 @@
 #include "features/colours/colours.h"
+#include "features/colours/state.h"
 #include "features/string7/string7.h"
 #include "features/strings/strings.h"
 #include "hook_rules.h"
 #include "platform/midhook.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstring>
+#include <vector>
 
 TEST(native_colour_publication_keeps_stock_columns_and_owns_both_extra_palettes) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     g_rs7_native_colours = 1;
     alignas(4) uint8_t mgr[rs7colour::kSize] = {};
@@ -27,9 +30,7 @@ TEST(native_colour_publication_keeps_stock_columns_and_owns_both_extra_palettes)
         }
     }
 
-    uint8_t before[sizeof mgr];
-
-    std::memcpy(before, mgr, sizeof mgr);
+    const std::vector<uint8_t> before(mgr, mgr + sizeof mgr);  // on the heap: two managers would pass 16 KB of stack
     float savedRgb[6];
 
     std::memcpy(savedRgb, g_rs7_fx_rgb, sizeof savedRgb);
@@ -40,8 +41,8 @@ TEST(native_colour_publication_keeps_stock_columns_and_owns_both_extra_palettes)
 
     for (int m = 0; m < 2; ++m) {
         for (int st = 0; st < 28; ++st) {
-            CHECK(std::memcmp(before + rs7colour::PtrOffset(m, st), mgr + rs7colour::PtrOffset(m, st), 24) == 0);
-            CHECK(std::memcmp(before + rs7colour::UVOffset(m, st), mgr + rs7colour::UVOffset(m, st), 24) == 0);
+            CHECK(std::memcmp(before.data() + rs7colour::PtrOffset(m, st), mgr + rs7colour::PtrOffset(m, st), 24) == 0);
+            CHECK(std::memcmp(before.data() + rs7colour::UVOffset(m, st), mgr + rs7colour::UVOffset(m, st), 24) == 0);
 
             for (int s = 6; s < 8; ++s) {
                 CHECK(rs7colour::GetRGB(mgr, m, st, s) != nullptr);
@@ -58,11 +59,10 @@ TEST(native_colour_publication_keeps_stock_columns_and_owns_both_extra_palettes)
     rs7colour::Publish(mgr);
     CHECK(rs7colour::GetRGB(mgr, 0, 1, 6) == ptr && ptr[0] == 0.4f);
     std::memcpy(g_rs7_fx_rgb, savedRgb, sizeof savedRgb);
-    g_rs7_native_colours = saved;
 }
 
 TEST(native_colour_off_does_not_publish_or_change_hook_selection) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     g_rs7_native_colours = 0;
     uint8_t mgr[rs7colour::kSize];
@@ -91,8 +91,6 @@ TEST(native_colour_off_does_not_publish_or_change_hook_selection) {
     for (const char* id : {"C1", "C2", "C3", "C4", "C5", "N11", "GSCL"}) {
         CHECK(Rs7_FindHook(id) == nullptr);
     }
-
-    g_rs7_native_colours = saved;
 }
 
 TEST(native_colour_scalar_callbacks_preserve_context_and_copy_bits) {
@@ -151,7 +149,7 @@ TEST(native_colour_foreign_thread_publish_waits_for_the_built_manager) {
 
     CHECK(before != 0);
     *reinterpret_cast<uint32_t*>(mgr + rs7colour::PtrOffset(0, 1, 6)) = 0;
-    rs7colour::PublishCurrent();  // built: foreign threads may publish again
+    rs7colour::PublishCurrent();  // built: the manager thread may publish immediately
     CHECK(*reinterpret_cast<uint32_t*>(mgr + rs7colour::PtrOffset(0, 1, 6)) == before);
     g_rs7_native_colours = savedOn;
     g_rs7_colormgr = savedRef;
@@ -188,17 +186,15 @@ struct CmFixture {
     static uint32_t& Slot() { return *reinterpret_cast<uint32_t*>(mgr + rs7colour::PtrOffset(0, 1, 6)); }
 
     static void OnOtherThread(void (*fn)()) {
-        const HANDLE t = CreateThread(
-            nullptr, 0,
-            [](LPVOID p) -> DWORD {
-                reinterpret_cast<void (*)()>(p)();
+        const LPTHREAD_START_ROUTINE run = [](LPVOID p) -> DWORD {
+            reinterpret_cast<void (*)()>(p)();
 
-                return 0;
-            },
-            reinterpret_cast<LPVOID>(fn), 0, nullptr);
+            return 0;
+        };
+        const HANDLE t =
+            rs7test::Must(CreateThread(nullptr, 0, run, reinterpret_cast<LPVOID>(fn), 0, nullptr), "CreateThread");
 
-        WaitForSingleObject(t, 5000);
-        CloseHandle(t);
+        rs7test::Join(t);
     }
 };
 }  // namespace
@@ -217,6 +213,61 @@ TEST(native_colour_foreign_publish_is_deferred_to_the_game_thread) {
     rs7colour::DrainPending();  // the game thread (FGHK / SetTexture)
     CHECK_EQ(CmFixture::Slot(), f.published);
     CHECK(!rs7colour::PublishPending());
+}
+
+TEST(native_colour_foreign_palette_waits_for_a_complete_game_thread_snapshot) {
+    CmFixture f;
+    rs7test::Restore restoreNormal(rs7colour::g_colour.fallback7[0]);
+    rs7test::Restore restoreCb(rs7colour::g_colour.fallback7[1]);
+    const uint32_t beforeFallback = rs7colour::g_colour.fallback7[0];
+    float before[6];
+
+    std::memcpy(before, g_rs7_fx_rgb, sizeof before);
+    CmFixture::OnOtherThread([] {
+        const uint32_t rgb[2] = {0x123456, 0xABCDEF};
+
+        rs7colour::SetPalette(rgb);
+        rs7colour::PublishCurrent();
+    });
+    CHECK(std::memcmp(before, g_rs7_fx_rgb, sizeof before) == 0);
+    CHECK_EQ(rs7colour::g_colour.fallback7[0], beforeFallback);
+    CHECK(rs7colour::PublishPending());
+    rs7colour::DrainPending();
+    CHECK_EQ(g_rs7_fx_rgb[0], 0x12 / 255.0f);
+    CHECK_EQ(g_rs7_fx_rgb[2], 0x56 / 255.0f);
+    CHECK_EQ(g_rs7_fx_rgb[3], 0xAB / 255.0f);
+    CHECK_EQ(g_rs7_fx_rgb[5], 0xEF / 255.0f);
+    CHECK_EQ(rs7colour::g_colour.fallback7[0], 0x123456u);
+    CHECK_EQ(rs7colour::g_colour.fallback7[1], 0xABCDEFu);
+    std::memcpy(g_rs7_fx_rgb, before, sizeof before);
+}
+
+TEST(native_colour_faulted_publication_retries_and_quarantines_until_rebuild) {
+    CmFixture f;
+    auto& ptr = *reinterpret_cast<float**>(CmFixture::mgr + rs7colour::PtrOffset(0, 1, 0));
+
+    ptr = reinterpret_cast<float*>(1);
+    rs7colour::PublishCurrent();
+    CHECK(rs7colour::PublishPending());
+    ptr = nullptr;
+    rs7colour::DrainPending();
+    CHECK(!rs7colour::PublishPending());
+    CHECK_EQ(CmFixture::Slot(), f.published);
+    ptr = reinterpret_cast<float*>(1);
+    rs7colour::PublishCurrent();
+    rs7colour::DrainPending();
+    rs7colour::DrainPending();
+    ptr = nullptr;
+    CmFixture::Slot() = 0;
+    rs7colour::DrainPending();
+    CHECK(rs7colour::PublishPending());
+    CHECK_EQ(CmFixture::Slot(), 0u);
+    Rs7Mid::Context c{};
+
+    c.esi = uint32_t(uintptr_t(CmFixture::mgr));
+    Rs7Colour_CMBUILD(c);
+    CHECK(!rs7colour::PublishPending());
+    CHECK_EQ(CmFixture::Slot(), f.published);
 }
 
 TEST(ramp_v6_store_never_touches_the_colour_manager) {
@@ -249,7 +300,7 @@ TEST(native_colour_cmbuild_drains_a_request_made_before_the_build) {
 
 // RSMods GetStringColor uses mode*0xA8 and the stock state offsets, including in CB mode.
 TEST(native_colour_rsmods_six_column_abi_shares_the_correct_rgb_values) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     g_rs7_native_colours = 1;
     alignas(4) uint8_t mgr[rs7colour::kSize] = {};
@@ -276,21 +327,21 @@ TEST(native_colour_rsmods_six_column_abi_shares_the_correct_rgb_values) {
                 CHECK_EQ(*reinterpret_cast<float*>(mgr + 0x890 + 4 * (m * 0xA8 + st * 6 + s)),
                          float(m * 168 + st * 6 + s));
 
-                if (legacy == stock[m][st][s]) {
+                if (legacy && legacy == stock[m][st][s]) {
                     legacy[1] = 0.25f;  // custom/rainbow write through RSMods' address
-                    CHECK_EQ(rs7colour::GetRGB(mgr, m, st, s)[1], 0.25f);
+                    const float* rgb = rs7colour::GetRGB(mgr, m, st, s);
+
+                    CHECK(rgb && rgb[1] == 0.25f);
                 }
             }
         }
     }
-
-    g_rs7_native_colours = saved;
 }
 
 extern "C" void __cdecl Rs7_CallIn_GlowColour(Rs7Mid::Context& c);
 
 TEST(native_colour_glow_callin_reads_all_eight_slots_in_both_modes) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     g_rs7_native_colours = 1;
     alignas(4) uint8_t mgr[rs7colour::kSize] = {};
@@ -310,6 +361,107 @@ TEST(native_colour_glow_callin_reads_all_eight_slots_in_both_modes) {
             CHECK(rgbPtr == colours[mode][slot]);
         }
     }
+}
 
-    g_rs7_native_colours = saved;
+TEST(native_colour_extended_bass_low_b_takes_string_6_colours_and_restores) {
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
+
+    g_rs7_native_colours = 1;
+    alignas(4) uint8_t mgr[rs7colour::kSize] = {};
+    float stock[2][28][6][3] = {};
+
+    for (int m = 0; m < 2; ++m) {
+        for (int st = 0; st < 28; ++st) {
+            for (int s = 0; s < 6; ++s) {
+                *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(m, st, s)) = stock[m][st][s];
+                *reinterpret_cast<float*>(mgr + rs7colour::UVOffset(m, st, s)) = float(s) / 16;
+            }
+        }
+    }
+
+    rs7colour::SetBassLowB(true);
+    rs7colour::Publish(mgr);
+
+    for (int m = 0; m < 2; ++m) {
+        for (int st = 0; st < 28; ++st) {
+            CHECK(rs7colour::GetRGB(mgr, m, st, 4) == rs7colour::GetRGB(mgr, m, st, 6));
+            // The six-column table RSMods reads keeps the stock slot 4.
+            CHECK(*reinterpret_cast<float**>(mgr + 0x350 + 4 * ((m * 28 + st) * 6 + 4)) == stock[m][st][4]);
+        }
+
+        CHECK(*reinterpret_cast<float*>(mgr + rs7colour::UVOffset(m, 15, 4)) ==
+              *reinterpret_cast<float*>(mgr + rs7colour::UVOffset(m, 15, 6)));
+    }
+
+    rs7colour::Publish(mgr);  // a second publish swaps from the stock values, not from the swapped ones
+    CHECK(rs7colour::GetRGB(mgr, 0, 1, 4) == rs7colour::GetRGB(mgr, 0, 1, 6));
+
+    rs7colour::SetBassLowB(false);
+    rs7colour::Publish(mgr);
+
+    for (int m = 0; m < 2; ++m) {
+        for (int st = 0; st < 28; ++st) {
+            CHECK(rs7colour::GetRGB(mgr, m, st, 4) == stock[m][st][4]);
+            CHECK(*reinterpret_cast<float*>(mgr + rs7colour::UVOffset(m, st, 4)) == 4.0f / 16);
+        }
+    }
+}
+
+// CMINIT swaps slot 4, then the game's table build rewrites slot 4 before CMBUILD publishes again: the build's entries
+// stay, they are not overwritten with the ones saved at CMINIT.
+TEST(native_colour_extended_bass_low_b_keeps_slot_4_the_build_rewrote) {
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
+
+    g_rs7_native_colours = 1;
+    alignas(4) uint8_t mgr[rs7colour::kSize] = {};
+    float ctor[3] = {}, built[3] = {}, six[3] = {};
+
+    *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(0, 1, 4)) = ctor;
+    *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(0, 1, 6)) = six;
+    *reinterpret_cast<float*>(mgr + rs7colour::UVOffset(0, 15, 4)) = 0.25f;
+    rs7colour::SetBassLowB(true);
+    rs7colour::Publish(mgr);  // CMINIT
+    CHECK(rs7colour::GetRGB(mgr, 0, 1, 4) == rs7colour::GetRGB(mgr, 0, 1, 6));
+
+    *reinterpret_cast<float**>(mgr + rs7colour::PtrOffset(0, 1, 4)) = built;  // the build
+    *reinterpret_cast<float*>(mgr + rs7colour::UVOffset(0, 15, 4)) = 0.75f;
+    rs7colour::Publish(mgr);  // CMBUILD
+    CHECK(rs7colour::GetRGB(mgr, 0, 1, 4) == rs7colour::GetRGB(mgr, 0, 1, 6));
+
+    rs7colour::SetBassLowB(false);
+    rs7colour::Publish(mgr);
+    CHECK(rs7colour::GetRGB(mgr, 0, 1, 4) == built);
+    CHECK(*reinterpret_cast<float*>(mgr + rs7colour::UVOffset(0, 15, 4)) == 0.75f);
+}
+
+TEST(colours_bass_low_b_takes_slot_6_only_for_a_shifted_player) {
+    CHECK(rs7colour::BassSlot(4, true) == 6u);
+    CHECK(rs7colour::BassSlot(4, false) == 4u);
+
+    for (uint32_t s : {0u, 1u, 2u, 3u, 5u, 6u, 7u}) {
+        CHECK(rs7colour::BassSlot(s, true) == s);
+    }
+
+    Rs7Mid::Context c{};
+
+    rs7colour::SetBassShift(1, true);
+    c.eax = 1;
+    c.ecx = 0xABCD0004u;
+    Rs7_Mid_CBUV(c);
+    CHECK(c.ecx == 0xABCD0006u);  // only CL changes
+    c.eax = 0;
+    c.ecx = 4;
+    Rs7_Mid_CBSTR(c);
+    CHECK(c.ecx == 4u);  // player 0 (a guitar) keeps slot 4
+
+    uint32_t stack[3] = {0, 0, 4};
+
+    c.esp = uint32_t(reinterpret_cast<uintptr_t>(stack));
+    c.ecx = 1;
+    Rs7_Mid_CBRGB(c);
+    CHECK(stack[2] == 6u);
+    rs7colour::SetBassShift(1, false);
+    stack[2] = 4;
+    Rs7_Mid_CBRGB(c);
+    CHECK(stack[2] == 4u);
 }

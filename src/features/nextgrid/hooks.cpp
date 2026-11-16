@@ -2,6 +2,7 @@
 // the game's Rnd_NeckTarget_Spawn and time-set iterator, and the once-per-song "neck:" log line.
 #include "features/nextgrid/nextgrid.h"
 #include "features/publish/publish.h"
+#include "platform/field.h"
 #include "platform/log.h"
 #include <windows.h>
 
@@ -14,10 +15,7 @@ using SpawnFn = void(__stdcall*)(void* note, void* self, uint32_t dtBits, uint32
 
 volatile LONG g_neckLogged = 0;
 
-template <class T>
-T& At(uint8_t* base, uint32_t off) {
-    return *reinterpret_cast<T*>(base + off);
-}
+using rs7mem::UncheckedField;
 
 // it = begin + 3 through the game's own iterator (0x7AA880: ESI = &it, clobbers EAX/ECX/EDX only).
 uint8_t* Advance3(uint8_t* node) {
@@ -47,15 +45,15 @@ int Row6(uint8_t* g, void* self, uint32_t dtBits, uint32_t tBits, uint32_t fretC
         any = any || row[f] != nullptr;
     }
 
-    if (!any) {
-        return -1;
+    if (!any || !g_rs7_fn_spawn || !g_rs7_fn_adv3) {
+        return -1;  // nothing in row 6, or the game functions are not bound
     }
 
     // Prune (0x7AA1B0): with 3+ distinct times, it = begin + 3 through the game's own iterator; if it != end,
     // clear every cell whose time is later than it's time (strictly; unordered compares keep the cell, like
     // fcomp + jne).
-    if (At<uint32_t>(g, kSetSize) >= 3) {
-        uint8_t* it = Advance3(At<uint8_t*>(g, kSetBegin));
+    if (UncheckedField<uint32_t>(g, kSetSize) >= 3) {
+        uint8_t* it = Advance3(UncheckedField<uint8_t*>(g, kSetBegin));
 
         if (it != g + kSetHead) {
             const float limit = *reinterpret_cast<const float*>(it + kNodeTime);
@@ -106,7 +104,7 @@ extern "C" void __cdecl Rs7_NeckLog(int fret) {
 
         Rs7Log("neck: string-6 target spawned fret %d (first this song)", fret);
     } catch (...) {
-        // Called from the NG9 stub inside a game frame: never let an exception out.
+        // Rs7Log allocates (std::bad_alloc) and NG9 calls this inside a game frame: never let an exception out.
     }
 }
 

@@ -10,6 +10,8 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "release.ps1"
 SHELL = shutil.which("pwsh") or shutil.which("powershell")
 pytestmark = pytest.mark.skipif(not SHELL, reason="needs PowerShell")
+# Only catches a hang: PowerShell start-up and the Git calls are slow on a busy machine.
+TIMEOUT = 300
 
 
 def git(root, *args):
@@ -57,7 +59,7 @@ def run(root, *args, env=None):
         capture_output=True,
         text=True,
         env=env,
-        timeout=60,
+        timeout=TIMEOUT,
     )
 
 

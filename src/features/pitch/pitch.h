@@ -1,26 +1,26 @@
 #pragma once
+#include "model/instrument.h"
 #include "model/tuning.h"
 #include <cstddef>
 #include <cstdint>
 
 struct Rs7HookTable;
-constexpr int kRs7PitchNative = 1;  // Rs7Hook::pitch: written only with the native 8-entry tuning / open-MIDI storage
-// PA1 PA2 PM0 PR0 PT1 PM1 PE0 PC1-PC4 (group Pitch, written only with the native pitch storage) and S1 S2 S3 I1 S4
+// PA1 PA2 PM0 PR0 PT1 PM1 PE0 PC1-PC4 (group Pitch, written only with the native pitch storage) and S1 S3 I1 S4
 // (the song's 7-string mode at detection setup, group Core): registration.cpp.
 extern const Rs7HookTable kRs7PitchHooks;
 extern const Rs7HookTable kRs7PitchCoreHooks;
 
-// ---- the song's 7-string mode (hooks_mode.cpp, stubs S1-S4 / I1 in hooks_stubs_mode.cpp) ----
-// Game layouts, September 2022 exe (docs/ARCHITECTURE.md, Q1-Q3).
+// ---- the song's 7-string mode (hooks_mode.cpp; stub S1 in hooks_stubs_mode.cpp, mid-hooks S3 / I1 in hooks_mid.cpp,
+// S4 in hooks_calls.cpp) ---- Game layouts, September 2022 exe (docs/ARCHITECTURE.md, Q1-Q3).
 namespace rs7 {
 constexpr uint32_t kDetInstrument = 0x11EC;  // detector: instrument type, 2 = bass
+constexpr uint32_t kDetFloor = 0x11F4;       // detector: raw candidate floor MIDI (reset 0x4DBF73 writes 24)
 constexpr uint32_t kDetLowestOpen = 0x11F8;  // detector: lowest open MIDI (pitch filter)
 constexpr uint32_t kDetOwner = 0x1238;       // detector: Play_DetectInput*
 constexpr uint32_t kDetTuning = 0x1340;      // detector: int16 tuning[6]
 constexpr uint32_t kInputMatcher = 0x8;      // Play_DetectInput: matcher*
 constexpr uint32_t kMatcherDetector = 0x4;   // matcher: detector*
 constexpr uint32_t kMatcherTuning = 0x44;    // matcher: int16 tuning[6]
-constexpr uint32_t kSessionGuitar = 0x37C;   // play session: Rnd_Guitar* (Play_Session_SetupDetection 0x7DEFB0)
 }  // namespace rs7
 
 // Called from the asm stubs (cdecl, integer-only - no x87 code: callers keep values in FPU registers).
@@ -33,8 +33,11 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_OnSongTuning(void* session, vo
 // detector. A 7-entry vector on a non-bass detector lowers its lowest open MIDI to 35 + tuning[6]
 // (never raises it); anything else stays stock. Reads no side-store state.
 extern "C" __declspec(dllexport) void __cdecl Rs7_OnDetectorTuned(void* detector, const Rs7Int16Vec* tuning);
-// S2 (diagnostics): log the expected MIDI of a string-6 fret once per song.
-extern "C" void __cdecl Rs7_NoteString6(int fret, int t6);
+// PT1 / PR0 / S4: extended bass strings 4 / 5 on the detector the song bound (features/bass/bass.h): open MIDI,
+// lowest open MIDI, raw floor 22; stock floor back on a bass detector without the mode. Integer only, never throws.
+extern "C" __declspec(dllexport) void __cdecl Rs7Pitch_BassDetector(uint8_t* det);
+// Per song (song setup): the low B / high C bend holds of the last song (a new note may reuse an address).
+void Rs7Pitch_ResetBends();
 
 // ---- its state per detector / matcher (sidestore.cpp) ----
 // 7-string state per game object, keyed by the address of the object's 6-entry tuning array
@@ -55,10 +58,10 @@ void Rs7Store_ClearAll();
 constexpr size_t kRs7StoreMax = 64;
 int Rs7Store_Count();
 
-// ---- the native pitch storage (hooks.cpp, logic pitch.cpp, stubs hooks_stubs.cpp) ----
+// ---- the native pitch storage (hooks.cpp, logic pitch.cpp, mid-hooks hooks_mid.cpp and hooks_calls.cpp) ----
 
-// Native 8-entry tuning / open-MIDI storage of the detector and matcher (issue #18 stage 5 area 3,
-// docs/ARCHITECTURE.md), a member of the native 7-string unit (no ini switch since 1.0; needs MSVCR100's _msize).
+// Native 8-entry tuning / open-MIDI storage of the detector and matcher (docs/ARCHITECTURE.md), a member of the
+// native 7-string unit (no ini switch since 1.0; needs MSVCR100's _msize).
 //
 // Both objects keep every stock field; the stock code still writes and reads the six-entry arrays.
 // The grown allocations (PA1/PA2) carry capacity-8 tails the DLL maintains next to the stock arrays
@@ -93,15 +96,15 @@ constexpr unsigned kTailedMax = 128;
 
 extern "C" {
 __declspec(dllexport) extern uintptr_t g_rs7_native_pitch;  // set before patching
-// 1 while Play_Tuning_ApplyToDetection 0x5B63E0 runs (sites TS8PA / TS8PZ, [neck] native_tuner=1 only):
+// 1 while Play_Tuning_ApplyToDetection 0x5B63E0 runs (sites TS8PA / TS8PZ, native tuner only):
 // it re-applies the PROFILE's six strings (e.g. around a tuner visit). A song's strings 6 / 7 (the last
 // SetTuning with 7 / 8 entries on the same detector / matcher) then stay in the tails and in the
-// lowest open MIDI instead of being zeroed. 0 (always with native_tuner=0): exactly as before.
+// lowest open MIDI instead of being zeroed. 0 (always without the native tuner): stock.
 __declspec(dllexport) extern uintptr_t g_rs7_profile_apply;
 __declspec(dllexport) extern uintptr_t g_rs7_fn_msize;  // MSVCR100 _msize (the game's operator new heap)
 // Base MIDI per string (the stock case constants of 0x873E90 / 0x873F80, plus B1 / F#1 for 6 / 7).
 __declspec(dllexport) extern const int32_t g_rs7_pitch_gbase[8];
-__declspec(dllexport) extern const int32_t g_rs7_pitch_bbase[4];
+__declspec(dllexport) extern const int32_t g_rs7_pitch_bbase[6];
 
 // Called from the stubs (cdecl, integer only - callers keep values in x87 registers; none throws).
 __declspec(dllexport) void __cdecl Rs7Pitch_DetReset(uint8_t* det);  // PR0
@@ -110,9 +113,14 @@ __declspec(dllexport) void __cdecl Rs7Pitch_DetReset(uint8_t* det);  // PR0
 __declspec(dllexport) void __cdecl Rs7Pitch_SetSongCount(const uint8_t* det, unsigned count);
 __declspec(dllexport) unsigned __cdecl Rs7Pitch_SongCount(const uint8_t* det);
 __declspec(dllexport) void __cdecl Rs7Pitch_DetTuned(uint8_t* det, const Rs7Int16Vec* v);  // S3 / PT1
-__declspec(dllexport) void __cdecl Rs7Pitch_MatNew(uint8_t* m);                            // PM0
-__declspec(dllexport) void __cdecl Rs7Pitch_MatTuned(uint8_t* m, const Rs7Int16Vec* v);    // PM1
-// Whether a profile re-apply keeps the song's extra strings (features/tuner/hooks_session.cpp: native_tuner on).
+// The raw floor follows the lowest open MIDI (rs7p::Floor) after every writer of it: PR0 (reset = 1: the floor the
+// reset just wrote is this detector's own), PT1, S3, S4 and the tuner's low range. Cold, game thread, never throws.
+__declspec(dllexport) void __cdecl Rs7Pitch_DetFloor(uint8_t* det, int reset);
+// DetFloor's log line of a changed floor (its own export: the emulator tests replace loggers with `ret`).
+__declspec(dllexport) void __cdecl Rs7Pitch_FloorLog(uint8_t* det, int floor, int want, int lowest, int reset);
+__declspec(dllexport) void __cdecl Rs7Pitch_MatNew(uint8_t* m);                          // PM0
+__declspec(dllexport) void __cdecl Rs7Pitch_MatTuned(uint8_t* m, const Rs7Int16Vec* v);  // PM1
+// Whether a profile re-apply keeps the song's extra strings (features/tuner/hooks_session.cpp: native tuner on).
 int Rs7Pitch_KeepSongTuning();
 // PC1-PC4, the publication (strings >= 6 only): 1 = `obj` has a valid tail - the DLL wrote it (the registry of tailed
 // allocations, filled only after _msize saw the native block size, so nothing past a stock-size block is read) and
@@ -136,4 +144,15 @@ int Lowest(int stock, const int16_t t[8], size_t n, bool bass);
 // instrument 2 (bass) strings 0..3 and every other instrument's strings 0..7 tuning8[s] + base[s] + fret, any other
 // string fret - 1.
 uint32_t ExpectedPitch8(const int16_t tuning8[8], uint32_t instrument, uint32_t string, uint32_t fret);
+
+// The detector's raw floor (docs/ARCHITECTURE.md, "Low tunings"): every MIDI from it up is evaluated per frame
+// (0x4DF2B0), and only peaks at or above it count (0x4DF613, 0x4E01B7). `reset` is what Play_Detector_Reset wrote (24,
+// or a floor another mod patched in); a song whose lowest open string is below it gets one semitone below that string
+// (B0 = 23 -> 22, A0 = 21 -> 20), never less than kMinFloor. Otherwise `reset` unchanged.
+constexpr int kStockFloor = 24;  // Play_Detector_Reset 0x4DBF73
+// 0x4DF4D0 reads a note's strength at lag = rate / frequency from a buffer of 2048 (+DD4h), clamped to 2044; at 48 kHz
+// (+DCCh; both CONFIRMED in game) that is 23.5 Hz = MIDI 18.3, so G0 (19, lag 1959) is the lowest open string whose
+// pitch fits. At 44.1 kHz the limit is lower.
+constexpr int kMinFloor = 18;
+int Floor(int reset, int lowest);
 }  // namespace rs7p

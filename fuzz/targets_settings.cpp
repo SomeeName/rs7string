@@ -1,9 +1,8 @@
 // Fuzz targets: the settings store's text parse (platform/settings.h), the ini reads of every feature
 // (platform/config.h, the settings tables) and the small text parsers (pipe commands, hotkeys, key lines, colours).
 #include "dinput_wrap.h"
-#include "features/frets/frets.h"
-#include "features/string7/string7.h"
-#include "features/vguit/vguit.h"
+#include "features/extras/extras.h"
+#include "features/spacing/spacing.h"
 #include "fuzz.h"
 #include "overlay/overlaycmd.h"
 #include "platform/config.h"
@@ -95,7 +94,10 @@ Seeds IniSeeds() {
         all += line;
     }
 
-    return {Bytes(all), Bytes("[neck]\r\nstring7_v=0.5\r\n[color]\r\nstring6_color=#FF00FF\r\n"), Bytes("\xFF\xFE[x]")};
+    return {Bytes(all), Bytes("[neck]\r\nspacing_guitar7=1.34\r\n[color]\r\nstring6_color=#FF00FF\r\n"),
+            Bytes("\xFF\xFE[x]"),
+            // Over kRs7IniValueMax characters: the value is invalid, not cut short (platform/config.h).
+            Bytes("[color]\r\nstring6_color=C8C8C8" + std::string(300, ' ') + "junk\r\n")};
 }
 
 // [parser][text...]
@@ -107,12 +109,10 @@ int Text(const uint8_t* d, size_t n) {
     const std::string s = Str(d + 1, n - 1, 600);
     const std::wstring w = Widen(d + 1, n - 1);
     Rs7Cmd cmd;
-    uint8_t dik = 0, mask = 0;
-    bool down = false, all = false;
+    uint8_t dik = 0;
+    bool down = false;
     uint32_t rgb = 0;
     float f = 0;
-    rs7vg::Mode mode{};
-    int midi = 0, fret = 0;
 
     switch (d[0] % 9) {
         case 0:
@@ -128,19 +128,10 @@ int Text(const uint8_t* d, size_t n) {
             Rs7_ParseRgb(w.c_str(), &rgb);
             break;
         case 4:
-            rs7frets::ParseHalfLen(w.c_str(), &f);
-            break;
-        case 5:
-            Rs7_ParseAtlasRow(w.c_str(), &f);
-            break;
-        case 6:
-            rs7vg::ParseMode(w.c_str(), &mode, &midi);
-            break;
-        case 7:
-            rs7vg::ParseFilter(w.c_str(), &mask, &fret, &all);
+            rs7spacing::Parse(w.c_str(), &f);
             break;
         default:
-            rs7vg::ParseFloat(w.c_str(), 0.0f, 1.0f, &f);
+            Rs7Private_FuzzText(d[0] % 9, w.c_str());  // the private extras' parsers (src/features/extras/extras.h)
             break;
     }
 
@@ -148,7 +139,7 @@ int Text(const uint8_t* d, size_t n) {
 }
 
 Seeds TextSeeds() {
-    return {Bytes(std::string("\x00o set neck.string7_v 0.5", 25)),
+    return {Bytes(std::string("\x00o set neck.spacing_guitar7 1.5", 31)),
             Bytes("\x01"
                   "F9"),
             Bytes("\x02"

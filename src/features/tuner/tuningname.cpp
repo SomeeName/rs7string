@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 // Seven- and eight-string tuning names (tuningname.h): the name tables and the display forms. Values in and out
 // (tests/tuner); the game side is hooks_names.cpp.
@@ -15,7 +16,7 @@ struct Family {
     const char* drop;  // the 7th string two semitones lower
 };
 
-// k = +1 (C) .. -9 (D), the owner's list (issue #15); flats as the game's "Eb Standard" /
+// k = +1 (C) .. -9 (D) (issue #15); flats as the game's "Eb Standard" /
 // "Eb Drop Db" (no C#/Db in this range except the Db of Eb Drop Db).
 constexpr Family kFamilies[] = {
     {+1, "C Standard", "C Drop Bb"},   {0, "B Standard", "Drop A"},       {-1, "Bb Standard", "Bb Drop Ab"},
@@ -40,8 +41,95 @@ constexpr Alternate kAlternates[] = {
     {{-2, -2, -3, -5, -6, -9, -4}, "Open G7"},
 };
 
+// The 8-string families (string 7 = F#1). Rocksmith spelling: F# for the canonical instrument, flats otherwise.
+constexpr Family kFamilies8[] = {
+    {1, "G Standard", "G Drop F"},     {0, "F# Standard", "Drop E"},      {-1, "F Standard", "F Drop Eb"},
+    {-2, "E Standard", "E Drop D"},    {-3, "Eb Standard", "Eb Drop Db"}, {-4, "D Standard", "D Drop C"},
+    {-5, "Db Standard", "Db Drop B"},  {-6, "C Standard", "C Drop Bb"},   {-7, "B Standard", "B Drop A"},
+    {-8, "Bb Standard", "Bb Drop Ab"}, {-9, "A Standard", "A Drop G"}};
+constexpr size_t kFamilyCount = sizeof kFamilies / sizeof kFamilies[0];
+static_assert(kFamilyCount == sizeof kFamilies8 / sizeof kFamilies8[0], "one deep-drop table row per family");
+
+// Deeper drops: the lowest string 3..5 semitones below its family. "Drop <note>" in the family the instrument is
+// named after (k = 0: 7-string "Drop G", 8-string "Drop D"), "<family note> Drop <note>" otherwise ("A Drop F"). Low
+// notes in the families' spelling: flats, F# kept.
+constexpr int kDeepMin = 3, kDeepMax = 5;
+constexpr const char* kNotes[12] = {"C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+
+struct DeepNames {
+    std::string name[2][kFamilyCount][kDeepMax - kDeepMin + 1];  // [0] 7-string / bass (low B), [1] 8-string (low F#)
+};
+
+// Built once (thread-safe static init): the hooks ask from the game's threads.
+const DeepNames& Deep() {
+    static const DeepNames names = [] {
+        DeepNames n;
+        const Family* tables[2] = {kFamilies, kFamilies8};
+        const int lowPc[2] = {11, 6};  // B, F#
+
+        for (int b = 0; b < 2; ++b) {
+            for (size_t i = 0; i < kFamilyCount; ++i) {
+                const Family& f = tables[b][i];
+                const std::string note(f.std, std::strchr(f.std, ' '));
+
+                for (int d = kDeepMin; d <= kDeepMax; ++d) {
+                    const std::string low = kNotes[((lowPc[b] + f.k - d) % 12 + 12) % 12];
+
+                    n.name[b][i][d - kDeepMin] = f.k == 0 ? "Drop " + low : note + " Drop " + low;
+                }
+            }
+        }
+
+        return n;
+    }();
+
+    return names;
+}
+
+// Strings 0.. at offset k and the lowest string at k - d: Standard (d = 0), the table's drop (d = 2), a deep drop
+// (3..5); anything else nullptr. `table` 0 = 7-string families, 1 = 8-string families.
+const char* FamilyName(int table, int k, int d) {
+    const Family* families = table ? kFamilies8 : kFamilies;
+
+    for (size_t i = 0; i < kFamilyCount; ++i) {
+        const Family& f = families[i];
+
+        if (f.k != k) {
+            continue;
+        }
+        if (d == 0) {
+            return f.std;
+        }
+        if (d == 2) {
+            return f.drop;
+        }
+        if (d >= kDeepMin && d <= kDeepMax) {
+            return Deep().name[table][i][d - kDeepMin].c_str();
+        }
+
+        return nullptr;
+    }
+
+    return nullptr;
+}
+
 bool IsNoteWithAccidental(const std::string& w) {
     return w.size() == 2 && w[0] >= 'A' && w[0] <= 'G' && (w[1] == 'b' || w[1] == '#');
+}
+
+// A known name's display text (+ the decoration, if `decorate`); no name: empty.
+std::string Known(const char* name, const rs7tn::Config& c, const char* suffix, int cents, bool decorate) {
+    if (!name) {
+        return {};
+    }
+
+    std::string out = rs7tn::Display(rs7tn::Compose(name, c.prefix, suffix));
+
+    if (decorate) {
+        out += rs7tn::Decoration(cents);
+    }
+
+    return out;
 }
 }  // namespace
 
@@ -62,21 +150,7 @@ const char* rs7tn::Name7(const int t[7]) {
         }
     }
 
-    for (const Family& f : kFamilies) {
-        if (t[0] != f.k) {
-            continue;
-        }
-        if (t[6] == f.k) {
-            return f.std;
-        }
-        if (t[6] == f.k - 2) {
-            return f.drop;
-        }
-
-        return nullptr;
-    }
-
-    return nullptr;
+    return FamilyName(0, t[0], t[0] - t[6]);
 }
 
 const char* rs7tn::Name8(const int t[8]) {
@@ -90,59 +164,49 @@ const char* rs7tn::Name8(const int t[8]) {
         }
     }
 
-    // Rocksmith spelling: retain F# for the canonical instrument, flats for other families.
-    static constexpr Family families[] = {
-        {1, "G Standard", "G Drop F"},     {0, "F# Standard", "Drop E"},      {-1, "F Standard", "F Drop Eb"},
-        {-2, "E Standard", "E Drop D"},    {-3, "Eb Standard", "Eb Drop Db"}, {-4, "D Standard", "D Drop C"},
-        {-5, "Db Standard", "Db Drop B"},  {-6, "C Standard", "C Drop Bb"},   {-7, "B Standard", "B Drop A"},
-        {-8, "Bb Standard", "Bb Drop Ab"}, {-9, "A Standard", "A Drop G"}};
-
-    for (const Family& f : families) {
-        if (t[0] != f.k) {
-            continue;
-        }
-        if (t[7] == f.k) {
-            return f.std;
-        }
-        if (t[7] == f.k - 2) {
-            return f.drop;
-        }
-
-        return nullptr;
-    }
-
-    return nullptr;
+    return FamilyName(1, t[0], t[0] - t[7]);
 }
 
 std::string rs7tn::KnownDisplay8(const int t[8], const Config& c, int cents, bool decorate) {
-    if (!c.on) {
-        return {};
-    }
-
-    const char* name = Name8(t);
-    if (!name) {
-        return {};
-    }
-
-    std::string out = Display(Compose(name, c.prefix, Suffix8(c.suffix).c_str()));
-
-    if (decorate) {
-        out += Decoration(cents);
-    }
-
-    return out;
+    return Known(c.on ? Name8(t) : nullptr, c, SuffixN(c.suffix, 8).c_str(), cents, decorate);
 }
 
-std::string rs7tn::Suffix8(const char* suffix7) {
-    std::string s = suffix7 ? suffix7 : "";
-    const size_t i = s.find('7');
-    if (i == std::string::npos) {
-        return "8Str";
+const char* rs7tn::NameBass(const int t[6], int strings) {
+    if (strings < 5 || strings > 6) {
+        return nullptr;
     }
 
-    s[i] = '8';
+    // Every played string but the low B (string 4) at the same offset k; the low B names the family like the 7-string
+    // guitar's 7th string: at k "B Standard", at k - 2 "Drop A", 3..5 lower "Drop G".
+    const int k = t[0];
+
+    for (int s = 1; s < strings; ++s) {
+        if (s != 4 && t[s] != k) {
+            return nullptr;
+        }
+    }
+
+    const int seven[7] = {k, k, k, k, k, k, t[4]};
+
+    return Name7(seven);
+}
+
+std::string rs7tn::SuffixN(const char* suffix7, int strings) {
+    std::string s = suffix7 ? suffix7 : "";
+    const size_t i = s.find('7');
+    const char digit = char('0' + strings);
+
+    if (i == std::string::npos) {
+        return std::string(1, digit) + "Str";
+    }
+
+    s[i] = digit;
 
     return s;
+}
+
+std::string rs7tn::KnownDisplayBass(const int t[6], int strings, const Config& c, int cents, bool decorate) {
+    return Known(c.on ? NameBass(t, strings) : nullptr, c, SuffixN(c.suffix, strings).c_str(), cents, decorate);
 }
 
 std::string rs7tn::Compose(const char* base, const char* prefix, const char* suffix) {
@@ -244,22 +308,7 @@ std::string rs7tn::MarkStock(const std::string& stock, const char* prefix, const
 }
 
 std::string rs7tn::KnownDisplay(const int t[7], const Config& c, int cents, bool decorate) {
-    if (!c.on) {
-        return {};
-    }
-
-    const char* n = Name7(t);
-    if (!n) {
-        return {};
-    }
-
-    std::string out = Display(Compose(n, c.prefix, c.suffix));
-
-    if (decorate) {
-        out += Decoration(cents);
-    }
-
-    return out;
+    return Known(c.on ? Name7(t) : nullptr, c, c.suffix, cents, decorate);
 }
 
 bool Rs7_ValidNameAffix(const std::wstring& text) {

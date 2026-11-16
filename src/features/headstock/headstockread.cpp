@@ -1,5 +1,6 @@
 #include "features/headstock/headstockread.h"
 #include "platform/log.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstdint>
 #include <vector>
@@ -20,12 +21,22 @@ void** Vt(void* o) {
     return *static_cast<void***>(o);
 }
 
+int SehFilter(const char* what, const char* name);
+
+// The frontend's Open and Psarc_CreateFromStream hand out unowned pointers (refcount 0, docs/research/assets/
+// dump-on-load.md: VFS_OpenFileByName 0x49B230 AddRefs after Open): AddRef on receipt, Release when done.
 void AddRef(void* o) {
-    reinterpret_cast<Ref_t>(Vt(o)[1])(o);
+    __try {
+        reinterpret_cast<Ref_t>(Vt(o)[1])(o);
+    } __except (SehFilter("addref", nullptr)) {
+    }
 }
 
 void Release(void* o) {
-    reinterpret_cast<Ref_t>(Vt(o)[2])(o);
+    __try {
+        reinterpret_cast<Ref_t>(Vt(o)[2])(o);
+    } __except (SehFilter("release", nullptr)) {
+    }
 }
 
 // Psarc_CreateFromStream(ECX = stream, id 0, flags 1 (keep names), 0, 0, 0, names NULL).
@@ -89,7 +100,7 @@ int SafeRead(void* file, void* buf, int size, const char* name) {
 uint32_t SafeSize(void* file) {
     __try {
         return reinterpret_cast<GetSize_t>(Vt(file)[4])(file);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -109,7 +120,7 @@ void* HeadstockFrontend() {
         }
 
         return *reinterpret_cast<void**>(kFsFrontend);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -155,7 +166,10 @@ bool ReadHeadstockEntry(void* archive, const char* name, std::vector<uint8_t>& b
 }  // namespace
 
 namespace {
-bool ReadTemplatePair(const char* psarc, const char* guitarEntry, std::vector<uint8_t>& guitar,
+constexpr const char* kInlinePeg = "assets/gameplay/guitar_standard_inline/epi_whilshire_peg.nif";
+constexpr const char* kBassPeg = "assets/gameplay/guitar_bass_inline/peg_2clove.nif";
+
+bool ReadTemplatePair(const char* psarc, const char* guitarEntry, const char* pegEntry, std::vector<uint8_t>& guitar,
                       std::vector<uint8_t>& peg) {
     guitar.clear();
     peg.clear();
@@ -178,8 +192,7 @@ bool ReadTemplatePair(const char* psarc, const char* guitarEntry, std::vector<ui
     }
 
     AddRef(archive);
-    const bool ok = ReadHeadstockEntry(archive, guitarEntry, guitar) &&
-                    ReadHeadstockEntry(archive, "assets/gameplay/guitar_standard_inline/epi_whilshire_peg.nif", peg);
+    const bool ok = ReadHeadstockEntry(archive, guitarEntry, guitar) && ReadHeadstockEntry(archive, pegEntry, peg);
 
     Release(archive);
 
@@ -194,51 +207,30 @@ bool ReadTemplatePair(const char* psarc, const char* guitarEntry, std::vector<ui
 
 bool Rs7HeadstockRead_HeadstockTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedrh.psarc",
-                            "assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", guitar, peg);
+                            "assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", kInlinePeg, guitar, peg);
 }
 
 // Gitarrenkopfplatte 3+3 (assetload_load.cpp): the in-line peg and the one texture of it that the 3+3 peg package
 // does not carry (wilshire_hardware.dds; hardware_gloss / loft_env_map / normal_sm have 3+3 namesakes).
 bool Rs7HeadstockRead_InlinePeg(std::vector<uint8_t>& peg, std::vector<uint8_t>& hardware) {
-    peg.clear();
-    hardware.clear();
-    const char* psarc = "nativeexe/base/dependency_guitarstandardinlinedrh.psarc";
-    void* fe = HeadstockFrontend();
-    if (!fe) {
-        return false;
-    }
-
-    void* stream = nullptr;
-    if (!SafeOpen(fe, psarc, &stream) || !stream) {
-        return false;
-    }
-
-    AddRef(stream);
-    void* archive = SafeCreate(stream, psarc);
-
-    Release(stream);
-    if (!archive) {
-        return false;
-    }
-
-    AddRef(archive);
-    const bool ok =
-        ReadHeadstockEntry(archive, "assets/gameplay/guitar_standard_inline/epi_whilshire_peg.nif", peg) &&
-        ReadHeadstockEntry(archive, "assets/gameplay/guitar_standard_inline/wilshire_hardware.dds", hardware);
-
-    Release(archive);
-
-    if (!ok) {
-        peg.clear();
-        hardware.clear();
-    }
-
-    return ok;
+    return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedrh.psarc", kInlinePeg,
+                            "assets/gameplay/guitar_standard_inline/wilshire_hardware.dds", peg, hardware);
 }
 
 // The left-handed in-line frame; its archive carries the same peg (identical bytes, CONFIRMED by SHA-256 on the
 // owner's install), so the left-handed package is self-contained.
 bool Rs7HeadstockRead_HeadstockTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedlh.psarc",
-                            "assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif", guitar, peg);
+                            "assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif", kInlinePeg, guitar,
+                            peg);
+}
+
+bool Rs7HeadstockRead_BassTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+    return ReadTemplatePair("nativeexe/base/dependency_guitarbassinlinedrh.psarc",
+                            "assets/gameplay/guitar_bass_inline/bass_thunder.nif", kBassPeg, guitar, peg);
+}
+
+bool Rs7HeadstockRead_BassTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+    return ReadTemplatePair("nativeexe/base/dependency_guitarbassinlinedlh.psarc",
+                            "assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif", kBassPeg, guitar, peg);
 }

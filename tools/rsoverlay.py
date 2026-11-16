@@ -2,7 +2,7 @@
 
     uv run python tools/rsoverlay.py show | hide | toggle | save | status
     uv run python tools/rsoverlay.py tab neck
-    uv run python tools/rsoverlay.py set neck.string7_v 0.5
+    uv run python tools/rsoverlay.py set neck.spacing_guitar7 1.34
     uv run python tools/rsoverlay.py raw "o set color.string6_color FF00FF" "o tab colour"
 
 Each command is one line "o ..." on rs7string's DirectInput pipe \\\\.\\pipe\\rs7string (needs

@@ -70,6 +70,7 @@
   <ItemGroup>
     <MASM Include="src\platform\*.asm" />
   </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)private.props" Condition="Exists('$(MSBuildThisFileDirectory)private.props')" />
   <Import Project="$(MSBuildThisFileDirectory)analyze.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

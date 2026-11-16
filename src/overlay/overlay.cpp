@@ -2,13 +2,14 @@
 #include "backends/imgui_impl_dx9.h"
 #include "backends/imgui_impl_win32.h"
 #include "d3d/present.h"
+#include "features/arrangements/arrangements.h"
+#include "features/testdrive/testdrive.h"
 #include "imgui.h"
 #include "overlay/capture.h"
 #include "overlay/overlaycmd.h"
 #include "overlay/ui.h"
 #include "platform/log.h"
 #include "platform/settings.h"
-#include <cstdio>
 #include <cstring>
 #include <d3d9.h>
 #include <string>
@@ -17,10 +18,10 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace {
 wchar_t g_ini[MAX_PATH];
-wchar_t g_dir[MAX_PATH];
 bool g_enabled;
 int g_hotkey = VK_F9;
 volatile LONG g_visible;
+volatile LONG g_faulted;  // sticky: the callback guard disabled the overlay
 volatile LONG g_toggles;  // hotkey presses not yet handled by the render thread
 DWORD g_renderTid, g_wndTid;
 HWND g_hwnd;
@@ -28,7 +29,6 @@ WNDPROC g_prevProc;
 bool g_wndTried;
 bool g_imgui;  // context + both backends initialised
 bool g_imguiFailed;
-volatile bool g_wantMouse, g_wantKeys;
 Rs7OverlayUi g_ui;
 
 // Window messages for ImGui when the window thread is not the render thread (replayed in Present).
@@ -56,18 +56,67 @@ bool ForImGui(UINT m) {
 }
 
 void SetVisible(bool on, const char* by) {
-    if ((g_visible != 0) == on) {
+    const LONG want = on ? 1 : 0;
+
+    if (InterlockedExchange(&g_visible, want) == want) {
         return;
     }
 
-    InterlockedExchange(&g_visible, on ? 1 : 0);
     if (!on) {
         Rs7Overlay_SetCapture(false, false);  // hidden: the game gets all input again
+        // Every caller runs on the render thread (OnPresent and what it calls), so ImGui may be touched here.
+        // Drop input queued while shown and release held keys/buttons: their up messages never reach ImGui
+        // while hidden, and nothing stale is replayed on the next show.
+        AcquireSRWLockExclusive(&g_msgLock);
+        g_msgCount = 0;
+        ReleaseSRWLockExclusive(&g_msgLock);
+
+        if (g_imgui) {
+            ImGui::GetIO().ClearEventsQueue();
+            ImGui::GetIO().ClearInputKeys();
+            ImGui::GetIO().ClearInputMouse();
+        }
     }
+
     Rs7Log("overlay: %s (%s)", on ? "shown" : "hidden", by);
 }
 
+// Window thread only: the hotkey's WM_KEYDOWN was swallowed, so swallow its WM_CHAR too. TranslateMessage posts that
+// WM_CHAR before the key's WM_KEYUP; a hotkey without one (an F key) is cleared at its key-up, so a later WM_CHAR
+// without a key-down (IME, Alt codes) gets through.
+bool g_hotkeyChar;
+
+LRESULT PassToGame(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_KEYDOWN && !(l & (1 << 30))) {
+        Rs7Arr_KeyDown(unsigned(w));  // only keys the overlay passed through may page arrangements
+    }
+
+    return CallWindowProcW(g_prevProc, h, m, w, l);
+}
+
+void OnFault() {
+    InterlockedExchange(&g_faulted, 1);
+    InterlockedExchange(&g_visible, 0);
+    Rs7Overlay_SetCapture(false, false);
+    // No ImGui calls or message-queue lock: the fault may have left that state incomplete.
+}
+
 LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (g_faulted) {
+        return PassToGame(h, m, w, l);
+    }
+
+    if (m == WM_CHAR || m == WM_SYSCHAR) {
+        if (g_hotkeyChar) {
+            g_hotkeyChar = false;
+            return 0;
+        }
+    } else if (m == WM_KEYDOWN || m == WM_SYSKEYDOWN) {
+        g_hotkeyChar = int(w) == g_hotkey;
+    } else if (m == WM_KEYUP || m == WM_SYSKEYUP) {
+        g_hotkeyChar = false;
+    }
+
     if ((m == WM_KEYDOWN || m == WM_SYSKEYDOWN) && int(w) == g_hotkey) {
         if (!(l & (1 << 30))) {
             InterlockedIncrement(&g_toggles);  // not an auto-repeat
@@ -84,21 +133,21 @@ LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ImGui_ImplWin32_WndProcHandler(h, m, w, l);
         } else {
             AcquireSRWLockExclusive(&g_msgLock);
-            if (g_msgCount < kMsgCap) {
+            if (g_visible && !g_faulted && g_msgCount < kMsgCap) {
                 g_msgs[g_msgCount++] = {m, w, l};
             }
             ReleaseSRWLockExclusive(&g_msgLock);
         }
 
-        if (IsMouseMsg(m) && m != WM_MOUSEMOVE && g_wantMouse) {
+        if (IsMouseMsg(m) && m != WM_MOUSEMOVE && Rs7Overlay_WantsMouse()) {
             return 0;
         }
-        if (IsKeyMsg(m) && g_wantKeys) {
+        if (IsKeyMsg(m) && Rs7Overlay_WantsKeys()) {
             return 0;
         }
     }
 
-    return CallWindowProcW(g_prevProc, h, m, w, l);
+    return PassToGame(h, m, w, l);
 }
 
 void HookWindow(IDirect3DDevice9* dev) {
@@ -113,13 +162,21 @@ void HookWindow(IDirect3DDevice9* dev) {
 
     g_hwnd = h;
     g_wndTid = GetWindowThreadProcessId(h, nullptr);
-    g_prevProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(h, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&WndProc)));
+    // g_prevProc must be valid before WndProc is installed: the window thread may call it at once.
+    g_prevProc = reinterpret_cast<WNDPROC>(GetWindowLongPtrW(h, GWLP_WNDPROC));
+    const auto prev =
+        reinterpret_cast<WNDPROC>(SetWindowLongPtrW(h, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&WndProc)));
+    const DWORD err = prev ? 0 : GetLastError();  // before the log line below can change it
+
+    if (prev) {
+        g_prevProc = prev;  // someone subclassed in between
+    }
     Rs7Log("overlay: window %p subclassed (previous procedure %p%s); window thread %lu, render thread %lu%s",
            static_cast<void*>(h), reinterpret_cast<void*>(g_prevProc),
            GetModuleHandleW(L"xinput1_3.dll") ? ", RSMods present" : "", g_wndTid, g_renderTid,
            g_wndTid == g_renderTid ? " (same)" : " (different: messages are replayed on the render thread)");
-    if (!g_prevProc) {
-        Rs7Log("overlay: SetWindowLongPtrW failed (%lu) - no hotkey, no input", GetLastError());
+    if (!prev) {
+        Rs7Log("overlay: SetWindowLongPtrW failed (%lu) - no hotkey, no input", err);
     }
 }
 
@@ -147,6 +204,12 @@ bool InitImGui(IDirect3DDevice9* dev) {
     }
 
     g_imgui = true;
+    // Fixed from here on: Configure, the first Present and HookWindow all ran before this.
+    g_ui.iniPath = g_ini;
+    g_ui.hotkey = g_hotkey;
+    g_ui.hwnd = g_hwnd;
+    g_ui.renderTid = g_renderTid;
+    g_ui.wndTid = g_wndTid;
     Rs7Log("overlay: Dear ImGui %s ready (own context, no imgui.ini)", IMGUI_VERSION);
 
     return true;
@@ -213,7 +276,11 @@ void RunCommand(const Rs7Cmd& c) {
         case Rs7CmdKind::Save: {
             const int n = Rs7Set_Save(g_ini);
 
-            Rs7Log("overlay: cmd save -> %d keys written to %ls", n, g_ini);
+            if (n < 0) {
+                Rs7Log("overlay: cmd save -> write error, %ls not fully saved", g_ini);
+            } else {
+                Rs7Log("overlay: cmd save -> %d keys written to %ls", n, g_ini);
+            }
             break;
         }
         case Rs7CmdKind::Status:
@@ -234,6 +301,7 @@ void ReplayMessages() {
     g_msgCount = 0;
     ReleaseSRWLockExclusive(&g_msgLock);
 
+    // Known limit: the backend reads Ctrl/Shift/Alt with GetKeyState on this thread, not from the message.
     for (unsigned i = 0; i < n; ++i) {
         ImGui_ImplWin32_WndProcHandler(g_hwnd, local[i].m, local[i].w, local[i].l);
     }
@@ -249,12 +317,6 @@ void Draw(IDirect3DDevice9* dev) {
     ImGui_ImplDX9_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
-    g_ui.iniPath = g_ini;
-    g_ui.gameDir = g_dir;
-    g_ui.hotkey = g_hotkey;
-    g_ui.hwnd = g_hwnd;
-    g_ui.renderTid = g_renderTid;
-    g_ui.wndTid = g_wndTid;
     bool open = true;
 
     Rs7OverlayUi_Draw(g_ui, &open);
@@ -263,9 +325,7 @@ void Draw(IDirect3DDevice9* dev) {
     }
     ImGui::EndFrame();
     ImGui::Render();
-    g_wantMouse = io.WantCaptureMouse;
-    g_wantKeys = io.WantCaptureKeyboard;
-    Rs7Overlay_SetCapture(g_wantMouse, g_wantKeys);
+    Rs7Overlay_SetCapture(g_visible && io.WantCaptureMouse, g_visible && io.WantCaptureKeyboard);
 
     IDirect3DSurface9* back = nullptr;
     IDirect3DSurface9* rt = nullptr;
@@ -319,6 +379,8 @@ void Draw(IDirect3DDevice9* dev) {
 }
 
 void OnPresent(IDirect3DDevice9* dev) {
+    Rs7Variant_OnFrame();  // [test] force_colourblind: after the frame's draws, before the next update (testdrive.h)
+
     if (!g_renderTid) {
         g_renderTid = GetCurrentThreadId();
         Rs7Log("overlay: first Present on thread %lu (hotkey %s = VK %02X)", g_renderTid, Rs7Set_Text("overlay.hotkey"),
@@ -365,10 +427,6 @@ void AfterReset(IDirect3DDevice9*, HRESULT hr) {
 
 void Rs7Overlay_Configure(const wchar_t* iniPath) {
     wcsncpy_s(g_ini, iniPath, _TRUNCATE);
-    wcsncpy_s(g_dir, iniPath, _TRUNCATE);
-    if (wchar_t* slash = wcsrchr(g_dir, L'\\')) {
-        slash[1] = 0;
-    }
     g_enabled = Rs7Set_Bool("overlay.enabled");
     const int vk = Rs7_ParseHotkey(Rs7Set_Text("overlay.hotkey"));
 
@@ -392,6 +450,7 @@ void Rs7Overlay_OnDevice(void* device) {
     cb.onPresent = OnPresent;
     cb.beforeReset = BeforeReset;
     cb.afterReset = AfterReset;
+    cb.onFault = OnFault;
     if (!Rs7Present_InstallOn(device, cb)) {
         Rs7Log("overlay: not installed");
     }

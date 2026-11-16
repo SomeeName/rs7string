@@ -1,11 +1,12 @@
 #pragma once
+#include "model/instrument.h"
 #include "model/stringcolour.h"
 #include <cstdint>
 #include <string>
 
 struct Rs7HookTable;
 struct Rs7SetTable;
-// N1 N5 N12 N13 N18-N23 and the X_* game function references (group Core): registration.cpp.
+// N1 N5 N12 N13 N18-N21 and the X_* game function references (group Core): registration.cpp.
 extern const Rs7HookTable kRs7String7Hooks;
 
 // The per-guitar 7-string state behind N5 (Rnd_Guitar_Update, every frame): hooks.cpp, its logic string7.cpp. String 6
@@ -16,7 +17,7 @@ extern const Rs7HookTable kRs7String7Hooks;
 //    setup and arms it; Rs7S7_Visibility decides per frame whether it shows the 7-string look (frets, headstock
 //    model, 7th peg, the native string 6's active count).
 //  - N12/N13 put string 6 into the SNG Section.stringMask (Rs7_S7MaskBackfill), so the stock section dimming
-//    covers it; N18-N23 and PL1 reach the native string 6 through Rs7_S7BendTarget / Rs7_S7Pluck.
+//    covers it; N18-N21 and PL1 reach the native string 6 through Rs7_S7BendTarget / Rs7_S7Pluck.
 
 // Game functions and data, bound by Rs7_Startup from callref/ref sites (never written); the native GuitarStrings,
 // pegs, frets and headstock model use them.
@@ -33,9 +34,6 @@ __declspec(dllexport) extern uintptr_t g_rs7_frame_global;  // X_DT      0x135FB
 __declspec(dllexport) extern uintptr_t g_rs7_s7_on;         // [neck] string7_line (read by N1, N12 and C)
 // Some player in 7-string mode at the last song setup (S4). Log/diagnostics only.
 __declspec(dllexport) extern volatile long g_rs7_any7;
-// [neck] string7_v: the 7th string's atlas row (v_positionString / g_VPosition), used by the native strings
-// (features/strings/strings.h). Default 0.4 = string 0's row (low E); the bass rows 0.0..0.3 are filled too.
-__declspec(dllexport) extern float g_rs7_s7_v;
 
 // N5 (the per-frame mid-hook, full mode). None throws.
 __declspec(dllexport) void __cdecl Rs7_S7Update(uint8_t* guitar);
@@ -45,25 +43,28 @@ __declspec(dllexport) void __cdecl Rs7_S7Record(void* gs);
 __declspec(dllexport) void __cdecl Rs7_S7Free(void* gs);
 // PL1 (chord string 6): plucks the native string 6 (the native copy of the stock pluck). 1 = done.
 __declspec(dllexport) int __cdecl Rs7_S7Pluck(void* gs, uint32_t sngFret, uint32_t fret);
+// The same for added string `string` (6 or 7; the native pluck copy checks the active count).
+__declspec(dllexport) int __cdecl Rs7_S7PluckString(void* gs, uint32_t string, uint32_t sngFret, uint32_t fret);
 // N13 (integer-only, every level of every SNG load): the stock back-fill for bit 6 of
 // Section.stringMask[level] (song = the SNG song: sections at +0F4h/+0F8h, 0x58 bytes each, mask
 // bytes at +34h + level). A no-op without string-6 notes.
 __declspec(dllexport) void __cdecl Rs7_S7MaskBackfill(uint8_t* song, uint32_t level);
 // The native string 6 of this GuitarStrings, else nullptr.
 __declspec(dllexport) uint8_t* __cdecl Rs7_S7DimTarget(void* gs);
-// N19 / N20 / N23 (light mid-hooks, integer only, no log): the native string 6 of this GuitarStrings (ghost: its ghost
-// string), else nullptr. Rs7_S7BendTarget without the log.
+// N19 / N20 (light mid-hooks, integer only, no log): the native string 6 of this GuitarStrings (ghost: its ghost
+// string; the callers pass 0), else nullptr. Rs7_S7BendTarget without the log.
 __declspec(dllexport) uint8_t* __cdecl Rs7_S7BendObject(void* gs, uint32_t ghost);
-// N18 / N22 (and the kinds of N19 / N20 / N23): the native string object the stock string-bend calls of 0x7E3700 /
-// 0x7E4230 act on for string 6, else nullptr. Kind 0 (N18: Rnd_GuitarString_SetBend 0x598910 from the detected bend)
-// and 1 (N19/N20: release): string 6; kind 2 (N22: the chart bend, "ghost_up_NN") and 3 (N23: its release): its ghost.
-// Logs the first bend of each kind per song.
+// N18: the native string 6 the stock string-bend call of 0x7E3700 (Rnd_GuitarString_SetBend 0x598910 from the detected
+// bend) acts on, else nullptr. kind: 0 (bend; the only one left, logs the first per song) or 1 (release, no log). The
+// arguments stay as the emulator oracle records them (tools/tests/test_midhook_cold.py).
 __declspec(dllexport) uint8_t* __cdecl Rs7_S7BendTarget(void* gs, uint32_t kind, uint32_t fret, uint32_t amountBits);
 }
 
 namespace rs7s7 {
-constexpr float kDefaultAtlasRow = 0.4f;  // [neck] string7_v default: string 0's row (low E)
-constexpr int kMaxGuitars = 8;            // side table entries (GuitarStrings*)
+// The added strings' atlas row (v_positionString / g_VPosition) in the native strings: string 0's row (low E). The
+// former [neck] string7_v.
+constexpr float kDefaultAtlasRow = 0.4f;
+using rs7::kMaxGuitars;  // side table entries (GuitarStrings*)
 }  // namespace rs7s7
 
 // fix/escrebuild: the guitar object `guitar` is gone (released by the game, e.g. a clite rebuild): every per-guitar
@@ -124,9 +125,9 @@ void Rs7S7_Stats(Rs7S7Stats* out);
 
 // ---- settings (settings.cpp)
 
-// [neck] string7_line, string7_v.
+// [neck] string7_line.
 extern const Rs7SetTable kRs7String7Settings;
-// The 7th string line status row and its Neck section (platform/uilayout.h).
+// The 7th string line's player setting and status row (platform/uilayout.h).
 struct Rs7UiTable;
 extern const Rs7UiTable kRs7String7Ui;
 
@@ -134,24 +135,15 @@ extern const Rs7UiTable kRs7String7Ui;
 //   string7_line=0|1         1 (default): the 7th string line on the neck (native strings, features/strings/strings.h).
 //                            0: N1 / N21 request the stock instance counts and N12 keeps string 6 out
 //                            of the SNG section mask (the sites stay patched).
-//   string7_v=0.4            the 7th string's atlas row (v_positionString / g_VPosition), 0.0..0.9:
-//                            0.4..0.9 = guitar strings 0..5, 0.0..0.3 = bass strings. Default 0.4
-//                            (string 0's row). Invalid text or out of range: the default, logged.
 struct Rs7String7Config {
     int string7LineRaw = 1;
-    bool string7Line = true;    // raw != 0
-    std::wstring string7VRaw;   // the text as read (for the log)
-    bool string7VValid = true;  // missing, empty or a number in [0, 0.9]
-    float string7V = 0.4f;
+    bool string7Line = true;  // raw != 0
 };
 
-// Reads [neck] string7_line / string7_v from a resolved ini path (nullptr: the defaults).
+// Reads [neck] string7_line from a resolved ini path (nullptr: the default).
 Rs7String7Config Rs7String7_ReadIni(const wchar_t* iniPath);
 // The last startup read (Rs7Set_ReadIni).
 const Rs7String7Config& Rs7String7_Config();
-
-// "0.35" -> 0.35f. Whole text must be a finite number in [0, 0.9] (blanks around it allowed). string7.cpp.
-bool Rs7_ParseAtlasRow(const wchar_t* text, float* out);
 
 // R2, R3a-R3c, R4, R6 (hooks_lanes.cpp): one coordinate of string 6's lane cell, extrapolated from strings 0 and 1 (2 *
 // cell0 - cell1), rounded once to float. Equals the old x87 code's float for finite results (both correctly rounded: 53

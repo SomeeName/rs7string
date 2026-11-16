@@ -7,8 +7,8 @@
 // background=1 for the pipe). Every command logs one "overlay: cmd ..." line with its result.
 //
 //   o toggle | o show | o hide        overlay visibility
-//   o tab <status|colour|neck|tuner|debug|window|log>   select a tab
-//   o set <key> <value>               like editing it in the overlay ("neck.string7_v 0.5", a bare key
+//   o tab <name>                      select a tab (names: Rs7OverlayUi_RequestTab, overlay/ui.h)
+//   o set <key> <value>               like editing it in the overlay ("neck.spacing_guitar7 1.2", a bare key
 //                                     works when unique; the value is the rest of the line)
 //   o save                            write the changed keys into rs7string.ini
 //   o status                          log a status line (frames, visibility, dirty keys)
@@ -21,7 +21,7 @@ struct Rs7Cmd {
     std::string value;  // Set: the value text
 };
 
-// "o set neck.string7_v 0.5" -> {Set, "neck.string7_v", "0.5"}. False for anything else (lines not
+// "o set neck.spacing_guitar7 1.2" -> {Set, "neck.spacing_guitar7", "1.2"}. False for anything else (lines not
 // starting with "o ", unknown verbs, missing arguments).
 bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out);
 

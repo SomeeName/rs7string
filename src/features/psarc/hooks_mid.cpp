@@ -13,9 +13,9 @@ __declspec(dllexport) uintptr_t g_rs7_skip_PP_TOC = 0;     // site + 0x4D: lea e
 __declspec(dllexport) uintptr_t g_rs7_resume_PP_SNGF = 0;  // site + 5: the stock jne <reject>
 
 // PP_TOC 0x8A3643 `mov ecx,10h` at the start of the TOC decrypt block (`mov eax,[ebp-74h]` before it has run).
-// [ebp-54h] = archiveFlags, bit 4 (2) = encrypted TOC: then the replay (the stock decrypt). Plain: what the block's
-// tail does without its pushes (EDX = [ebp-74h], EDI = [EDX]), continuing after the block. Flags: those of the old
-// stub's `test byte [ebp-54h],4` at both exits.
+// [ebp-54h] = archiveFlags, value 4 (bit 2) = encrypted TOC: then the replay (the stock decrypt). Plain: what the
+// block's tail does without its pushes (EDX = [ebp-74h], EDI = [EDX]), continuing after the block. Flags: those of the
+// old stub's `test byte [ebp-54h],4` at both exits.
 __declspec(dllexport) void __cdecl Rs7_Mid_PP_TOC(Rs7Mid::Context& c) {
     const uint8_t flags = Rs7Mid::Byte(c.ebp - 0x54);
 

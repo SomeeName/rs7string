@@ -7,12 +7,32 @@
 namespace rs7hs {
 namespace {
 constexpr size_t kLimit = 64u << 20;
-constexpr const char* kNames[] = {
-    "rs7_inline7.nif",    "rs7_inline8.nif",          "rs7_peg.nif",    "rs7hs_env.dds",       "rs7hs_flat_n.dds",
-    "rs7hs_hardware.dds", "rs7hs_hardware_gloss.dds", "rs7hs_wood.dds", "rs7hs_wood_gloss.dds"};
-// The left-handed package (rs7string_headstock_lh.bin, templates epi_whilshire_cherry_lh.nif + the peg):
-// only the mirrored model; the textures come from the right-handed package.
-constexpr const char* kNamesLh[] = {"rs7_inline7_lh.nif"};
+constexpr unsigned kMaxArtifacts = 64;
+
+// An artifact is written next to the DLL's headstock folder under its own name: a plain basename, rs7_*.nif or
+// rs7hs_*.dds, lower-case letters, digits and '_' only (no path, no other file types).
+bool SafeName(const std::string& n) {
+    const auto ends = [&](const char* e) {
+        const size_t l = std::strlen(e);
+
+        return n.size() > l && n.compare(n.size() - l, l, e) == 0;
+    };
+    const bool nif = n.rfind("rs7_", 0) == 0 && ends(".nif"), dds = n.rfind("rs7hs_", 0) == 0 && ends(".dds");
+
+    if (!nif && !dds) {
+        return false;
+    }
+
+    for (size_t i = 0; i + 4 < n.size(); ++i) {
+        const char c = n[i];
+
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 uint32_t Rot(uint32_t x, unsigned n) {
     return (x >> n) | (x << (32 - n));
@@ -153,7 +173,7 @@ struct Reader {
         return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
     }
 
-    void Header(const Bytes* templates) {
+    void Header(const Bytes* const* templates) {  // {guitar, peg} or nullptr
         if (U32() != 1) {
             Bad("package version");
         }
@@ -162,10 +182,10 @@ struct Reader {
             const auto want = Take(32);
 
             if (templates) {
-                if (templates[i].empty() || templates[i].size() > kLimit) {
+                if (templates[i]->empty() || templates[i]->size() > kLimit) {
                     Bad("template size");
                 }
-                const auto have = Digest(templates[i]);
+                const auto have = Digest(*templates[i]);
 
                 if (std::memcmp(want, have.data(), 32)) {
                     Bad("template hash mismatch");
@@ -175,14 +195,26 @@ struct Reader {
     }
 };
 
-void Parse(const Bytes& package, const Bytes* templates, std::vector<File>& files, std::vector<Expected>& manifest) {
+void CheckName(const std::string& name, const std::vector<Expected>& before) {
+    if (!SafeName(name)) {
+        Bad("artifact name");
+    }
+
+    for (const Expected& e : before) {
+        if (e.name == name) {
+            Bad("artifact name repeated");
+        }
+    }
+}
+
+void Parse(const Bytes& package, const Bytes* const* templates, std::vector<File>& files,
+           std::vector<Expected>& manifest) {
     Reader r(package);
 
     r.Header(templates);
     const auto count = r.U32();
-    const char* const* names = count == std::size(kNames) ? kNames : count == std::size(kNamesLh) ? kNamesLh : nullptr;
 
-    if (!names) {
+    if (!count || count > kMaxArtifacts) {
         Bad("artifact count");
     }
     size_t total = 0;
@@ -196,9 +228,8 @@ void Parse(const Bytes& package, const Bytes* templates, std::vector<File>& file
         const auto np = r.Take(namelen);
         const std::string name(reinterpret_cast<const char*>(np), namelen);
 
-        if (name != names[i]) {
-            Bad("artifact name/order");
-        }
+        CheckName(name, manifest);
+
         const auto size = r.U32();
 
         if (!size || size > kLimit - total) {
@@ -236,10 +267,10 @@ void Parse(const Bytes& package, const Bytes* templates, std::vector<File>& file
                 }
 
                 if (templates) {
-                    if (offset > templates[tid].size() || n > templates[tid].size() - offset) {
+                    if (offset > templates[tid]->size() || n > templates[tid]->size() - offset) {
                         Bad("copy range");
                     }
-                    from = templates[tid].data() + offset;
+                    from = templates[tid]->data() + offset;
                 }
             } else {
                 Bad("instruction tag");
@@ -284,7 +315,7 @@ bool Build(const Bytes& guitar, const Bytes& peg, const Bytes& package, std::vec
     error.clear();
 
     try {
-        const Bytes templates[] = {guitar, peg};
+        const Bytes* const templates[] = {&guitar, &peg};  // no copies of the (up to 64 MiB) templates
         std::vector<Expected> manifest;
         std::vector<File> candidate;
 
@@ -319,7 +350,7 @@ bool CheckTemplates(const Bytes& guitar, const Bytes& peg, const Bytes& package,
 
     try {
         Reader r(package);
-        const Bytes templates[] = {guitar, peg};
+        const Bytes* const templates[] = {&guitar, &peg};  // no copies of the (up to 64 MiB) templates
 
         r.Header(templates);
         return true;

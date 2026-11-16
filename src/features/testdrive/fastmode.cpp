@@ -28,10 +28,14 @@ void Rs7Fast_Start(const wchar_t* iniPath, const Rs7Site* sites, int count, uint
     for (const auto& r : res.resolved) {
         if (!std::strcmp(r.site->id, "FST_REVIEW")) {
             static const uint8_t kNop2[] = {0x90, 0x90};
-            const bool ok = Rs7_CasCode(r.addr, r.original.data(), kNop2, sizeof kNop2) == Rs7CasResult::Written;
+            const Rs7CasResult result = Rs7_CasCode(r.addr, r.original.data(), kNop2, sizeof kNop2);
+            const char* status =
+                result == Rs7CasResult::Written                 ? ""
+                : result == Rs7CasResult::WrittenCleanupFailed  ? " - written, protection restore FAILED"
+                : result == Rs7CasResult::MismatchCleanupFailed ? " - NOT written, protection restore FAILED"
+                                                                : " - NOT written";
 
-            Rs7Log("fast: after a song -> LearnASong_SongOptions (results screen skipped)%s",
-                   ok ? "" : " - NOT written");
+            Rs7Log("fast: after a song -> LearnASong_SongOptions (results screen skipped)%s", status);
         }
     }
 }

@@ -150,6 +150,8 @@ def parse_map(path: Path, alias: tuple[str, ...] = ()) -> tuple[list[Sym], dict[
             sec, off, name, va, flags, obj = m.groups()
             name = names.canon(name)
             syms.append(Sym(int(sec, 16), int(off, 16), int(va, 16), name, bool(flags and "f" in flags), obj))
+    if "CODE" not in classes.values() or not any(s.func and classes.get(s.section) == "CODE" for s in syms):
+        raise ValueError(f"{path}: no recognised code sections and functions")
     return syms, classes
 
 
@@ -181,6 +183,21 @@ class Image:
             mem[a : a + n] = bytes(n)
         self.mem = bytes(mem)
         self.syms, self.classes = parse_map(map_path, alias)
+        for s in self.syms:
+            if not self.inside(s.va):
+                raise ValueError(f"{map_path}: symbol {s.name} at {s.va:#x} is outside {dll}")
+            if s.func:
+                sec = self.pe.sections[s.section - 1] if 0 < s.section <= len(self.pe.sections) else None
+                if (
+                    sec is None
+                    or not sec.Characteristics & 0x20
+                    or not (
+                        self.base + sec.VirtualAddress
+                        <= s.va
+                        < self.base + sec.VirtualAddress + min(sec.Misc_VirtualSize, sec.SizeOfRawData)
+                    )
+                ):
+                    raise ValueError(f"{map_path}: function {s.name} at {s.va:#x} is outside image code")
         # the __DATE__ / __TIME__ strings are named after a hash of their content: one name for both
         self.syms = [
             replace(s, name="<__DATE__/__TIME__>")
@@ -511,7 +528,15 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--limit", type=int, default=40, help="differences to print per kind")
     args = ap.parse_args(argv)
-    old, new = Image(args.old_pe, args.old_map, tuple(args.alias)), Image(args.new_pe, args.new_map, tuple(args.alias))
+    try:
+        old = Image(args.old_pe, args.old_map, tuple(args.alias))
+        new = Image(args.new_pe, args.new_map, tuple(args.alias))
+    except (OSError, ValueError, pefile.PEFormatError) as error:
+        print(f"cmp_functions: {error}")
+        return 1
+    if not old.extents(True) or not new.extents(True):
+        print("cmp_functions: no functions to compare")
+        return 1
     bad = 0
     for label, funcs in (("functions", True),) + ((("data symbols", False),) if args.data else ()):
         rep = compare(old, new, funcs)

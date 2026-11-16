@@ -7,7 +7,7 @@
 //   PUBNL PUBAN PUBAC   copies of 0x4E6E90 (matcher), 0x875430 (tracker), 0x8755C0 (chord-mistake template; ECX = the
 //                       template): Rs7PublishPitch_Target(kind, the entry's [esp+4])
 // Light mid-hooks (the detection path calls these per note; integer-only targets, LIGHT_CALLBACKS in
-// tools/tests/emu_harness.py), converted from naked stubs (refactor step 7 batch 5, frozen at 9c0e44f,
+// tools/tests/emu_harness.py), converted from naked stubs (frozen at 9c0e44f,
 // tools/tests/test_midhook_features.py). The old stubs kept the entry flags (pushfd / popfd); so does the thunk.
 #include "features/publish/hooks.h"
 #include "platform/midhook.h"
@@ -16,14 +16,21 @@
 using Rs7Mid::Context;
 
 namespace {
+// 0 (nothing built for this kind): leave the jump alone, the entry replays the stock bytes.
+void JumpTo(Context& c, uintptr_t target) {
+    if (target) {
+        c.jump = static_cast<uint32_t>(target);
+    }
+}
+
 void Entry(Context& c, unsigned kind, uint32_t object) {
-    c.jump = static_cast<uint32_t>(Rs7Publish_Target(kind, Rs7Mid::Ptr(object)));
+    JumpTo(c, Rs7Publish_Target(kind, Rs7Mid::Ptr(object)));
 }
 
 void PitchEntry(Context& c, unsigned kind) {
     const uint32_t object = Rs7Mid::Dword(c.esp + 4);
 
-    c.jump = static_cast<uint32_t>(Rs7PublishPitch_Target(kind, Rs7Mid::Ptr(object)));
+    JumpTo(c, Rs7PublishPitch_Target(kind, Rs7Mid::Ptr(object)));
 }
 }  // namespace
 

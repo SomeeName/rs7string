@@ -1,14 +1,14 @@
 #pragma once
+#include "model/slots.h"
 #include <cstdint>
 
 struct Rs7HookTable;
-constexpr int kRs7NgNative = 1;  // Rs7Hook::ng: written only with the native capacity-8 next-note grid
-// The native next-note grid hooks (group Nextgrid): the NGB<va> layout sites, NG1, NGP, NG9; and the X_SPAWN /
-// X_ADV3 refs NG9's row-6 spawn calls (data references, group Core).
+// The native next-note grid hooks (group Nextgrid): the NGB<va> layout sites, NG1, NGP, NG9. The table also lists the
+// X_SPAWN / X_ADV3 refs NG9's row-6 spawn calls; as data references they count as group Core (Rs7_FeatureOf).
 extern const Rs7HookTable kRs7NextgridHooks;
 
-// Native capacity-8 next-note / target grid (issue #18 stage 5 area 2, docs/ARCHITECTURE.md
-// section 2), a member of the native 7-string unit (no ini switch since 1.0; the stage-1 R7b / N9 pair is gone).
+// Native capacity-8 next-note / target grid (docs/ARCHITECTURE.md section 2), a member of the native 7-string unit
+// (no ini switch).
 //
 // Rnd_NextNoteGrid is the stack object of Rnd_NeckTargets_Update 0x7E4870 (G = its base; Init 0x7AA0B0, Set 0x7AA140,
 // Prune 0x7AA1B0, Register 0x7A5D50 only calls Set):
@@ -16,21 +16,19 @@ extern const Rs7HookTable kRs7NextgridHooks;
 //   +0A90h  time[6][26] (stock only; rows 0-5)
 //   +0D00h  u16 active string count, +0D02h u16 fret count; +0D04h..0D1Bh the time-set tree; (stock: /GS cookie)
 //   +0D1Ch  NATIVE time[8][26], row 68h, 340h bytes; the grid is 105Ch bytes
-// Frame of 0x7E4870: 0D34h -> 1074h (NGP probes the page it crosses); G = ebp-1060h, locals ebp-1064h..-1074h, the
-// tree header ebp-35Ch / -358h / -34Ch. Every edit is in-place (sites NGB<va>, NG1, NGP, NG9; tools/gen_nextgrid.py).
-// The active string count (InstrumentInfo +0Bh, passed to Init) is untouched, so strings 6/7 are stored, not
-// published: the stock loops still cover rows 0-5 and NG9 spawns row 6 (Rs7_NeckRow6N).
-// Logic: nextgrid.cpp (the switch). Glue: hooks.cpp (the row-6 neck targets of NG9), hooks_mid.cpp (NG1, NG9),
-// hooks_stubs.cpp (NGP), registration.cpp (kRs7NextgridHooks; the NGB<va> rows come from sites.generated.inc,
-// tools/gen_nextgrid.py).
-
+// Frame of 0x7E4870: 0D34h -> 1074h (NGP, after the stock prologue, adds 340h and probes); G = ebp-1060h, locals
+// ebp-1064h..-1074h, the tree header ebp-35Ch / -358h / -34Ch. Every edit is in-place (sites NGB<va>, NG1, NGP, NG9;
+// tools/gen_nextgrid.py). The active string count (InstrumentInfo +0Bh, passed to Init) is untouched, so strings 6/7
+// are stored, not published: the stock loops still cover rows 0-5 and NG9 spawns row 6 (Rs7_NeckRow6N). Logic:
+// nextgrid.cpp (the switch). Glue: hooks.cpp (the row-6 neck targets of NG9), hooks_mid.cpp (NG1, NG9), hooks_stubs.cpp
+// (NGP), registration.cpp (kRs7NextgridHooks; the NGB<va> rows come from sites.generated.inc, tools/gen_nextgrid.py).
 //
-// What the PUBLISH step (active string count 7 / 8 in InstrumentInfo +0Bh) still has to do for this area:
+// With the active string count published as 7 / 8 (InstrumentInfo +0Bh, features/publish):
 //  - nothing in Init / Set / Prune / Update: they read the count from the grid (+0D00h) / the local, so the stock
 //    loops of 0x7E4870 and 0x7AA1B0 enumerate rows 6/7 by themselves. NG9 self-disables (Rs7_NeckRow6N returns -1
 //    for a count above 6), so no double spawn; its tree-release half stays.
 //  - the chord side of Register 0x7A5D50 (not edited here): NN1 chord loop bound `cmp cx,7` -> 8, NN3 / NN4 slide
-//    guards `cmp byte [ebp-6],7` -> 8 (stage 2 sites), and the T8 / C8 chord arrays must hold 8 strings.
+//    guards `cmp byte [ebp-6],7` -> 8, and the T8 / C8 chord arrays must hold 8 strings.
 //  - Spawn 0x7A56F0 reads FretGrid cell (string, fret): string 6 is served by R1 (extrapolation) while
 //    native_fretgrid=0; string 7 has no source then, so publish 8 needs native_fretgrid=1 (cells 6/7 + FGRB).
 
@@ -67,8 +65,7 @@ inline bool SetAccepts(uint32_t s, uint32_t f) {
 // notePtr[26][26] at G+0 (rows 6..25 zeroed by Init and never read by stock), time[6][26] at
 // G+0xA90, std::set of note times with its header node at G+0xD04 (leftmost +0xD0C, size +0xD14).
 // The native grid (above) keeps string 6's pointer in notePtr row 6 (G+0x270); NG9 prunes and spawns row
-// 6 the way stock does rows 0-5 while the active string count is 6. (The stage-1 R7b / N9 pair, which kept the time
-// row in the free notePtr row 25 of the stock layout, was removed in 1.0.)
+// 6 the way stock does rows 0-5 while the active string count is 6.
 namespace rs7neck {
 constexpr uint32_t kRow6Ptr = 0x270;   // notePtr[6][0]
 constexpr uint32_t kSetHead = 0xD04;   // set header node (end())
@@ -79,7 +76,7 @@ constexpr uint32_t kRowCells = 26;
 // The native layout (above): time[8][26] sits behind the tree at G+0xD1C, so string 6's times
 // are time row 6 (G+0xD1C+6*0x68) and the pointer row 6 is the same G+0x270.
 constexpr uint32_t kNgRow6Time = 0xD1C + 6 * 0x68;
-constexpr uint32_t kStockStrings = 6;
+constexpr uint32_t kStockStrings = rs7::kStockGuitarStrings;
 }  // namespace rs7neck
 
 // Bound by Rs7_Startup from callref sites (never written): Rnd_NeckTarget_Spawn 0x7A56F0 (X_SPAWN,

@@ -2,6 +2,7 @@
 #include "hook_rules.h"
 #include "platform/config.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstdint>
 #include <cstring>
 
@@ -56,7 +57,7 @@ TEST(publish_invalid_count_never_scans_past_capacity) {
 }
 
 TEST(publish_registry_selects_exactly_one_nextgrid_guard_variant) {
-    const uintptr_t saved = g_rs7_publish_ports;
+    rs7test::Restore restore_g_rs7_publish_ports(g_rs7_publish_ports);
 
     for (const char* id : {"NN1", "NN3", "NN4"}) {
         const auto* stock = Rs7_FindHook(id);
@@ -75,6 +76,4 @@ TEST(publish_registry_selects_exactly_one_nextgrid_guard_variant) {
         CHECK(!Rs7_ShouldPatch(*stock, true));
         CHECK(Rs7_ShouldPatch(*port, false));
     }
-
-    g_rs7_publish_ports = saved;
 }

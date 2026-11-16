@@ -4,6 +4,7 @@
 // (hooks_mid.cpp, NG1 light), NGP a stub (hooks_stubs.cpp). The X_SPAWN / X_ADV3 refs (the game functions NG9's row-6
 // spawn calls, hooks.cpp) are data references and stay in the Core group (Rs7_FeatureOf).
 #include "features/nextgrid/nextgrid.h"
+#include "model/gates.h"
 #include "model/groups.h"
 
 extern "C" {
@@ -15,20 +16,18 @@ extern uintptr_t g_rs7_resume_NG1, g_rs7_resume_NGP, g_rs7_resume_NG9, g_rs7_tar
 
 namespace {
 // Native next-note grid site: written only with the native next-note grid.
-Rs7Hook NgHook(const char* id, void* stub = nullptr, uintptr_t* resume = nullptr, uintptr_t* target = nullptr,
-               Rs7Mid::Callback callback = nullptr, Rs7Mid::Mode mode = Rs7Mid::Mode::Full) {
-    Rs7Hook h{id, stub, resume, target, false, false};
+constexpr Rs7Hook NgHook(const char* id, void* stub = nullptr, uintptr_t* resume = nullptr, uintptr_t* target = nullptr,
+                         Rs7Mid::Callback callback = nullptr, Rs7Mid::Mode mode = Rs7Mid::Mode::Full) {
+    Rs7Hook h = Rs7_Stub(id, stub, resume, target).Gate(kRs7GateNextgrid).InMode(mode);
 
-    h.ng = kRs7NgNative;
     h.callback = callback;
-    h.midMode = mode;
 
     return h;
 }
 
 const Rs7Hook kHooks[] = {
-    {"X_SPAWN", nullptr, nullptr, &g_rs7_fn_spawn, false, true},
-    {"X_ADV3", nullptr, nullptr, &g_rs7_fn_adv3, false, true},
+    Rs7_Ref("X_SPAWN", &g_rs7_fn_spawn),
+    Rs7_Ref("X_ADV3", &g_rs7_fn_adv3),
 #define RS7_NGB(id) NgHook(#id)
 #include "features/nextgrid/sites.generated.inc"
 #undef RS7_NGB

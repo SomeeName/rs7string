@@ -8,8 +8,8 @@
 #include "features/fretgrid/fretgrid.h"
 #include "features/frets/frets.h"
 #include "features/headstock/headstock.h"
+#include "features/menuload/menuload.h"
 #include "features/nextgrid/nextgrid.h"
-#include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
 #include "features/psarc/psarc.h"
 #include "features/publish/publish.h"
@@ -18,8 +18,7 @@
 #include "features/strings/strings.h"
 #include "features/testdrive/testdrive.h"
 #include "features/tuner/tuner.h"
-#include "features/vguit/vguit.h"
-#include <cstring>
+#include "model/gates.h"
 
 namespace {
 bool g_featureOff[size_t(Rs7Feature::Count)] = {};
@@ -44,6 +43,7 @@ const GroupSwitches kGroupSwitches[] = {
     {Rs7Feature::Tuner, &g_rs7_native_tuner, nullptr},
     {Rs7Feature::Clite, &g_rs7_clite, nullptr},
     {Rs7Feature::Glow, &g_rs7_glow_fix, nullptr},
+    {Rs7Feature::MenuLoad, &g_rs7_menu_retry, nullptr},
 };
 
 // Marks one group failed and clears its switches (no cascade).
@@ -97,7 +97,7 @@ bool Rs7_DisableFeature(Rs7Feature f) {
         g_rs7_native_tuner = 0;
     }
 
-    // A guitar built with 7 needs the native PegSet (review F1): GKC writes peg request 7/8 and the stock
+    // A guitar built with 7 needs the native PegSet: GKC writes peg request 7/8 and the stock
     // Rnd_PegSet_Load 0x59C4D0 would loop over it on the six-slot stock layout. Any loss of Pegs (startup config or a
     // runtime isolation after the initial configuration) takes clite and the ports with it before the next round.
     if (!g_rs7_native_pegset && (g_rs7_clite || g_rs7_publish_ports)) {
@@ -105,7 +105,7 @@ bool Rs7_DisableFeature(Rs7Feature f) {
         MarkOff(Rs7Feature::Publish);
     }
 
-    // A guitar built with 7 needs the native 8-slot tuner session (fix/clite3, docs/ARCHITECTURE.md): the stock
+    // A guitar built with 7 needs the native 8-slot tuner session (docs/ARCHITECTURE.md): the stock
     // session's per-string arrays have six slots and its loops run to info+0Bh. clite goes, and native_publish with it.
     if (!g_rs7_native_tuner && g_rs7_clite) {
         MarkOff(Rs7Feature::Clite);
@@ -132,67 +132,64 @@ bool Rs7_DisableFeature(Rs7Feature f) {
     return true;
 }
 
-bool Rs7_ShouldPatch(const Rs7Hook& h, bool diagnostics, bool vguitar, bool nativePegs, bool nativeStrings) {
+// Parameters are switches the tests vary; other switches are owned by their features. Every
+// write condition comes from registration metadata, so site renames do not alter patch selection.
+bool Rs7_ShouldPatch(const Rs7Hook& h, bool diagnostics, bool privateOn, bool nativePegs, bool nativeStrings) {
     if (g_featureOff[size_t(Rs7_FeatureOf(h))]) {
         return false;
     }
-    if (h.tuner == kRs7TunerNative &&
+    if ((h.gates & kRs7GateMenuLoad) && !g_rs7_menu_retry) {
+        return false;
+    }
+    if ((h.gates & kRs7GateTuner) &&
         (!g_rs7_native_tuner || !nativeStrings || !g_rs7_native_fretgrid || !g_rs7_native_colours)) {
         return false;
     }
-    if (h.publish && !g_rs7_publish_ports) {
+    if ((h.gates & kRs7GatePublish) && !g_rs7_publish_ports) {
         return false;
     }
-    if (h.id[0] == 'G' && h.id[1] == 'K' && !g_rs7_clite) {
-        return false;  // C-lite
-    }
-    if (g_rs7_clite && !std::strcmp(h.id, "PSQ1")) {
-        return false;  // GKC writes the peg word (features/clite/clite.h)
-    }
-    if (h.id[0] == 'L' && h.id[1] == 'S' && h.id[2] && !h.id[3] && !g_rs7_publish_trace) {
-        return false;  // LSA/LSG/LSC/LSE probes
-    }
-    if (g_rs7_publish_ports && !std::strcmp(h.id, "FGRB")) {
+    if ((h.gates & kRs7GateClite) && !g_rs7_clite) {
         return false;
     }
-    if (g_rs7_publish_ports && (!std::strcmp(h.id, "NN1") || !std::strcmp(h.id, "NN3") || !std::strcmp(h.id, "NN4"))) {
+    if ((h.gates & kRs7GateNoClite) && g_rs7_clite) {
         return false;
     }
-
-    const bool chordloops = g_rs7_native_chordloops && nativeStrings;
-    if (!std::strncmp(h.id, "CL", 2) && !chordloops) {
+    if ((h.gates & kRs7GatePublishTrace) && !g_rs7_publish_trace) {
         return false;
     }
-    if (chordloops && Rs7ChordLoops_Replaced(h.id)) {
+    if ((h.gates & kRs7GateNoPublish) && g_rs7_publish_ports) {
         return false;
     }
-    if (!std::strncmp(h.id, "CM", 2) && !g_rs7_native_colours) {
+    if ((h.gates & kRs7GateChordloops) && (!g_rs7_native_chordloops || !nativeStrings)) {
         return false;
     }
-    if (!std::strncmp(h.id, "TV", 2) && !Rs7Variant_Get().Any()) {
+    if ((h.gates & kRs7GateColours) && !g_rs7_native_colours) {
         return false;
     }
-    if (!std::strcmp(h.id, "GLW") && !g_rs7_glow_fix) {
+    if ((h.gates & kRs7GateTestVariant) && !Rs7Variant_Get().Any()) {
         return false;
     }
-    if ((!std::strncmp(h.id, "DG", 2) || !std::strcmp(h.id, "TP13")) && !g_rs7_diagrams) {
+    if ((h.gates & kRs7GateGlow) && !g_rs7_glow_fix) {
         return false;
     }
-    if (h.pegs == kRs7PegNative && !nativePegs) {
+    if ((h.gates & kRs7GateDiagrams) && !g_rs7_diagrams) {
         return false;
     }
-    if (h.strs == kRs7StrNative && !nativeStrings) {
+    if ((h.gates & kRs7GatePegs) && !nativePegs) {
         return false;
     }
-    if (h.fg == kRs7FgNative && !g_rs7_native_fretgrid) {
+    if ((h.gates & kRs7GateStrings) && !nativeStrings) {
         return false;
     }
-    if (h.pitch == kRs7PitchNative && !g_rs7_native_pitch) {
+    if ((h.gates & kRs7GateFretgrid) && !g_rs7_native_fretgrid) {
         return false;
     }
-    if (h.ng == kRs7NgNative && !g_rs7_native_nextgrid) {
+    if ((h.gates & kRs7GatePitch) && !g_rs7_native_pitch) {
+        return false;
+    }
+    if ((h.gates & kRs7GateNextgrid) && !g_rs7_native_nextgrid) {
         return false;
     }
 
-    return !h.ref && (diagnostics || !h.diagOnly) && (vguitar || !h.vgOnly);
+    return !h.ref && (diagnostics || !h.diagOnly) && (privateOn || !h.privateOnly);
 }

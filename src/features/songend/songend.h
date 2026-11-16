@@ -2,9 +2,8 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-// Issue #13 diagnostic: which route ends a song ("the song goes to the results screen ~10 s after
-// start"). : the song session's state word
-// +390h (3 = playing, 4 = end) goes 3 -> 4 in exactly three ways, each hooked here (log only, the
+// Diagnostic: which route ends a song (a song went to the results screen about 10 s after start). The song
+// session's state word +390h (3 = playing, 4 = end) goes 3 -> 4 in exactly three ways, each hooked here (log only, the
 // stock code runs unchanged):
 //   SE1 0x7DD600 Play_Session_OnEndSongEvent entry (ECX = session, [esp+4] = event {target, type,
 //       flags}): an end-song event (type 3, target 2 or the session's id +8) - logged with the
@@ -18,8 +17,8 @@
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_endlog;  // 0 = the stubs skip the call
 
-// Stub entry (stubs.cpp, register-file pattern of the vguitar stubs): site 1/2/3 = SE1/SE2/SE3;
-// f = the stub's pushad block: f[0] EDI, f[1] ESI, f[2] EBP, f[3] ESP, f[4] EBX, f[5] EDX, f[6] ECX,
+// The former pushad stubs' entry, kept for the frozen stubs of tools/tests/test_midhook_pilot.py: site 1/2/3 =
+// SE1/SE2/SE3; f = the stub's pushad block: f[0] EDI, f[1] ESI, f[2] EBP, f[3] ESP, f[4] EBX, f[5] EDX, f[6] ECX,
 // f[7] EAX, f[8] EFLAGS, f[9..] the site's stack ([esp], [esp+4], ...).
 extern "C" __declspec(dllexport) void __cdecl Rs7End_OnSite(uint32_t site, const uint32_t* f);
 // Context-native entry: scan the original game stack, never the callback stack.
@@ -35,11 +34,8 @@ const char* CallerName(uint32_t ret);
 // Whether the 7 bytes before a return address end in a call instruction (E8 rel32, FF /2 with a
 // register, [reg], [reg+disp8], [reg+disp32] or [disp32] operand); b[6] is the byte just before it.
 bool EndsInCall(const uint8_t b[7]);
-// Number of state leaves / end lines logged so far (tests, overlay).
-unsigned Lines();
 }  // namespace rs7end
 
-// [debug] song_end_log=0|1  1 (default): log which route ends a song (issue #13).
 struct Rs7HookTable;
 extern const Rs7HookTable kRs7SongEndHooks;  // SE1-SE3, group Core
 struct Rs7SetTable;

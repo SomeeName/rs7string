@@ -1,4 +1,4 @@
-"""Small stubs: nif handler AL1, virtual guitarist, tuning names (TJ/TU/TUT/TN), song-end log (SE1-SE3), XB1."""
+"""Small stubs: nif handler AL1, tuning names (TJ/TU/TUT/TN), song-end log (SE1-SE3), XB1."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
+import private_features
 from emu_harness import (
     ALL_REGS,
     Emu,
@@ -72,74 +73,10 @@ def test_al1_on_tail_jumps_into_the_c_wrapper(emus):
     assert patched.regs(*ALL_REGS) == stock.regs(*ALL_REGS)
 
 
-# ---- Virtual guitarist stubs (TICK, JUD1, JUD2, AUD1; [test] vguitar=1 only, features/vguit/vguit.h)
-VG_SITES = {  # site -> (C entry, registers, flags live after the site)
-    "TICK": ("Rs7Vg_OnTick", {}, False),
-    "JUD1": ("Rs7Vg_OnJudge", {UC_X86_REG_EBX: S7_MEM, UC_X86_REG_ESI: S7_MEM + 0x400}, False),
-    "JUD2": ("Rs7Vg_OnScore", {UC_X86_REG_ECX: 0x1201, UC_X86_REG_EDX: S7_MEM + 0x400}, False),
-    "AUD1": ("Rs7Vg_OnInput", {UC_X86_REG_ESI: S7_MEM, UC_X86_REG_EBX: S7_MEM + 0x200}, True),
-}
+private_features.extend(__name__, globals())
 
 
-def set_vg(emu: Emu, on: int):
-    emu.uc.mem_write(emu.exports["g_rs7_vg_on"], struct.pack("<I", on))
-
-
-def vg_live(sid: str, emus, ours, stock):
-    """TICK / JUD2 are function entries: `and esp,-40h` points ESP below the caller's stack, at bytes
-    the function has not written yet (whatever earlier runs left there): dead. Their live stack is the
-    pushed EBP and the caller's frame above it; that is checked here and the dead bytes are dropped."""
-    if sid not in ("TICK", "JUD2"):
-        return ours, stock
-    for emu in emus:
-        assert emu.read(S7_ESP - 4, 4) == stack(S7_EBP)
-        assert emu.read(S7_ESP, 12) == vg_mem()[S7_ESP][:12]
-    return ours[:3] + ours[4:], stock[:3] + stock[4:]
-
-
-def vg_mem():
-    return {S7_ESP: stack(RET_MAGIC, S7_MEM + 0x400, 0x41700000, 0), S7_MEM: bytes(0x100), S7_MEM + 0x200: bytes(0x20)}
-
-
-@pytest.mark.parametrize("sid", list(VG_SITES))
-def test_vg_stub_off_replays_stock(emus, sid):
-    _, patched = emus
-    set_vg(patched, 0)
-    entry, regs, flags = VG_SITES[sid]
-    with entry_calls(patched, entry) as calls:
-        stock, ours = run_s7_site(emus, sid, regs, vg_mem(), flags=flags)
-    ours, stock = vg_live(sid, emus, ours, stock)
-    assert ours == stock
-    assert calls == []
-
-
-@pytest.mark.parametrize("sid", list(VG_SITES))
-def test_vg_stub_on_calls_in_and_is_transparent(emus, sid):
-    """vguitar=1: one call with the documented arguments; registers, flags, FPU top, stack and the
-    replayed instructions' effects equal stock."""
-    _, patched = emus
-    set_vg(patched, 1)
-    entry, regs, flags = VG_SITES[sid]
-    try:
-        with entry_calls(patched, entry) as calls:
-            stock, ours = run_s7_site(emus, sid, regs, vg_mem(), flags=flags)
-    finally:
-        set_vg(patched, 0)
-    ours, stock = vg_live(sid, emus, ours, stock)
-    assert ours == stock
-    assert len(calls) == 1
-    esp, args = calls[0]
-    assert (esp + 4) % 16 in (0, 4, 8, 12)  # any; the stack below holds the 16-byte aligned fxsave area
-    want = {
-        "TICK": (S7_MEM + 0x400, 0x41700000),  # session, float 15.0
-        "JUD1": (S7_MEM, S7_MEM + 0x400),  # note (EBX), session (ESI)
-        "JUD2": (1, S7_MEM + 0x400, S7_MEM + 0x400),  # CL, EDX session, [esp+4] note
-        "AUD1": (S7_MEM, S7_MEM + 0x200),
-    }[sid]  # device (ESI), AkAudioBuffer (EBX)
-    assert args[: len(want)] == want
-
-
-# ---- TJ / TU / TUT / TN: seven-string tuning names (issue #15) ---------------------------------
+# ---- TJ / TU / TUT / TN: seven-string tuning names ---------------------------------
 # The C side (JSON reads, game string calls, GetCurrentThreadId) needs the game and Win32; it is
 # covered by tests/tuner/test_tuningname.cpp (the name table) and in game. Here: TUT's stock path; TJ / TU / TN are
 # Wrap mid-hooks, compared with their frozen stubs and the stock bytes in test_midhook_wrap_sites.py.
@@ -159,7 +96,7 @@ def test_tut_off_replays_the_three_instructions(emus):
     assert stock[0][:3] == (0xABCD1234, 0x0B0B, S7_MEM)  # EAX, EBX, ECX
 
 
-# ---- SE1 / SE2 / SE3: song end log (issue #13, features/songend/songend.h; log only) -------------------------
+# ---- SE1 / SE2 / SE3: song end log (features/songend/songend.h; log only) -------------------------
 SE_SITES = {
     "SE1": (1, {UC_X86_REG_ECX: S7_MEM + 0x400}),  # OnEndSongEvent: ECX session
     "SE2": (2, {UC_X86_REG_ESI: S7_MEM + 0x400}),  # leave-state: ESI session
@@ -218,7 +155,7 @@ def test_se_stub_on_calls_in_and_is_transparent(emus, sid):
         assert stock[0][0] == 0x00C0FFEE and stock[0][3] == S7_MEM + 0x200  # EAX, EDX of the replay
 
 
-# ---- XB1: RS7X extension block at the end of SNG_Song_Load (issue #18, core/extblock.h) -----------
+# ---- XB1: RS7X extension block at the end of SNG_Song_Load (core/extblock.h) -----------
 def test_xb1_hands_over_song_and_stream_then_replays_the_destructor(emus):
     """One call Rs7Ext_OnSngLoaded(song = [EBP+8], stream = site ESP+14h), then the stock
     `lea ecx,[esp+14h]; call 0x9D8B10` (the stream's destructor; +20h set = buffer not owned, so it

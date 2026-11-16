@@ -2,12 +2,13 @@
 
 **Build, test and tooling notes for rs7string.**
 
-[Contributing](../CONTRIBUTING.md) · **Development** · [Architecture](ARCHITECTURE.md) · [RS7X spec](release/RS7X-SPEC.md) · [Releasing](release/RELEASING.md) · [Agents](../AGENTS.md)
+[Contributing](../CONTRIBUTING.md) · **Development** · [Architecture](ARCHITECTURE.md) · [RS7X spec](release/RS7X-SPEC.md) · [Chart tools](release/CHART-TOOLS.md) · [Releasing](RELEASING.md) · [Agents](../AGENTS.md)
 
 How the mod works is in [ARCHITECTURE.md](ARCHITECTURE.md); player documentation is in
 [docs/release](release/README.md); contribution rules are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Contents
+<details class="inline-contents" markdown="1">
+<summary><b>Contents</b></summary>
 
 - [Layout](#layout)
 - [Build and test](#build-and-test)
@@ -16,24 +17,17 @@ How the mod works is in [ARCHITECTURE.md](ARCHITECTURE.md); player documentation
 - [Formatting](#formatting)
 - [Generated files](#generated-files)
 - [Evidence policy](#evidence-policy)
-- [Debug and test settings](#debug-and-test-settings)
+- [Developer and test settings](#developer-and-test-settings)
 - [Overlay (F9)](#overlay-f9)
 - [Site families](#site-families)
 - [Stub layer](#stub-layer)
 - [Release](#release)
 
+</details>
+
 ## Layout
 
-| Path | Contents |
-|---|---|
-| `src/` | The DLL: `platform/` (patching, site resolve, mid-hook, memory protection, log: no game knowledge), `model/` (the string-count model), `features/<name>/` (one folder per feature), `registry.cpp` / `hook_rules.cpp` (the hook table list, failure groups, write conditions), `d3d/` (device hooks), `overlay/` (Dear ImGui UI). |
-| `sites.json` | Every patch site: byte pattern, expected stock bytes, kind, note. |
-| `tests/` | Native unit tests (`rs7string_tests.exe`, built by `build.ps1`). |
-| `tools/` | Site generators and checks (`gen_*.py`, `sitecheck.py`, `check_exports.py`), the pytest suite `tools/tests/` (site table and Unicorn emulator tests), `tools/gfxpatch/` (offline chord-diagram movie patcher), `manifest_key.py`, `psarc_plain.py`, `rsoverlay.py`. |
-| `data/headstock/` | Headstock build packages and procedural textures (MIT, see its `LICENSE.md`). |
-| `data/chord-diagrams/` | Chord-diagram reconstruction recipes (MIT, see its `LICENSE`). |
-| `scripts/` | Release packaging (`package.ps1`, `release.ps1`). |
-| `third_party/imgui/` | Dear ImGui, vendored unmodified (MIT). |
+The path table is in [Code structure and repository layout](agents/code-structure.md#layout).
 
 ## Build and test
 
@@ -49,11 +43,19 @@ uv run python tools\check_exports.py bin\Release\dinput8.dll   # exports, image 
 CI ([Continuous integration](#continuous-integration)) runs only the gates that need no game files; run the rest
 locally before every pull request (the commands above).
 
+`build.ps1` checks formatting and layout, regenerates the site table, builds and tests the DLL, and runs static
+analysis. It never copies into a game folder. Open the details for flags and each gate.
+
+<details markdown="1">
+<summary><b>Build steps and options</b></summary>
+
 What `build.ps1` does:
 
 - Fails first when a source file is not formatted (`scripts\format.ps1 -Check`; `-SkipFormatCheck` skips it).
   Fix with `.\scripts\format.ps1` (clang-format for `src/` and `tests/`, ruff for `tools/` and `scripts/`;
   `third_party/` and `*.generated.h` are never formatted). It needs `clang-format` (on PATH or in Visual Studio).
+  The same step runs the layout check (`tools\check_layout.py`, see [Code structure](agents/code-structure.md)),
+  and `-SkipFormatCheck` skips it too.
 - Regenerates `src/generated/sites.generated.h` from `sites.json`.
 - Passes `/p:PlatformToolset=v145` and `/p:PostBuildEventUseInBuild=false`.
 - Compiles both projects at `/W4` with warnings as errors (`/WX`, `TreatWarningAsError` in both `.vcxproj`
@@ -78,12 +80,20 @@ What `build.ps1` does:
   C5073) is declared with `TEST_NO_ASAN` instead of `TEST`. Run it before a pull request that touches memory
   handling.
   With `-NoTests` the normal test run is skipped, the ASan tests still run.
+- A unit test that depends on how Windows schedules threads (deadlines of a few milliseconds, the startup freeze
+  tests) is declared with `TIMING_TEST`: it gets up to three attempts and each failed attempt is printed as
+  `RETRY`. Only for scheduling, never to cover a logic failure.
 - `-Toolset <vNNN>` builds with another platform toolset; `-Toolset auto` takes `v145` when installed, else the
   newest (CI). Without the VS 2026 Build Tools path, MSBuild comes from `vswhere`.
 - With `-Fuzz` (optional): afterwards every libFuzzer target of the parsers runs 30 s (`scripts\fuzz.ps1`, own
   project and `bin\Fuzz`; see [Fuzzing](#fuzzing)).
+- With `-Public`: the build that ships (`scripts\package.ps1` uses it). It leaves out the private extras
+  (`src/features/extras/extras.h`: `/p:Rs7Private=false`, `private.props`, `RS7_PRIVATE=0`, their sites via `gen_sites.py --without`).
+  A tree without them (the public repository) builds that way by default.
 - Never touches a game folder.
 - Output: `bin\Release\dinput8.dll` and `bin\Release\rs7string_tests.exe`.
+
+</details>
 
 The unit tests include real-device D3D9 tests (`test_d3d_*.cpp`, `test_gpu.cpp`: a hidden window, HAL
 with REF as fallback). They print `skip: no D3D9 device` only if no device can be created.
@@ -91,8 +101,9 @@ with REF as fallback). They print `skip: no D3D9 device` only if no device can b
 > [!IMPORTANT]
 > **A game image is needed for part of the gates.** `sitecheck.py` and the emulator tests run the
 > stubs against the real x86 code of the game, so they need an unpacked copy of **your own** September
-> 2022 executable at `<folder containing the checkout>\original\Rocksmith2014.unpacked.exe` (and
-> `Rocksmith2014.analysis.exe` for `sitecheck.py`).
+> 2022 executable at `original\Rocksmith2014.unpacked.exe` (and `Rocksmith2014.analysis.exe` for
+> `sitecheck.py`) in the nearest folder above the checkout that has an `original\` folder, or in the folder
+> that `RS7_GAME_FILES` names (`tools/game_files.py`).
 >
 > - The executable is VMProtect-packed on disk; the unpacked copy is made from a memory dump of the
 >   running game. That pipeline is not part of this repository.
@@ -105,9 +116,10 @@ with REF as fallback). They print `skip: no D3D9 device` only if no device can b
 - The tools read `sites.json` and `bin\` of their own checkout, so a git worktree tests itself.
 - On Windows, Unicorn's handled first-chance exceptions can flood pytest's faulthandler output. Set
   `PYTEST_ADDOPTS=-p no:faulthandler` (all tests still run).
-- Native tests that wait on threads (`test_freeze.cpp` and friends) once had timing assumptions that
-  failed under load. They now use bounded waits and fixture cleanup that does not strand thread
-  start-up. Keep new thread tests free of fixed sleeps.
+- Native tests that wait on threads (`test_freeze.cpp` and others) use bounded waits and fixture cleanup that
+  does not strand thread start-up. Keep new thread tests free of fixed sleeps.
+- `.\scripts\pytest_nogame.ps1` runs pytest as CI does, with no game files, to check that every test that needs
+  them skips cleanly.
 
 ## Continuous integration
 
@@ -128,19 +140,21 @@ locally. clang-format is pinned to the version the sources are formatted with.
 
 The parsers of untrusted input have libFuzzer targets (`fuzz\`, one exe, `bin\Fuzz\rs7string_fuzz.exe`), built with
 the MSVC Build Tools' own libFuzzer and AddressSanitizer for x86 (`/fsanitize=address /fsanitize=fuzzer`). The fuzz
-project is separate from the default build and its tests.
+project is separate from the default build and its tests. Not fuzzed: the manifest JSON readers (`model/manifest.h`
+walk the game's own JSON objects through their vtables; there is no byte input without the game).
 
 | Target | Input |
 |---|---|
 | `rs7x` | RS7X extension block (`model/extblock`), with the song's template / ChordNotes / tuning counts |
-| `dxt` | DXT1 / DXT5 decoder (`platform/dxt`): sizes, pitch, short buffers, size overflow |
 | `settings` | `Rs7Set_SetText` for every key, then `Rs7Set_Format` |
-| `ini` | the bytes as `rs7string.ini`: every feature's startup read and `Rs7Set_InitFromIni` |
-| `text` | pipe commands, hotkeys, DirectInput key lines, colours, `fret_halflen`, atlas row, vguitar mode / filter / float |
+| `ini` | the bytes as `rs7string.ini`: every feature's startup read and `Rs7Set_InitFromIni` (a seed covers the over-long value rule: more than 259 characters is rejected) |
+| `text` | pipe commands, hotkeys, DirectInput key lines, colours, string spacing, the private extras' parsers |
 | `package` | headstock build package manifest (`rs7hs::Manifest`) |
 | `nif` | texture names in a NIF (`Rs7Asset_DdsNames`) |
 | `dds` | DXT1 darkening of a `.dds` (`Rs7Asset_ScaleDxt1`) |
 | `recipe` | chord-diagram recipe against a movie (`rs7diagram::SwapMovie`; the fuzz build skips its SHA-256 checks) |
+| `nslot` | stock chord template + RS7X block into the N-slot T8 / C8 records, eval tails and the chord diagram's shape (`features/nslot/records`, `rs7diagram::FromT8` / `Emit`) |
+| `plain` | plain SNG copy (`Rs7_Stub_PP_SNGD` for SNG flags 1; other flags are the game's decrypt and are skipped) |
 
 ```powershell
 .\build.ps1 -Fuzz                                    # the normal build, then every target 30 s
@@ -160,11 +174,11 @@ run reproducible. Each fixed finding gets a native regression test with the inpu
 Lint autofix never touches imports (the emulator tests import pytest fixtures that look unused).
 Wrap code that clang-format would break in `// clang-format off` / `// clang-format on` with a reason
 (for example the include order of `tests/test_d3d_hook.cpp`). The format run is clang-format (which also adds
-braces), then `tools\blank_lines.py` (blank lines between statements, rules in [AGENTS.md](../AGENTS.md#code-structure);
+braces), then `tools\blank_lines.py` (blank lines between statements, rules in [code-structure.md](agents/code-structure.md#code-structure);
 it parses with tree-sitter-cpp, a dev dependency installed by `uv run`), then clang-format again.
 
 `build.ps1` then runs `tools\check_layout.py`: file and function size limits, inline assembly and the include
-direction of the source layers ([AGENTS.md](../AGENTS.md#code-structure)). Known violations are listed in
+direction of the source layers ([code-structure.md](agents/code-structure.md#code-structure)). Known violations are listed in
 `tools/layout_baseline.json`; after fixing one, run `uv run python tools\check_layout.py --write-baseline`.
 
 After a formatting run, check that nothing changed in the code: `.\scripts\compare_builds.ps1 -Old <rev> -New <rev>`
@@ -185,6 +199,7 @@ code is unchanged, not that the optimised build is.
 copies, native layout patches, tuner session copies, publish ports).
 
 - They are deterministic and checked by tests (`test_fncopy.py`, `test_tuner8_sites.py`, ...).
+- Never hand-edit generated headers (`src/generated/`, `*.generated.h`); change the `tools/gen_*.py` input and regenerate.
 - Re-run one only after a deliberate change, then run the full gates.
 - `tools/audit_eight.py` writes `docs/eight-audit.tsv` (ignored by Git): an exhaustive lexical audit
   of literal 7s and string-6 special cases in the sources.
@@ -208,33 +223,40 @@ copies, native layout patches, tuner session copies, publish ports).
 - `.gitignore` excludes `evidence/`, `*-evidence/`, dumps and logs for this reason.
 
 Source comments, `sites.json` notes and tool docstrings that point at `docs/ARCHITECTURE.md` refer to
-the topic, not to a numbered section. The longer maintainer research notes and per-job reports they
-originally cited were removed from the tree and remain in git history (`26b7aa1`). Two generators and
-one test read evidence ledgers from the maintainer's local workspace (`tools/gen_colournative.py`,
-`tools/tests/test_fretgrid.py`); the test skips when the ledger is absent.
+the topic, not to a numbered section. The maintainer's research notes are not in the repository. One generator
+(`tools/gen_colournative.py`) and one test (`tools/tests/test_fretgrid.py`) read evidence ledgers from the
+maintainer's local workspace; the test skips when the ledger is absent.
 
-## Debug and test settings
+## Developer and test settings
 
-All keys with defaults are in [SETTINGS.md](release/SETTINGS.md). Developer-relevant ones:
+The player keys are in [SETTINGS.md](release/SETTINGS.md). The keys below still work, but the release template
+(`scripts/package.ps1`, `$devOnly`) leaves them out and the overlay has no control for them; set them in the file or
+with `o set <section.key> <value>` over the pipe (`tools/rsoverlay.py`).
 
-| Key | Use |
-|---|---|
-| `[debug] diagnostics=1` | Writes the diagnostic sites D2/D3/D5 and lets R2/R1 log D1/D4 (at most 8 lines per log point and string per song). With 0 they are still resolved (a moved pattern still patches nothing) but not written. |
-| `[debug] alloc_stats=1` | One `allocstats` line per song setup and song end with process private bytes, working set, free address space (32-bit game), handle count and `kind=live/total` counters for every allocation type the DLL owns (`src/features/allocstats/allocstats.*`). Over several songs the "song start" lines must be flat in every `live` value; `merges`, `textures`, `bindalt`, `pegCtors` count objects the game keeps for the life of the process and may rise once per distinct headstock model. |
-| `[debug] tuner_autotune=N` | Reports each string tuned N seconds after selection (test driving without a guitar). |
-| `[debug] skip_sites`, `veh_log`, `spin_probe`, `log_redact`, `publish_trace`, `plain_delay_ms`, `diagrams_trace` | See SETTINGS.md; startup-only. |
-| `[test] vguitar=1` | Virtual guitarist ([ARCHITECTURE.md section 12](ARCHITECTURE.md#12-virtual-guitarist-test-mode-test-vguitar1)). Keys: `vguitar_mode` (`chart` \| `game` \| `midi:N` \| `off`), `vguitar_filter` (`all` \| strings \| `string:fret`), `vguitar_lead_ms` (40 centres detection), `vguitar_gain`, `vguitar_mix`, `vguitar_trace`, `vguitar_chord6` (`play` \| `omit` \| `only` \| `+N`/`-N` \| `omitlow` \| `omithigh`). All but `vguitar` are re-read at each song start. |
-| `[test] force_colourblind=1`, `force_lefty=1`, `force_headstock=33\|6` | Test variants for `scripts/smoke.py` (`visual7cb`, `visual7lefty`, `visual7hs33`, `visual7hs6`): runtime overrides of the profile's colour mode, handedness and headstock type, never saved ([ARCHITECTURE.md section 11](ARCHITECTURE.md#11-window-input-overlay-logging)). Startup-only; each logs a `variant:` line when the game applies it. |
+| Key | Default | Use |
+|---|---|---|
+| `[debug] diagnostics=1` | `0` | Writes the diagnostic sites D2/D3/D5 and lets R2/R1 log D1/D4 (at most 8 lines per log point and string per song). With 0 they are still resolved (a moved pattern still patches nothing) but not written. A player key too. |
+| `[debug] alloc_stats=1` | `0` | One `allocstats` line per song setup and song end with process private bytes, working set, free address space (32-bit game), handle count and `kind=live/total` counters for every allocation type the DLL owns (`src/features/allocstats/allocstats.*`). Over several songs the "song start" lines must be flat in every `live` value; `merges`, `textures`, `bindalt`, `pegCtors` count objects the game keeps for the life of the process and may rise once per distinct headstock model. Startup-only. |
+| `[debug] tuner_autotune=N` | `0` | Reports each string tuned N seconds (1-30) after selection (test driving without a guitar). Live. |
+| `[debug] head_cull=<node>` | empty | Keeps the named headstock frame node hidden on 7/8-string guitars. Live. |
+| `[debug] veh_log=1` | `0` | Logs the first 40 exceptions, plus a separate budget of 40 in the game, through a vectored exception handler. Startup-only. |
+| `[debug] skip_sites=ID,...` | empty | Test bisection: the listed site IDs are resolved but not written. Startup-only. |
+| `[debug] diagrams_trace=1` | `0` | Logs chord-diagram recipe loading and movie swaps (with `[chords] diagrams7=1`). Startup-only. |
+| `[debug] spin_probe=1` | `0` | A watchdog that samples busy threads (suspends and resumes them briefly). Startup-only. |
+| `[debug] plain_delay_ms=N` | `0` | Starts the plain-PSARC patches N ms late (at most 30000), so an enabler with its own plain-PSARC support patches first; rs7string then logs `provided by the CDLC enabler`. Startup-only. |
+| `[debug] publish_trace=1` | `0` | Logs the GridBuild readiness waits of the native layouts (a guitar built with 7/8 strings). Startup-only. |
+| `[window] background=1` | `0` | The game window never activates itself, and test keys can be sent through the `\\.\pipe\rs7string` pipe ([Overlay (F9)](#overlay-f9)). Startup-only. |
+| `[test] fast=1` | `0` | A song ends on its song page instead of the results screen. Startup-only. |
+| `[test] force_colourblind=1`, `force_lefty=1`, `force_headstock=33\|6` | `0`, `0`, empty | Test variants for the maintainer's in-game smoke runs (`visual7cb`, `visual7lefty`, `visual7hs33`, `visual7hs6`): runtime overrides of the profile's colour mode, handedness and headstock type, never saved ([ARCHITECTURE.md section 11](architecture/11-window-input-overlay-logging.md#11-window-input-overlay-logging)). `-1` (or `off` / `rh`) forces the other way. Startup-only; each logs a `variant:` line when the game applies it. |
 
-Live versus startup-only: `diagnostics` (D1/D4 only), the colour and neck keys
-are live-switchable in the overlay. Keys that decide which hooks exist or size pools at guitar load
-(`ramp_swap`, `string7_line`, `headstock_peg`, `background`, ...) are startup-only: their label ends in ` *`, and
-a changed one shows "restart required".
+Live versus startup-only: `diagnostics` (D1/D4 only), the colour and spacing keys and `[chords] wide_misses` are
+live-switchable in the overlay. Keys that decide which hooks exist or size pools at guitar load (`string7_line`,
+`background`, ...) are startup-only: their label ends in ` *`, and a changed one shows "restart required".
 
 ## Overlay (F9)
 
 A Dear ImGui window with one tab bar below the save bar and the restart note. The player tabs come from the
-`Rs7UiTab::Player` sections of the features' `Rs7UiTable`s (Seventh string, Guitar, Tuner, Menu); each setting has a
+`Rs7UiTab::Player` sections of the features' `Rs7UiTable`s (Extra strings, Guitar, Tuner, Menu); each setting has a
 plain label, no key names, and its one-line hint as a `(?)` tooltip (the reason a control is locked stays visible as
 text). The last tab, Advanced, holds the tabs Status, Colour, Neck, Tuner, Debug, Window and Log with the technical
 labels, tooltips with the ini key and the `[live]` / `[next session]` tags. `o tab <name>` selects a technical tab
@@ -244,13 +266,13 @@ tab. Restart-only keys carry ` *` in their label
 (one note explains it), and a banner counts changes that wait for a restart. Keys with an overlay control are the
 "F9" column in [SETTINGS.md](release/SETTINGS.md). "Save to rs7string.ini" writes only the changed keys.
 
-The overlay renders while the window is unfocused and takes commands from a DirectInput pipe (needs
+The overlay renders while the window is unfocused and takes commands over the `\\.\pipe\rs7string` named pipe, which also carries the test keys (needs
 `[window] background=1`):
 
 ```powershell
 uv run python tools\rsoverlay.py show | hide | toggle | save | status
 uv run python tools\rsoverlay.py tab neck          # status colour neck tuner debug window log
-uv run python tools\rsoverlay.py set neck.string7_v 0.5
+uv run python tools\rsoverlay.py set neck.spacing_guitar7 1.34
 ```
 
 - Each command logs `overlay: cmd ... -> <live | next session | restart required | invalid value |
@@ -269,7 +291,7 @@ uv run python tools\rsoverlay.py set neck.string7_v 0.5
 |---|---|
 | S1-S4 | Detection: tuning at song setup, expected pitch. |
 | R*, BD*, V2, NG* | Lanes, gems, bends, neck targets (the native next-note grid). |
-| N1-N23, GS*, GR*, PS*, PG*, PH* | Seventh string line, ghost, bends, native GuitarStrings and PegSet, peg tint. |
+| N1-N21, GS*, GR*, PS*, PG*, PH* | Seventh string line, ghost, bends, native GuitarStrings and PegSet, peg tint. |
 | F1, B1/B2 | Fret bars, chord frames. |
 | AL1, X_DDSH, X_NF* | Headstock model merge, texture registration. |
 | T*, TS*, TS8*, TU8*, L1/L2, PK/PE | Tuner (legacy phases and the native session copies). |
@@ -280,24 +302,20 @@ uv run python tools\rsoverlay.py set neck.string7_v 0.5
 | DGM, DGS, DGB, TP13 | Chord diagram data. |
 | PP_* | Plain PSARC. |
 | SE1-SE3 | Song end log. |
-| TICK, JUD1, JUD2, AUD1 | Virtual guitarist (written only with `[test] vguitar=1`). |
 | TVCB, TVGP | Test variants (written only with a `[test] force_*` key on). |
 | `X_*` | References, never written: game globals and callees (`ref`, `callref`). |
 
-Counting rule: all sites resolve or none are written; which sites are written depends on the active
-feature switches. `tools/sitecheck.py` reports the totals.
-
-The complete prefix glossary (every family, with counts) is in the maintainer's historical refactor plan, which
-predates the mid-hook conversion.
+Counting rule: a site that does not resolve disables its feature group before anything is written; a core site,
+or a member of a unit without a fallback, stops patching altogether ([patch mechanism](architecture/02-patch-mechanism.md)).
+Which sites are written depends on the active feature switches. `tools/sitecheck.py` reports the totals.
 
 ## Stub layer
 
 `src/features/<name>/hooks_stubs*.cpp` hold the naked stubs, one file per area; each file starts with a map of its stubs.
 A stub is exported as `Rs7_Stub_<site id>` with its `g_rs7_resume_<id>` / `g_rs7_target_<id>` variables; these
 names never change (the registry, `tools/check_exports.py` and the emulator tests find them by name).
-The rules every stub keeps are in [ARCHITECTURE.md](ARCHITECTURE.md) section 15 "Remaining stubs" (there is no shared
-stub-macro header any more). New sites should be mid-hooks (`platform/midhook.h`), not new stubs;
-the stubs that remain and the plan for them are in the maintainer's handover notes.
+The rules every stub keeps are in [chapter 14, "Remaining stubs"](architecture/14-mid-hook-contract-and-cold-site-conversion.md#remaining-stubs).
+New sites are mid-hooks (`platform/midhook.h`), not new stubs.
 
 A refactor of the stub files must not change the code. Build the previous commit and the new one and run
 
@@ -308,5 +326,5 @@ instruction by instruction with addresses masked (`SAME INSTRUCTIONS` when stubs
 
 ## Release
 
-See [release/RELEASING.md](release/RELEASING.md) (`scripts/release.ps1`, `scripts/package.ps1`). The
+See [RELEASING.md](RELEASING.md) (`scripts/release.ps1`, `scripts/package.ps1`). The
 package script refuses game and Ubisoft file types by an allowlist.

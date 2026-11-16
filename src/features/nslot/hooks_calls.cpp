@@ -1,4 +1,4 @@
-// Call-site mid-hooks of the native N-slot chord code (Before placement, ARCHITECTURE.md section 15 "Call sites"): the
+// Call-site mid-hooks of the native N-slot chord code (Before placement, ARCHITECTURE.md section 14 "Call sites"): the
 // callback runs at the callee's entry with the game's return address at [esp] and the arguments above it. Light mode
 // (integer only, LIGHT_CALLBACKS in tools/tests/emu_harness.py): both run per chord at play time. Each callback serves
 // several sites that differ only in the callee, which the entry binds. Converted from naked stubs (frozen at b6071a8,

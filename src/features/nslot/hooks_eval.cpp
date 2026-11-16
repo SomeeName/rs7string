@@ -2,12 +2,13 @@
 // kEv*, tracker.h): the Lua and whole-chord matcher arrays, the empty tails, the chord string -> note mask, the child
 // eval slots of strings 6/7, and the chord pluck of string 6.
 //
-// Converted from naked stubs (refactor step 7, frozen at b8c0ed7, tools/tests/test_midhook_nslot.py). Light mode
+// Converted from naked stubs (frozen at b8c0ed7, tools/tests/test_midhook_nslot.py). Light mode
 // (per note / tracker update, integer only, LIGHT_CALLBACKS in tools/tests/emu_harness.py), except PL1: it calls the
 // native pluck copy, which uses floating point (full mode, once per chord hit).
 #include "features/nslot/nslot.h"
 #include "features/nslot/tracker.h"
 #include "features/string7/string7.h"
+#include "model/instrument.h"
 #include "platform/midhook.h"
 #include <cstdint>
 
@@ -20,7 +21,10 @@ __declspec(dllexport) uintptr_t g_rs7_resume_PL1 = 0, g_rs7_resume_CC3 = 0, g_rs
 }
 
 namespace {
-constexpr uint32_t kNoSlot = 0xFFFFFFFF;
+constexpr uint32_t kNoSlot = 0xFFFFFFFF;            // no eval slot
+constexpr uint32_t kNoTarget = 0xFFFFFFFF;          // no MIDI target (int32 -1)
+constexpr uint32_t kTrackerEvals = 8;               // tracker +8 = evals[0]
+constexpr uint32_t kPl1Edi = rs7ns::kTplFrets + 6;  // PL1: EDI = record + 0Ah, past the stock frets[5]
 
 void Store32(uint32_t address, uint32_t value) {
     *reinterpret_cast<volatile uint32_t*>(address) = value;
@@ -35,8 +39,8 @@ void Store16(uint32_t address, uint16_t value) {
 // stored to EBP-20h..-0Ch; LU1/LU2 moved the /GS cookie from EBP-8 to the free EBP-24h): targets 6 and 7 (EBP-8,
 // EBP-4) = -1, so 0x4E9470 gets an int32[8]; the thunk replays `mov [ebp-10h],ecx; mov ecx,[ebp+8]`.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_LU3(Context& c) {
-    Store32(c.ebp - 8, kNoSlot);
-    Store32(c.ebp - 4, kNoSlot);
+    Store32(c.ebp - 8, kNoTarget);
+    Store32(c.ebp - 4, kNoTarget);
 }
 
 // WC2 - whole-chord tracker update reads the eval's int32[8]. 0x87632F in the tracker's whole-chord update 0x8762D0
@@ -97,32 +101,39 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CH3(Context& c) {
 
     c.Compare32(parent, kNoSlot);
     c.jump = static_cast<uint32_t>(g_rs7_resume_CH3);
-    if (parent == kNoSlot) {
-        return;
+    if (parent == kNoSlot || string >= uint32_t(rs7ns::kSlots)) {
+        return;  // no parent slot, or no record slot for the string: nothing stored (fail closed)
     }
 
-    c.edx = c.ebx + c.edx * 4 + 0xC20;
+    c.edx = c.ebx + c.edx * 4 + kTrackerEvals + rs7ns::kEvChild67 - 6;  // + string: the byte of strings 6/7
     *reinterpret_cast<volatile uint8_t*>(c.edx + string) = static_cast<uint8_t>(c.eax);
 }
 
-// PL1 - pluck string 6 of a chord. 0x7E2EFE in the chord pluck 0x7E2DE0, right after its six-string pluck loop (EDI =
-// T8 + 0Ah, past frets[5]; [EBP+8] = play session): string 6 of the chord (T8 frets[6] = [EDI+44h]) is plucked like a
-// single string-6 note through Rs7_S7Pluck (SNG fret, display fret 1 for an open string, GuitarStrings =
-// session+37Ch -> +0Ch); stock rejects string 6, so nothing happens otherwise. No register changes: the thunk then
+// PL1 - pluck strings 6 and 7 of a chord. 0x7E2EFE in the chord pluck 0x7E2DE0, right after its six-string pluck loop
+// (EDI = T8 + 0Ah, past frets[5]; [EBP+8] = play session): string 6 of the chord (T8 frets[6] = [EDI+44h]) is plucked
+// like a single string-6 note through Rs7_S7Pluck (SNG fret, display fret 1 for an open string, GuitarStrings =
+// session+37Ch -> +0Ch); string 7 (frets[7] = [EDI+45h], eight strings) through Rs7_S7PluckString. Stock rejects
+// strings 6/7, so nothing happens otherwise. No register changes: the thunk then
 // replays `mov al,[ebp-10h]; cmp al,0FFh` on the incoming EAX, so its upper bytes stay the game's (the old stub left
 // EAX = the fret zero-extended).
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PL1(Context& c) {
     const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    const uint8_t fret = *reinterpret_cast<const uint8_t*>(c.edi + 0x44);
+    const uint8_t fret6 = *reinterpret_cast<const uint8_t*>(c.edi + rs7ns::kT8Frets + 6 - kPl1Edi);
+    const uint8_t fret7 = *reinterpret_cast<const uint8_t*>(c.edi + rs7ns::kT8Frets + 7 - kPl1Edi);
 
-    if (fret == 0xFF) {
+    if (fret6 == 0xFF && fret7 == 0xFF) {
         return;
     }
 
-    void* strings = reinterpret_cast<void*>(Dword(Dword(Dword(c.ebp + 8) + 0x37C) + 0x0C));
+    void* strings = reinterpret_cast<void*>(Dword(Dword(Dword(c.ebp + 8) + rs7::kSessionGuitar) + rs7::kGuitarStrings));
 
-    Rs7_S7Pluck(strings, fret, fret ? fret : 1);
+    if (fret6 != 0xFF) {
+        Rs7_S7Pluck(strings, fret6, fret6 ? fret6 : 1);
+    }
+    if (fret7 != 0xFF) {
+        Rs7_S7PluckString(strings, 7, fret7, fret7 ? fret7 : 1);
+    }
 }
 
 // BT1 - write the eval's N-slot tails at the epilogue of Play_Eval_Build 0x874180 (0x874340 `pop edi; pop esi; pop ebx;

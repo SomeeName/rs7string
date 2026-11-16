@@ -1,9 +1,11 @@
 #include "features/headstock/assetload_head.h"
 #include "features/headstock/assetload_scene.h"
 #include "features/headstock/hooks.h"
+#include "features/headstock/state.h"
 #include "features/string7/string7.h"
 #include "platform/log.h"
 #include "platform/midhook.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -11,10 +13,9 @@
 // The pegs of the edited model: the PegSet slots' locators, their placement, and the 3+3 in-line peg swap.
 
 using namespace rs7asset;
+using rs7head::g_head;
 
 namespace {
-volatile long g_logPegs = 0, g_logPegAlt = 0;
-
 // ---- pegs: the PegSet slots' locator pointers (slot +8, an NiPointer, Rnd_PegSet_BindLocators
 // 0x59C980) move to the alt's Locator_Peg_<s+1>, so the stock Rnd_PegSet_ApplyTransforms 0x59C630
 // and our per-frame placement put the pegs (and their tuner letters) on the edited model. Slot 6
@@ -22,45 +23,21 @@ volatile long g_logPegs = 0, g_logPegAlt = 0;
 // exists only in rs7_alt, so the frame tree's name lookup finds it there; it is checked here too.
 
 uint8_t* PegSet(const Head& h) {
-    uint8_t* head = Rd<uint8_t*>(h.guitar, kGuitarHead);
+    uint8_t* head = Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarHead);
 
-    return head ? Rd<uint8_t*>(head, rs7head::kHeadPegs) : nullptr;
+    return head ? Rs7_SafeRead<uint8_t*>(head, rs7head::kHeadPegs) : nullptr;
 }
 
 void SetLocator(uint8_t* slot, uint8_t* node) {  // NiPointer assignment, as 0x59CAD0..
-    uint8_t* cur = Rd<uint8_t*>(slot, rs7head::kSlotLocator);
+    uint8_t* cur = Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotLocator);
     if (!node || cur == node) {
         return;
     }
 
     AddRef(node);
-    rs7s7d::SafeStore(slot + rs7head::kSlotLocator, &node, sizeof node);
+    Rs7_SafeStore(slot + rs7head::kSlotLocator, &node, sizeof node);
     if (cur) {
         DropRef(cur);  // still held by its tree
-    }
-}
-
-bool PlacePegsGuarded(uint8_t* pegset, unsigned count) {  // what 0x59C630 does per slot
-    __try {
-        for (unsigned s = 0; s < count && s < unsigned(rs7head::kCapacity); ++s) {
-            uint8_t* slot = rs7head::Slot(pegset, int(s));
-            uint8_t* peg = *reinterpret_cast<uint8_t**>(slot + rs7head::kSlotEntity);
-            uint8_t* loc = *reinterpret_cast<uint8_t**>(slot + rs7head::kSlotLocator);
-            if (!peg || !loc || !*slot) {
-                continue;
-            }
-
-            float e[3] = {};
-
-            rs7head::GameEuler(loc + 0x80, e);
-            reinterpret_cast<void(__cdecl*)(uint8_t*, const float*)>(g_rs7_fn_setpos)(
-                peg, reinterpret_cast<float*>(loc + 0xA4));
-            reinterpret_cast<void(__cdecl*)(uint8_t*, const float*)>(g_rs7_fn_setrot)(peg, e);
-        }
-
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
     }
 }
 
@@ -93,7 +70,7 @@ uint8_t* FindOutside(uint8_t* root, uint8_t* alt, const char* want) {  // in roo
 bool PegShowInline(uint8_t* entity, bool show) {
     uint8_t* eroot = entity ? rs7s7d::EntityRoot(entity) : nullptr;
     uint8_t* alt = eroot ? FindAlt(eroot) : nullptr;
-    uint8_t* root = alt ? Rd<uint8_t*>(alt, kParent) : nullptr;  // the clone's top object ("Scene Root")
+    uint8_t* root = alt ? Rs7_SafeRead<uint8_t*>(alt, kParent) : nullptr;  // the clone's top object ("Scene Root")
     if (!root) {
         return false;
     }
@@ -134,23 +111,46 @@ bool IsAltNode(const uint8_t* node) {
 }  // namespace
 
 namespace rs7asset {
-volatile long g_pegSwapEver = 0;
-
 void FindLocators(Head& h) {
-    uint8_t* info = Rd<uint8_t*>(h.guitar, kGuitarInfo);
+    uint8_t* info = Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarInfo);
     // InstrumentInfo +8 = InvertGuitarStrings (CONFIRMED Rnd_InstrumentInfo_FromProfile 0x58ABDB: profile +12h),
     // the byte the stock binder 0x59C980 picks Locator_Invert_Peg_%d by (0x59CA2B); +9 lefty, +0Ah in-line.
-    const bool invert = info && Rd<uint8_t>(info, kInfoInverted) != 0;
+    const bool invert = info && Rs7_SafeRead<uint8_t>(info, kInfoInverted) != 0;
 
-    for (int s = 0; s < kSegs; ++s) {
+    for (int s = 0; s < kSegs + kExtra; ++s) {
         char name[32];
 
         std::snprintf(name, sizeof name, invert ? "Locator_Invert_Peg_%d" : "Locator_Peg_%d", s + 1);
-        h.altLoc[s] = FindByName(h.alt, name);
-        h.stockLoc[s] = nullptr;
+        uint8_t* loc = FindByName(h.alt, name);
+
+        if (s < kSegs) {
+            h.altLoc[s] = loc;
+            h.stockLoc[s] = nullptr;
+        } else {
+            h.altLocX[s - kSegs] = loc;
+        }
+    }
+}
+
+// The stock binder seats the extra slots (6 / 7) on the first Locator_Peg_7 / _8 of the frame, possibly after
+// SwapLocators ran: with two models merged (the 8-peg rs7_alt and the 7-peg rs7_alt5) that is the hidden model's.
+// Every shown frame: a seated extra slot sits on the shown model's locator.
+void KeepExtraLocators(Head& h) {
+    uint8_t* pegset = PegSet(h);
+    if (!pegset) {
+        return;
     }
 
-    h.altLoc7 = FindByName(h.alt, invert ? "Locator_Invert_Peg_7" : "Locator_Peg_7");
+    const unsigned count = Rs7_SafeRead<uint16_t>(pegset, rs7head::kPegCount);
+
+    for (int e = 0; e < kExtra && kSegs + e < int(count); ++e) {
+        uint8_t* slot = rs7head::Slot(pegset, kSegs + e);
+
+        if (h.altLocX[e] && Rs7_SafeRead<uint8_t>(slot, 0) &&
+            Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotLocator) != h.altLocX[e]) {
+            SetLocator(slot, h.altLocX[e]);
+        }
+    }
 }
 
 void SwapLocators(Head& h, bool toAlt) {
@@ -159,17 +159,21 @@ void SwapLocators(Head& h, bool toAlt) {
         return;
     }
 
-    const unsigned count = Rd<uint16_t>(pegset, rs7head::kPegCount);
+    const unsigned count = Rs7_SafeRead<uint16_t>(pegset, rs7head::kPegCount);
     int n = 0;
 
-    if (count > unsigned(kSegs) && h.altLoc7 && Rd<uint8_t>(rs7head::Slot(pegset, kSegs), 0)) {
-        SetLocator(rs7head::Slot(pegset, kSegs), h.altLoc7);  // the binder's own choice; kept on the alt either way
-        ++n;
+    for (int e = 0; e < kExtra && kSegs + e < int(count); ++e) {
+        uint8_t* slot = rs7head::Slot(pegset, kSegs + e);
+
+        if (h.altLocX[e] && Rs7_SafeRead<uint8_t>(slot, 0)) {
+            SetLocator(slot, h.altLocX[e]);  // the binder's own choice; kept on the alt either way
+            ++n;
+        }
     }
 
     for (int s = 0; s < kSegs && s < int(count); ++s) {
         uint8_t* slot = rs7head::Slot(pegset, s);
-        if (!Rd<uint8_t>(slot, 0)) {
+        if (!Rs7_SafeRead<uint8_t>(slot, 0)) {
             continue;
         }
 
@@ -179,7 +183,7 @@ void SwapLocators(Head& h, bool toAlt) {
             }
 
             if (!h.stockLoc[s]) {
-                h.stockLoc[s] = Rd<uint8_t*>(slot, rs7head::kSlotLocator);
+                h.stockLoc[s] = Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotLocator);
             }
             SetLocator(slot, h.altLoc[s]);
         } else {
@@ -191,36 +195,33 @@ void SwapLocators(Head& h, bool toAlt) {
 
     h.locSwapped = toAlt;
 
-    if (Upto(&g_logPegs, 8)) {
+    if (Rs7Log_Upto(&g_head.logPegs, 8)) {
         float w7[3] = {};
 
-        if (toAlt && h.altLoc7) {
-            rs7s7d::SafeCopy(w7, h.altLoc7 + 0xA4, sizeof w7);
+        if (toAlt && h.altLocX[0]) {
+            Rs7_SafeCopyZero(w7, h.altLocX[0] + 0xA4, sizeof w7);
         }
-        Rs7Log("assetload: guitar %p: %d peg locator(s) of PegSet %p moved to the %s model%s (%.3f, %.3f, %.3f)",
-               h.guitar, n, pegset, toAlt ? "7-string" : "stock",
-               toAlt ? (h.altLoc7 ? "; its Locator_Peg_7 (the 7th peg, the B letter) at world"
-                                  : "; it has NO Locator_Peg_7")
+        Rs7Log("assetload: guitar %p: %d peg locator(s) of PegSet %p moved to the %s model%s (%.3f, %.3f, %.3f)%s",
+               h.guitar, n, pegset, toAlt ? "edited" : "stock",
+               toAlt ? (h.altLocX[0] ? "; its Locator_Peg_7 (the 7th peg, the B letter) at world"
+                                     : "; it has NO Locator_Peg_7")
                      : "",
-               double(w7[0]), double(w7[1]), double(w7[2]));
+               double(w7[0]), double(w7[1]), double(w7[2]),
+               toAlt && h.altLocX[1] ? "; it has a Locator_Peg_8 (8-string model)" : "");
     }
 }
 
 void PlacePegs(Head& h) {
     uint8_t* pegset = PegSet(h);
-    if (!pegset || !g_rs7_fn_setpos || !g_rs7_fn_setrot || !g_rs7_fn_euler) {
-        return;
-    }
-    if (!Rd<uint8_t>(pegset, rs7head::kPegLoaded)) {
-        return;
-    }
 
-    PlacePegsGuarded(pegset, Rd<uint16_t>(pegset, rs7head::kPegCount));
+    if (pegset && Rs7_SafeRead<uint8_t>(pegset, rs7head::kPegLoaded)) {
+        rs7head::GamePlacePegs(pegset, Rs7_SafeRead<uint16_t>(pegset, rs7head::kPegCount));
+    }
 }
 
 void InlinePegs(Head& h) {  // every frame while shown on a non-in-line frame; cheap once done
     uint8_t* pegset = PegSet(h);
-    if (!pegset || !Rd<uint8_t>(pegset, rs7head::kPegLoaded)) {
+    if (!pegset || !Rs7_SafeRead<uint8_t>(pegset, rs7head::kPegLoaded)) {
         return;
     }
 
@@ -228,23 +229,22 @@ void InlinePegs(Head& h) {  // every frame while shown on a non-in-line frame; c
 
     for (int s = 0; s < rs7head::kCapacity; ++s) {
         uint8_t* slot = rs7head::Slot(pegset, s);
-        uint8_t* e = Rd<uint8_t>(slot, 0) ? Rd<uint8_t*>(slot, rs7head::kSlotEntity) : nullptr;
+        uint8_t* e = Rs7_SafeRead<uint8_t>(slot, 0) ? Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotEntity) : nullptr;
         if (!e || h.pegDone[s] == e) {
             continue;
         }
 
         ++n;
 
+        h.pegDone[s] = e;  // also without a merged peg in this clone: left as it is (logged once)
+
         if (PegShowInline(e, true)) {
-            h.pegDone[s] = e;
             ++swapped;
-            _InterlockedExchange(&g_pegSwapEver, 1);
-        } else {
-            h.pegDone[s] = e;  // no merged peg in this clone: leave it (logged once)
+            _InterlockedExchange(&g_head.pegSwapEver, 1);
         }
     }
 
-    if (n && Upto(&g_logPegAlt, 6)) {
+    if (n && Rs7Log_Upto(&g_head.logPegAlt, 6)) {
         Rs7Log("assetload: guitar %p (non-in-line frame, 3+3): %d of %d peg(s) of PegSet %p show the in-line peg%s",
                h.guitar, swapped, n, pegset,
                swapped ? ""
@@ -258,7 +258,7 @@ void RestorePegs(Head& h) {
 
     for (int s = 0; s < rs7head::kCapacity; ++s) {
         uint8_t* slot = pegset ? rs7head::Slot(pegset, s) : nullptr;
-        uint8_t* e = slot ? Rd<uint8_t*>(slot, rs7head::kSlotEntity) : nullptr;
+        uint8_t* e = slot ? Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotEntity) : nullptr;
 
         if (e && h.pegDone[s] == e) {
             PegShowInline(e, false);
@@ -271,7 +271,7 @@ void RestorePegs(Head& h) {
 // in-line peg (a pool instance recycled from a 7-string guitar) gets its own peg back. Only after a swap ever.
 void StockPegs(Head& h) {
     uint8_t* pegset = PegSet(h);
-    if (!pegset || pegset == h.pegCheckedSet || !Rd<uint8_t>(pegset, rs7head::kPegLoaded)) {
+    if (!pegset || pegset == h.pegCheckedSet || !Rs7_SafeRead<uint8_t>(pegset, rs7head::kPegLoaded)) {
         return;
     }
 
@@ -279,11 +279,11 @@ void StockPegs(Head& h) {
 
     for (int s = 0; s < rs7head::kCapacity; ++s) {
         uint8_t* slot = rs7head::Slot(pegset, s);
-        uint8_t* e = Rd<uint8_t*>(slot, rs7head::kSlotEntity);
+        uint8_t* e = Rs7_SafeRead<uint8_t*>(slot, rs7head::kSlotEntity);
         uint8_t* root = e ? rs7s7d::EntityRoot(e) : nullptr;
         uint8_t* alt = root ? FindAlt(root) : nullptr;
 
-        if (alt && !(Rd<uint16_t>(alt, kFlags) & 1)) {
+        if (alt && !(Rs7_SafeRead<uint16_t>(alt, kFlags) & 1)) {
             PegShowInline(e, false);
         }
     }
@@ -298,9 +298,9 @@ extern "C" int __cdecl Rs7Asset_PegMeshHidden(const uint8_t* mesh) {
     const uint8_t* n = mesh;
 
     for (int depth = 0; n && depth < 16; ++depth) {
-        const uint8_t* parent = Rd<const uint8_t*>(n, kParent);
+        const uint8_t* parent = Rs7_SafeRead<const uint8_t*>(n, kParent);
 
-        if (Rd<uint16_t>(n, kFlags) & 1) {
+        if (Rs7_SafeRead<uint16_t>(n, kFlags) & 1) {
             bool hidden = IsAltNode(n);
 
             if (parent && !hidden) {

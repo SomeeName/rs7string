@@ -4,27 +4,57 @@
 #include "features/tuner/hooks.h"
 #include "features/tuner/state.h"
 #include "features/tuner/tuner.h"
+#include "model/instrument.h"
+#include "model/tuning.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 
 // The native 8-slot tuner session's lifetime and target: the registry of grown 380h sessions (TU8INIT / TU8FREE),
-// the hand-off at TS (Rs7Tuner8_Apply: prefix arrays -> capacity-8 tail), fix/menutuner (Rs7Tuner8_EnsureNative) and
+// the hand-off at TS (Rs7Tuner8_Apply: prefix arrays -> capacity-8 tail), stock sessions on a 7/8-built guitar
+// (Rs7Tuner8_EnsureNative) and
 // what the shared hooks read back (wrong-instrument entries, labels). Game thread only.
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_native_tuner = 0;
 extern "C" __declspec(dllexport) uintptr_t g_rs7_tu8_labels[8] = {};
 
 namespace {
-using rs7tuner::At;
 using rs7tuner::g_state;
-using rs7tuner::Read;
+using rs7tuner::kSessions;
+using rs7tuner::UncheckedField;
+using rs7tuner::UncheckedRead;
+
+// The InstrumentInfo of the guitar bound to `session` (+2Ch Rnd_Guitar -> +24h), or null. No SEH: callers guard.
+const uint8_t* SessionInfo(const uint8_t* session) {
+    const uint8_t* g = UncheckedRead<uint8_t*>(session, rs7tu::kGuitar);
+
+    return g ? UncheckedRead<uint8_t*>(g, rs7tu::kGuitarInfo) : nullptr;
+}
+
+// Whether the session's guitar is a bass (InstrumentInfo +0 = 2); false without one.
+bool GuitarIsBass(const uint8_t* session) {
+    if (!session) {
+        return false;
+    }
+
+    __try {
+        const uint8_t* info = SessionInfo(session);
+
+        return info && rs7::IsBassKind(UncheckedRead<uint8_t>(info, rs7::kInfoKind));
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return false;
+    }
+}
 }  // namespace
 
 void rs7tuner::Log(const char* fmt, const uint8_t* session, int a, int b, int c) {
-    if (g_state.sessionLogs >= 300) {
+    constexpr int kMaxLogs = 300;  // session lines per run
+
+    if (g_state.sessionLogs >= kMaxLogs) {
         return;
     }
 
@@ -33,22 +63,29 @@ void rs7tuner::Log(const char* fmt, const uint8_t* session, int a, int b, int c)
 }
 
 // ---- the session registry ----
-extern "C" int __cdecl Rs7Tuner8_HasSession(const uint8_t* session) {
+namespace {
+// The registry slot of `session`, -1 when it is not registered.
+int SlotOf(const uint8_t* session) {
     if (!session) {
-        return 0;
+        return -1;
     }
 
-    for (const uint8_t* ptr : g_state.sessions) {
-        if (ptr == session) {
-            return 1;
+    for (int slot = 0; slot < kSessions; ++slot) {
+        if (g_state.sessions[slot] == session) {
+            return slot;
         }
     }
 
-    return 0;
+    return -1;
+}
+}  // namespace
+
+extern "C" int __cdecl Rs7Tuner8_HasSession(const uint8_t* session) {
+    return SlotOf(session) >= 0 ? 1 : 0;
 }
 
 extern "C" void __cdecl Rs7Tuner8_InitSession(uint8_t* session) {
-    if (!g_rs7_native_tuner || !session) {
+    if (!session) {
         return;
     }
 
@@ -57,9 +94,11 @@ extern "C" void __cdecl Rs7Tuner8_InitSession(uint8_t* session) {
     bool registered = Rs7Tuner8_HasSession(session) != 0;
 
     if (!registered) {
-        for (const uint8_t*& ptr : g_state.sessions) {
-            if (!ptr) {
-                ptr = session;
+        for (int slot = 0; slot < kSessions; ++slot) {
+            if (!g_state.sessions[slot]) {
+                g_state.sessions[slot] = session;
+                g_state.sessionFailed[slot] = false;
+                g_state.pending[slot] = rs7tuner::Target{};
                 registered = true;
                 break;
             }
@@ -82,11 +121,12 @@ extern "C" void __cdecl Rs7Tuner8_InitSession(uint8_t* session) {
 }
 
 extern "C" uint32_t __cdecl Rs7Tuner8_FreeSessionSize(uint8_t* session) {
-    for (const uint8_t*& ptr : g_state.sessions) {
-        if (ptr && ptr == session) {
-            ptr = nullptr;
-            return rs7tu::kSessionSize;
-        }
+    const int slot = SlotOf(session);
+
+    if (slot >= 0) {
+        g_state.sessions[slot] = nullptr;
+        g_state.pending[slot] = rs7tuner::Target{};
+        return rs7tu::kSessionSize;
     }
 
     return rs7tu::kStockSize;
@@ -94,15 +134,18 @@ extern "C" uint32_t __cdecl Rs7Tuner8_FreeSessionSize(uint8_t* session) {
 
 // ---- native sessions ----
 extern "C" int __cdecl Rs7Tuner8_IsNative(const uint8_t* session) {
-    if (!g_rs7_native_tuner || !Rs7Tuner8_HasSession(session)) {
+    if (!Rs7Tuner8_HasSession(session)) {
         return 0;
     }
 
-    return Read<uint32_t>(session, rs7tu::kMagicOff) == rs7tu::kMagic && Read<uint8_t>(session, rs7tu::kNative) ? 1 : 0;
+    return UncheckedRead<uint32_t>(session, rs7tu::kMagicOff) == rs7tu::kMagic &&
+                   UncheckedRead<uint8_t>(session, rs7tu::kNative)
+               ? 1
+               : 0;
 }
 
 uint8_t rs7tuner::Count(const uint8_t* session) {
-    return Read<uint8_t>(session, rs7tu::kCount);
+    return UncheckedRead<uint8_t>(session, rs7tu::kCount);
 }
 
 int rs7tuner::LowestOpen(const uint8_t* session) {
@@ -110,18 +153,25 @@ int rs7tuner::LowestOpen(const uint8_t* session) {
     int low = 127;
 
     for (int s = 0; s < n && s < 8; ++s) {
-        low = (std::min)(low, Read<int>(session, rs7tu::kOpen + 4 * s));
+        low = (std::min)(low, UncheckedRead<int>(session, rs7tu::kOpen + 4 * s));
     }
 
     return low;
 }
 
 void rs7tuner::SetLabels(const uint8_t* session) {  // game thread (SelectString, TS)
-    for (int s = 6; s < 8; ++s) {
-        const int midi = Read<int>(session, rs7tu::kOpen + 4 * s);
+    const int slot = SlotOf(session);
 
-        std::snprintf(g_state.extraLabel[s - 6], sizeof g_state.extraLabel[0], "%s", rs7tu::NoteName(midi));
-        g_rs7_tu8_labels[s] = reinterpret_cast<uintptr_t>(g_state.extraLabel[s - 6]);
+    if (slot < 0) {
+        return;
+    }
+
+    for (int s = 6; s < 8; ++s) {
+        char* label = g_state.extraLabel[slot][s - 6];
+        const int midi = UncheckedRead<int>(session, rs7tu::kOpen + 4 * s);
+
+        std::snprintf(label, sizeof g_state.extraLabel[0][0], "%s", rs7tu::NoteName(midi));
+        g_rs7_tu8_labels[s] = reinterpret_cast<uintptr_t>(label);
     }
 }
 
@@ -141,30 +191,31 @@ namespace {
 // Prefix -> tail: values copied, entity pointers moved (exactly one owner at any time).
 void Migrate(uint8_t* session) {
     for (int s = 0; s < 6; ++s) {
-        At<int>(session, rs7tu::kOpen + 4 * s) = Read<int>(session, rs7tu::kStockOpen + 4 * s);
-        At<int>(session, rs7tu::kOffsets + 4 * s) = Read<int>(session, rs7tu::kStockOff + 4 * s);
-        At<float>(session, rs7tu::kPeaks + 4 * s) = Read<float>(session, rs7tu::kStockPeaks + 4 * s);
-        At<int>(session, rs7tu::kLastPick + 4 * s) = Read<int>(session, rs7tu::kStockLast + 4 * s);
+        UncheckedField<int>(session, rs7tu::kOpen + 4 * s) = UncheckedRead<int>(session, rs7tu::kStockOpen + 4 * s);
+        UncheckedField<int>(session, rs7tu::kOffsets + 4 * s) = UncheckedRead<int>(session, rs7tu::kStockOff + 4 * s);
+        UncheckedField<float>(session, rs7tu::kPeaks + 4 * s) =
+            UncheckedRead<float>(session, rs7tu::kStockPeaks + 4 * s);
+        UncheckedField<int>(session, rs7tu::kLastPick + 4 * s) = UncheckedRead<int>(session, rs7tu::kStockLast + 4 * s);
 
         for (int k = 0; k < 2; ++k) {
-            uint32_t& from = At<uint32_t>(session, rs7tu::kStockLetters + 8 * s + 4 * k);
+            uint32_t& from = UncheckedField<uint32_t>(session, rs7tu::kStockLetters + 8 * s + 4 * k);
 
-            At<uint32_t>(session, rs7tu::kLetters + 8 * s + 4 * k) = from;
+            UncheckedField<uint32_t>(session, rs7tu::kLetters + 8 * s + 4 * k) = from;
             from = 0;
         }
 
-        uint32_t& pick = At<uint32_t>(session, rs7tu::kStockPicks + 4 * s);
+        uint32_t& pick = UncheckedField<uint32_t>(session, rs7tu::kStockPicks + 4 * s);
 
-        At<uint32_t>(session, rs7tu::kPicks + 4 * s) = pick;
+        UncheckedField<uint32_t>(session, rs7tu::kPicks + 4 * s) = pick;
         pick = 0;
     }
 
     for (int s = 6; s < 8; ++s) {
-        At<float>(session, rs7tu::kPeaks + 4 * s) = 0.0f;
-        At<int>(session, rs7tu::kLastPick + 4 * s) = -2;
-        At<uint32_t>(session, rs7tu::kLetters + 8 * s) = 0;
-        At<uint32_t>(session, rs7tu::kLetters + 8 * s + 4) = 0;
-        At<uint32_t>(session, rs7tu::kPicks + 4 * s) = 0;
+        UncheckedField<float>(session, rs7tu::kPeaks + 4 * s) = 0.0f;
+        UncheckedField<int>(session, rs7tu::kLastPick + 4 * s) = -2;
+        UncheckedField<uint32_t>(session, rs7tu::kLetters + 8 * s) = 0;
+        UncheckedField<uint32_t>(session, rs7tu::kLetters + 8 * s + 4) = 0;
+        UncheckedField<uint32_t>(session, rs7tu::kPicks + 4 * s) = 0;
     }
 }
 
@@ -172,7 +223,7 @@ void Migrate(uint8_t* session) {
 // and its native count, and TS8PKS / TS8PKP carry the native FretGrid row stride (FGR sites). Logs a refusal.
 bool CanGoNative(const uint8_t* session, const uint8_t* guitar, bool was, int n) {
     // A guitar bound to the session must have a native GuitarStrings (every one allocated with native_strings=1 has).
-    if (guitar && !rs7gs::IsNative(Read<uint8_t*>(guitar, 0xC)) && !was) {
+    if (guitar && !rs7gs::IsNative(UncheckedRead<uint8_t*>(guitar, rs7::kGuitarStrings)) && !was) {
         rs7tuner::Log("tuner8: session %p guitar %08X has no native GuitarStrings - %d-string target -> stock tuner",
                       session, int(reinterpret_cast<uintptr_t>(guitar)), n);
         return false;
@@ -189,52 +240,80 @@ bool CanGoNative(const uint8_t* session, const uint8_t* guitar, bool was, int n)
     return true;
 }
 
-// The open MIDI and offsets of all eight slots, the count, the order and the native flag.
-void WriteTarget(uint8_t* session, const int* offs, int n, const int extra[2]) {
+// The open MIDI and offsets of all eight slots, the count, the order and the native flag. `bass`: an extended bass
+// or a bass guitar (read by the caller before Migrate, so a fault there leaves the session untouched).
+void WriteTarget(uint8_t* session, const int* offs, int n, const int extra[2], bool bass) {
     int open[8], off[8];
 
     rs7tu::Targets(offs, extra, open, off);
-    uint8_t* guitar = Read<uint8_t*>(session, rs7tu::kGuitar);
-    uint8_t* info = guitar ? Read<uint8_t*>(guitar, rs7tu::kGuitarInfo) : nullptr;
 
-    if (n <= 6 && info && Read<uint8_t>(info, rs7tu::kInfoCount) == 4) {  // a bass target on a native session
-        static const int kBassBase[6] = {28, 33, 38, 43, 0, 0};           // 0x1199CA4
-
+    if (n <= 6 && bass) {  // a bass target on a native session: E1 A1 D2 G2, the low B0 and the high C3
+        // 0x1199CA4 (+ X_TBASS's B0 / C3)
         for (int s = 0; s < 6; ++s) {
-            open[s] = kBassBase[s] + off[s];
+            open[s] = rs7::kBassOpenMidi[s] + off[s];
         }
     }
 
     for (int s = 0; s < 8; ++s) {
-        At<int>(session, rs7tu::kOpen + 4 * s) = open[s];
-        At<int>(session, rs7tu::kOffsets + 4 * s) = off[s];
+        UncheckedField<int>(session, rs7tu::kOpen + 4 * s) = open[s];
+        UncheckedField<int>(session, rs7tu::kOffsets + 4 * s) = off[s];
     }
 
-    At<uint8_t>(session, rs7tu::kCount) = uint8_t(n);
-    rs7tu::Order(n, session + rs7tu::kOrder);
-    At<uint8_t>(session, rs7tu::kNative) = 1;
+    UncheckedField<uint8_t>(session, rs7tu::kCount) = uint8_t(n);
+    rs7tu::Order(n, session + rs7tu::kOrder, bass);
+    UncheckedField<uint8_t>(session, rs7tu::kNative) = 1;
 }
 }  // namespace
 
-bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2]) {
-    if (!g_rs7_native_tuner || !session || !offs) {
+bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2], int bassStrings) {
+    if (!session || !offs || (!g_rs7_native_tuner && !Rs7Tuner8_IsNative(session))) {
         return false;
     }
 
     __try {
-        if (!Rs7Tuner8_HasSession(session) || Read<uint32_t>(session, rs7tu::kMagicOff) != rs7tu::kMagic) {
-            if (n > 6) {
-                rs7tuner::Log("tuner8: session %p is not a grown 380h session - %d-string target -> stock tuner",
-                              session, n);
+        const int slot = SlotOf(session);
+
+        if (slot < 0 || UncheckedRead<uint32_t>(session, rs7tu::kMagicOff) != rs7tu::kMagic) {
+            if (n > 6 || bassStrings) {
+                rs7tuner::Log("tuner8: session %p is not a grown 380h session - %d-string target (extended bass %d) -> "
+                              "stock tuner",
+                              session, n, bassStrings);
             }
+
             return false;
         }
 
-        const bool was = Read<uint8_t>(session, rs7tu::kNative) != 0;
+        const bool was = UncheckedRead<uint8_t>(session, rs7tu::kNative) != 0;
+        auto& pending = g_state.pending[slot];
+
+        pending = rs7tuner::Target{};
         const unsigned built = Rs7Tuner8_GuitarCount(session);
+        // An extended bass: the song's keys (the guitar is often not bound yet when the target arrives) or the guitar.
+        const bool builtBass = GuitarIsBass(session) && rs7::IsExtendedBass(built);
+        const bool extBass = rs7::IsExtendedBass(bassStrings) || builtBass;
+
+        if (extBass) {
+            n = builtBass ? int(built) : bassStrings;  // a 5-string bass tunes five strings (six offsets in the target)
+        }
         // A 6-string target on a stock session runs the game's code - unless the guitar is built with 7/8 strings
-        // (fix/menutuner: the stock methods loop to InstrumentInfo +0Bh over six-slot arrays).
-        if (!rs7tu::GoesNative(n, was, built)) {
+        // (the stock methods loop to InstrumentInfo +0Bh over six-slot arrays).
+        if (!rs7tu::GoesNative(n, was, extBass ? unsigned(n) : built, extBass)) {
+            return false;
+        }
+
+        if (n < 1 || n > 8) {
+            return false;
+        }
+
+        if (!Rs7_SafeCopyZero(pending.offsets, offs, sizeof pending.offsets) ||
+            !Rs7_SafeCopyZero(pending.extra, extra, sizeof pending.extra)) {
+            return false;
+        }
+
+        pending.count = n;
+        pending.bass = extBass ? n : 0;
+
+        if (!CanGoNative(session, UncheckedRead<uint8_t*>(session, rs7tu::kGuitar), was, n)) {
             return false;
         }
 
@@ -244,23 +323,20 @@ bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2
                           session, n, int(built));
         }
 
-        if (n < 1 || n > 8) {
-            return false;
-        }
-        if (!CanGoNative(session, Read<uint8_t*>(session, rs7tu::kGuitar), was, n)) {
-            return false;
-        }
+        const uint8_t* info = SessionInfo(session);
+        const bool bass = extBass || (info && rs7::IsBassKind(UncheckedRead<uint8_t>(info, rs7::kInfoKind)));
 
         if (!was) {
             Migrate(session);
         }
-        WriteTarget(session, offs, n, extra);
+        WriteTarget(session, offs, n, extra, bass);
+        pending = rs7tuner::Target{};
         rs7tuner::SetLabels(session);
         Rs7Tuner_Refresh();
         rs7tuner::Log("tuner8: session %p is a native %d-string tuner session, first string %d, lowest open MIDI %d",
-                      session, n, Read<uint8_t>(session, rs7tu::kOrder), rs7tuner::LowestOpen(session));
+                      session, n, UncheckedRead<uint8_t>(session, rs7tu::kOrder), rs7tuner::LowestOpen(session));
         return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -271,28 +347,45 @@ unsigned Rs7Tuner8_GuitarCount(const uint8_t* session) {
     }
 
     __try {
-        const uint8_t* g = Read<uint8_t*>(session, rs7tu::kGuitar);
-        const uint8_t* info = g ? Read<uint8_t*>(g, rs7tu::kGuitarInfo) : nullptr;
+        const uint8_t* info = SessionInfo(session);
 
-        return info ? Read<uint8_t>(info, rs7tu::kInfoCount) : 0u;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return info ? UncheckedRead<uint8_t>(info, rs7tu::kInfoStrings) : 0u;
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 
 bool Rs7Tuner8_EnsureNative(uint8_t* session, const char* where) {
-    if (!g_rs7_native_tuner || !session) {
-        return false;
-    }
     if (Rs7Tuner8_IsNative(session)) {
         return true;
     }
-
-    static const uint8_t* s_failed = nullptr;  // game thread: one failure line per session
+    if (!g_rs7_native_tuner || !session) {
+        return false;
+    }
 
     __try {
-        if (!Rs7Tuner8_HasSession(session) || Read<uint32_t>(session, rs7tu::kMagicOff) != rs7tu::kMagic) {
+        const int slot = SlotOf(session);
+
+        if (slot < 0 || UncheckedRead<uint32_t>(session, rs7tu::kMagicOff) != rs7tu::kMagic) {
             return false;
+        }
+
+        const rs7tuner::Target pending = g_state.pending[slot];
+
+        if (pending.count) {
+            if (!Rs7Tuner8_Apply(session, pending.offsets, pending.count, pending.extra, pending.bass)) {
+                return false;
+            }
+
+            if (UncheckedRead<uint32_t>(session, rs7tu::kMode) <= 3) {
+                // A stock mode already selected string 0. Restart its check pass through the game's mode entry:
+                // TS8F1 selects the new lowest string and SelectString repeats the tolerance / detector setup.
+                using EnterCheckFn = void(__thiscall*)(uintptr_t, uint8_t*);
+
+                reinterpret_cast<EnterCheckFn>(g_state.enterCheck)(0, session);
+            }
+
+            return true;
         }
 
         const unsigned built = Rs7Tuner8_GuitarCount(session);
@@ -303,7 +396,7 @@ bool Rs7Tuner8_EnsureNative(uint8_t* session, const char* where) {
         int offs[6];
 
         for (int s = 0; s < 6; ++s) {
-            offs[s] = Read<int>(session, rs7tu::kStockOff + 4 * s);
+            offs[s] = UncheckedRead<int>(session, rs7tu::kStockOff + 4 * s);
         }
 
         const int extra[2] = {0, 0};
@@ -315,14 +408,14 @@ bool Rs7Tuner8_EnsureNative(uint8_t* session, const char* where) {
             return true;
         }
 
-        if (s_failed != session) {
-            s_failed = session;
+        if (!g_state.sessionFailed[slot]) {  // game thread: one failure line per registered session
+            g_state.sessionFailed[slot] = true;
             Rs7Log(
                 "tuner8: session %p on a guitar built with %u strings could NOT be made native before %s - the stock "
                 "six-slot tuner runs: REPORT THIS",
                 session, built, where ? where : "?");
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 
     return false;

@@ -2,8 +2,11 @@
 // of Rnd_Guitar_LoadDependencies and string 6 in the SNG section mask (N12 / N13). They replaced hand-written naked
 // stubs (docs/ARCHITECTURE.md, "Mid-hook conversion"); equivalence against the frozen stubs:
 // tools/tests/test_midhook_cold.py. Callbacks must not throw.
+#include "features/diag/diag.h"
 #include "features/publish/publish.h"
 #include "features/string7/string7.h"
+#include "features/strings/strings.h"
+#include "model/instrument.h"
 #include "platform/midhook.h"
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_N1 = 0, g_rs7_resume_N21 = 0;
@@ -57,7 +60,9 @@ constexpr uint8_t kString6 = 6;
 // own level < 32 guard follows, then `or [mask], 1 << 6`). Flags: the old stub left those of its `cmp
 // [g_rs7_s7_on],0`, the hook the incoming ones; both continuations rewrite them (test_midhook_cold.py, "free").
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N12(Rs7Mid::Context& c) {
-    if (uint8_t(c.ecx) == kString6 && g_rs7_s7_on) {
+    const uint8_t s = uint8_t(c.ecx);
+
+    if ((s == kString6 || s == kString6 + 1) && g_rs7_s7_on) {  // string 7: bit 7 (eight strings)
         c.jump = uint32_t(g_rs7_resume_N12);
     }
 }
@@ -74,51 +79,98 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N13(Rs7Mid::Context& c) {
 }
 
 // ---- per-frame driver and the string-6 bend targets (issue #16) ----
-// Cost budget (ARCHITECTURE.md section 15): N5 runs once per guitar per frame; N18 / N22 once per frame for each note
-// in progress with a bend (at most one per string), so full mode costs well under the budget. N19 / N20 / N23 call only
+// Cost budget (ARCHITECTURE.md section 14): N5 runs once per guitar per frame; N18 once per frame for each note
+// in progress with a bend (at most one per string), so full mode costs well under the budget. N19 / N20 call only
 // the integer-only Rs7_S7BendObject and are light. At every site the x87 stack is empty or its live slots are left
 // alone (full mode restores them, light mode does not touch them).
 extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_N18 = 0, g_rs7_resume_N19 = 0, g_rs7_resume_N20 = 0;
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_N22 = 0, g_rs7_resume_N23 = 0;
+// The sites' stock `jae` targets (bound from sites.json): where a string 6/7 the stock body cannot address goes.
+extern "C" __declspec(dllexport) uintptr_t g_rs7_target_N18 = 0, g_rs7_target_N19 = 0, g_rs7_target_N20 = 0;
 
 namespace {
 constexpr uint8_t kNoFret = 0xFF;
-constexpr uint32_t kBend = 0, kGhostBend = 2;  // Rs7_S7BendTarget kinds (string7.h)
+constexpr uint32_t kBend = 0;  // the Rs7_S7BendTarget kind (string7.h)
 
-// The stock bound `cmp <string>,[info+0Bh]; jae` lets the string through: the replay takes the stock path.
-bool InStockRange(uint8_t string, uint32_t info) {
-    return string < *reinterpret_cast<const uint8_t*>(info + 0x0B);
+constexpr uint8_t kStockSlots = 6;  // the stock GuitarStrings arrays (+4 main, +1Ch ghost) hold six strings
+
+uint8_t StockCount(uint32_t info) {
+    return *reinterpret_cast<const uint8_t*>(info + rs7::kInfoStrings);
 }
 
-// The string-6 path of N18 / N22 (AL = note string, ESI = guitar info, ECX = GuitarStrings, DL = note fret): for string
-// 6 with a fret, the native string-6 object of `kind` gets ECX, EDX = 6 and the stock body is skipped to `join` after
-// the site. EAX = the join address, as the old stubs left it (they jumped through EAX; the stock code after the join
-// reloads EAX before reading it). Anything else: the replay `cmp al,[esi+0Bh]; jae` (strings in range: the stock body,
-// else the stock target).
-void BendString6(Rs7Mid::Context& c, uint32_t kind, uint32_t amountAt, uint32_t join) {
-    if (InStockRange(uint8_t(c.eax), c.esi) || uint8_t(c.eax) != 6 || uint8_t(c.edx) == kNoFret) {
+// The stock bound `cmp <string>,[info+0Bh]; jae` lets the string through and the stock body can address it: the
+// replay takes the stock path.
+bool InStockRange(uint8_t string, uint32_t info) {
+    return string < kStockSlots && string < StockCount(info);
+}
+
+// A string the stock bound lets through but the stock arrays do not hold: with C-lite, +0Bh is the build count (7 or
+// 8), so the stock body would index string 6/7 past the six main slots (into the ghosts). It must go to the stock
+// target instead (a native path that applies has already joined). Counts up to 6 never get here: the replay rejects.
+bool PastStockSlots(uint8_t string, uint32_t info) {
+    return string >= kStockSlots && string < StockCount(info);
+}
+
+// The native object of added string 6 or 7 of GuitarStrings `gs`, nullptr without one. String 6
+// goes through Rs7_S7BendTarget / Rs7_S7BendObject (their logs, the emulator oracle); string 7 (eight strings) asks the
+// native strings directly.
+uint8_t* AddedString(uint32_t gs, uint8_t s) {
+    if (s != 7 || !gs) {
+        return nullptr;
+    }
+
+    return Rs7Gs_Active(reinterpret_cast<uint8_t*>(uintptr_t(gs)), 7, false);
+}
+
+// The added-string path of N18 (AL = note string, ESI = guitar info, ECX = GuitarStrings, DL = note fret): for
+// string 6 or 7 with a fret, its native object of `kind` gets ECX, EDX = the string and the stock body is skipped to
+// `join` after the site (the stock code there reads only ECX). EAX = the join address, as the old stubs left it (they
+// jumped through EAX; the stock code after the join reloads EAX before reading it). A string 6/7 past the stock slots
+// without that path: `reject` (the stock target). Anything else: the replay `cmp al,[esi+0Bh]; jae` (strings in range:
+// the stock body, else the stock target).
+void BendAdded(Rs7Mid::Context& c, uint32_t amountAt, uint32_t join, uintptr_t reject) {
+    const uint8_t s = uint8_t(c.eax);
+
+    if (InStockRange(s, c.esi)) {
         return;
     }
 
-    uint8_t* const obj = Rs7_S7BendTarget(reinterpret_cast<void*>(c.ecx), kind, uint8_t(c.edx), Dword(amountAt));
+    const bool fret = uint8_t(c.edx) != kNoFret;
+    uint8_t* const obj = !fret ? nullptr
+                         : s == 6
+                             ? Rs7_S7BendTarget(reinterpret_cast<void*>(c.ecx), kBend, uint8_t(c.edx), Dword(amountAt))
+                             : AddedString(c.ecx, s);
+
     if (!obj) {
+        if (PastStockSlots(s, c.esi)) {
+            c.jump = uint32_t(reject);
+        }
         return;
     }
 
     c.ecx = uint32_t(reinterpret_cast<uintptr_t>(obj));
-    c.edx = 6;
+    c.edx = s;
     c.jump = join;
     c.eax = join;
 }
 
-// The string-6 path of N19 / N20 / N23 (a release): the native string 6 (or its ghost) of `gs`, or 0 when the replay
-// must run (`string` in the stock range: the stock body; another string or no native object: the stock target).
-uint32_t ReleaseString6(uint8_t string, uint32_t info, uint32_t gs, bool ghost) {
-    if (InStockRange(string, info) || string != 6) {
-        return 0;
+// The added-string path of N19 / N20 (a release): joins at `join` with the native string 6 or 7 of
+// `gs` in `reg`. A string 6/7 past the stock slots without one: `reject`. Anything else: the replay (`string` in the
+// stock range: the stock body, else the stock target).
+void ReleaseAdded(Rs7Mid::Context& c, uint8_t string, uint32_t info, uint32_t gs, uint32_t& reg, uint32_t join,
+                  uintptr_t reject) {
+    if (InStockRange(string, info)) {
+        return;
     }
 
-    return uint32_t(reinterpret_cast<uintptr_t>(Rs7_S7BendObject(reinterpret_cast<void*>(gs), ghost ? 1 : 0)));
+    const uint32_t obj = uint32_t(reinterpret_cast<uintptr_t>(
+        string == 6 ? Rs7_S7BendObject(reinterpret_cast<void*>(gs), 0) : AddedString(gs, string)));
+
+    if (obj) {
+        reg = obj;
+        c.jump = join;
+    } else if (PastStockSlots(string, info)) {
+        c.jump = uint32_t(reject);
+    }
 }
 }  // namespace
 
@@ -126,47 +178,29 @@ uint32_t ReleaseString6(uint8_t string, uint32_t info, uint32_t gs, bool ghost) 
 // Rs7_S7Update, then the replay `mov eax,[ebx+18h]; test eax,eax` (its flags feed the `je` after it). Full mode: the
 // per-frame drivers use x87/SSE.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N5(Rs7Mid::Context& c) {
+    if (g_rs7_diag) {
+        Rs7Diag_FlushNoteHeads();  // full mode every frame, even when diagnostics started off
+    }
     const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
     Rs7_S7Update(reinterpret_cast<uint8_t*>(c.ebx));
 }
 
 // N18 0x7E3FFA in the note-in-progress update 0x7E3700, single-note bend `cmp al,[esi+0Bh]; jae` ([EBP-64h] = the
-// amount, log only): string 6 joins at the stock `cmp [ecx+4],0` (resume + 10h), so the stock Rnd_GuitarString_SetBend
-// call plays its `bendup_NN` sequence on the native string 6. Flags are dead at every continuation.
+// amount, log only): string 6/7 joins at the stock `cmp [ecx+4],0` (resume + 10h), so the stock
+// Rnd_GuitarString_SetBend call plays its `bendup_NN` sequence on the native string 6/7. Flags are dead at every
+// continuation.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N18(Rs7Mid::Context& c) {
-    BendString6(c, kBend, c.ebp - 0x64, uint32_t(g_rs7_resume_N18) + 0x10);
-}
-
-// N22 0x7E3ED5, the chart bend on the ghost strings (stock body `mov ecx,[ecx+edx*4+1Ch]`, [EBP-60h] = the amount
-// before *2/3): the ghost of string 6 joins at `cmp [ecx+4],0` (resume + 0Ch), "ghost_up_NN" on the ghost.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N22(Rs7Mid::Context& c) {
-    BendString6(c, kGhostBend, c.ebp - 0x60, uint32_t(g_rs7_resume_N22) + 0x0C);
+    BendAdded(c, c.ebp - 0x64, uint32_t(g_rs7_resume_N18) + 0x10, g_rs7_target_N18);
 }
 
 // N19 0x7E4059 (bend release, no bend at this time) and N20 0x7E43DB (release of a bend note when it ends, ST0 live):
-// `cmp al,[edx+0Bh]; jae` (AL = note string, EDX = guitar info, ECX = GuitarStrings). String 6 with a native string-6
+// `cmp al,[edx+0Bh]; jae` (AL = note string, EDX = guitar info, ECX = GuitarStrings). String 6/7 with a native
 // object: EAX = it, join at the stock `cmp byte [eax+0BDh],0FFh` (resume + 7). Light; flags are dead.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N19(Rs7Mid::Context& c) {
-    if (const uint32_t string6 = ReleaseString6(uint8_t(c.eax), c.edx, c.ecx, false)) {
-        c.eax = string6;
-        c.jump = uint32_t(g_rs7_resume_N19) + 7;
-    }
+    ReleaseAdded(c, uint8_t(c.eax), c.edx, c.ecx, c.eax, uint32_t(g_rs7_resume_N19) + 7, g_rs7_target_N19);
 }
 
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N20(Rs7Mid::Context& c) {
-    if (const uint32_t string6 = ReleaseString6(uint8_t(c.eax), c.edx, c.ecx, false)) {
-        c.eax = string6;
-        c.jump = uint32_t(g_rs7_resume_N20) + 7;
-    }
-}
-
-// N23 0x7E4347 in Rnd_Note_UpdateEnd 0x7E4230, the ghost release of an ending note: `cmp cl,[esi+0Bh]; jae` (CL =
-// string, EDX = GuitarStrings; two x87 slots live). The ghost of string 6: ECX = it, join at `cmp byte [ecx+0BDh],0FFh`
-// (resume + 7). Light; flags are dead.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_N23(Rs7Mid::Context& c) {
-    if (const uint32_t ghost6 = ReleaseString6(uint8_t(c.ecx), c.esi, c.edx, true)) {
-        c.ecx = ghost6;
-        c.jump = uint32_t(g_rs7_resume_N23) + 7;
-    }
+    ReleaseAdded(c, uint8_t(c.eax), c.edx, c.ecx, c.eax, uint32_t(g_rs7_resume_N20) + 7, g_rs7_target_N20);
 }

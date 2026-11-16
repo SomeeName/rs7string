@@ -17,8 +17,8 @@ from pathlib import Path
 
 import capstone
 import pefile
-from emu_common import DLL, EXE, REPO, dll_image
-from emu_harness import callin_entry
+from emu_common import DLL, EXE, REPO, dll_image, run_checked
+from emu_harness import callin_entry, install_teb
 from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_HOOK_MEM_UNMAPPED, UC_MODE_32, UC_PROT_ALL, Uc
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -142,6 +142,7 @@ class Machine:
     def __init__(self, native: bool):
         self.native = native
         uc = self.uc = Uc(UC_ARCH_X86, UC_MODE_32)
+        install_teb(uc)
         # The game image is mapped page by page on first touch (_zero_page).
         for a, n in ((SESSION, 0x800000), (STACK - 0x10000, 0x20000), (COPY, 0x10000), (RET, 0x1000)):
             uc.mem_map(a, n, UC_PROT_ALL)
@@ -263,7 +264,7 @@ class Machine:
         self.uc.mem_write(esp, struct.pack("<I", RET) + b"".join(struct.pack("<I", a) for a in args))
         self.uc.reg_write(UC_X86_REG_ESP, esp)
         self.fn_range = (0, 0xFFFFFFFF)
-        self.uc.emu_start(self.exports[name], RET, count=100000)
+        run_checked(self.uc, self.exports[name], RET, count=100000)
         if saved is not None:
             self.uc.mem_write(SESSION + 0x278, saved)
 

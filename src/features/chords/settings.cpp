@@ -1,42 +1,33 @@
-// The chord feature's settings: [chords] native_chordloops (overlay and template) and its startup read. The other
-// [chords] keys are read by hooks.cpp (frame_axis, wide_misses) and features/diagrams (diagrams7).
+// The chord feature's settings: [chords] wide_misses (overlay and template). hooks.cpp reads it from the store at
+// startup (Rs7Chord_Configure); ApplyMisses applies live changes.
 #include "platform/settings.h"
 #include "features/chords/chords.h"
-#include "platform/config.h"
+#include "features/nslot/nslot.h"
+#include "platform/uilayout.h"
 
 namespace {
 using T = Rs7SetType;
 using W = Rs7SetWhen;
 
-Rs7ChordConfig g_config;
-
-void Read(const wchar_t* iniPath) {
-    g_config = Rs7Chord_ReadIni(iniPath);
-}
+void ApplyMisses(const Rs7SetValue& v) {
+    g_rs7_match_misses = static_cast<uintptr_t>(v.i);
+}  // the matcher reads it per call (nslot.h)
 
 const Rs7SetDef kDefs[] = {
-    {"chords.native_chordloops", L"chords", L"native_chordloops", T::Bool, W::Restart, "1", 0, 1,
-     "Native chord techniques",
-     "Eight-slot chord bends, sustain techniques and 7/8-string chord frames; requires native_strings. In-game "
-     "acceptance pending.",
-     nullptr},
+    {"chords.wide_misses", L"chords", L"wide_misses", T::Int, W::Live, "2", 0, 2, "Wide chord misses",
+     "Notes that may be missing when matching 7- and 8-note chord requests, on any string (0-2). 5- and 6-note "
+     "chords allow one miss; 2-4-note chords allow none, as in stock.",
+     ApplyMisses},
 };
 }  // namespace
 
-const Rs7SetTable kRs7ChordSettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), Read};
+const Rs7SetTable kRs7ChordSettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), nullptr};
 
-const Rs7ChordConfig& Rs7Chord_Config() {
-    return g_config;
-}
+namespace {
+const Rs7UiItem kUi[] = {
+    Rs7UiPlayer("chords.wide_misses", "Missed notes in big chords",
+                "How many notes of a seven- or eight-note chord may be missed (0-2)."),
+};
+}  // namespace
 
-Rs7ChordConfig Rs7Chord_ReadIni(const wchar_t* iniPath) {
-    Rs7ChordConfig c;
-    if (!iniPath) {
-        return c;
-    }
-
-    c.nativeChordloopsRaw = Rs7Config_ReadInt(L"chords", L"native_chordloops", 1, iniPath);
-    c.nativeChordloops = c.nativeChordloopsRaw != 0;
-
-    return c;
-}
+const Rs7UiTable kRs7ChordUi = {kUi, int(sizeof kUi / sizeof kUi[0])};

@@ -230,6 +230,39 @@ def test_md1_up_to_six_targets_run_the_stock_body_on_the_compacted_array(emus, s
         assert patched.uc.reg_read(UC_X86_REG_ESP) == esp + 4 + 16  # ret 10h
 
 
+def md1_match(emu: Emu, eight: list[int], tol: int = 0, hist: int = 0) -> int:
+    tg = MT + 0x6000
+    emu.uc.mem_write(tg, struct.pack("<8i", *(eight + [-1] * 8)[:8]))
+    esp = STACK + 0x80000
+    emu.uc.mem_write(esp, struct.pack("<IIIII", RET_MAGIC, MT, tg, tol, hist))
+    with match_heap(emu):
+        return run_long(emu, MATCH_FN, esp)
+
+
+@pytest.mark.parametrize(
+    "chord,want_stock",
+    [([23, 30], 0), ([23, 30, 35], 0), ([28, 35], 0), ([26, 33, 38, 43], 0)],
+    ids=["B0+F#1", "B0 triad", "E1+B1", "D1 four notes"],
+)
+def test_md1_low_chord_matches_the_lowest_note_on_its_octave(emus, chord, want_stock):
+    """A chord of two or three notes whose lowest note is below E1 (28) passes with that note heard only at
+    its octave; stock needs its fundamental. E1 and chords of four notes stay stock."""
+    stock, patched = emus
+    low = min(chord)
+    peaks = {}
+    for t_ in chord:
+        for b, s in harmonics(t_, 1.0)[1 if t_ == low else 0 :]:
+            peaks[b] = peaks.get(b, 0.0) + s
+    for emu in (stock, patched):
+        matcher_setup(emu, list(peaks.items()))
+    assert stock_match(stock, (chord + [-1] * 6)[:6]) == want_stock
+    assert md1_match(patched, chord) == (1 if low < 28 and len(chord) <= 3 else want_stock)
+    peaks.pop(low + 12)  # the octave missing as well: not played
+    for emu in (stock, patched):
+        matcher_setup(emu, list(peaks.items()))
+    assert md1_match(patched, chord) == stock_match(stock, (chord + [-1] * 6)[:6])
+
+
 @pytest.mark.parametrize("sid", ["EV1", "EV2", "EV3", "EV4", "EV5"])
 def test_ev_thunks_move_the_eval_targets_to_the_int32_8(emus, sid):
     _, patched = emus

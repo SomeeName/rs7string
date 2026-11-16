@@ -1,14 +1,26 @@
 #include "features/tuner/tuner.h"
+#include "model/instrument.h"
+#include "model/tuning.h"
 
 // The tuner's pure rules (tests/tuner): the wrong-instrument threshold and the native session's string order.
 
 int rs7tuner::WrongThreshold(int lowestOpen) {
-    return lowestOpen - 1 < 34 ? lowestOpen - 1 : 34;
+    return lowestOpen - 1 < kStockWrongThreshold ? lowestOpen - 1 : kStockWrongThreshold;
 }
 
-void rs7tu::Order(int n, uint8_t out[8]) {
+void rs7tu::Order(int n, uint8_t out[8], bool bass) {
     for (int i = 0; i < 8; ++i) {
         out[i] = uint8_t(i);
+    }
+
+    if (bass && rs7::IsExtendedBass(n)) {
+        static constexpr uint8_t kBass[8] = {4, 0, 1, 2, 3, 5, 6, 7};
+
+        for (int i = 0; i < 8; ++i) {
+            out[i] = kBass[i];
+        }
+
+        return;
     }
 
     if (n <= 6) {
@@ -45,7 +57,7 @@ int rs7tu::Step(const uint8_t* order, int n, int cur, int dir) {
 void rs7tu::Targets(const int* offs, const int extra[2], int open[8], int off[8]) {
     for (int s = 0; s < 8; ++s) {
         off[s] = s < 6 ? offs[s] : extra[s - 6];
-        open[s] = kGuitarBase[s] + off[s];
+        open[s] = rs7::kGuitarOpenMidi[s] + off[s];
     }
 }
 

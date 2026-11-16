@@ -5,7 +5,10 @@
 #include "features/headstock/assetload_tex.h"
 #include "features/headstock/headstockread.h"
 #include "features/headstock/hsbuild_io.h"
+#include "features/headstock/state.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -15,10 +18,9 @@
 // The stock path (headstock7=0) never reaches these files: the AL1 stub replays the entry itself.
 
 using namespace rs7asset;
+using rs7head::g_head;
 
 namespace {
-volatile long g_logSeen = 0, g_logMerged = 0, g_logMissing = 0, g_logFail = 0, g_logLayout = 0, g_logTexCheck = 0;
-
 bool AttachChild(uint8_t* parent, uint8_t* child) {  // NiNode vtbl+0A0h, thiscall(child, bFirstAvail)
     __try {
         void* const* vt = *reinterpret_cast<void* const* const*>(parent);
@@ -26,7 +28,7 @@ bool AttachChild(uint8_t* parent, uint8_t* child) {  // NiNode vtbl+0A0h, thisca
 
         reinterpret_cast<Fn>(vt[kNodeAttach / 4])(parent, nullptr, child, 0);
         return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -34,7 +36,7 @@ bool AttachChild(uint8_t* parent, uint8_t* child) {  // NiNode vtbl+0A0h, thisca
 void* CallStock(const char* name, const void* buf, uint32_t size, void* ctx) {
     __try {
         return Rs7_NifHandlerStock(name, buf, size, ctx);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -42,11 +44,12 @@ void* CallStock(const char* name, const void* buf, uint32_t size, void* ctx) {
 // Loads the edited file with the stock handler (same resource name) and hangs its top object,
 // renamed and culled, under the stock top object. The edited resource is kept (never released):
 // its NiStream holds the only other references and the master lives as long as the game.
-void Merge(const char* name, void* res, const std::wstring& path, const std::vector<uint8_t>& bytes) {
+void Merge(const char* name, void* res, const std::wstring& path, const std::vector<uint8_t>& bytes,
+           const char* altName = kAltName) {
     uint8_t* top = TopObject(res);
 
     if (!top || !rs7s7d::IsKindOf(top, "NiNode")) {
-        if (Upto(&g_logFail, 8)) {
+        if (Rs7Log_Upto(&g_head.logFail, 8)) {
             Rs7Log("assetload: %s: stock top object %p is not an NiNode - not merged", name, top);
         }
         return;
@@ -55,8 +58,8 @@ void Merge(const char* name, void* res, const std::wstring& path, const std::vec
     void* res2 = CallStock(name, bytes.data(), uint32_t(bytes.size()), nullptr);
     uint8_t* alt = res2 ? TopObject(res2) : nullptr;
 
-    if (!alt || !rs7s7d::IsKindOf(alt, "NiNode") || Rd<uint8_t*>(alt, kParent)) {
-        if (Upto(&g_logFail, 8)) {
+    if (!alt || !rs7s7d::IsKindOf(alt, "NiNode") || Rs7_SafeRead<uint8_t*>(alt, kParent)) {
+        if (Rs7Log_Upto(&g_head.logFail, 8)) {
             Rs7Log("assetload: %s: %ls did not load as a scene (resource %p, top %p) - stock model only", name,
                    path.c_str(), res2, alt);
         }
@@ -66,12 +69,12 @@ void Merge(const char* name, void* res, const std::wstring& path, const std::vec
     char oldName[48] = {};
 
     rs7s7d::NameOfNode(alt, oldName, sizeof oldName);
-    Rename(alt, kAltName);
+    Rename(alt, altName);
     SetCulled(alt, true);  // every clone starts with the stock model shown
-    const unsigned before = Rd<uint16_t>(top, kChildSlots);
+    const unsigned before = Rs7_SafeRead<uint16_t>(top, kChildSlots);
 
     if (!AttachChild(top, alt)) {
-        if (Upto(&g_logFail, 8)) {
+        if (Rs7Log_Upto(&g_head.logFail, 8)) {
             Rs7Log("assetload: %s: AttachChild faulted - stock model only", name);
         }
         return;
@@ -83,11 +86,11 @@ void Merge(const char* name, void* res, const std::wstring& path, const std::vec
     rs7s7d::NameOfNode(top, topName, sizeof topName);
     rs7s7d::NameOfNode(alt, newName, sizeof newName);
 
-    if (Upto(&g_logMerged, 16)) {
+    if (Rs7Log_Upto(&g_head.logMerged, 16)) {
         Rs7Log("assetload: %s: merged %ls (%u bytes): its top \"%s\" %p -> \"%s\", culled, attached under the stock "
                "top \"%s\" %p (child slots %u -> %u, parent now %p)",
                name, path.c_str(), unsigned(bytes.size()), oldName, alt, newName, topName, top, before,
-               unsigned(Rd<uint16_t>(top, kChildSlots)), Rd<void*>(alt, kParent));
+               unsigned(Rs7_SafeRead<uint16_t>(top, kChildSlots)), Rs7_SafeRead<void*>(alt, kParent));
     }
 }
 }  // namespace
@@ -124,44 +127,77 @@ bool Rs7Asset_RunOnce(volatile long* state, bool (*build)(void*), void* context,
 }
 
 namespace {
-volatile long g_sbShared = 0;  // the right-handed build (shared rs7hs_*.dds + RH model): one owner for both jobs
-
 bool BuildSharedRh(void*) {
-    return Rs7Asset_SelfBuild(g_sbIni.c_str(), g_sbDllDir.c_str(), g_dir.c_str(), true);
+    return Rs7Asset_SelfBuild(g_config.sbDllDir.c_str(), g_config.dir.c_str(), Rs7HsKit::Guitar, g_config.sbProtected);
+}
+
+bool BuildBass(void* lh) {
+    return Rs7Asset_SelfBuild(g_config.sbDllDir.c_str(), g_config.dir.c_str(), lh ? Rs7HsKit::BassLh : Rs7HsKit::Bass,
+                              g_config.sbProtected);
+}
+
+// First bass-frame nif load without bass models (loader thread): the guitar kit (the shared textures), the bass kit
+// (its textures and the right-handed models), then for a left-handed frame the mirrored models. Once each.
+bool BassSelfBuild(bool lh) {
+    if (!Rs7Asset_RunOnce(&g_head.sbShared, BuildSharedRh, nullptr, 30000) ||
+        !Rs7Asset_RunOnce(&g_head.sbBassRh, BuildBass, nullptr, 30000)) {
+        return false;
+    }
+
+    if (lh) {
+        return Rs7Asset_RunOnce(&g_head.sbBassLh, BuildBass, &g_head.bassLhTag, 30000);
+    }
+
+    return true;
 }
 
 // First guitar-frame nif load (loader thread): build the model if it is not there yet. Other loader threads
-// wait (bounded) so every thread sees the final g_file7. Any failure leaves g_file7 empty = stock model.
+// wait (bounded) so every thread sees the final g_config.file7. Any failure leaves g_config.file7 empty = stock model.
+bool BuildGuitar(void* hand) {
+    const bool lh = hand != nullptr;
+    std::wstring& published = lh ? g_config.file7Lh : g_config.file7;
+
+    published.clear();
+    ModelFiles model = ModelFilesFor(true);
+    std::wstring file = Rs7Asset_ResolveFile(lh ? model.fileLh : model.file, g_config.dir);
+    // The left-handed model references the shared rs7hs_*.dds: the right-handed build (cached when there)
+    // puts them into the same folder first. Both jobs go through ONE owner of that build: the
+    // second job waits for / reuses its result instead of writing the same intermediate files concurrently.
+    bool ok = Rs7Asset_RunOnce(&g_head.sbShared, BuildSharedRh, nullptr, 30000);
+
+    if (ok && lh) {
+        ok = Rs7Asset_SelfBuild(g_config.sbDllDir.c_str(), g_config.dir.c_str(), Rs7HsKit::GuitarLh,
+                                g_config.sbProtected);
+    }
+
+    // Eight strings without the 8-peg model (an older headstock package): the 7-peg one, not the stock headstock.
+    if (ok && !FilePresent(file)) {
+        const ModelFiles seven = ModelFilesFor(false);
+        const std::wstring file7 = Rs7Asset_ResolveFile(lh ? seven.fileLh : seven.file, g_config.dir);
+
+        if (FilePresent(file7)) {
+            Rs7Log("assetload: %sno 8-peg model (%ls) - the 7-peg model instead", lh ? "left-handed: " : "",
+                   file.c_str());
+            model = seven;
+            _InterlockedExchange(&g_head.modelPegs[lh ? 1 : 0], long(seven.pegs));
+            file = file7;
+        }
+    }
+
+    if (ok && FilePresent(file)) {
+        published = file;
+        Rs7Log("assetload: self-built %s%u-peg model in use: %ls", lh ? "left-handed " : "", model.pegs, file.c_str());
+        return true;
+    } else {
+        Rs7Log("assetload: %sselfbuild gave no model - the stock 6-peg headstock stays (see the hsbuild line above)",
+               lh ? "left-handed " : "");
+    }
+
+    return false;
+}
+
 void SelfBuildOnce(bool lh) {
-    volatile long& state = lh ? g_sbStateLh : g_sbState;
-
-    if (_InterlockedCompareExchange(&state, 1, 0) == 0) {
-        const std::wstring file = g_dir + (lh ? kDefaultFile7Lh : kDefaultFile7);
-        // The left-handed model references the shared rs7hs_*.dds: the right-handed build (cached when there)
-        // puts them into the same folder first. Both jobs go through ONE owner of that build (review #14): the
-        // second job waits for / reuses its result instead of writing the same intermediate files concurrently.
-        bool ok = Rs7Asset_RunOnce(&g_sbShared, BuildSharedRh, nullptr, 30000);
-
-        if (ok && lh) {
-            ok = Rs7Asset_SelfBuild(g_sbIni.c_str(), g_sbDllDir.c_str(), g_dir.c_str(), true, true);
-        }
-
-        if (ok && GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            (lh ? g_file7Lh : g_file7) = file;
-            Rs7Log("assetload: self-built %s7-string model in use: %ls", lh ? "left-handed " : "", file.c_str());
-        } else {
-            Rs7Log(
-                "assetload: %sselfbuild gave no model - the stock 6-peg headstock stays (see the hsbuild line above)",
-                lh ? "left-handed " : "");
-        }
-
-        _InterlockedExchange(&state, 2);
-        return;
-    }
-
-    for (int i = 0; i < 600 && state != 2; ++i) {
-        Sleep(50);  // 30 s at most
-    }
+    Rs7Asset_RunOnce(lh ? &g_head.sbStateLh : &g_head.sbState, BuildGuitar, lh ? &g_head.guitarLhTag : nullptr, 30000);
 }
 
 // Whether the stock model just loaded is a guitar headstock frame (the node names the game binds:
@@ -173,6 +209,74 @@ bool IsGuitarFrame(void* res) {
     }
 
     return FindByName(top, "Locator_Peg_1") && FindByName(top, "string_size_6") && !FindByName(top, "string_size_7");
+}
+
+// Whether it is a stock bass headstock frame (Locator_Peg_1 and the bass string_size_7..10).
+bool IsBassFrame(void* res) {
+    uint8_t* top = TopObject(res);
+
+    return top && rs7s7d::IsKindOf(top, "NiNode") && FindByName(top, "Locator_Peg_1") &&
+           FindByName(top, "string_size_7");
+}
+
+// Bass: the frame is loaded once and cached, before any song sets the string count, so it gets both models: the
+// 6-string one as rs7_alt (its Locator_Peg_6 lets the stock binder take peg slot 5) and the 5-string one as rs7_alt5;
+// the head shows the one the bass is built with (assetload_head.cpp). Returns the rs7_alt file ("" = none), `alt5`
+// the rs7_alt5 file ("" = none).
+std::wstring BassModels(const char* name, void* res, std::wstring& alt5) {
+    bool lh = false;
+    const std::wstring six = Rs7Asset_BassPath(name, g_config.dir, 6),
+                       five = Rs7Asset_BassPath(name, g_config.dir, 5, &lh);
+
+    // No bass model yet: the self-build writes the shipped ones (rs7string_headstock_bass*.bin).
+    // An outdated one (an update shipped a new package): rebuilt the same way, once.
+    const bool stale = lh ? g_head.sbBassStaleLh : g_head.sbBassStale;
+
+    if (g_head.sbBass && !five.empty() && ((!FilePresent(five) || !FilePresent(six)) || stale) && IsBassFrame(res)) {
+        if (!BassSelfBuild(lh)) {
+            return {};
+        }
+    }
+
+    alt5 = FilePresent(six) && FilePresent(five) ? five : std::wstring();
+
+    return FilePresent(six) ? six : FilePresent(five) ? five : std::wstring();
+}
+
+// Our own model (`own`: textures registered first) or an edited one merged into the frame; a bass frame also gets the
+// 5-string model and a guitar frame with the 8-peg model the 7-peg one (`second`, rs7_alt5), with their own textures
+// (the shared ones registered once).
+void MergeModels(const char* name, void* res, const void* buf, uint32_t size, bool own, const std::wstring& path,
+                 std::vector<uint8_t>& bytes, const std::wstring& second) {
+    std::vector<std::string> registered;
+
+    if (own) {
+        const int n = RegisterTextures(name, path, bytes, buf, size, &registered);
+
+        Rs7Log("assetload: %s: %d texture(s) of the own model registered in %s", name, n,
+               Rs7Asset_FolderOf(name).c_str());
+    }
+
+    Merge(name, res, path, bytes);
+
+    if (own && !second.empty() && ReadFileBytes(second, bytes)) {
+        RegisterTextures(name, second, bytes, buf, size, &registered);
+        Merge(name, res, second, bytes, kAltName5);
+    }
+
+    if (own && Rs7Log_Upto(&g_head.logTexCheck, 2)) {
+        LogTextureList("after the merge");
+    }
+}
+
+// Eight strings: the 7-peg model file next to the 8-peg one, "" without one (or with eight off). The self-build writes
+// both in-line models.
+std::wstring Seven(bool lh) {
+    const std::wstring& f = lh ? g_config.file7sLh : g_config.file7s;
+    const bool primary =
+        f == (lh ? g_config.file7Lh : g_config.file7);  // the 7-peg fallback is the frame's model already
+
+    return !primary && FilePresent(f) ? f : std::wstring();
 }
 
 // 3+3 peg (kLayouts comment): the in-line peg and its wilshire_hardware.dds from the in-line package (the game's
@@ -214,46 +318,55 @@ extern "C" void* __cdecl Rs7_NifHandler(const char* name, const void* buf, uint3
 
         const bool rh = Rs7Asset_IsRhCandidate(name), lh = Rs7Asset_IsLhCandidate(name);
 
-        if (rh && g_sbWanted && g_sbState != 2 && IsGuitarFrame(res)) {
+        if (rh && g_head.sbWanted && g_head.sbState < 2 && IsGuitarFrame(res)) {
             SelfBuildOnce(false);
         }
-        if (lh && g_sbWantedLh && g_sbStateLh != 2 && IsGuitarFrame(res)) {
+        if (lh && g_head.sbWantedLh && g_head.sbStateLh < 2 && IsGuitarFrame(res)) {
             SelfBuildOnce(true);
         }
-        const bool selfbuilding = lh ? g_sbWantedLh : g_sbWanted;
-        const std::wstring own7 = selfbuilding
-                                      ? Rs7Asset_PublishedPath(lh ? g_file7Lh : g_file7, lh ? &g_sbStateLh : &g_sbState)
-                                      : (lh ? g_file7Lh : g_file7);
+        const bool selfbuilding = lh ? g_head.sbWantedLh : g_head.sbWanted;
+        const std::wstring own7 = selfbuilding ? Rs7Asset_PublishedPath(lh ? g_config.file7Lh : g_config.file7,
+                                                                        lh ? &g_head.sbStateLh : &g_head.sbState)
+                                               : (lh ? g_config.file7Lh : g_config.file7);
         std::wstring path;
         bool own = false;
+
+        std::wstring bass5;
+        const std::wstring bass = BassModels(name, res, bass5);
 
         if ((rh || lh) && !own7.empty() && IsGuitarFrame(res)) {
             path = own7;
             own = true;
+        } else if (!bass.empty() && IsBassFrame(res)) {
+            path = bass;
+            own = true;
         } else {
-            path = Rs7Asset_EditedPath(name, g_dir, g_suffix);
+            path = Rs7Asset_EditedPath(name, g_config.dir, g_config.suffix);
             if (path.empty()) {
                 return res;
             }
 
             if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
-                if (Upto(&g_logMissing, 12)) {
+                if (Rs7Log_Upto(&g_head.logMissing, 12)) {
                     Rs7Log("assetload: %s: no edited model (%ls) - stock", name, path.c_str());
                 }
                 return res;
             }
         }
 
-        if (Upto(&g_logSeen, 16)) {
+        if (Rs7Log_Upto(&g_head.logSeen, 16)) {
             Rs7Log("assetload: %s (%u bytes) loaded by the nif handler; %s %ls", name, unsigned(size),
-                   own ? "7-string model (headstock7_file)" : "edited model", path.c_str());
+                   !own           ? "edited model"
+                   : bass.empty() ? "7-string model (headstock7_file)"
+                                  : "extended-bass model",
+                   path.c_str());
         }
 
         if (own) {
             bool isLh = false;
             const HeadLayout* lay = Rs7Asset_LayoutOf(name, &isLh);
 
-            if (lay && Upto(&g_logLayout, 4)) {
+            if (lay && Rs7Log_Upto(&g_head.logLayout, 4)) {
                 Rs7Log("assetload: headstock layout \"%s\" (%s frame, stock part %s)", lay->option,
                        isLh ? "left-handed" : "right-handed", isLh ? lay->stockLh : lay->stockRh);
             }
@@ -262,23 +375,13 @@ extern "C" void* __cdecl Rs7_NifHandler(const char* name, const void* buf, uint3
         std::vector<uint8_t> bytes;
 
         if (!ReadFileBytes(path, bytes)) {
-            if (Upto(&g_logFail, 8)) {
+            if (Rs7Log_Upto(&g_head.logFail, 8)) {
                 Rs7Log("assetload: %s: could not read %ls - stock model only", name, path.c_str());
             }
             return res;
         }
 
-        if (own) {
-            const int n = RegisterTextures(name, path, bytes, buf, size);
-
-            Rs7Log("assetload: %s: %d texture(s) of the 7-string model registered in %s", name, n,
-                   Rs7Asset_FolderOf(name).c_str());
-        }
-
-        Merge(name, res, path, bytes);
-        if (own && Upto(&g_logTexCheck, 2)) {
-            LogTextureList("after the merge");
-        }
+        MergeModels(name, res, buf, size, own, path, bytes, path == bass ? bass5 : path == own7 ? Seven(lh) : L"");
     } catch (...) {
     }
 

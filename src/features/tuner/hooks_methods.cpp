@@ -2,6 +2,8 @@
 #include "features/tuner/hooks.h"
 #include "features/tuner/state.h"
 #include "features/tuner/tuner.h"
+#include "model/tuning.h"
+#include "platform/seh.h"
 #include <windows.h>
 
 // What runs inside a native tuner session's methods: the calls the session copies make (string order steps, the
@@ -9,9 +11,9 @@
 // Game thread only. The copies reach Rs7Tu8_AdvanceC / Rs7Tu8_FirstC through call-in entries (hooks_callin.cpp).
 
 namespace {
-using rs7tuner::At;
 using rs7tuner::g_state;
-using rs7tuner::Read;
+using rs7tuner::UncheckedField;
+using rs7tuner::UncheckedRead;
 
 using ReleaseFn = void(__thiscall*)(void*);
 
@@ -27,7 +29,7 @@ void ReleaseRef(uint32_t& slot) {
         void** vt = *static_cast<void***>(p);
 
         reinterpret_cast<ReleaseFn>(vt[2])(p);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 }
 }  // namespace
@@ -38,18 +40,19 @@ extern "C" int __stdcall Rs7Tu8_AdvanceC(uint8_t* session, int dir) {
         return 0;
     }
 
-    const int to = rs7tu::Step(session + rs7tu::kOrder, rs7tuner::Count(session), Read<int>(session, rs7tu::kCur), dir);
+    const int to =
+        rs7tu::Step(session + rs7tu::kOrder, rs7tuner::Count(session), UncheckedRead<int>(session, rs7tu::kCur), dir);
     if (to < 0) {
         return 0;
     }
 
-    At<int>(session, rs7tu::kCur) = to;
+    UncheckedField<int>(session, rs7tu::kCur) = to;
 
     return 1;
 }
 
 extern "C" uint32_t __stdcall Rs7Tu8_FirstC(uint8_t* session) {
-    return Rs7Tuner8_IsNative(session) ? Read<uint8_t>(session, rs7tu::kOrder) : 0;
+    return Rs7Tuner8_IsNative(session) ? UncheckedRead<uint8_t>(session, rs7tu::kOrder) : 0;
 }
 
 extern "C" void __cdecl Rs7Tu8_OnSelect(uint8_t* session, uint32_t s) {
@@ -64,9 +67,9 @@ extern "C" void __cdecl Rs7Tu8_OnSelect(uint8_t* session, uint32_t s) {
         }
         if (s < 8) {
             rs7tuner::Log("tuner8: session %p selects string %d, target MIDI %d", session, int(s),
-                          Read<int>(session, rs7tu::kOpen + 4 * s));
+                          UncheckedRead<int>(session, rs7tu::kOpen + 4 * s));
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 }
 
@@ -77,7 +80,7 @@ extern "C" void __cdecl Rs7_Mid_TS8F1(Rs7Mid::Context& c) {
     uint8_t* s = reinterpret_cast<uint8_t*>(uintptr_t(c.ebx));
 
     if (Rs7Tuner8_IsNative(s)) {
-        At<int>(s, rs7tu::kCur) = Read<uint8_t>(s, rs7tu::kOrder);
+        UncheckedField<int>(s, rs7tu::kCur) = UncheckedRead<uint8_t>(s, rs7tu::kOrder);
         c.esi = c.ebx;
         c.jump = 0x5AFB1E;
     }
@@ -89,18 +92,26 @@ extern "C" void __cdecl Rs7_Mid_TS8F2(Rs7Mid::Context& c) {
     uint8_t* s = reinterpret_cast<uint8_t*>(uintptr_t(c.ebx));
 
     if (Rs7Tuner8_IsNative(s)) {
-        At<int>(s, rs7tu::kCur) = Read<uint8_t>(s, rs7tu::kOrder);
+        UncheckedField<int>(s, rs7tu::kCur) = UncheckedRead<uint8_t>(s, rs7tu::kOrder);
     }
 }
 
 // 5B02A7 (mode 3 entry 0x5B0270, ESI session, EDI = 0, or 5 for the reverse pass): `call
-// UI_PlayerTuner_SelectString` replayed with EDI = the first string of the order (the reverse pass keeps
-// the stock 5: the last string of every order).
+// UI_PlayerTuner_SelectString` replayed with EDI = the first string of the order (the reverse pass: the last one,
+// the stock 5 of every guitar order; an extended bass ends on its G or high C).
 extern "C" void __cdecl Rs7_Mid_TS8F3(Rs7Mid::Context& c) {
     uint8_t* s = reinterpret_cast<uint8_t*>(uintptr_t(c.esi));
 
-    if (Rs7Tuner8_IsNative(s) && !Read<uint8_t>(s, 0x22D)) {
-        c.edi = Read<uint8_t>(s, rs7tu::kOrder);
+    if (!Rs7Tuner8_IsNative(s)) {
+        return;
+    }
+
+    const int n = UncheckedRead<uint8_t>(s, rs7tu::kCount);
+
+    if (!UncheckedRead<uint8_t>(s, rs7tu::kReversePass)) {
+        c.edi = UncheckedRead<uint8_t>(s, rs7tu::kOrder);
+    } else if (n >= 1 && n <= 8) {
+        c.edi = UncheckedRead<uint8_t>(s, rs7tu::kOrder + uint32_t(n - 1));
     }
 }
 
@@ -113,9 +124,10 @@ extern "C" void __cdecl Rs7_Mid_TS8RS(Rs7Mid::Context& c) {
     }
 
     for (int k = 0; k < 8; ++k) {
-        At<int>(s, rs7tu::kOpen + 4 * k) = k < 6 ? Read<int>(s, rs7tu::kStockOpen + 4 * k) : rs7tu::kGuitarBase[k];
-        At<int>(s, rs7tu::kOffsets + 4 * k) = 0;
-        At<float>(s, rs7tu::kPeaks + 4 * k) = 0.0f;
+        UncheckedField<int>(s, rs7tu::kOpen + 4 * k) =
+            k < 6 ? UncheckedRead<int>(s, rs7tu::kStockOpen + 4 * k) : rs7::kGuitarOpenMidi[k];
+        UncheckedField<int>(s, rs7tu::kOffsets + 4 * k) = 0;
+        UncheckedField<float>(s, rs7tu::kPeaks + 4 * k) = 0.0f;
     }
 }
 
@@ -129,14 +141,14 @@ extern "C" void __cdecl Rs7_Mid_TS8DT(Rs7Mid::Context& c) {
 
     __try {
         for (int k = 0; k < 8; ++k) {
-            uint32_t& pick = At<uint32_t>(s, rs7tu::kPicks + 4 * k);
-            uint32_t& l0 = At<uint32_t>(s, rs7tu::kLetters + 8 * k);
-            uint32_t& l1 = At<uint32_t>(s, rs7tu::kLetters + 8 * k + 4);
+            uint32_t& pick = UncheckedField<uint32_t>(s, rs7tu::kPicks + 4 * k);
+            uint32_t& l0 = UncheckedField<uint32_t>(s, rs7tu::kLetters + 8 * k);
+            uint32_t& l1 = UncheckedField<uint32_t>(s, rs7tu::kLetters + 8 * k + 4);
 
             if (k < 6) {
-                At<uint32_t>(s, rs7tu::kStockPicks + 4 * k) = pick;
-                At<uint32_t>(s, rs7tu::kStockLetters + 8 * k) = l0;
-                At<uint32_t>(s, rs7tu::kStockLetters + 8 * k + 4) = l1;
+                UncheckedField<uint32_t>(s, rs7tu::kStockPicks + 4 * k) = pick;
+                UncheckedField<uint32_t>(s, rs7tu::kStockLetters + 8 * k) = l0;
+                UncheckedField<uint32_t>(s, rs7tu::kStockLetters + 8 * k + 4) = l1;
                 pick = l0 = l1 = 0;
             } else {
                 ReleaseRef(pick);
@@ -145,9 +157,9 @@ extern "C" void __cdecl Rs7_Mid_TS8DT(Rs7Mid::Context& c) {
             }
         }
 
-        At<uint8_t>(s, rs7tu::kNative) = 0;
+        UncheckedField<uint8_t>(s, rs7tu::kNative) = 0;
         rs7tuner::Log("tuner8: session %p destroyed (native tail released)", s);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 
     Rs7Tuner_Refresh();
@@ -163,7 +175,7 @@ extern "C" void __cdecl Rs7_Mid_TS8WR(Rs7Mid::Context& c) {
     const uint32_t str = *reinterpret_cast<const uint32_t*>(uintptr_t(c.ebp) + 8);
 
     c.ecx = str;
-    c.edx = str < 8 ? Read<uint32_t>(s, rs7tu::kOpen + 4 * str) : 0;
+    c.edx = str < 8 ? UncheckedRead<uint32_t>(s, rs7tu::kOpen + 4 * str) : 0;
     c.jump = 0x5B2D8F;
 }
 
@@ -185,7 +197,7 @@ extern "C" void __cdecl Rs7_Mid_TS8SN2(Rs7Mid::Context& c) {
         return;
     }
 
-    c.eax = Read<uint32_t>(s, rs7tu::kOpen + 4 * str);
+    c.eax = UncheckedRead<uint32_t>(s, rs7tu::kOpen + 4 * str);
     c.jump = 0x5B2EAE;
 }
 

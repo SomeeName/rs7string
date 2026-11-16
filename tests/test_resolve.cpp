@@ -70,6 +70,33 @@ TEST(ref_site_value_is_the_dword_at_the_site) {
     CHECK_EQ(r.sites[0].target, uintptr_t(0x01360B00));
 }
 
+TEST(wildcard_in_expect_fails) {  // expect is the rollback data: a wildcard would restore 0x00
+    const auto t = Text();
+    const Rs7Site w{"W", "8B 75 0C 74 36 83 FA 05 77 57", 5, "83 ?? 05 77 57", Rs7Kind::Jmp, 5, -1, 0, 0};
+    const auto r = Rs7_ResolveAll(&w, 1, t.data(), t.size(), 0x401000);
+
+    CHECK(!r.ok);
+    CHECK(r.errors[0].find("wildcard") != std::string::npos);
+}
+
+TEST(site_before_text_fails) {  // a negative offset past the start must not wrap
+    const auto t = Text();
+    const Rs7Site neg{"N", "8B 75 0C 74 36 83 FA 05 77 57", -20, "00 00 00 00 00", Rs7Kind::Jmp, 5, -1, 0, 0};
+    const auto r = Rs7_ResolveAll(&neg, 1, t.data(), t.size(), 0x401000);
+
+    CHECK(!r.ok);
+    CHECK(r.errors[0].find("outside") != std::string::npos);
+}
+
+TEST(branch_field_past_text_fails) {
+    const auto t = Text();
+    const Rs7Site far{"F", "8B 75 0C 74 36 83 FA 05 77 57", 5, "83 FA 05 77 57", Rs7Kind::Jmp, 5, 60, 4, 64};
+    const auto r = Rs7_ResolveAll(&far, 1, t.data(), t.size(), 0x401000);
+
+    CHECK(!r.ok);
+    CHECK(r.errors[0].find("past .text") != std::string::npos);
+}
+
 TEST(two_matches_fail) {
     std::vector<uint8_t> t(32, 0x00);
 
@@ -78,4 +105,18 @@ TEST(two_matches_fail) {
     const auto r = Rs7_ResolveAll(&dup, 1, t.data(), t.size(), 0);
 
     CHECK(!r.ok);
+}
+
+TEST(resolve_settles_on_the_same_few_failures) {
+    Rs7Site sites[40] = {};
+    Rs7ResolveResult r{false, {}, {}, {}, {&sites[3]}};
+
+    CHECK(!Rs7_ResolveSettled(r, {}, 40));           // the first failing attempt: retry
+    CHECK(Rs7_ResolveSettled(r, {&sites[3]}, 40));   // the same site again: a foreign hook, not unpacking
+    CHECK(!Rs7_ResolveSettled(r, {&sites[4]}, 40));  // another site: still changing
+    r.failed = {&sites[1], &sites[2], &sites[3]};
+    CHECK(!Rs7_ResolveSettled(r, r.failed, 40));  // more than 1 in 20 failing: .text may still be unpacking
+    r.ok = true;
+    r.failed.clear();
+    CHECK(Rs7_ResolveSettled(r, {}, 40));
 }

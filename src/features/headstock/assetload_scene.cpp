@@ -1,4 +1,6 @@
 #include "features/headstock/assetload_scene.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstring>
 
@@ -8,14 +10,14 @@ __declspec(dllexport) uintptr_t g_rs7_fn_fixstr = 0;
 
 namespace rs7asset {
 uint8_t* TopObject(const void* res) {
-    uint8_t* stream = Rd<uint8_t*>(res, kResStream);
-    if (!stream || Rd<uint32_t>(stream, kStreamTopCount) < 1) {
+    uint8_t* stream = Rs7_SafeRead<uint8_t*>(res, kResStream);
+    if (!stream || Rs7_SafeRead<uint32_t>(stream, kStreamTopCount) < 1) {
         return nullptr;
     }
 
-    uint8_t** base = Rd<uint8_t**>(stream, kStreamTop);
+    uint8_t** base = Rs7_SafeRead<uint8_t**>(stream, kStreamTop);
 
-    return base ? Rd<uint8_t*>(base, 0) : nullptr;
+    return base ? Rs7_SafeRead<uint8_t*>(base, 0) : nullptr;
 }
 
 // Game calls, each SEH-guarded (a fault leaves the stock model alone).
@@ -26,7 +28,7 @@ const char* MakeFixedString(const char* text) {  // 0x91CBF0, cdecl(const char*)
 
     __try {
         return reinterpret_cast<const char*(__cdecl*)(const char*)>(g_rs7_fn_fixstr)(text);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -37,11 +39,11 @@ void Rename(uint8_t* node, const char* to) {
     }
 
     if (const char* fs = MakeFixedString(to)) {
-        rs7s7d::SafeStore(node + kName, &fs, sizeof fs);
+        Rs7_SafeStore(node + kName, &fs, sizeof fs);
     }
 }
 
-uint8_t* FindAlt(uint8_t* root) {  // breadth-first, first 3 levels
+uint8_t* FindAlt(uint8_t* root, const char* altName) {  // breadth-first, first 3 levels
     uint8_t* q[64];
     int head = 0, tail = 0;
 
@@ -63,7 +65,7 @@ uint8_t* FindAlt(uint8_t* root) {  // breadth-first, first 3 levels
 
                 rs7s7d::NameOfNode(c, name, sizeof name);
 
-                if (!std::strcmp(name, kAltName)) {
+                if (!std::strcmp(name, altName)) {
                     found = c;
                     return false;
                 }
@@ -102,11 +104,11 @@ uint8_t* FindByName(uint8_t* root, const char* want) {  // depth-first, at most 
             continue;
         }
 
-        const unsigned slots = Rd<uint16_t>(n, kChildSlots);
-        uint8_t** kids = Rd<uint8_t**>(n, kChildren);
+        const unsigned slots = Rs7_SafeRead<uint16_t>(n, kChildSlots);
+        uint8_t** kids = Rs7_SafeRead<uint8_t**>(n, kChildren);
 
         for (int i = int(slots < 48 ? slots : 48) - 1; kids && i >= 0; --i) {
-            uint8_t* c = Rd<uint8_t*>(kids, 4 * uint32_t(i));
+            uint8_t* c = Rs7_SafeRead<uint8_t*>(kids, 4 * uint32_t(i));
 
             if (c && sp < 64) {
                 stack[sp++] = c;
@@ -129,7 +131,7 @@ int rs7asset::GamePropType(const uint8_t* prop) {
         const uintptr_t vt = *reinterpret_cast<const uintptr_t*>(prop);
 
         return (*reinterpret_cast<const TypeFn*>(vt + 0x48))(prop);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return -1;
     }
 }
@@ -150,7 +152,7 @@ uint8_t* rs7asset::FindProperty(const uint8_t* obj, int type, PropTypeFn typeOf)
 
             node = *reinterpret_cast<const uint8_t* const*>(node);
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 
     return nullptr;
@@ -161,19 +163,19 @@ int rs7asset::CopyLayer(const uint8_t* from, uint8_t* to, PropTypeFn typeOf, uin
     uint8_t* dst = FindProperty(to, kLayerType, typeOf);
     uint16_t v = 0, old = 0;
 
-    if (src && !rs7s7d::SafeCopy(&v, src + kLayerValue, sizeof v)) {
+    if (src && !Rs7_SafeCopyZero(&v, src + kLayerValue, sizeof v)) {
         src = nullptr;
     }
     if (src && value) {
         *value = v;
     }
-    if (!src || !dst || !rs7s7d::SafeCopy(&old, dst + kLayerValue, sizeof old)) {
+    if (!src || !dst || !Rs7_SafeCopyZero(&old, dst + kLayerValue, sizeof old)) {
         return -1;
     }
     if (old == v) {
         return 0;
     }
-    if (!rs7s7d::SafeStore(dst + kLayerValue, &v, sizeof v)) {
+    if (!Rs7_SafeStore(dst + kLayerValue, &v, sizeof v)) {
         return -1;
     }
 

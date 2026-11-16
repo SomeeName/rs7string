@@ -6,9 +6,10 @@ import struct
 import pytest
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
+from emu_harness import needs_emu
 from emu_harness import CODE, Emu, DATA, STACK, RET_MAGIC, DLL, SNAPSHOT, site_mid_entry, site_va
 
-pytestmark = pytest.mark.skipif(not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs DLL/snapshot")
+pytestmark = needs_emu
 
 
 @pytest.fixture(scope="module")
@@ -146,6 +147,9 @@ def test_attach_point_string_is_a_byte(emu, s, hi):
     stock = site_va("PUBGA") + 6  # after the replayed `push ebp; mov ebp,esp; sub esp,4Ch`
     start = entry(e, "PUBGA")
     put(e, esp, RET_MAGIC, hi | s, DATA + 0xD000)
+    info = DATA + 0xE000  # a guitar's InstrumentInfo (+0 instrument 1): the hook reads it for strings 4-7
+    e.uc.mem_write(info, bytes([1]) + bytes(0x0F))
+    e.uc.reg_write(UC_X86_REG_ECX, info)
     hit = []
 
     def stop(uc, addr, size, user):

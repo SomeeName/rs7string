@@ -13,7 +13,11 @@ unsigned PhysicalRank(unsigned s, unsigned n) {
     return s < 6 ? s + n - 6 : n - 1 - s;
 }
 
-unsigned PhysicalEdge(unsigned n, bool first) {
+unsigned PhysicalEdge(unsigned n, bool first, bool bass) {
+    if (bass && n >= 4 && n <= 6) {
+        return first ? (n > 4 ? 4u : 0u) : (n == 6 ? 5u : 3u);
+    }
+
     return first && n > 6 ? n - 1 : first ? 0 : n > 6 ? 5 : n - 1;
 }
 

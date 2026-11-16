@@ -1,0 +1,24 @@
+{
+  "rs7_bass5.nif": {
+    "bytes": 1760556,
+    "sha256": "0386c2be7e8cc7480bfc49d01c678f276a1b85bf0cf0f61b72179195bdd89b2a",
+    "copies": 1176,
+    "literal_bytes": 1746851
+  },
+  "rs7_bass6.nif": {
+    "bytes": 2015347,
+    "sha256": "d58e16f4cc373d53cad6f73bba666d9e8ca00c4fcd8c3387e8aeebc714d08749",
+    "copies": 1330,
+    "literal_bytes": 2000383
+  },
+  "package": {
+    "bytes": 7582892,
+    "sha256": "b11a6a60a46e91793b1819fd460a622d62162d019ed0d88d99565434d6148394",
+    "templates": [
+      "bass_thunder.nif",
+      "peg_2clove.nif"
+    ],
+    "template_16_byte_runs": 0,
+    "nif_literal_template_16_byte_runs": 0
+  }
+}

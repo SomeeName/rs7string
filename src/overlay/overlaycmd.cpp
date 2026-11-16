@@ -104,6 +104,7 @@ bool Rs7Cmd_Post(const char* line) {
     }
 
     bool ok = false;
+    bool oom = false;  // allocation failed, as opposed to a full queue
 
     AcquireSRWLockExclusive(&g_lock);
 
@@ -118,11 +119,12 @@ bool Rs7Cmd_Post(const char* line) {
         }
     } catch (...) {
         ok = false;
+        oom = true;
     }
 
     ReleaseSRWLockExclusive(&g_lock);
     if (!ok) {
-        Rs7Log("overlay: cmd '%s' dropped (queue full)", line);
+        Rs7Log("overlay: cmd '%s' dropped (%s)", line, oom ? "out of memory" : "queue full");
     }
 
     return ok;

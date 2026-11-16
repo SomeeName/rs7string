@@ -4,10 +4,13 @@
 #include "features/nslot/nslot.h"
 #include "features/publish/hooks.h"
 #include "features/strings/strings.h"
+#include "model/instrument.h"
 #include "platform/log.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 extern "C" int __cdecl Rs7Gs_ExtraReady(uint8_t* guitar);
 extern "C" int __cdecl Rs7Gs_ExtraWhy(uint8_t* guitar);
 
@@ -18,10 +21,10 @@ extern "C" int __cdecl Rs7Publish_GridPos(uint8_t* grid, unsigned f, unsigned k,
         }
 
         auto* guitar = *reinterpret_cast<uint8_t**>(grid);
-        auto* info = *reinterpret_cast<uint8_t**>(guitar + 0x24);
+        auto* info = *reinterpret_cast<uint8_t**>(guitar + rs7::kGuitarInfo);
 
-        return rs7pubgrid::GetCellPos(grid, info[0xB], f & 255, k, s & 255, out);
-    } __except (1) {
+        return rs7pubgrid::GetCellPos(grid, info[rs7::kInfoStrings], f & 255, k, s & 255, out);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -69,6 +72,12 @@ static_assert(offsetof(rs7pubgrid::WaitEntry, owner) == 32 && offsetof(rs7pubgri
 extern "C" __declspec(dllexport) rs7pubgrid::WaitEntry g_rs7_publish_wait[8] = {};
 
 namespace {
+constexpr uint64_t kWaitMs = 5000;  // GridWait: not ready this long -> the stock completion
+static_assert(kWaitMs == 5000, "the give-up log lines in Rs7Publish_GridWait say 5 s");
+constexpr uint32_t kInfoFrets = 0x0C;          // InstrumentInfo: u8 fret count
+constexpr uint32_t kGuitarWorldOffset = 0x2C;  // Rnd_Guitar: float[3] offset added to the local cell positions
+constexpr size_t kWaitSlots = std::size(g_rs7_publish_wait);
+
 const char* const kWhy[] = {"ready",
                             "FretGrid layout not written yet",
                             "extra strings 6/7 not ready",
@@ -76,13 +85,13 @@ const char* const kWhy[] = {"ready",
                             "fret count > 26",
                             "cells 0/1 of a fret row not valid",
                             "fault while checking readiness"};
-}
+}  // namespace
 
 // Not-ready bookkeeping (Win32 clock + log: the emulator replaces it with `xor eax,eax; ret` = keep waiting).
 // Rnd_FretGrid_Load (0x58F260, CONFIRMED caller of BuildCells 0x58F8A0) is polled until it returns 2; a
 // "not ready" that never clears would hold the song load forever. After kWaitMs the grid gets the stock
 // completion with no cells 6/7 staged. A guitar built with 7/8 strings then has no neck geometry for them: its
-// neck is marked FAILED (review F3, Rs7Publish_NeckFailed): the song's detector is not widened (the song stays a
+// neck is marked FAILED (Rs7Publish_NeckFailed): the song's detector is not widened (the song stays a
 // six-string song for scoring), and the next clite selection rebuilds the guitar (GKT treats a failed guitar as
 // not matching any desired count). A guitar built with 6 strings or the boot guitar, whose stock-size grid is
 // replaced by the native one at its first update, is not affected: the string count the guitar was built with decides.
@@ -91,7 +100,7 @@ static const uint8_t* GuitarOf(const uint8_t* grid) {
 
     __try {
         guitar = *reinterpret_cast<uint8_t* const*>(grid);
-    } __except (1) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         guitar = nullptr;
     }
 
@@ -104,15 +113,21 @@ static unsigned BuiltCount(const uint8_t* grid) {
     __try {
         const uint8_t* guitar = *reinterpret_cast<uint8_t* const*>(grid);
 
-        n = (*reinterpret_cast<uint8_t* const*>(guitar + 0x24))[0xB];
-    } __except (1) {
+        n = (*reinterpret_cast<uint8_t* const*>(guitar + rs7::kGuitarInfo))[rs7::kInfoStrings];
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 
     return n;
 }
 
 extern "C" int __cdecl Rs7Publish_NeckFailed(const void* guitar) {
-    return rs7pubgrid::Failed(g_rs7_publish_wait, 8, guitar) ? 1 : 0;
+    return rs7pubgrid::Failed(g_rs7_publish_wait, kWaitSlots, guitar) ? 1 : 0;
+}
+
+extern "C" void __cdecl Rs7Publish_GridForget(const void* guitar) {
+    if (guitar) {
+        rs7pubgrid::WaitDone(g_rs7_publish_wait, kWaitSlots, nullptr, guitar);
+    }
 }
 
 extern "C" void __cdecl Rs7Publish_GridForgetAll() {
@@ -122,15 +137,15 @@ extern "C" void __cdecl Rs7Publish_GridForgetAll() {
 }
 
 extern "C" __declspec(noinline) int __cdecl Rs7Publish_GridWait(uint8_t* grid, unsigned reason) {
-    constexpr uint64_t kWaitMs = 5000;
     const uint64_t now = GetTickCount64();
-    const bool giveUp = rs7pubgrid::WaitStep(g_rs7_publish_wait, 8, grid, reason, now, kWaitMs, GuitarOf(grid));
+    const bool giveUp =
+        rs7pubgrid::WaitStep(g_rs7_publish_wait, kWaitSlots, grid, reason, now, kWaitMs, GuitarOf(grid));
 
     if (giveUp) {
         const unsigned b = BuiltCount(grid);
 
-        if (b == 7 || b == 8) {
-            rs7pubgrid::MarkFailed(g_rs7_publish_wait, 8, grid);
+        if (rs7::IsExtendedGuitar(b)) {
+            rs7pubgrid::MarkFailed(g_rs7_publish_wait, kWaitSlots, grid);
         }
     }
 
@@ -147,7 +162,7 @@ extern "C" __declspec(noinline) int __cdecl Rs7Publish_GridWait(uint8_t* grid, u
             }
         }
 
-        if (_InterlockedIncrement(&lines) <= 100) {
+        if (Rs7Log_Upto(&lines, 100)) {
             const unsigned built = giveUp ? BuiltCount(grid) : 0;
 
             Rs7Log("native_publish: GridBuild grid %p not ready (%s, detail %u), %u calls%s", grid,
@@ -156,7 +171,7 @@ extern "C" __declspec(noinline) int __cdecl Rs7Publish_GridWait(uint8_t* grid, u
                                      : "?",
                    reason & 0xFF, calls,
                    !giveUp ? ""
-                   : built == 7 || built == 8
+                   : rs7::IsExtendedGuitar(built)
                        ? " - FAIL: waited >= 5 s, stock completion without cells 6/7: the neck of this guitar is "
                          "marked failed (song detector stays six strings, next selection rebuilds the guitar)"
                        : " - waited >= 5 s: stock completion (this guitar was not built with 7/8 strings: no cells 6/7 "
@@ -174,8 +189,8 @@ static int NotReady(uint8_t* grid, unsigned reason) {
 
 extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
     __try {
-        auto* info = *reinterpret_cast<uint8_t**>(guitar + 0x24);
-        if (info[0xB] < 6) {
+        auto* info = *reinterpret_cast<uint8_t**>(guitar + rs7::kGuitarInfo);
+        if (rs7::IsBassKind(info[rs7::kInfoKind]) || info[rs7::kInfoStrings] < 6) {
             return 2;  // bass retains the stock completion
         }
         // native_fretgrid off or failed (its cascade turns native_publish off, but this site stays written):
@@ -189,7 +204,7 @@ extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
             return NotReady(grid, 1);
         }
 
-        auto* gs = *reinterpret_cast<uint8_t**>(guitar + 0xC);
+        auto* gs = *reinterpret_cast<uint8_t**>(guitar + rs7::kGuitarStrings);
         if (!Rs7Gs_ExtraReady(guitar)) {
             return NotReady(grid, 0x100 | unsigned(Rs7Gs_ExtraWhy(guitar)));
         }
@@ -200,7 +215,7 @@ extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
             }
         }
 
-        const unsigned frets = info[0xC];
+        const unsigned frets = info[kInfoFrets];
         if (frets > 26) {
             return NotReady(grid, 4);
         }
@@ -208,7 +223,8 @@ extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
             return NotReady(grid, 5);
         }
 
-        rs7pubgrid::WaitDone(g_rs7_publish_wait, 8, grid, guitar);  // ready: this build's wait and any failure are over
+        rs7pubgrid::WaitDone(g_rs7_publish_wait, kWaitSlots, grid,
+                             guitar);  // ready: this build's wait and any failure are over
 
         // Stage real world cells now as well: count publication may precede the next offset pass.
         // Always local+offset, never offset an already transformed world value.
@@ -221,7 +237,7 @@ extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
                         float local, offset;
 
                         std::memcpy(&local, c + rs7fg::kCellLocal + k * 12 + axis * 4, 4);
-                        std::memcpy(&offset, guitar + 0x2C + axis * 4, 4);
+                        std::memcpy(&offset, guitar + kGuitarWorldOffset + axis * 4, 4);
                         const float world = local + offset;
 
                         std::memcpy(c + rs7fg::kCellWorld + k * 12 + axis * 4, &world, 4);
@@ -231,7 +247,7 @@ extern "C" int __cdecl Rs7Publish_GridBuild(uint8_t* grid, uint8_t* guitar) {
         }
 
         return 2;
-    } __except (1) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         // A fault (bad info/child pointer, model readiness) is a not-ready like any other: it goes through the
         // same per-grid deadline, so a persistent fault ends in the stock completion after kWaitMs instead of
         // holding Rnd_FretGrid_Load forever.
@@ -243,27 +259,27 @@ extern "C" int __cdecl Rs7Publish_FingerSpan(const uint8_t* tpl, unsigned finger
     const uint8_t* t8 = Rs7Ns_AsT8(tpl);
 
     if (t8) {
-        unsigned n = t8[0x78];
+        unsigned n = t8[rs7ns::kT8Slots];
 
         if (n < 6 || n > 8) {
             n = 6;
         }
-        return rs7pubgrid::FingerSpan(t8 + 0x50, n, finger, span);
+        return rs7pubgrid::FingerSpan(t8 + rs7ns::kT8Fingers, n, finger, span);
     }
 
     return rs7pubgrid::FingerSpan(tpl + 0xA, 6, finger, span);
 }
 
 extern "C" unsigned __cdecl Rs7Publish_Edge(uint8_t* info, unsigned first) {
-    return rs7pubgrid::PhysicalEdge(info[0xB], first != 0);
+    return rs7pubgrid::PhysicalEdge(info[rs7::kInfoStrings], first != 0, rs7::IsBassKind(info[rs7::kInfoKind]));
 }
 
 // The TU8A copy of StringAction (features/tuner/hooks.h) contains the PUBEDGE site (0x7E72D0): same expression,
 // over the native active count (+40h); the physical 7/8-string edge only while native_publish is on.
 extern "C" unsigned __cdecl Rs7Publish_EdgeCopy(uint8_t* info, unsigned first) {
-    const unsigned n = info[0x40];
+    const unsigned n = info[rs7gs::kInfoActive];
     if (g_rs7_publish_ports) {
-        return rs7pubgrid::PhysicalEdge(n, first != 0);
+        return rs7pubgrid::PhysicalEdge(n, first != 0, rs7::IsBassKind(info[rs7::kInfoKind]));
     }
 
     return first ? 0u : ((n - 1) & 0xFFu);

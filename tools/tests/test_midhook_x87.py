@@ -1,4 +1,4 @@
-"""Old-vs-new equivalence of the sites that need the x87 accessors or the jmp_atomic8 kind (ARCHITECTURE.md section 15,
+"""Old-vs-new equivalence of the sites that need the x87 accessors or the jmp_atomic8 kind (ARCHITECTURE.md section 14,
 "x87 ST0" and "Atomic sites"): R3a/R3b/R3c and R4 (string-6 lane position of spawned note effects, full mode, ST0 via
 Context::PushSt0) and S3 / PT1 (the two exits of Play_Detector_SetTuning, jmp_atomic8 sites). Frozen stubs:
 tools/tests/fixtures/midhook_318618f.json. Same oracle and matrix as test_midhook_cold.py (midhook_oracle.py).
@@ -11,14 +11,13 @@ import struct
 
 import pytest
 
+from emu_harness import needs_emu
 from emu_harness import DLL, SNAPSHOT, DATA, site_va
 from midhook_oracle import Case, Helper, Spec, oracle_tests
 
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESI
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000
 SPECS: dict[str, tuple[Spec, list[Case]]] = {}
@@ -93,7 +92,16 @@ def exit_cases(ret: int) -> list[Case]:
 
 for sid, helper, ret in (("S3", "Rs7_OnDetectorTuned", S3_RET), ("PT1", "Rs7Pitch_DetTuned", PT1_RET)):
     SPECS[sid] = (
-        Spec(sid, 8, flags="dead", helpers={helper: Helper(2, deref=((0, 0x1358), (1, 12)))}, exits=(("resume", -1),)),
+        # Rs7Pitch_DetFloor (the floor follows the lowest open string) came after the frozen stubs; its behaviour is
+        # tested in tests/pitch/test_floor.cpp and test_emu_pitch.py.
+        Spec(
+            sid,
+            8,
+            flags="dead",
+            helpers={helper: Helper(2, deref=((0, 0x1358), (1, 12)))},
+            exits=(("resume", -1),),
+            quiet=("Rs7Pitch_DetFloor",),
+        ),
         exit_cases(ret),
     )
 

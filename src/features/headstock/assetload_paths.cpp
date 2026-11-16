@@ -103,6 +103,35 @@ std::wstring Rs7Asset_EditedPath(const char* name, const std::wstring& dir, cons
     return out;
 }
 
+// Extended bass: the bass headstock frames (base name bass_*, not the pegs) of the in-line and the 2x2 folder get our
+// own in-line model, rs7_bass<n>[_lh].nif in dir, n = 6 for a bass built with six strings, else 5 (tools:
+// rs7headstock). A 2x2 frame gets the in-line one too (there is no 2+2 model), like a 3+3 guitar gets the 7-string
+// in-line model. Every bass peg sits on a frame locator (no PegSet), so the model must carry Locator_Peg_k and
+// string_size_<k+6> for each string the bass is built with. "" for anything else.
+std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsigned strings, bool* leftHanded) {
+    NifName n;
+
+    if (dir.empty() || !ParseNifName(name, n) || n.base.compare(0, 5, "bass_") != 0) {
+        return {};
+    }
+
+    const std::string folder = n.low.substr(0, n.slash + 1);
+    const bool lh = n.base.size() >= 3 && n.base.compare(n.base.size() - 3, 3, "_lh") == 0;
+    const auto in = [&](const char* f) {
+        return folder.size() >= std::strlen(f) &&
+               folder.compare(folder.size() - std::strlen(f), std::strlen(f), f) == 0;
+    };
+    if (!in("/gameplay/guitar_bass/") && !in("/gameplay/guitar_bass_inline/")) {
+        return {};
+    }
+
+    if (leftHanded) {
+        *leftHanded = lh;
+    }
+
+    return WithSeparator(dir) + (strings == 6 ? L"rs7_bass6" : L"rs7_bass5") + (lh ? L"_lh" : L"") + L".nif";
+}
+
 // The layouts the 7-string in-line model (headstock7_file / headstock7_file_lh) replaces. One row per
 // value of Optionen > Spieleinstellungen > Gitarrenkopfplatte; the game loads exactly one frame per
 // handedness from the row's folder. CONFIRMED (asset dump of the game's own packages + run logs):

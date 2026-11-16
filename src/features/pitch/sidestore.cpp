@@ -1,26 +1,33 @@
-#include "features/pitch/pitch.h"
+#include "features/pitch/state.h"
 #include <windows.h>
 #include <unordered_map>
 
 namespace {
-SRWLOCK g_lock = SRWLOCK_INIT;
+using rs7p::g_state;
 
 std::unordered_map<uintptr_t, Rs7Entry>& Map() {
-    static std::unordered_map<uintptr_t, Rs7Entry> m;
+    // Keep the map's original first-use construction and destruction order, including its local-static guard.
+    struct MapLifetime {
+        std::unordered_map<uintptr_t, Rs7Entry>& map = g_state.store.emplace();
 
-    return m;
+        ~MapLifetime() { g_state.store.reset(); }
+    };
+
+    static MapLifetime m;
+
+    return m.map;
 }
 
 struct ExclusiveGuard {
-    ExclusiveGuard() { AcquireSRWLockExclusive(&g_lock); }
+    ExclusiveGuard() { AcquireSRWLockExclusive(&g_state.storeLock); }
 
-    ~ExclusiveGuard() { ReleaseSRWLockExclusive(&g_lock); }
+    ~ExclusiveGuard() { ReleaseSRWLockExclusive(&g_state.storeLock); }
 };
 
 struct SharedGuard {
-    SharedGuard() { AcquireSRWLockShared(&g_lock); }
+    SharedGuard() { AcquireSRWLockShared(&g_state.storeLock); }
 
-    ~SharedGuard() { ReleaseSRWLockShared(&g_lock); }
+    ~SharedGuard() { ReleaseSRWLockShared(&g_state.storeLock); }
 };
 }  // namespace
 

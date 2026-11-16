@@ -1,9 +1,10 @@
 // The song's detector width: the string count of a validated tuning and its lowest open note (logic).
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
+#include "model/slots.h"
 
 unsigned rs7pubstate::Count(size_t n, bool bass) {
-    return bass ? 4 : n == 7 || n == 8 ? unsigned(n) : 6;
+    return bass ? rs7::kStockBassStrings : rs7::GuitarStrings(n);
 }
 
 int rs7pubstate::Lowest(const int16_t t[8], unsigned n, bool bass) {

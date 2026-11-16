@@ -58,8 +58,8 @@
     <ClCompile Include="..\src\model\*.cpp" />
     <!-- The settings table list and the overlay's own table (platform/settings.h); the rest of src/ and overlay/ is the DLL's. -->
     <ClCompile Include="..\src\settings_tables.cpp;..\src\settings_removed.cpp;..\src\overlay\overlay_settings.cpp" />
-    <!-- App-layer code with native tests: the DirectInput wrapper and the overlay's pipe commands. -->
-    <ClCompile Include="..\src\dinput_wrap.cpp;..\src\overlay\overlaycmd.cpp" />
+    <!-- App-layer code with native tests: the DirectInput wrapper, the overlay's pipe commands and its input capture. -->
+    <ClCompile Include="..\src\dinput_wrap.cpp;..\src\overlay\overlaycmd.cpp;..\src\overlay\capture.cpp" />
     <!-- Feature sources repeat file names: one object folder per source folder. The fuzz targets replace tests/. -->
     <ClCompile Include="..\src\features\**\*.cpp" ObjectFileName="$(IntDir)features\%(RecursiveDir)" />
     <ClCompile Include="*.cpp" ObjectFileName="$(IntDir)fuzz\" />
@@ -67,6 +67,7 @@
   <ItemGroup>
     <MASM Include="..\src\platform\*.asm" />
   </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)..\private.props" Condition="Exists('$(MSBuildThisFileDirectory)..\private.props')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />

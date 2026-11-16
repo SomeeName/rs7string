@@ -1,4 +1,4 @@
-// The Wrap placement (Rs7Mid_BuildWrap, Hook::PrepareWrap; ARCHITECTURE.md section 15 "Wrap placement"): a caller
+// The Wrap placement (Rs7Mid_BuildWrap, Hook::PrepareWrap; ARCHITECTURE.md section 14 "Wrap placement"): a caller
 // `push A1; push A0; call callee; [add esp,8]; ret` runs stock and hooked on identical registers and flags. The callee
 // counts its runs, returns A0 + A1 + ECX (flags from the ADD) in EAX and 5150h in EDX, scribbles over its first
 // argument slot and cleans up with `ret 8` (stdcall) or `ret` (cdecl). A function-entry wrap runs a copy of a small

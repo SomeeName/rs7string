@@ -16,7 +16,7 @@
 namespace rs7swapfix {
 using rs7d3d::Device;
 using rs7fix::Stock;
-inline const Rs7SwapCfg kCfg = {{0xC8C8C8, 0x00FFFF}, false};
+inline const Rs7SwapCfg kCfg = {{0xC8C8C8, 0x00FFFF}};
 
 inline std::vector<std::string>& Lines() {
     static std::vector<std::string> v;
@@ -116,8 +116,11 @@ inline ULONG Refs(IUnknown* u) {
     return u->Release();
 }
 
+// Like BuildChecked (swap_texio.cpp): every copy also carries the eighth string's V7 band.
 inline std::vector<Rs7Image> Expected(const std::vector<Rs7Image>& stock, const Rs7SwapCfg& cfg = kCfg) {
-    return Rs7Ramp_Build(stock, cfg.rgb).levels;
+    const uint32_t rgb8[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};
+
+    return Rs7Ramp_Build(stock, cfg.rgb, rgb8).levels;
 }
 
 inline void Add(IDirect3DTexture9* t, Rs7Family f = Rs7Family::Note, const char* path = "test/note_gradient_map.dds") {

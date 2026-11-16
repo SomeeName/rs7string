@@ -6,6 +6,7 @@
 #include "features/headstock/hsbuild.h"
 #include "fuzz.h"
 #include <cstring>
+#include <stdexcept>
 
 namespace rs7fuzz {
 int Package(const uint8_t* d, size_t n) {
@@ -19,7 +20,11 @@ int Package(const uint8_t* d, size_t n) {
 }
 
 int Nif(const uint8_t* d, size_t n) {
-    Rs7Asset_DdsNames(n ? d : nullptr, n);
+    try {
+        Rs7Asset_DdsNames(n ? d : nullptr, n);
+    } catch (const std::length_error&) {
+        // An excessive texture count is a normal model refusal.
+    }
 
     return 0;
 }

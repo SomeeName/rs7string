@@ -20,7 +20,7 @@ void ReadSongEnd(const wchar_t* iniPath) {
 
 const Rs7SetDef kSongEndDefs[] = {
     {"debug.song_end_log", L"debug", L"song_end_log", T::Bool, W::Live, "1", 0, 1, "Song end log",
-     "Log the song session's state changes and which route ends a song (SE1-SE3, issue #13).", ApplyEndLog},
+     "Logs how each song ended (for bug reports).", ApplyEndLog},
 };
 }  // namespace
 
@@ -38,7 +38,7 @@ const Rs7UiItem kUi[] = {
 const Rs7UiTable kRs7SongEndUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
 
 bool Rs7SongEnd_ReadIni(const wchar_t* iniPath) {
-    return !iniPath || Rs7Config_ReadInt(L"debug", L"song_end_log", 1, iniPath) != 0;
+    return !iniPath || Rs7Set_ReadTableInt(kRs7SongEndSettings, "debug.song_end_log", iniPath) != 0;
 }
 
 bool Rs7SongEnd_Config() {

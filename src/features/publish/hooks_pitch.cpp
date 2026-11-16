@@ -4,12 +4,14 @@
 #include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
 #include "features/publish/hooks.h"
+#include "model/instrument.h"
 #include "platform/fncopy.h"
 #include "platform/log.h"
 #include "platform/midhook.h"
 #include <windows.h>
 #include <climits>
 #include <cstring>
+#include <iterator>
 
 extern "C" {
 #define PAIR(id)                                                                                                       \
@@ -43,28 +45,25 @@ struct PitchSpec {
 
 #include "features/publish/publish_pitch.generated.h"
 
-template <class T>
-T Read(const uint8_t* p, unsigned off) {
-    T v;
+using rs7pubhooks::Pair;
+using rs7pubhooks::UncheckedRead;
 
-    std::memcpy(&v, p + off, sizeof v);
-
-    return v;
-}
-
+// The detector of a pitch reader's object: a matcher (kind 0) holds it at +4; for a tracker (PUBAN, PUBAC) it is
+// +4 of the detect-input object at tracker+4C19Ch, as the game reads it (CONFIRMED 0x875430: the tuning at
+// [[tracker+4C19Ch]+4]+134Ch). That object holds the matcher at +8 (hooks.cpp, Matcher).
 uint8_t* Detector(uint8_t* object, unsigned kind) {
     if (!object) {
         return nullptr;
     }
 
     if (kind) {
-        object = Read<uint8_t*>(object, 0x4c19c);
+        object = UncheckedRead<uint8_t*>(object, rs7pubhooks::kTrackerInput);
         if (!object) {
             return nullptr;
         }
     }
 
-    return Read<uint8_t*>(object, 4);
+    return UncheckedRead<uint8_t*>(object, rs7::kMatcherDetector);
 }
 
 bool Eligible(uint8_t* d) {
@@ -72,15 +71,10 @@ bool Eligible(uint8_t* d) {
         return false;
     }
 
-    const unsigned n = Read<unsigned>(d, rs7p::kDetCount);
+    const unsigned n = UncheckedRead<unsigned>(d, rs7p::kDetCount);
 
-    return n >= 6 && n <= 8 && Read<int>(d, 0x11ec) != 2;
+    return n >= 6 && n <= 8 && !rs7::IsBassKind(UncheckedRead<int>(d, rs7::kDetInstrument));
 }
-
-struct Pair {
-    uintptr_t* copy;
-    uintptr_t* tramp;
-};
 
 const Pair pairs[] = {{&g_rs7_pitchcopy_PUBNL, &g_rs7_pitchtramp_PUBNL},
                       {&g_rs7_pitchcopy_PUBAN, &g_rs7_pitchtramp_PUBAN},
@@ -167,7 +161,9 @@ uintptr_t TailPitchEntry(const unsigned char* call) {
 bool Rs7PublishPitch_BuildCopies() {
     // Dedicated builder: variable-length stack/branch edits and the 3KB note matcher cannot
     // use fncopy's 800h temporary buffer. Every original byte is verified before installation.
-    for (unsigned k = 0; k < 3; ++k) {
+    static_assert(std::size(kPitchSpecs) == std::size(pairs), "one copy pair per pitch reader");
+
+    for (size_t k = 0; k < std::size(kPitchSpecs); ++k) {
         const auto& s = kPitchSpecs[k];
 
         if (Rs7Fn_Fnv(reinterpret_cast<const uint8_t*>(s.va), s.stockLen) != s.hash) {
@@ -188,11 +184,13 @@ bool Rs7PublishPitch_BuildCopies() {
 
             if (s.rels[r].callin && !(target = s.rels[r].callin->Entry())) {
                 Rs7Log("native_publish: pitch reader %s: no call-in entry", s.id);
+                VirtualFree(p, 0, MEM_RELEASE);
                 return false;
             }
 
             if (target == kTailPitchCall && !(target = TailPitchEntry(p + s.rels[r].off - 1))) {
                 Rs7Log("native_publish: pitch reader %s: no expected-pitch entry", s.id);
+                VirtualFree(p, 0, MEM_RELEASE);
                 return false;
             }
 
@@ -223,9 +221,9 @@ extern "C" uintptr_t __cdecl Rs7PublishPitch_Target(unsigned kind, uint8_t* obje
 extern "C" void __cdecl Rs7PublishPitch_ChordTail(int32_t* out, const uint8_t* tpl, const uint8_t* tracker) {
     const uint8_t* t8 = tpl ? Rs7Ns_AsT8(tpl) : nullptr;
     auto det = Detector(const_cast<uint8_t*>(tracker), 1);
-    const unsigned n = det ? Read<unsigned>(det, rs7p::kDetCount) : 6;
+    const unsigned n = det ? UncheckedRead<unsigned>(det, rs7p::kDetCount) : 6;
 
     for (unsigned s = 6; s < 8; ++s) {
-        out[s] = t8 && s < n ? Read<int32_t>(t8, rs7ns::kT8Midi + 4 * s) : -1;
+        out[s] = t8 && s < n ? UncheckedRead<int32_t>(t8, rs7ns::kT8Midi + 4 * s) : -1;
     }
 }

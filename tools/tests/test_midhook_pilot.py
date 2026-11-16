@@ -11,11 +11,10 @@ from pathlib import Path
 import pytest
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EFLAGS, UC_X86_REG_EIP, UC_X86_REG_XMM0, UC_X86_REG_XMM7
-from emu_harness import Emu, ALL_REGS, CODE, DATA, STACK, DLL, SNAPSHOT, site_va, game_text, TEXT_VA
+from emu_harness import needs_emu
+from emu_harness import Emu, ALL_REGS, CODE, DATA, STACK, TEB, DLL, SNAPSHOT, site_va, game_text, TEXT_VA
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 FIXTURE = Path(__file__).with_name("fixtures") / "midhook_26b7aa1.json"
 
 
@@ -92,7 +91,8 @@ def test_pilot_matches_frozen_old_stub(sid, n, setting, flags, misalign, disable
     writes = set()
 
     def track_write(uc, access, address, size, value, user):
-        if not STACK <= address < STACK + 0x100000:
+        # The fake TEB is SEH bookkeeping (Rs7Mid_Guard's __try frame), not a result.
+        if not (STACK <= address < STACK + 0x100000 or TEB <= address < TEB + 0x1000):
             writes.update(range(address, address + size))
 
     emu.uc.hook_add(UC_HOOK_MEM_WRITE, track_write)

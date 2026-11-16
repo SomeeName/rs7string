@@ -1,5 +1,6 @@
 #include "features/diagrams/diagrams.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
@@ -40,7 +41,7 @@ TEST(diagrammovie_cpp_swap_matches_all_three_owner_movies_and_refuses_tampering)
         auto expected = Bytes(root / "edited2" / "gfx" / paths[i]);
 
         if (original.empty() || expected.empty()) {
-            std::printf("  SKIP absent owner movies: %s\n", paths[i]);
+            rs7test::Skip(paths[i]);  // absent owner movie
             continue;
         }
 
@@ -154,7 +155,7 @@ TEST(diagrammovie_open_hook_frame_failure_paths_leave_wrapper_untouched) {
     auto hook = reinterpret_cast<OpenCall>(rs7diagram::OpenHookForTest());
 
     rs7diagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
-    const uintptr_t saved = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     g_rs7_diagrams = 1;
     // recipe present but garbage movie -> SwapMovie refuses
@@ -211,7 +212,16 @@ TEST(diagrammovie_open_hook_frame_failure_paths_leave_wrapper_untouched) {
     rs7diagram::SetRecipeForTest(0, {});
     CHECK(!rs7diagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
     CHECK(why != nullptr);
-    g_rs7_diagrams = saved;
+    // a stream that was already read is never swapped: the patched movie has no matching position
+    rs7diagram::SetRecipeForTest(0, {1});
+    ff.pos = 3;
+    why = nullptr;
+    CHECK(!rs7diagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
+    CHECK(why != nullptr && std::strstr(why, "position") != nullptr);
+    CHECK(*reinterpret_cast<FakeFile**>(adapter + 0x18) == &ff);
+    CHECK_EQ(ff.pos, 3u);
+    ff.pos = 0;
+    rs7diagram::SetRecipeForTest(0, {});
     rs7diagram::SetOpenForTest(nullptr);
 }
 
@@ -228,14 +238,14 @@ TEST(diagrammovie_open_hook_installs_owned_file_for_owner_movie) {
     auto expected = Bytes(root / "edited2" / "gfx" / "libs/commonlib.gfx");
 
     if (original.empty() || expected.empty()) {
-        std::printf("  SKIP absent owner movie\n");
+        rs7test::Skip("absent owner movie");
         return;
     }
 
     auto hook = reinterpret_cast<OpenCall>(rs7diagram::OpenHookForTest());
 
     rs7diagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
-    const uintptr_t saved = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     g_rs7_diagrams = 1;
     rs7diagram::SetRecipeForTest(0, Bytes(repo / "data" / "chord-diagrams" / "commonlib.rs7da"));
@@ -265,7 +275,6 @@ TEST(diagrammovie_open_hook_installs_owned_file_for_owner_movie) {
     CHECK_EQ(reinterpret_cast<uint32_t(__thiscall*)(void*, void*, uint32_t)>(vt[3])(nf, got.data(), size), size);
     CHECK(got == expected);
     reinterpret_cast<LONG(__thiscall*)(void*)>(vt[2])(nf);  // owned file starts at refs=1 -> freed
-    g_rs7_diagrams = saved;
     rs7diagram::SetOpenForTest(nullptr);
     rs7diagram::SetRecipeForTest(0, {});
 }

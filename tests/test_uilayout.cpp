@@ -3,6 +3,7 @@
 #include "platform/settings.h"
 #include "platform/uilayout.h"
 #include "test.h"
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -27,35 +28,36 @@ std::string Layout(Rs7UiTab tab) {
 
 TEST(uilayout_status_features_rows) {
     CHECK(Layout(Rs7UiTab::Status) ==
-          "O ramp copy (V6)\nO 7th string line\nO fret extend\nO 7th tuning peg\nO 7-string tuner\nO diagnostics\n");
+          "O ramp copy (V6)\nO 7th string line\nO fret extend\nO extra tuning pegs\nO 7-string tuner\nO diagnostics\n");
 }
 
 TEST(uilayout_colour_tab) {
-    CHECK(Layout(Rs7UiTab::Colour) ==
-          "S string 6 colour\nR ramp copy\nR colour mode\nN\nS ramp copy (Step 2)\nE color.ramp_swap\n"
-          "E color.allow_inexact\n");
+    CHECK(Layout(Rs7UiTab::Colour) == "S string 6 colour\nR ramp copy\nR colour mode\nN\n");
 }
 
+// The developer keys ([debug] head_*, tuner_autotune, [window] background) are file / pipe only, not in the overlay.
 TEST(uilayout_neck_tab) {
     CHECK(Layout(Rs7UiTab::Neck) ==
-          "S 7th string line\nE neck.string7_v\nS fret wires\nE neck.fret_halflen\nS 7-string headstock model\n"
-          "E assets.headstock7_file\nE assets.dir\nE assets.suffix\nS headstock experiments\nE debug.head_cull\n"
-          "E debug.head_stretch\nE debug.head_stretch_mode\n");
+          "S string spacing\n"
+          "E neck.spacing_bass5\nE neck.spacing_bass6\nE neck.spacing_guitar7\nE neck.spacing_guitar8\n"
+          "S 7-string headstock model\n"
+          "E assets.headstock7_file\nE assets.headstock8_file\nE assets.dir\nE assets.suffix\n");
 }
 
 TEST(uilayout_tuner_debug_window_tabs) {
-    CHECK(Layout(Rs7UiTab::Tuner) == "S 7-string tuner\nE debug.tuner_autotune\nR sessions\n");
+    CHECK(Layout(Rs7UiTab::Tuner) == "S 7-string tuner\nR sessions\n");
     CHECK(Layout(Rs7UiTab::Debug) == "S diagnostics\nE debug.diagnostics\nE debug.song_end_log\n");
-    CHECK(Layout(Rs7UiTab::Window) == "S window (test driving)\nE window.background\nE window.screen\nS overlay\n"
+    CHECK(Layout(Rs7UiTab::Window) == "S window\nE window.screen\nS overlay\n"
                                       "E overlay.enabled\nE overlay.open\n");
 }
 
 // The default view (Player): only what a player would change; everything else is under "Advanced".
 TEST(uilayout_player_view) {
     CHECK(Layout(Rs7UiTab::Player) ==
-          "S Seventh string\nE color.string6_color\nE color.string6_color_cb\nE color.rsmods_extended_range\n"
-          "S Guitar\nE neck.string7_line\nE neck.fret_extend\nE assets.headstock7\nE neck.headstock_peg\n"
-          "E assets.headstock7_wood\nS Tuner and tuning names\nE tuner.lowrange\nE tuner.names\n"
+          "S Extra strings\nE color.rsmods_extended_range\nE color.string6_color\nE color.string6_color_cb\n"
+          "E color.string7_color\nE color.string7_color_cb\n"
+          "S Guitar\nE neck.string7_line\nE assets.headstock7\n"
+          "E assets.headstock7_wood\nE chords.wide_misses\nS Tuner and tuning names\nE tuner.lowrange\nE tuner.names\n"
           "E tuner.name_prefix\nE tuner.name_suffix\nS This menu\nE overlay.scale\nE overlay.hotkey\n");
 }
 
@@ -82,7 +84,14 @@ TEST(uilayout_player_labels_are_plain) {
                 continue;
             }
 
-            CHECK(*it.label && *it.hint && std::strlen(it.hint) <= 100 && !std::strchr(it.hint, '\n'));
+            const bool plain = *it.label && *it.hint && std::strlen(it.hint) <= 100 && !std::strchr(it.hint, '\n');
+
+            if (!plain) {
+                std::printf("  hint of '%s' is empty, over 100 characters or has a line break: %s\n", it.label,
+                            it.hint);
+            }
+
+            CHECK(plain);
             CHECK((it.locked != nullptr) == (it.lockedHint != nullptr));
 
             if (it.lockedHint) {
@@ -112,9 +121,9 @@ TEST(uilayout_player_labels_are_plain) {
 TEST(uilayout_player_tabs) {
     Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
     const int n = Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs);
-    const char* const kLabels[] = {"Seventh string", "Guitar", "Tuner", "Menu"};
-    const char* const kTitles[] = {"Seventh string", "Guitar", "Tuner and tuning names", "This menu"};
-    const int kSettings[] = {3, 5, 4, 2};
+    const char* const kLabels[] = {"Extra strings", "Guitar", "Tuner", "Menu"};
+    const char* const kTitles[] = {"Extra strings", "Guitar", "Tuner and tuning names", "This menu"};
+    const int kSettings[] = {5, 4, 4, 2};
 
     CHECK_EQ(n, 4);
 

@@ -44,7 +44,7 @@ static void Report(Probe& p, uint32_t guitar, const char* where, uint32_t result
 
     p.last = now;
 
-    if (_InterlockedIncrement(&g_lines) <= 60) {
+    if (Rs7Log_Upto(&g_lines, 60)) {
         Rs7Log(
             "loadstep: guitar %08X (%s %u) | calls %u: strings pending %u, grid done %u, pending before headstock %u, "
             "headstock done %u (pending %u), final pending %u",

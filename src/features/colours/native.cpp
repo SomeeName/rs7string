@@ -3,6 +3,7 @@
 #include "features/colours/state.h"
 #include "model/groups.h"
 #include "model/stringcolour.h"
+#include "platform/field.h"
 #include <algorithm>
 #include <cstring>
 
@@ -12,11 +13,11 @@ extern "C" __declspec(dllexport) float g_rs7_fx_rgb[6] = {};
 
 namespace {
 using rs7colour::g_colour;
+using rs7colour::kStates;
+// The states whose entries are texture rows (UV), not colours (PublishExtraUV).
+constexpr uint32_t kUvStates[] = {15, 17, 21};
 
-template <class T>
-T& At(uint8_t* p, uint32_t o) {
-    return *reinterpret_cast<T*>(p + o);
-}
+using rs7mem::UncheckedField;
 
 float Max(const float* c) {
     return c ? std::max(c[0], std::max(c[1], c[2])) : 0.0f;
@@ -28,7 +29,7 @@ bool PerString(int state) {
 }
 
 uint32_t NativeUV(uint32_t mode, uint32_t state, uint32_t slot) {
-    return rs7colour::kUV + 4 * ((mode * 28 + state) * 8 + slot);
+    return rs7colour::kUV + 4 * ((mode * kStates + state) * 8 + slot);
 }
 
 // CONFIRMED RSMods GetStringColor uses the stock state*6/mode*168 layout.
@@ -36,8 +37,8 @@ uint32_t NativeUV(uint32_t mode, uint32_t state, uint32_t slot) {
 // immediately reach the game and must never target another state or mode.
 void ShareStockColumns(uint8_t* mgr) {
     for (uint32_t mode = 0; mode < 2; ++mode) {
-        for (uint32_t state = 0; state < 28; ++state) {
-            const uint32_t legacy = 4 * ((mode * 28 + state) * 6);
+        for (uint32_t state = 0; state < kStates; ++state) {
+            const uint32_t legacy = 4 * ((mode * kStates + state) * 6);
 
             std::memcpy(mgr + 0x350 + legacy, mgr + rs7colour::PtrOffset(mode, state), 6 * 4);
             std::memcpy(mgr + 0x890 + legacy, mgr + rs7colour::UVOffset(mode, state), 6 * 4);
@@ -67,7 +68,7 @@ float DimOf(const uint8_t* mgr, uint32_t mode) {
 }
 
 // The colour of extra string 6 + extra in `state`: string 0's for a shared state, else string 6's palette (extra 0)
-// or the placeholder (extra 1), dimmed, glowing or scaled like string 0 in that state.
+// or string 7's ([color] string7_color, extra 1), dimmed, glowing or scaled like string 0 in that state.
 void ExtraColour(const uint8_t* mgr, uint32_t mode, uint32_t state, int extra, float dim, float out[3]) {
     const float* stock = rs7colour::GetRGB(mgr, mode, state, 0);
     const float baseline = Max(rs7colour::GetRGB(mgr, mode, 1, 0));
@@ -87,7 +88,7 @@ void ExtraColour(const uint8_t* mgr, uint32_t mode, uint32_t state, int extra, f
     if (extra == 0) {
         std::memcpy(lit, g_rs7_fx_rgb + mode * 3, 12);
     } else {
-        Rs7_RgbToFloats(rs7colour::kPlaceholder[mode], lit);
+        Rs7_RgbToFloats(rs7colour::Colour8(mode), lit);
     }
     std::memcpy(out, lit, 12);
 
@@ -105,39 +106,91 @@ void ExtraColour(const uint8_t* mgr, uint32_t mode, uint32_t state, int extra, f
 }
 
 void PublishExtraRgb(uint8_t* mgr, uint32_t mode, float dim) {
-    for (uint32_t state = 0; state < 28; ++state) {
+    for (uint32_t state = 0; state < kStates; ++state) {
         for (int extra = 0; extra < 2; ++extra) {
             float* out = g_colour.rgb[mode][state][extra];
 
             ExtraColour(mgr, mode, state, extra, dim, out);
             // Capacity defaults also exist for shared/unknown states; their
             // existing indices and authored arities are not widened.
-            At<float*>(mgr, rs7colour::PtrOffset(mode, state, 6 + extra)) = out;
+            UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 6 + extra)) = out;
         }
     }
 }
 
 void PublishExtraUV(uint8_t* mgr, uint32_t mode) {
-    // Authored texture rows, never extrapolate UV or change denominators:
-    // string 7 uses the recoloured ramp row; string 8 deliberately borrows
-    // stock string 5's row until its own atlas band is authored.
-    for (uint32_t state : {15u, 17u, 21u}) {
-        const float v = g_rs7_v6[mode] != 0.0f ? g_rs7_v6[mode] : At<float>(mgr, NativeUV(mode, state, 0));
+    // Authored texture rows, never extrapolate UV or change denominators: string 6 uses the recoloured V6 band,
+    // string 7 the V7 band painted with it (string7_color); without the bands both borrow a stock row.
+    const bool bands = g_rs7_v6[mode] != 0.0f;
 
-        At<float>(mgr, NativeUV(mode, state, 6)) = v;
-        At<float>(mgr, NativeUV(mode, state, 7)) = At<float>(mgr, NativeUV(mode, state, 5));
+    for (uint32_t state : kUvStates) {
+        UncheckedField<float>(mgr, NativeUV(mode, state, 6)) =
+            bands ? g_rs7_v6[mode] : UncheckedField<float>(mgr, NativeUV(mode, state, 0));
+        UncheckedField<float>(mgr, NativeUV(mode, state, 7)) =
+            bands ? kRs7V7[mode] : UncheckedField<float>(mgr, NativeUV(mode, state, 5));
     }
 
     // Wire UV denominator 6; scale-marker state14 is an index, not RGB.
     for (uint32_t state : {11u, 14u}) {
-        rs7colour::PutBits(mgr, NativeUV(mode, state, 6), At<uint32_t>(mgr, NativeUV(mode, state, 0)));
-        rs7colour::PutBits(mgr, NativeUV(mode, state, 7), At<uint32_t>(mgr, NativeUV(mode, state, 5)));
+        rs7colour::PutBits(mgr, NativeUV(mode, state, 6), UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 0)));
+        rs7colour::PutBits(mgr, NativeUV(mode, state, 7), UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 5)));
     }
+}
+
+// Slot 4 shows slot 6 (SetBassLowB): every state's pointer and the band states' UV. Called after ShareStockColumns, so
+// the six-column tables RSMods reads keep the stock slot 4.
+void SwapBassLowB(uint8_t* mgr) {
+    for (uint32_t mode = 0; mode < 2; ++mode) {
+        for (uint32_t state = 0; state < kStates; ++state) {
+            g_colour.savedPtr4[mode][state] = UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 4));
+            g_colour.savedUV4[mode][state] = UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 4));
+            UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 4)) =
+                UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 6));
+        }
+
+        for (uint32_t state : kUvStates) {
+            rs7colour::PutBits(mgr, NativeUV(mode, state, 4), UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 6)));
+        }
+
+        for (uint32_t state = 0; state < kStates; ++state) {
+            g_colour.swappedPtr4[mode][state] = UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 4));
+            g_colour.swappedUV4[mode][state] = UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 4));
+        }
+    }
+
+    g_colour.bassSwapped = true;
+    g_colour.swappedMgr = mgr;
+}
+
+// Only entries that still hold what the swap wrote: CONFIRMED the game's table build (0x518D30, CMBUILD) rewrites
+// slot 4 of every state it fills (0x518AF0 writes slots 0 to 5), so after it the saved values are stale.
+void RestoreSlot4(uint8_t* mgr) {
+    for (uint32_t mode = 0; mode < 2; ++mode) {
+        for (uint32_t state = 0; state < kStates; ++state) {
+            float*& ptr = UncheckedField<float*>(mgr, rs7colour::PtrOffset(mode, state, 4));
+
+            if (ptr == g_colour.swappedPtr4[mode][state]) {
+                ptr = g_colour.savedPtr4[mode][state];
+            }
+
+            if (UncheckedField<uint32_t>(mgr, NativeUV(mode, state, 4)) == g_colour.swappedUV4[mode][state]) {
+                rs7colour::PutBits(mgr, NativeUV(mode, state, 4), g_colour.savedUV4[mode][state]);
+            }
+        }
+    }
+
+    g_colour.bassSwapped = false;
 }
 }  // namespace
 
+void rs7colour::SetBassLowB(bool on) {
+    if (InterlockedExchange(&g_colour.bassLowB, on ? 1 : 0) != (on ? 1 : 0)) {
+        RequestPublish();
+    }
+}
+
 const float* rs7colour::GetRGB(const uint8_t* mgr, uint32_t mode, uint32_t state, uint32_t slot) {
-    if (!mgr || mode >= 2 || state >= 28 || slot >= Width()) {
+    if (!mgr || mode >= 2 || state >= kStates || slot >= Width()) {
         return nullptr;
     }
 
@@ -149,9 +202,39 @@ void* rs7colour::ExistingManager(uintptr_t ref) {
 }
 
 void rs7colour::SetPalette(const uint32_t rgb[2]) {
-    for (int mode = 0; mode < 2; ++mode) {
-        Rs7_RgbToFloats(rgb[mode], g_rs7_fx_rgb + mode * 3);
+    AcquireSRWLockExclusive(&g_colour.paletteLock);
+    std::memcpy(g_colour.pendingPalette, rgb, sizeof g_colour.pendingPalette);
+    g_colour.palettePending = true;
+    ReleaseSRWLockExclusive(&g_colour.paletteLock);
+    RequestPublish();
+    ApplyPendingPalette();
+}
+
+void rs7colour::ApplyPendingPalette() {
+    AcquireSRWLockExclusive(&g_colour.paletteLock);
+
+    if (!g_colour.palettePending || (g_colour.cmTid && g_colour.cmTid != GetCurrentThreadId())) {
+        ReleaseSRWLockExclusive(&g_colour.paletteLock);
+        return;
     }
+
+    for (int mode = 0; mode < 2; ++mode) {
+        Rs7_RgbToFloats(g_colour.pendingPalette[mode], g_rs7_fx_rgb + mode * 3);
+        g_colour.fallback7[mode] = g_colour.pendingPalette[mode] & 0xFFFFFF;
+    }
+
+    g_colour.palettePending = false;
+    ReleaseSRWLockExclusive(&g_colour.paletteLock);
+}
+
+void rs7colour::SetPalette8(const uint32_t rgb[2]) {
+    for (int mode = 0; mode < 2; ++mode) {
+        g_colour.rgb8[mode] = rgb[mode] & 0xFFFFFF;
+    }
+}
+
+uint32_t rs7colour::Colour8(uint32_t mode) {
+    return g_colour.rgb8[mode & 1];
 }
 
 void rs7colour::Publish(uint8_t* mgr) {
@@ -159,12 +242,20 @@ void rs7colour::Publish(uint8_t* mgr) {
         return;
     }
 
+    ApplyPendingPalette();
+
+    if (g_colour.bassSwapped && mgr == g_colour.swappedMgr) {
+        RestoreSlot4(mgr);
+    }
+    g_colour.bassSwapped = false;  // another manager: its slot 4 is stock, the saved pointers belong to the old one
     ShareStockColumns(mgr);
-    g_colour.fallback7 = (uint32_t(g_rs7_fx_rgb[0] * 255.0f) << 16) | (uint32_t(g_rs7_fx_rgb[1] * 255.0f) << 8) |
-                         uint32_t(g_rs7_fx_rgb[2] * 255.0f);
 
     for (uint32_t mode = 0; mode < 2; ++mode) {
         PublishExtraRgb(mgr, mode, DimOf(mgr, mode));
         PublishExtraUV(mgr, mode);
+    }
+
+    if (g_colour.bassLowB) {
+        SwapBassLowB(mgr);
     }
 }

@@ -6,6 +6,7 @@
 #include "features/diagrams/diagrams.h"
 #include "features/fretgrid/fretgrid.h"
 #include "features/headstock/headstock.h"
+#include "features/menuload/menuload.h"
 #include "features/nextgrid/nextgrid.h"
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
@@ -23,7 +24,7 @@ uintptr_t* const kSwitches[] = {&g_rs7_native_colours,    &g_rs7_native_pegset, 
                                 &g_rs7_native_fretgrid,   &g_rs7_native_pitch,  &g_rs7_native_nextgrid,
                                 &g_rs7_diagrams,          &g_rs7_publish_ports, &g_rs7_native_publish,
                                 &g_rs7_native_chordloops, &g_rs7_native_tuner,  &g_rs7_clite,
-                                &g_rs7_glow_fix};
+                                &g_rs7_glow_fix,          &g_rs7_menu_retry};
 constexpr size_t kSwitchCount = sizeof kSwitches / sizeof kSwitches[0];
 
 // Bit i: kSwitches[i] cleared.
@@ -41,6 +42,7 @@ enum : unsigned {
     sTuner = 1u << 10,
     sClite = 1u << 11,
     sGlow = 1u << 12,
+    sMenu = 1u << 13,
 };
 
 constexpr unsigned G(F f) {
@@ -66,7 +68,7 @@ const Expect kCascade[] = {
     {F::Pitch, true, G(F::Pitch) | kUnit, sPitch | kUnitOff},
     {F::Nextgrid, true, G(F::Nextgrid) | kUnit, sNextgrid | kUnitOff},
     {F::Diagrams, true, G(F::Diagrams), sDiagrams},
-    {F::Vguitar, true, G(F::Vguitar), 0},
+    {F::Private, true, G(F::Private), 0},
     {F::Diag, true, G(F::Diag), 0},
     {F::Publish, true, kUnit, kUnitOff},
     {F::Chords, true, G(F::Chords), sChords},
@@ -74,6 +76,7 @@ const Expect kCascade[] = {
     {F::Psarc, true, G(F::Psarc), 0},
     {F::Clite, true, kUnit, kUnitOff},
     {F::Glow, true, G(F::Glow), sGlow},
+    {F::MenuLoad, true, G(F::MenuLoad), sMenu},
     {F::Count, false, 0, 0},
 };
 

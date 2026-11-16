@@ -2,15 +2,16 @@
 #include "generated/sites.generated.h"
 #include "hook_rules.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 
-TEST(colour_hooks_are_the_cm_sites) {
-    const uintptr_t saved = g_rs7_native_colours;
+TEST(colour_hooks_are_the_cm_ports_and_the_cb_getters) {
+    rs7test::Restore restoreColours(g_rs7_native_colours);
     int cm = 0;
 
     for (int i = 0; i < kRs7SiteCount; ++i) {
         const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
-        if (!h || h->ref || std::strncmp(h->id, "CM", 2)) {
+        if (!h || h->ref || (std::strncmp(h->id, "CM", 2) && std::strncmp(h->id, "CB", 2))) {
             continue;
         }
 
@@ -24,11 +25,10 @@ TEST(colour_hooks_are_the_cm_sites) {
 
     CHECK_EQ(size_t(cm), kRs7ColourHooks.count);
     CHECK(Rs7_IsSevenUnit(Rs7Feature::Colours));
-    g_rs7_native_colours = saved;
 }
 
 TEST(glow_hook_follows_the_rsmods_glow_switch) {
-    const uintptr_t saved = g_rs7_glow_fix;
+    rs7test::Restore restoreGlow(g_rs7_glow_fix);
     const Rs7Hook* h = Rs7_FindHook("GLW");
 
     CHECK(h && h->callback && !h->stub);
@@ -45,5 +45,4 @@ TEST(glow_hook_follows_the_rsmods_glow_switch) {
     CHECK(Rs7_DisableFeature(Rs7Feature::Glow));
     CHECK_EQ(g_rs7_glow_fix, uintptr_t(0));
     Rs7_ResetFeatureFailures();
-    g_rs7_glow_fix = saved;
 }

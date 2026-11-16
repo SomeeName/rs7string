@@ -18,7 +18,8 @@ from unicorn.x86_const import UC_X86_REG_ECX, UC_X86_REG_EAX, UC_X86_REG_EIP, UC
 import game_files
 import gen_fncopy
 import gen_fretgrid as fg
-from emu_common import CRT_MEMSET, crt_memset, exe_sections, needs_exe
+from emu_common import CRT_MEMSET, crt_memset, exe_sections, needs_exe, run_checked
+from emu_harness import install_teb
 
 pytestmark = needs_exe
 
@@ -38,6 +39,7 @@ def patched_edits():
 def machine(native: bool, hooks=None):
     gc.collect()  # each Uc commits tens of MB: free the previous ones first
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     for va, data in exe_sections():
         size = (len(data) + 0xFFF) & ~0xFFF
         uc.mem_map(va, size, UC_PROT_ALL)
@@ -60,7 +62,7 @@ def call(uc, entry, args=(), ecx=0, eax=0, limit=2_000_000, until=None):
     uc.reg_write(UC_X86_REG_ESP, sp)
     uc.reg_write(UC_X86_REG_ECX, ecx)
     uc.reg_write(UC_X86_REG_EAX, eax)
-    uc.emu_start(entry, RET if until is None else until, count=limit)
+    run_checked(uc, entry, RET if until is None else until, count=limit)
 
 
 def cell_off(native: bool, f: int, s: int) -> int:
@@ -72,8 +74,7 @@ def test_generated_sites_are_current():
     have = {s["id"]: s for s in doc["sites"] if (s["id"].startswith("FGR") or s["id"] in ("FGHK", "FGCT"))}
     want = {s["id"]: s for s in fg.build_sites() + fg.build_stub_sites()}
     assert have == want
-    inc = fg.INC.read_text(encoding="utf-8")
-    assert inc.count("RS7_FGR(") == len(fg.build_sites())
+    assert fg.INC.read_bytes().decode("utf-8") == fg.render_inc(fg.build_sites())
 
 
 def test_no_stock_layout_constant_is_left_in_the_fretgrid_code():

@@ -1,6 +1,7 @@
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 #include <map>
 #include <string>
@@ -131,11 +132,14 @@ TEST(diagram_eight_string_producer_preserves_both_rs7x_columns_when_enabled) {
     std::memset(stock + 4, 255, 12);
     const rs7ns::Col extra[2] = {{12, 1}, {14, 2}};
     const int16_t tuning[8] = {};
-    const uintptr_t saved = g_rs7_diagrams;
 
-    g_rs7_diagrams = 1;
-    rs7ns::BuildT8(stock, extra, tuning, 8, 255, t8);
-    g_rs7_diagrams = saved;
+    {
+        rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+
+        g_rs7_diagrams = 1;
+        rs7ns::BuildT8(stock, extra, tuning, 8, 255, t8);
+    }
+
     rs7diagram::Shape shape;
 
     CHECK(rs7diagram::FromT8(t8, &shape));

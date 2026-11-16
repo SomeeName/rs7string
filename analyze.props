@@ -22,5 +22,8 @@
   <!-- /analyze writes its .xml next to the object file but does not create a per-folder ObjectFileName directory. -->
   <Target Name="Rs7AnalyzeDirs" BeforeTargets="ClCompile" Condition="'$(Rs7Analyze)' == 'true'">
     <MakeDir Directories="@(ClCompile->'%(ObjectFileName)'->DirectoryName()->Distinct())" />
+    <WriteLinesToFile File="$(IntDir)analysis-reports.txt"
+                      Lines="@(ClCompile->'%(ObjectFileName)%(Filename).nativecodeanalysis.xml')"
+                      Overwrite="true" Encoding="UTF-8" />
   </Target>
 </Project>

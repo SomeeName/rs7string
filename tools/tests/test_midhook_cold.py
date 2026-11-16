@@ -12,6 +12,7 @@ import itertools
 
 import pytest
 
+from emu_harness import needs_emu
 from emu_harness import DLL, SNAPSHOT, DATA, STACK, site_target
 from midhook_oracle import Case, Helper, Spec, Sym, oracle_tests
 
@@ -24,9 +25,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI,
 )
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 SETTINGS = (0, 1, 2, 0x80000000, 0xFFFFFFFF)  # switches are dwords: noncanonical values too
 D = DATA + 0x2000  # scratch objects below (page-aligned, zeroed per run)
@@ -125,7 +124,6 @@ register(
 
 # ---- N1 / N21: pool request counts of Rnd_Guitar_LoadDependencies (flags dead) -------------------
 COUNTS = (0, 4, 5, 6, 7, 8, 9, 255)
-PROFILE_BYTES = (0, 1, 2, 3, 4, 5, 6)  # filler: the byte at +38h is the case's count
 
 
 def profile(count: int) -> bytes:
@@ -239,6 +237,8 @@ register(
 )
 
 # ---- PSL1: the count a PegSet load takes (EDI = info, +0Bh = string count; EBX = PegSet) ----------
+# Counts above 7 left the frozen stub: a native PegSet now loads at most 7 (no model seats an 8th peg),
+# test_emu_pegs.py::test_psl1_load_count covers them.
 INFO = D + 0x1800
 register(
     Spec("PSL1", 6, flags="dead", words={"g_rs7_head_on": 0, "g_rs7_peg_load": 7}),
@@ -250,7 +250,7 @@ register(
             words={"g_rs7_head_on": h, "g_rs7_peg_load": ld},
         )
         for n, h, ld, (name, (entries, ps)) in itertools.product(
-            (0, 4, 5, 6, 7, 8),
+            (0, 4, 5, 6, 7),
             (0, 1, 0x80000000),
             (7, 8, 0x12345678),
             [
@@ -407,7 +407,7 @@ register(
 )
 
 
-# ---- refactor step 7, batch 1 (stubs frozen at 0cf5874) -------------------------------------------
+# ---- mid-hook set 1 (stubs frozen at 0cf5874) -------------------------------------------
 # BD1-BD4: perStringMode guards `cmp <string>,6; jae` (light). String 6 reads string 0's mode and joins the stock
 # body after it; the old stubs left the flags of `add [esp],n` there, so the contract is "free" (exits checked).
 MODES = (0, 1, 2, 0xFFFFFFFF)
@@ -443,6 +443,7 @@ for sid, (string_reg, (base_reg, base), join) in BEND_SITES.items():
                 f"string{v:x}-mode{m:x}",
                 regs={string_reg: 0xABCD0000 | v, base_reg: base, UC_X86_REG_EDX: 0xDDDD0003},
                 mem=bend_objects(m),
+                frozen=v != 7,  # string 7 takes the added-string path since eight strings are always on
             )
             for v, m in itertools.product(STRINGS, MODES)
         ],
@@ -474,13 +475,18 @@ register(
 )
 
 
-# ---- refactor step 7, batch 2 (stubs frozen at 24bfba8) -------------------------------------------
+# ---- mid-hook set 2 (stubs frozen at 24bfba8) -------------------------------------------
 # N12: section mask guard `cmp cl,6; jae skip`; string 6 goes on to the stock write with [neck] string7_line. The old
 # stub left the flags of its own compare of g_rs7_s7_on there, the hook the incoming ones ("free", exits checked).
 register(
     Spec("N12", 5, flags="free", exits=("resume", "target")),
     [
-        Case(f"string{v:x}-on{on:x}", regs={UC_X86_REG_ECX: 0xABCD0000 | v}, words={"g_rs7_s7_on": on})
+        Case(
+            f"string{v:x}-on{on:x}",
+            regs={UC_X86_REG_ECX: 0xABCD0000 | v},
+            words={"g_rs7_s7_on": on},
+            frozen=v != 7,  # string 7: bit 7 since eight strings are always on
+        )
         for v, on in itertools.product(STRINGS, SETTINGS)
     ],
 )
@@ -500,9 +506,26 @@ register(
     Spec("PM0", 7, flags="dead", helpers={"Rs7Pitch_MatNew": Helper(1, deref=((0, 0x80),))}),
     [Case("matcher", regs={UC_X86_REG_EAX: MATCHER}, mem={MATCHER: blob(0x80, 101)})],
 )
+
+
+def reset_detector() -> bytes:
+    """A detector as Play_Detector_Reset leaves it at PR0: floor 24 (+11F4h), lowest open E1 = 28 (+11F8h)."""
+    d = bytearray(blob(0x1400, 102))
+    d[0x11F4:0x11FC] = (24).to_bytes(4, "little") + (28).to_bytes(4, "little")
+    return bytes(d)
+
+
+# Rs7Pitch_DetFloor (the floor follows the lowest open string) came after the frozen stub; it records the reset floor
+# in the DLL. Its behaviour: tests/pitch/test_floor.cpp, test_emu_pitch.py.
 register(
-    Spec("PR0", 6, flags="dead", helpers={"Rs7Pitch_DetReset": Helper(1, deref=((0, 0x40),))}),
-    [Case("detector", regs={UC_X86_REG_EBX: DETECTOR}, mem={DETECTOR: blob(0x1400, 102)})],
+    Spec(
+        "PR0",
+        6,
+        flags="dead",
+        helpers={"Rs7Pitch_DetReset": Helper(1, deref=((0, 0x40),))},
+        quiet=("Rs7Pitch_DetFloor",),
+    ),
+    [Case("detector", regs={UC_X86_REG_EBX: DETECTOR}, mem={DETECTOR: reset_detector()})],
 )
 register(
     Spec("PM1", 6, helpers={"Rs7Pitch_MatTuned": Helper(2, deref=((0, 0x80), (1, 8)))}),
@@ -517,18 +540,23 @@ register(
 )
 # PM0, PR0 and PM1 always call their helper.
 
-# ---- refactor step 7, batch 3 (stubs frozen at b8c0ed7; the N-slot sites: test_midhook_nslot.py) ------------
-# TF1: the tuner camera's reference string BL = min(count, 6) - 1 (light); the old stub left its `dec bl` flags.
+# ---- mid-hook set 3 (stubs frozen at b8c0ed7; the N-slot sites: test_midhook_nslot.py) ------------
+# TF1: the tuner camera's reference string BL = min(count, 6) - 1, a five-string bass (class 2) 3 (light); the old stub
+# left its `dec bl` flags. The five-string bass came after the freeze: its case is in the stock reference only.
+TF1_INPUTS = ((0, 0), (0, 1), (0, 4), (0, 6), (0, 7), (0, 8), (0, 0xFF), (2, 4), (2, 6))
 TGUITAR, TINFO = D + 0x5000, D + 0x5100
 register(
     Spec("TF1", 8, flags="free"),
     [
         Case(
-            f"count{n:x}",
+            f"class{k:x}-count{n:x}",
             regs={UC_X86_REG_EAX: TGUITAR, UC_X86_REG_EBX: 0xB1B1B100, UC_X86_REG_EDX: 0xDDDD0003},
-            mem={TGUITAR: bytes(0x24) + TINFO.to_bytes(4, "little"), TINFO: bytes(0x0B) + bytes([n]) + bytes(4)},
+            mem={
+                TGUITAR: bytes(0x24) + TINFO.to_bytes(4, "little"),
+                TINFO: bytes([k]) + bytes(0x0A) + bytes([n]) + bytes(4),
+            },
         )
-        for n in (0, 1, 4, 6, 7, 8, 0xFF)
+        for k, n in TF1_INPUTS
     ],
 )
 
@@ -545,7 +573,7 @@ register(
     ],
 )
 
-# ---- refactor step 7, batch 2b (stubs frozen at 6d1a62c) ------------------------------------------
+# ---- mid-hook set 2b (stubs frozen at 6d1a62c) ------------------------------------------
 # N5: per-frame driver, then the replay `mov eax,[ebx+18h]; test eax,eax` (flags exact).
 GUITAR = D + 0x7000
 register(
@@ -556,7 +584,7 @@ register(
     ],
 )
 
-# N18 / N22: `cmp al,[esi+0Bh]; jae` with a string-6 path to a join (EDX = 6, ECX = the object, EAX = the join).
+# N18: `cmp al,[esi+0Bh]; jae` with a string-6 path to a join (EDX = 6, ECX = the object, EAX = the join).
 # Strings x count x fret x helper result; the flags the old stubs left are dead at every exit ("free").
 BEND_INFO, BEND_GS, BEND_OBJ = D + 0x7200, D + 0x7300, D + 0x7400
 COUNTS = (6, 7)
@@ -568,7 +596,7 @@ def info_with(count: int) -> bytes:
     return bytes(raw)
 
 
-for sid, length, join, amount_at in (("N18", 9, 0x10, -0x64), ("N22", 5, 0x0C, -0x60)):
+for sid, length, join, amount_at in (("N18", 9, 0x10, -0x64),):
     register(
         Spec(
             sid,
@@ -591,16 +619,16 @@ for sid, length, join, amount_at in (("N18", 9, 0x10, -0x64), ("N22", 5, 0x0C, -
                 rets={"Rs7_S7BendTarget": r},
             )
             for v, n, f, r in itertools.product(STRINGS, COUNTS, (3, 0xFF), (0, BEND_OBJ))
+            if not (v == 6 and n > 6)  # C-lite counts: fixed behaviour, test_emu_bends / test_emu_chordloops
         ],
     )
 
-# N19 / N20 / N23 (light): the release shape `cmp <string>,[info+0Bh]; jae`, join at resume + 7. The old stubs called
-# Rs7_S7BendTarget (kinds 1 / 3, no log), which now calls the split-off Rs7_S7BendObject the light hooks call directly:
+# N19 / N20 (light): the release shape `cmp <string>,[info+0Bh]; jae`, join at resume + 7. The old stubs called
+# Rs7_S7BendTarget (kind 1, no log), which now calls the split-off Rs7_S7BendObject the light hooks call directly:
 # the real Rs7_S7BendTarget runs in the old run, so both runs record the same Rs7_S7BendObject calls.
 RELEASE_SITES = {  # sid -> (string register, info register, GuitarStrings register)
     "N19": (UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ECX),
     "N20": (UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ECX),
-    "N23": (UC_X86_REG_ECX, UC_X86_REG_ESI, UC_X86_REG_EDX),
 }
 for sid, (string_reg, info_reg, gs_reg) in RELEASE_SITES.items():
     register(
@@ -613,6 +641,7 @@ for sid, (string_reg, info_reg, gs_reg) in RELEASE_SITES.items():
                 rets={"Rs7_S7BendObject": r},
             )
             for v, n, r in itertools.product(STRINGS, COUNTS, (0, BEND_OBJ))
+            if not (v == 6 and n > 6)  # C-lite counts: fixed behaviour, test_emu_bends / test_emu_chordloops
         ],
     )
 

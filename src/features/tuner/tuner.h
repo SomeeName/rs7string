@@ -1,8 +1,10 @@
 #pragma once
+#include "model/instrument.h"
 #include <cstdint>
 #include <string>
 
-// The tuner for 7- and 8-string arrangements (docs/ARCHITECTURE.md section 8; GitHub issues #1, #8, #15, #18 job 3).
+// The tuner for 7/8-string guitar and 5/6-string bass arrangements (docs/ARCHITECTURE.md section 8; GitHub issues #1,
+// #8, #15, #18).
 // The public header: the only one code outside src/features/tuner/ includes.
 //
 // Three parts, one feature:
@@ -12,7 +14,7 @@
 //    [debug] tuner_autotune.
 //  - The native 8-slot tuner session (hooks_session.cpp, hooks_methods.cpp, hooks_copies.cpp): a 7/8-string session
 //    runs relocated copies of the UI_PlayerTuner methods over a capacity-8 tail (TU8* / TS8* sites).
-//  - Seven-string tuning names (tuningname.cpp logic, hooks_names.cpp glue; TJ TU TUT TN sites).
+//  - Extended tuning names (tuningname.cpp logic, hooks_names.cpp glue; TJ TU TUT TN sites).
 //
 // Files: tuner.cpp / tuningname.cpp (logic, tests/tuner), hooks*.cpp (glue; hooks.h declares it, state.h holds the
 // feature's state), hooks_entries.cpp (entry dispatch, session storage and AT mid-hooks),
@@ -100,29 +102,37 @@ void Rs7Tuner_Stats(Rs7TunerStats* out);
 // Tuner) and the shared tuner hooks and tuning names (TK TS W AT TJ TU TUT TN and their refs, group Core: never
 // isolated, a failure aborts patching like any core site).
 struct Rs7HookTable;
-constexpr int kRs7TunerNative = 1;  // Rs7Hook::tuner: written only with the native 8-slot tuner (issue #18 job 3)
 extern const Rs7HookTable kRs7TunerHooks;
 extern const Rs7HookTable kRs7TunerCoreHooks;
 
 // ---- logic (tuner.cpp): values in, values out, no Win32, no game state
 
 namespace rs7tuner {
+// The game's wrong-instrument threshold (MIDI mean, X_WTHR's 34.0).
+constexpr int kStockWrongThreshold = 34;
+
 // The guitar wrong-instrument threshold for a lowest open MIDI: min(34, lowest - 1).
 int WrongThreshold(int lowestOpen);
+
+// Colour slot 4 (a bass's low B, a guitar's B string) for a target read now: string 6's grey for an extended bass,
+// unless a guitar's target was read within the last second (co-op reads both players' targets together).
+constexpr bool BassLowB(bool extendedBass, bool guitarSeen, uint32_t sinceGuitarMs) {
+    return extendedBass && (!guitarSeen || sinceGuitarMs > 1000);
+}
 }  // namespace rs7tuner
 
 namespace rs7tu {
-// Base MIDI per string: the stock guitar table 0x1199C8C, then B1 / F#1 (as pitch8's g_rs7_pitch_gbase).
-constexpr int kGuitarBase[8] = {40, 45, 50, 55, 59, 64, 35, 30};
-// The tuning order of n strings: the strings above 6 lowest first, then 0..5 (n <= 6: 0..n-1).
-void Order(int n, uint8_t out[8]);
+// The tuning order of n strings: the strings above 6 lowest first, then 0..5 (n <= 6: 0..n-1). An extended bass
+// (`bass`, 5 / 6 strings): the low B (string 4) first, then E A D G, then the high C (string 5).
+void Order(int n, uint8_t out[8], bool bass = false);
 // One step from cur along order[0..n): the next / previous string, or -1.
 int Step(const uint8_t* order, int n, int cur, int dir);
 
-// Whether TS makes / keeps a session native: a 7/8-string target, an already native session, or (fix/menutuner) a
+// Whether TS makes / keeps a session native: a 7/8-string target, an already native session, or a
 // guitar built with more than six strings whatever the target (never the stock six-slot arrays on a 7-built guitar).
-constexpr bool GoesNative(int n, bool wasNative, unsigned guitarCount) {
-    return n > 6 || wasNative || guitarCount > 6;
+// An extended bass (`bass`, built with 5 / 6 strings) goes native too: only the native order starts on its low B.
+constexpr bool GoesNative(int n, bool wasNative, unsigned guitarCount, bool bass = false) {
+    return n > 6 || wasNative || guitarCount > 6 || (bass && rs7::IsExtendedBass(guitarCount));
 }
 
 // Open MIDI of every slot from the six offsets and the extra two (guitar).

@@ -1,15 +1,16 @@
 """Plain (unencrypted TOC) PSARC reader/writer."""
 
-import struct
-import zlib
 import hashlib
+import struct
 import sys
+import zlib
+from pathlib import Path
 
 BLOCK = 65536
 
 
 def read(path):
-    d = open(path, "rb").read()
+    d = Path(path).read_bytes()
     magic, ver, comp, toclen, esz, n, bsz, flags = struct.unpack(">4sI4sIIIII", d[:32])
     assert magic == b"PSAR" and comp == b"zlib" and esz == 30, (magic, comp, esz)
     assert flags & 4 == 0, f"encrypted TOC (flags {flags})"
@@ -30,20 +31,27 @@ def read(path):
         p = off
         b = zi
         while len(out) < ln:
-            z = zl[b]
-            if z == 0:
-                chunk = d[p : p + bsz]
-                p += bsz
+            expected = min(bsz, ln - len(out))
+            if b >= len(zl):
+                raise ValueError("missing PSARC block length")
+            stored = zl[b] or bsz
+            raw = d[p : p + stored]
+            p += stored
+            if len(raw) != stored:
+                raise ValueError("truncated PSARC block")
+            if stored == expected:
+                chunk = raw
             else:
-                raw = d[p : p + z]
-                p += z
                 try:
-                    chunk = zlib.decompress(raw)
-                except zlib.error:
-                    chunk = raw
+                    decoder = zlib.decompressobj()
+                    chunk = decoder.decompress(raw, expected + 1)
+                except zlib.error as error:
+                    raise ValueError(f"invalid compressed PSARC block: {error}") from None
+                if len(chunk) != expected or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+                    raise ValueError("compressed PSARC block does not match its expected length")
             out += chunk
             b += 1
-        files.append(bytes(out[:ln]))
+        files.append(bytes(out))
     names = files[0].decode().split("\n")
     return dict(zip(names, files[1:])), dict(ver=ver, flags=flags, names=names)
 
@@ -77,7 +85,7 @@ def write(path, named, names, ver=0x00010004, flags=0):
         for md5, zi, ln, off in ents
     )
     zt = b"".join(z.to_bytes(2, "big") for z in zl)
-    open(path, "wb").write(hdr + toc + zt + data)
+    Path(path).write_bytes(hdr + toc + zt + data)
 
 
 if __name__ == "__main__":

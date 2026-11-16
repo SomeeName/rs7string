@@ -1,4 +1,4 @@
-"""Old-vs-new equivalence of the feature sites converted from naked stubs to C++ mid-hooks in refactor step 7 batch 5
+"""Old-vs-new equivalence of the feature sites converted from naked stubs to C++ mid-hooks
 (stubs frozen at 9c0e44f, tools/tests/fixtures/midhook_9c0e44f.json): the chord loops (features/chords), the
 next-note grid (features/nextgrid), the FretGrid build (features/fretgrid), the chord diagrams (features/diagrams),
 plain PSARC (features/psarc), the tuner (features/tuner) and the publication ports (features/publish).
@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import re
 import struct
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -26,12 +27,12 @@ from unicorn.x86_const import (
 )
 
 import sitetable
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SITES, SNAPSHOT, STACK, site_va
 from midhook_oracle import Case, Helper, Spec, Sym, oracle_tests
+import private_features
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 ROOT = Path(__file__).resolve().parents[2]
 D = DATA + 0x2000  # scratch objects (page-aligned, zeroed per run)
@@ -229,12 +230,17 @@ for sid, length in (("TU8H", 5), ("TU8C", 7), ("TU8A", 6)):
         always=True,
     )
 TS8_IDS = re.findall(r"X\((TS8\w+), \d+\)", (ROOT / "src/features/tuner/tuner8s_ids.generated.h").read_text())
+assert TS8_IDS, "no X(TS8..., n) entries: the session-site specs below would register nothing"
 SESSION_FRAME = Helper(2, deref=((1, 32), (1, 4, 40)), opaque=(1,))  # the PUSHAD frame and the entry's [esp+4]
 for sid in TS8_IDS:
     length = next(x.length for x in SITES_ALL if x.id == sid)
+    cases = entry_cases(sid, "Rs7Tuner8_SessTarget", OBJECTS)
+    if sid == "TS8SEL":
+        # Unregistered owners stay stock even with the native tuner enabled; recovery must not probe them.
+        cases += [replace(c, id=f"{c.id}-native1", words={"g_rs7_native_tuner": 1}) for c in cases]
     register(
         Spec(sid, length, helpers={"Rs7Tuner8_SessTarget": SESSION_FRAME}, flags="dead", exits=(("resume", -length),)),
-        entry_cases(sid, "Rs7Tuner8_SessTarget", OBJECTS),
+        cases,
         always=True,
     )
 
@@ -286,7 +292,7 @@ def info(count: int) -> dict:
     return {GINFO: bytes(0x0B) + bytes([count, 0x18]) + bytes(3)}
 
 
-# PUBGE2 is not compared with its old stub: batch 5 fixed it (the displaced `cmp byte [esi+8],0` and the rel8 target);
+# PUBGE2 is not compared with its old stub: the conversion fixed it (the displaced `cmp byte [esi+8],0` and the rel8 target);
 # test_publish_grid_emu.py checks it against the stock bytes.
 for sid, length, string_reg, info_reg in (
     ("PUBGS", 8, UC_X86_REG_EAX, UC_X86_REG_EDI),
@@ -419,43 +425,7 @@ register(
     [Case(f"on{on:x}", words={"g_rs7_asset_on": on}, stack={4: D + 0x100}) for on in (0, 1, 0x80000000)],
 )
 
-# ---- features/vguit: TICK, JUD1, JUD2, AUD1 ([test] vguitar) ----------------------------------------------------------
-VG_ON = (0, 1, 0xFFFFFFFF)
-register(
-    Spec("TICK", length("TICK"), helpers={"Rs7Vg_OnTick": Helper(2)}, pushed=4, align=0x40),
-    [Case(f"on{on:x}", stack={4: D + 0x100, 8: 0x42F60000}, words={"g_rs7_vg_on": on}) for on in VG_ON],
-)
-register(
-    Spec("JUD1", length("JUD1"), helpers={"Rs7Vg_OnJudge": Helper(2)}, flags="dead"),
-    [
-        Case(f"on{on:x}", regs={UC_X86_REG_EBX: D + 0x100, UC_X86_REG_ESI: D + 0x300}, words={"g_rs7_vg_on": on})
-        for on in VG_ON
-    ],
-)
-register(
-    Spec("JUD2", length("JUD2"), helpers={"Rs7Vg_OnScore": Helper(3)}, pushed=4, align=0x40),
-    [
-        Case(
-            f"on{on:x}-cl{cl:x}",
-            regs={UC_X86_REG_ECX: 0xC1C1C100 | cl, UC_X86_REG_EDX: D + 0x300},
-            stack={4: D + 0x100},
-            words={"g_rs7_vg_on": on},
-        )
-        for on, cl in itertools.product(VG_ON, (0, 1, 0xFF))
-    ],
-)
-register(
-    Spec("AUD1", length("AUD1"), helpers={"Rs7Vg_OnInput": Helper(2)}),
-    [
-        Case(
-            f"on{on:x}-cb{cb:x}",
-            regs={UC_X86_REG_ESI: D + 0x100, UC_X86_REG_EBX: D + 0x300},
-            mem={D + 0x100: dwords(0x11, cb)},
-            words={"g_rs7_vg_on": on},
-        )
-        for on, cb in itertools.product(VG_ON, (0, 0x12345678))
-    ],
-)
+private_features.extend(__name__, globals())
 
 # ---- features/strings: the copied-function entries, GRM1, GRM2 ------------------------------------------------------
 GS_ENTRIES = ("GSFR GSBD GSUL GSLD GSFO GSFI GSXF GSWD GSUP GSRS GSPK GSVB GSIC GSDM GSGL GSHC").split()

@@ -24,8 +24,8 @@ import gen_fncopy
 import gen_nextgrid as ng
 import sitecheck
 import sitetable
-from emu_common import CRT_MEMSET, SITES, crt_memset, exe_sections, load_dll, stub_security_cookie
-from emu_harness import MID_CALLBACKS, build_mid_entry
+from emu_common import CRT_MEMSET, SITES, crt_memset, exe_sections, load_dll, stub_security_cookie, run_checked
+from emu_harness import MID_CALLBACKS, build_mid_entry, install_teb
 
 GRID, STACK, RET = 0x10001000, 0x12000000, 0x13000000
 HEAP, FAKE = 0x14000000, 0x15000000
@@ -72,6 +72,7 @@ class Machine:
         gc.collect()  # each Uc commits tens of MB: free the previous ones first
         self.mode = mode
         self.uc = uc = Uc(UC_ARCH_X86, UC_MODE_32)
+        install_teb(uc)
         for va, data in exe_sections():
             uc.mem_map(va, (len(data) + 0xFFF) & ~0xFFF, UC_PROT_ALL)
             uc.mem_write(va, data)
@@ -138,7 +139,7 @@ class Machine:
             (UC_X86_REG_EAX, eax),
         ):
             self.uc.reg_write(r, v)
-        self.uc.emu_start(entry, RET, count=limit)
+        run_checked(self.uc, entry, RET, count=limit)
 
     # --- the grid functions ----------------------------------------------------------------------------------
     def init(self, string_count: int, frets: int, fill=0xAA):
@@ -157,7 +158,7 @@ class Machine:
             (UC_X86_REG_EBX, 0x3333),
         ):
             self.uc.reg_write(r, v)
-        self.uc.emu_start(0x7AA163, RET, count=10000)
+        run_checked(self.uc, 0x7AA163, RET, count=10000)
         assert self.reg(UC_X86_REG_ESP) == ebp + 0x18 and self.reg(UC_X86_REG_EBP) == 0x1111
 
     def prune(self):
@@ -272,7 +273,7 @@ def run_update(m: Machine, sets, tree_times, strings=6, frets=24, dt=0.016):
         end=TREE_ERASE,
     )
     try:
-        m.uc.emu_start(UPDATE, RET, count=2_000_000)
+        run_checked(m.uc, UPDATE, RET, count=2_000_000)
     finally:
         m.uc.hook_del(h)
         m.uc.hook_del(h2)

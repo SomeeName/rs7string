@@ -14,8 +14,11 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import capstone
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def hexbytes(s):
@@ -48,7 +51,7 @@ def bounds(site):
 def main(refs):
     print("ref	id	bound	insn	note")
     for ref in refs or ["HEAD"]:
-        raw = subprocess.run(["git", "show", f"{ref}:sites.json"], capture_output=True, check=True).stdout
+        raw = subprocess.run(["git", "show", f"{ref}:sites.json"], capture_output=True, check=True, cwd=ROOT).stdout
         for s in json.loads(raw)["sites"]:
             for b in bounds(s):
                 n, text = b if isinstance(b, tuple) else (b, f"byte {b:02X}")

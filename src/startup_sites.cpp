@@ -1,15 +1,17 @@
 // The main batch of Rs7_Startup (startup_sites.h): the site writers, the isolated patch rounds, the deferred FretGrid
 // sites and the per-site log.
 #include "startup_sites.h"
+#include "features/colours/colours.h"
 #include "features/diag/diag.h"
+#include "features/extras/extras.h"
 #include "features/fretgrid/fretgrid.h"
 #include "features/headstock/headstock.h"
 #include "features/nextgrid/nextgrid.h"
 #include "features/pitch/pitch.h"
 #include "features/strings/strings.h"
-#include "features/vguit/vguit.h"
 #include "generated/sites.generated.h"
 #include "hook_rules.h"
+#include "model/gates.h"
 #include "platform/freeze.h"
 #include "platform/hooktable.h"
 #include "platform/log.h"
@@ -24,7 +26,7 @@ namespace {
 
 // Runs inside a thread freeze (platform/freeze.h): no allocation, no logging. A Bytes site's replacement is
 // parsed beforehand (WriteBytesFor, outside the freeze).
-bool Apply(const Rs7Resolved& r, const Rs7Hook& h, uintptr_t midEntry, const std::vector<uint8_t>& bytes) {
+Rs7WriteResult Apply(const Rs7Resolved& r, const Rs7Hook& h, uintptr_t midEntry, const std::vector<uint8_t>& bytes) {
     const uintptr_t stub = h.IsMid() ? midEntry : reinterpret_cast<uintptr_t>(h.stub);
 
     switch (r.site->kind) {
@@ -83,16 +85,21 @@ std::vector<Rs7Range> g_deferredRanges;  // built at startup with g_deferredFg
 
 struct DeferredRound {
     size_t n;           // sites written before the failure (== size: all)
-    size_t unrestored;  // review #8: rollbacks that failed the read-back
+    size_t unrestored;  // rollbacks that failed the read-back
     size_t firstBad;    // index of the first of them
 };
 
 void WriteDeferred(void* p) {  // inside the freeze
     DeferredRound& d = *static_cast<DeferredRound*>(p);
     size_t n = 0;
+    bool failedWritten = false, cleanupFailed = false;
 
     for (; n < g_deferredFg.size(); ++n) {
-        if (!Apply(g_deferredFg[n].r, *g_deferredFg[n].h, 0, g_deferredFg[n].bytes)) {
+        const Rs7WriteResult result = Apply(g_deferredFg[n].r, *g_deferredFg[n].h, 0, g_deferredFg[n].bytes);
+
+        if (!result) {
+            failedWritten = result.written;
+            cleanupFailed = !result.protectionRestored;
             break;
         }
     }
@@ -102,40 +109,48 @@ void WriteDeferred(void* p) {  // inside the freeze
         return;
     }
 
-    for (size_t j = 0; j < n; ++j) {
-        if (!Rs7_RestoreBytes(g_deferredFg[j].r.addr, g_deferredFg[j].r.original.data(),
-                              g_deferredFg[j].r.original.size()) &&
-            d.unrestored++ == 0) {
+    for (size_t j = 0; j < n + (failedWritten ? 1u : 0u); ++j) {
+        const bool restored = Rs7_RestoreBytes(g_deferredFg[j].r.addr, g_deferredFg[j].r.original.data(),
+                                               g_deferredFg[j].r.original.size());
+
+        if ((!restored || (j == n && cleanupFailed)) && d.unrestored++ == 0) {
             d.firstBad = j;
         }
+    }
+
+    if (cleanupFailed && !failedWritten && d.unrestored++ == 0) {
+        d.firstBad = n;
     }
 }
 
 // The game (main) thread, first guitar update. The other threads (loaders, audio, our workers) are frozen
-// while the FGR sites change (review #9).
-bool ApplyDeferredFg() {
+// while the FGR sites change.
+rs7fg::ApplyResult ApplyDeferredFg(bool lastAttempt) {
     DeferredRound d{0, 0, 0};
     Rs7FreezeStats st;
     const bool ran = Rs7_RunFrozen(g_deferredRanges.data(), g_deferredRanges.size(), &WriteDeferred, &d, &st);
-    char line[256];
+    char line[512];
 
     Rs7_FreezeDescribe(st, line, sizeof line);
     Rs7Log("fretgrid: %s (%u deferred sites, game thread %lu)", line, unsigned(g_deferredFg.size()),
            GetCurrentThreadId());
 
     if (!ran) {
+        if (!lastAttempt && !st.tooMany) {
+            return rs7fg::ApplyResult::Retry;  // nothing written; the game thread tries again later
+        }
+
         Rs7_DisableFeature(Rs7Feature::Fretgrid);
-        return false;
+        return rs7fg::ApplyResult::Failed;
     }
 
     if (d.n == g_deferredFg.size()) {
-        return true;
+        return rs7fg::ApplyResult::Applied;
     }
 
-    if (d.unrestored) {  // review #8: never retried (FGHK writes once); the group stays off
-        Rs7Log("fretgrid: UNRECOVERABLE %s (+%u more): restoring the original bytes failed after %s could not be "
-               "written - "
-               "sites stay written, feature fretgrid DISABLED",
+    if (d.unrestored) {  // never retried (FGHK writes once); the group stays off
+        Rs7Log("fretgrid: UNRECOVERABLE %s (+%u more): restoring bytes or page protection failed after %s could not "
+               "be written - feature fretgrid DISABLED",
                g_deferredFg[d.firstBad].r.site->id, unsigned(d.unrestored - 1), g_deferredFg[d.n].r.site->id);
     } else {
         Rs7Log("fretgrid: writing %s failed - the %u sites already written were restored", g_deferredFg[d.n].r.site->id,
@@ -145,12 +160,14 @@ bool ApplyDeferredFg() {
     // Only the Fretgrid group fails (and what depends on its layout: native_publish, native_tuner).
     Rs7_DisableFeature(Rs7Feature::Fretgrid);
 
-    return false;
+    return rs7fg::ApplyResult::Failed;
 }
 
-// Whether the site of `h` is written, given the features' switches now.
+// Whether the site of `h` is written, given the features' switches now. A build without the private extras
+// (src/features/extras/extras.h) has no privateOnly sites.
 bool Writes(const Rs7Hook& h) {
-    return Rs7_ShouldPatch(h, g_rs7_diag != 0, Rs7Vg_Enabled(), g_rs7_native_pegset != 0, g_rs7_native_strings != 0);
+    return Rs7_ShouldPatch(h, g_rs7_diag != 0, Rs7Private_SitesOn(), g_rs7_native_pegset != 0,
+                           g_rs7_native_strings != 0);
 }
 
 // [debug] skip_sites lists `id`.
@@ -161,20 +178,28 @@ bool Skipped(const std::string& skip, const char* id) {
 // [neck] native_fretgrid: the FGR layout sites (not the FGHK / FGCT mid-hooks) are written later on the game
 // thread (rs7fg::OnGuitarUpdate); they are not part of the main batch.
 bool DeferredFg(const Rs7Resolved& r, const Rs7Hook& h) {
-    return h.fg == kRs7FgNative && std::strcmp(r.site->id, "FGHK") != 0 && std::strcmp(r.site->id, "FGCT") != 0;
+    return (h.gates & kRs7GateFretgrid) && std::strcmp(r.site->id, "FGHK") != 0 && std::strcmp(r.site->id, "FGCT") != 0;
 }
 }  // namespace
 
-// Prepare every enabled generic hook before writing any site. The same Jmp sites.json entries retain sitecheck's
-// whole-instruction/no-inbound checks. Process lifetime ownership: rollback restores sites, but never frees code
-// that a thread could still be executing. Startup runs once.
+// Prepares every enabled hook before any site is written. The mid-hook stubs live for the whole process: a rollback
+// restores the sites but never frees code a thread could still be running. Startup runs once.
 // A failing site disables only its own feature group (platform/isolate.h); the round then restarts with that group
 // gone. Only a core failure aborts everything.
 Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks,
-                                     const std::string& skip, std::vector<size_t>& todo) {
+                                     const std::string& skip, std::vector<size_t>& written) {
     static Rs7Mid::Hook midHooks[kRs7SiteCount];
     Rs7PatchOps ops;
     std::vector<std::vector<uint8_t>> writeBytes(res.sites.size());
+    uintptr_t colourCtor = 0, colourAlloc = 0;
+
+    for (const Rs7Resolved& r : res.sites) {
+        if (!std::strcmp(r.site->id, "CM5184F6")) {
+            colourCtor = r.addr;
+        } else if (!std::strcmp(r.site->id, "CM518AC4")) {
+            colourAlloc = r.addr;
+        }
+    }
 
     ops.count = res.sites.size();
     ops.group = [&](size_t i) {
@@ -220,14 +245,26 @@ Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vec
     ops.range = [&](size_t i) {
         return RangeOf(res.sites[i]);
     };
-    // review #9: every round under a thread freeze; review #8: read-back verified
+    ops.beforeWrite = [&] {
+        return !g_rs7_native_colours || Rs7Colour_CanPatchFrozen(colourCtor, colourAlloc);
+    };
+    // Every round runs under a thread freeze; a restore is verified by a read-back.
     ops.restore = [&](size_t i) {
         const Rs7Resolved& r = res.sites[i];
 
         return Rs7_RestoreBytes(r.addr, r.original.data(), r.original.size());
     };
 
-    return Rs7_PatchIsolated(kRs7Groups, ops, todo);
+    const Rs7PatchResult result = Rs7_PatchIsolated(kRs7Groups, ops, written);
+
+    if (result == Rs7PatchResult::PreconditionFailed) {
+        g_rs7_native_colours = 0;
+        Rs7Colour_LogPatchRefusal();
+        Rs7Log("colour: stock ColourManager exists, is being built or could not be checked under the patch freeze "
+               "- native_colours OFF; native 7-string unit has no fallback, main batch not written");
+    }
+
+    return result;
 }
 
 // The deferred FretGrid sites: the final round's feature state decides (a disabled Fretgrid group has none).
@@ -236,8 +273,7 @@ size_t Rs7Startup_DeferFretGrid(const Rs7ResolveResult& res, const std::vector<c
     g_deferredFg.clear();
 
     for (size_t i = 0; i < res.sites.size(); ++i) {
-        if (DeferredFg(res.sites[i], *hooks[i]) && !hooks[i]->ref && Writes(*hooks[i]) &&
-            !Skipped(skip, res.sites[i].site->id)) {
+        if (DeferredFg(res.sites[i], *hooks[i]) && Writes(*hooks[i]) && !Skipped(skip, res.sites[i].site->id)) {
             g_deferredFg.push_back({res.sites[i], hooks[i], WriteBytesFor(res.sites[i])});
         }
     }
@@ -253,27 +289,33 @@ size_t Rs7Startup_DeferFretGrid(const Rs7ResolveResult& res, const std::vector<c
     return g_deferredFg.size();
 }
 
-void Rs7Startup_LogSites(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks) {
+void Rs7Startup_LogSites(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks,
+                         const std::string& skip) {
     for (size_t i = 0; i < res.sites.size(); ++i) {
         const Rs7Resolved& r = res.sites[i];
         const Rs7Hook& h = *hooks[i];
 
         if (h.ref) {
             Rs7Log("resolved %-7s at %08X -> %08X", r.site->id, unsigned(r.addr), unsigned(r.target));
+        } else if (Writes(h) && Skipped(skip, r.site->id)) {
+            Rs7Log("resolved %-4s at %08X ([debug] skip_sites: not patched)", r.site->id, unsigned(r.addr));
         } else if (DeferredFg(r, h) && Writes(h)) {
             Rs7Log("deferred %-4s at %08X (written on the game thread by the first guitar update)", r.site->id,
                    unsigned(r.addr));
         } else if (Writes(h)) {
             Rs7Log("patched %-4s at %08X (original target %08X)", r.site->id, unsigned(r.addr), unsigned(r.target));
+        } else if (Rs7_FeatureDisabled(Rs7_FeatureOf(h))) {
+            Rs7Log("resolved %-4s at %08X (group %s disabled: not patched)", r.site->id, unsigned(r.addr),
+                   Rs7_FeatureName(Rs7_FeatureOf(h)));
         } else {
             Rs7Log("resolved %-4s at %08X (%s off: not patched)", r.site->id, unsigned(r.addr),
-                   h.vgOnly                       ? "[test] vguitar"
+                   h.privateOnly                  ? "the private extras"
                    : !std::strncmp(h.id, "TV", 2) ? "[test] force_*"
-                   : h.pegs == kRs7PegNative      ? "the native PegSet"
-                   : h.strs == kRs7StrNative      ? "the native GuitarStrings"
-                   : h.fg == kRs7FgNative         ? "the native FretGrid"
-                   : h.pitch == kRs7PitchNative   ? "the native pitch storage"
-                   : h.ng == kRs7NgNative         ? "the native next-note grid"
+                   : (h.gates & kRs7GatePegs)     ? "the native PegSet"
+                   : (h.gates & kRs7GateStrings)  ? "the native GuitarStrings"
+                   : (h.gates & kRs7GateFretgrid) ? "the native FretGrid"
+                   : (h.gates & kRs7GatePitch)    ? "the native pitch storage"
+                   : (h.gates & kRs7GateNextgrid) ? "the native next-note grid"
                                                   : "diagnostics");
         }
     }

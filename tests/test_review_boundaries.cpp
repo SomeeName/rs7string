@@ -6,6 +6,7 @@
 #include "platform/fncopy.h"
 #include "platform/freeze.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstring>
 #include <limits>
@@ -44,7 +45,7 @@ TEST(review_freeze_strict_interior_and_address_limits) {
 }
 
 TEST(review_colour_layout_all_cells_are_contiguous_and_disjoint) {
-    const uintptr_t saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     for (uintptr_t enabled : {uintptr_t(0), uintptr_t(1)}) {
         g_rs7_native_colours = enabled;
@@ -79,8 +80,6 @@ TEST(review_colour_layout_all_cells_are_contiguous_and_disjoint) {
         CHECK(rs7colour::GetRGB(mgr, 0, 0, width) == nullptr);
         CHECK(rs7colour::GetRGB(nullptr, 0, 0, 0) == nullptr);
     }
-
-    g_rs7_native_colours = saved;
 }
 
 TEST(review_sidestore_full_update_erase_and_rollover) {
@@ -161,7 +160,7 @@ TEST(review_tuning_names_positive_eight_family_and_suffix_first_match) {
     CHECK(std::strcmp(rs7tn::Name8(t), "G Standard") == 0);
     t[7] = -1;
     CHECK(std::strcmp(rs7tn::Name8(t), "G Drop F") == 0);
-    CHECK_EQ(rs7tn::Suffix8("7 of 7"), std::string("8 of 7"));
+    CHECK_EQ(rs7tn::SuffixN("7 of 7", 8), std::string("8 of 7"));
     CHECK_EQ(rs7tn::Display("Bb C# Db! aB"), std::string("B\xE2\x99\xAD C\xE2\x99\xAF DB! AB"));
 }
 

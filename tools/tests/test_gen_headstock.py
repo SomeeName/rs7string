@@ -54,8 +54,9 @@ def test_shipped_lefty_package_owner_identity_and_no_template_runs():
     templates = [(hs.TEMPLATES_LH / n).read_bytes() for n in hs.LH_NAMES]
     hs.audit_runs(package, templates)
     outputs = hs.unpack(package, templates)
-    assert list(outputs) == ["rs7_inline7_lh.nif"]
-    assert outputs["rs7_inline7_lh.nif"] == (hs.OUTPUTS / "rs7_inline7_lh.nif").read_bytes()
+    assert list(outputs) == ["rs7_inline7_lh.nif", "rs7_inline8_lh.nif"]
+    for name in outputs:
+        assert outputs[name] == (hs.OUTPUTS / name).read_bytes()
     # the right-handed frame is refused: the package is bound to the left-handed template hashes
     rh = (hs.TEMPLATES / "epi_wilshire_cherry.nif").read_bytes()
     with pytest.raises(ValueError, match="template hash"):

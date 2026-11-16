@@ -1,11 +1,14 @@
 #include "features/diag/diag.h"
 #include "features/pitch/pitch.h"
 #include "platform/log.h"
+#include "platform/midhook.h"
 #include "test.h"
 #include <windows.h>
 #include <cstring>
 #include <string>
 #include <vector>
+
+extern "C" void __cdecl Rs7_Mid_N5(Rs7Mid::Context&);
 
 namespace {
 std::vector<std::string>& Lines() {
@@ -114,6 +117,23 @@ TEST(d1_note_head_line) {
         CHECK_EQ(Lines()[0], std::string("D1 head lane: string 6 fret 7 open 0 z0 40A0A3D7 z1 405A5E35 "
                                          "z 40D41893 floor C09FAE14 |Cz| 4139E354"));
     }
+}
+
+TEST(d1_is_drained_by_the_frame_hook_after_enabling_diagnostics_live) {
+    Capturing cap;
+    std::vector<uint8_t> row(0x100);
+    const uintptr_t saved = g_rs7_diag;
+
+    g_rs7_diag = 1;
+    Rs7_DiagNoteHead(6, 7, 0, row.data(), 0, 0, 0);
+    Rs7Mid::Context context{};  // no guitar; only the always-installed frame work runs
+
+    Rs7_Mid_N5(context);
+    CHECK_EQ(Lines().size(), size_t(1));
+    if (!Lines().empty()) {
+        CHECK(Lines()[0].find("D1 head lane:") == 0);
+    }
+    g_rs7_diag = saved;
 }
 
 TEST(d1_skips_other_strings_and_stops_after_8) {
@@ -262,7 +282,8 @@ struct TwoPages {
     uint8_t* na = nullptr;
 
     TwoPages() {
-        rw = static_cast<uint8_t*>(VirtualAlloc(nullptr, 8192, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        rw = static_cast<uint8_t*>(
+            rs7test::Must(VirtualAlloc(nullptr, 8192, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE), "VirtualAlloc"));
         na = rw + 4096;
         DWORD old = 0;
 
@@ -420,8 +441,8 @@ TEST(d4_spent_budget_reads_no_game_memory) {
 
 TEST(safecopy_handles_only_access_violations) {
     Capturing cap;
-    uint8_t* page =
-        static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE | PAGE_GUARD));
+    uint8_t* page = static_cast<uint8_t*>(rs7test::Must(
+        VirtualAlloc(nullptr, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE | PAGE_GUARD), "VirtualAlloc"));
     const uint32_t pos[3] = {};
 
     // A guard-page exception is not an access violation: it must pass through SafeCopy.

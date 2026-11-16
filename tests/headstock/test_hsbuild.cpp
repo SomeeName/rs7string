@@ -1,7 +1,11 @@
+#include "features/headstock/assetload.h"
+#include "features/headstock/assetload_config.h"
 #include "features/headstock/hsbuild.h"
 #include "features/headstock/hsbuild_io.h"
+#include "features/headstock/state.h"
 #include "test.h"
 #include <windows.h>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -64,17 +68,24 @@ struct Tiny {
     rs7hs::Bytes raw;
     size_t firstSize = 0, firstHash = 0, firstOp = 0;
 
-    Tiny() {
+    explicit Tiny(bool lh = false) {
         U32(raw, 1);
         Digest(raw, {'x'});
         Digest(raw, {'y'});
-        U32(raw, 9);
+        const std::vector<std::string> names = lh ? std::vector<std::string>{"rs7_inline7_lh.nif", "rs7_inline8_lh.nif"}
+                                                  : std::vector<std::string>{"rs7_inline7.nif",
+                                                                             "rs7_inline8.nif",
+                                                                             "rs7_peg.nif",
+                                                                             "rs7hs_env.dds",
+                                                                             "rs7hs_flat_n.dds",
+                                                                             "rs7hs_hardware.dds",
+                                                                             "rs7hs_hardware_gloss.dds",
+                                                                             "rs7hs_wood.dds",
+                                                                             "rs7hs_wood_gloss.dds"};
 
-        for (const char* name :
-             {"rs7_inline7.nif", "rs7_inline8.nif", "rs7_peg.nif", "rs7hs_env.dds", "rs7hs_flat_n.dds",
-              "rs7hs_hardware.dds", "rs7hs_hardware_gloss.dds", "rs7hs_wood.dds", "rs7hs_wood_gloss.dds"}) {
-            const std::string s = name;
+        U32(raw, uint32_t(names.size()));
 
+        for (const auto& s : names) {
             U32(raw, uint32_t(s.size()));
             raw.insert(raw.end(), s.begin(), s.end());
             const bool first = firstOp == 0;
@@ -117,7 +128,7 @@ TEST(hsbuild_owner_byte_identity_and_hash_refusal) {
     const auto peg = Read(kTemplates / "epi_whilshire_peg.nif");
 
     if (guitar.empty() || peg.empty()) {
-        std::puts("SKIP hsbuild owner identity: templates absent");
+        rs7test::Skip("hsbuild owner identity: templates absent");
         return;
     }
 
@@ -224,9 +235,17 @@ TEST(hsbuild_synthetic_copy_insert_and_parser_bounds) {
     corrupt[0] = 2;
     CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
     corrupt = tiny.raw;
-    corrupt[76] = '/';  // First name must be one of the fixed basenames.
+    corrupt[76] = '/';  // Names are plain rs7_*.nif / rs7hs_*.dds basenames.
     CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
-    CHECK_EQ(error, "artifact name/order");
+    CHECK_EQ(error, "artifact name");
+    corrupt = tiny.raw;
+    corrupt[80] = 'X';  // rs7_Xnline7.nif: upper case
+    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    CHECK_EQ(error, "artifact name");
+    corrupt = tiny.raw;
+    std::memcpy(&corrupt[86], "8.nif", 5);  // rs7_inline7.nif -> rs7_inline8.nif: the second name repeated
+    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    CHECK_EQ(error, "artifact name repeated");
     auto encoded = Encode(tiny.raw);
 
     encoded[7] = 'z';
@@ -255,7 +274,199 @@ bool ReadNone(rs7hs::Bytes& g, rs7hs::Bytes& p) {
 
     return false;
 }
+
+std::filesystem::path BuildTestDir(const char* tag) {
+    wchar_t tmp[MAX_PATH] = {};
+
+    GetTempPathW(MAX_PATH, tmp);
+
+    return std::filesystem::path(tmp) / (std::string(tag) + std::to_string(GetCurrentProcessId()));
+}
+
+void Put(const std::filesystem::path& path, const rs7hs::Bytes& bytes) {
+    std::ofstream out(path, std::ios::binary);
+
+    out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+    CHECK(out.good());
+}
+
+bool MakeJunction(const std::filesystem::path& alias, const std::filesystem::path& target) {
+    wchar_t shell[MAX_PATH] = {};
+
+    GetEnvironmentVariableW(L"ComSpec", shell, MAX_PATH);
+    std::wstring command = L"\"" + std::wstring(shell) + L"\" /d /c mklink /J \"" + alias.wstring() + L"\" \"" +
+                           target.wstring() + L"\" >nul 2>nul";
+    STARTUPINFOW startup{};
+    PROCESS_INFORMATION process{};
+
+    startup.cb = sizeof startup;
+    if (!CreateProcessW(shell, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup,
+                        &process)) {
+        return false;
+    }
+
+    const auto wait = WaitForSingleObject(process.hProcess, 10000);
+    DWORD code = 1;
+
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+
+    return wait == WAIT_OBJECT_0 && code == 0;
+}
 }  // namespace
+
+TEST(hsbuild_release_template_defaults_build_and_repair_complete_sets) {
+    const auto root = BuildTestDir("rs7_release_defaults_");
+    const auto dir = root / "rs7string/headstock";
+    const auto ini = root / "rs7string.ini";
+    const auto rh = Encode(Tiny().raw), lh = Encode(Tiny(true).raw);
+
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream out(ini, std::ios::binary);
+
+        // The release template writes all four defaults explicitly, including on existing installations.
+        out << "[assets]\r\nheadstock7=1\r\nselfbuild=1\r\ndir=rs7string\\headstock\\\r\n"
+               "headstock7_file=rs7_inline7.nif\r\nheadstock8_file=rs7_inline8.nif\r\n"
+               "headstock7_file_lh=rs7_inline7_lh.nif\r\nheadstock8_file_lh=rs7_inline8_lh.nif\r\n";
+    }
+
+    Put(root / "rs7string_headstock.bin", rh);
+    Put(root / "rs7string_headstock_lh.bin", lh);
+    Rs7Asset_Configure(ini.c_str());
+    CHECK(rs7head::g_head.sbWanted && rs7head::g_head.sbWantedLh);
+    CHECK(rs7asset::g_config.sbProtected.empty());
+
+    if (!rs7head::g_head.sbWanted || !rs7head::g_head.sbWantedLh) {
+        Rs7Asset_Configure(nullptr);
+        std::filesystem::remove_all(root);
+        return;
+    }
+
+    std::string note;
+
+    if (rs7head::g_head.sbWanted) {
+        CHECK(Rs7Hs_Ensure(rh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
+    }
+    if (rs7head::g_head.sbWantedLh) {
+        CHECK(Rs7Hs_Ensure(lh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
+    }
+
+    for (const auto* name : {"rs7_inline7.nif", "rs7_inline8.nif", "rs7_inline7_lh.nif", "rs7_inline8_lh.nif"}) {
+        CHECK_EQ(Read(dir / name), rs7hs::Bytes{'x'});
+    }
+
+    // Matching stamps must not hide a missing/empty output, including secondary models and textures (#206).
+    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar));
+    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::GuitarLh));
+    Rs7Asset_Configure(ini.c_str());
+    CHECK(!rs7head::g_head.sbWanted && !rs7head::g_head.sbWantedLh);
+    std::vector<rs7hs::Expected> outputs;
+    std::string error;
+
+    for (const auto& package : {rh, lh}) {
+        CHECK(rs7hs::Manifest(package, outputs, error));
+
+        for (const auto& output : outputs) {
+            for (bool empty : {false, true}) {
+                const auto path = dir / output.name;
+
+                std::filesystem::remove(path);
+                if (empty) {
+                    Put(path, {});
+                }
+                Rs7Asset_Configure(ini.c_str());
+                CHECK(rs7head::g_head.sbWantedLh);
+                CHECK(rs7head::g_head.sbWanted == (package == rh));
+                CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) ==
+                      Rs7HsResult::Built);
+                CHECK_EQ(Read(path), rs7hs::Bytes{'x'});
+            }
+        }
+    }
+
+    // A stale generated model is replaced when the package needs verification, despite explicit INI defaults.
+    Put(dir / "rs7_inline8.nif", {'o', 'l', 'd'});
+    std::filesystem::remove(dir / "rs7string_headstock.bin.stamp");
+    Rs7Asset_Configure(ini.c_str());
+    CHECK(rs7head::g_head.sbWanted);
+    CHECK(Rs7Hs_Ensure(rh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
+    CHECK_EQ(Read(dir / "rs7_inline8.nif"), rs7hs::Bytes{'x'});
+    Rs7Asset_Configure(nullptr);
+    std::filesystem::remove_all(root);
+}
+
+TEST(hsbuild_dependency_build_protects_junction_aliases_and_missing_children) {
+    const auto root = BuildTestDir("rs7_junction_");
+    const auto dir = root / "generated", alias = root / "alias";
+    const rs7hs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
+
+    std::filesystem::create_directories(dir);
+    const bool junction = MakeJunction(alias, dir);
+    const auto via = junction ? alias : dir;
+
+    if (!junction) {
+        std::printf("junction creation unavailable: checking resolver with direct paths\n");
+    }
+
+    Put(dir / "rs7_inline8.nif", custom);
+    const auto ini = root / "rs7string.ini";
+
+    CHECK(WritePrivateProfileStringW(L"assets", L"dir", dir.c_str(), ini.c_str()));
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock7_file", (via / "rs7_inline8.nif").c_str(), ini.c_str()));
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file", (via / "rs7_inline7.nif").c_str(), ini.c_str()));
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file_lh", (via / "nested/rs7_inline7.nif").c_str(),
+                                     ini.c_str()));
+    Rs7Asset_Configure(ini.c_str());
+    const auto protectedFiles = rs7asset::g_config.sbProtected;
+    const auto package = Encode(Tiny().raw);
+    std::string note;
+
+    CHECK_EQ(protectedFiles.size(), 3u);
+    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
+    CHECK_EQ(Read(dir / "rs7_inline8.nif"), custom);
+    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
+    CHECK(Rs7Hs_OutputsPresent(package, dir, protectedFiles));
+    CHECK(Rs7Hs_Ensure(package, dir / "nested", ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
+    CHECK(!std::filesystem::exists(dir / "nested/rs7_inline7.nif"));
+    if (junction) {
+        std::filesystem::remove(alias);
+    }
+    Rs7Asset_Configure(nullptr);
+    std::filesystem::remove_all(root);
+}
+
+TEST(hsbuild_temporary_files_and_stamps_preserve_custom_models) {
+    const auto root = BuildTestDir("rs7_write_protection_");
+    const auto dir = root / "generated";
+    const auto temp = dir / "rs7_inline7.nif.building";
+    const auto stamp = dir / "rs7string_headstock.bin.stamp";
+    const rs7hs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
+    const auto package = Encode(Tiny().raw);
+
+    std::filesystem::create_directories(dir);
+    Put(temp, custom);
+    Put(stamp, custom);
+    Put(root / "rs7string_headstock.bin", package);
+    const std::vector<std::wstring> protectedFiles = {temp.wstring(), stamp.wstring()};
+    std::string note;
+
+    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
+    CHECK_EQ(Read(temp), custom);
+    CHECK_EQ(Read(dir / "rs7_inline7.nif"), rs7hs::Bytes{'x'});
+    // The verified cache avoids the game reader while exercising the real stamp writer.
+    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar, protectedFiles));
+    CHECK_EQ(Read(stamp), custom);
+    std::filesystem::remove(stamp);
+    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar, protectedFiles));
+    CHECK(!std::filesystem::exists(stamp));
+    CHECK_EQ(Read(temp), custom);
+    CHECK_EQ(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator()), 10);
+    std::filesystem::remove_all(root);
+}
 
 TEST(hsbuild_ensure_builds_caches_and_falls_back) {
     Tiny tiny;
@@ -302,8 +513,71 @@ TEST(hsbuild_ensure_builds_caches_and_falls_back) {
     std::filesystem::remove_all(dir);
 }
 
-// Left-handed package: one artifact (the mirrored model), built from the left-handed frame + the peg, byte-identical
-// to the offline build; the right-handed templates are refused, and the 9-file package is not accepted in its place.
+TEST(hsbuild_dependency_build_preserves_explicit_models) {
+    Tiny tiny;
+    wchar_t tmp[MAX_PATH] = {};
+
+    GetTempPathW(MAX_PATH, tmp);
+    const auto dir = std::filesystem::path(tmp) / ("rs7_protected_" + std::to_string(GetCurrentProcessId()));
+
+    std::filesystem::create_directories(dir);
+
+    {
+        std::ofstream model(dir / "rs7_inline8.nif", std::ios::binary);
+
+        model << "custom";
+    }
+
+    const std::vector<std::wstring> protectedFiles = {(dir / "." / "RS7_INLINE8.NIF").wstring(),
+                                                      (dir / "rs7_inline7.nif").wstring()};
+    std::string note;
+
+    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
+    CHECK_EQ(Read(dir / "rs7_inline8.nif"), (rs7hs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
+    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
+    CHECK_EQ(Read(dir / "rs7hs_env.dds"), rs7hs::Bytes{'x'});
+    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadNone, true, note, protectedFiles) == Rs7HsResult::Cached);
+    CHECK(Rs7Hs_OutputsPresent(Encode(tiny.raw), dir, protectedFiles));
+    std::filesystem::remove_all(dir);
+}
+
+TEST(hsbuild_cache_requires_every_model_and_texture_to_be_nonempty) {
+    Tiny tiny;
+    const auto package = Encode(tiny.raw);
+    wchar_t tmp[MAX_PATH] = {};
+
+    GetTempPathW(MAX_PATH, tmp);
+    const auto dir = std::filesystem::path(tmp) / ("rs7_complete_" + std::to_string(GetCurrentProcessId()));
+    std::string note;
+    std::vector<rs7hs::Expected> outputs;
+    std::string error;
+
+    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
+    CHECK(Rs7Hs_OutputsPresent(package, dir));
+    CHECK(rs7hs::Manifest(package, outputs, error));
+
+    for (const auto& output : outputs) {
+        const auto path = dir / output.name;
+
+        std::filesystem::remove(path);
+        CHECK(!Rs7Hs_OutputsPresent(package, dir));
+        CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
+
+        {
+            std::ofstream empty(path, std::ios::binary);
+        }
+
+        CHECK(!Rs7Hs_OutputsPresent(package, dir));
+        CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
+        CHECK(Rs7Hs_OutputsPresent(package, dir));
+    }
+
+    std::filesystem::remove_all(dir);
+}
+
+// Left-handed package: two artifacts (the mirrored 7- and 8-string models), built from the left-handed frame + the peg,
+// byte-identical to the offline build; the right-handed templates are refused, and the 9-file package is not accepted
+// in its place.
 TEST(hsbuild_lefty_owner_byte_identity_and_refusal) {
     const auto package = Package("rs7string_headstock_lh.bin");
 
@@ -312,22 +586,25 @@ TEST(hsbuild_lefty_owner_byte_identity_and_refusal) {
     std::string error;
 
     CHECK(rs7hs::Manifest(package, manifest, error));
-    CHECK_EQ(manifest.size(), 1u);
-    if (manifest.size() == 1) {
+    CHECK_EQ(manifest.size(), 2u);
+
+    if (manifest.size() == 2) {
         CHECK_EQ(manifest[0].name, std::string("rs7_inline7_lh.nif"));
+        CHECK_EQ(manifest[1].name, std::string("rs7_inline8_lh.nif"));
     }
+
     const auto guitar = Read(kTemplatesLh / "epi_whilshire_cherry_lh.nif");
     const auto peg = Read(kTemplatesLh / "epi_whilshire_peg.nif");
 
     if (guitar.empty() || peg.empty()) {
-        std::puts("SKIP hsbuild lefty owner identity: templates absent");
+        rs7test::Skip("hsbuild lefty owner identity: templates absent");
         return;
     }
 
     std::vector<rs7hs::File> outputs;
 
     CHECK(rs7hs::Build(guitar, peg, package, outputs, error));
-    CHECK_EQ(outputs.size(), 1u);
+    CHECK_EQ(outputs.size(), 2u);
 
     for (const auto& f : outputs) {
         CHECK_EQ(f.bytes, Read(kBase / "edited/own" / f.name));
@@ -358,10 +635,11 @@ TEST(hsbuild_preserves_unreadable_existing_outputs) {
 
     std::string note;
 
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
-    CHECK_EQ(std::filesystem::file_size(model), 0u);
-    CHECK(!std::filesystem::exists(dir / "rs7_inline8.nif"));
-    std::filesystem::remove(model);
+    // A 0-byte output (interrupted copy) counts as missing: rebuilt, not refused forever.
+    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Built);
+    CHECK(std::filesystem::file_size(model) > 0u);
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
     std::filesystem::create_directory(model);
     CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
     CHECK(std::filesystem::is_directory(model));
@@ -369,11 +647,7 @@ TEST(hsbuild_preserves_unreadable_existing_outputs) {
     std::filesystem::remove_all(dir);
     // A missing early artifact must not hide an unreadable later artifact during preflight.
     std::filesystem::create_directories(dir);
-
-    {
-        std::ofstream out(dir / "rs7hs_wood_gloss.dds", std::ios::binary);
-    }
-
+    std::filesystem::create_directory(dir / "rs7hs_wood_gloss.dds");
     CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
     CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
     std::filesystem::remove_all(dir);

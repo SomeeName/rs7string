@@ -1,7 +1,63 @@
 #include "test.h"
+#include <windows.h>
 #define DIRECTINPUT_VERSION 0x0800
 #include "dinput_wrap.h"
 #include <dinput.h>
+
+namespace {
+volatile LONG g_createCalls = 0;
+
+HRESULT WINAPI CreateFixture(void* di, REFGUID, void**, LPUNKNOWN) {
+    Rs7Dinput_Wrap(di);  // forwarding must hold no installation lock
+    InterlockedIncrement(&g_createCalls);
+
+    return E_FAIL;
+}
+}  // namespace
+
+TEST(dinput_concurrent_installation_preserves_original_forwarding) {
+    static void* vt[4] = {nullptr, nullptr, nullptr, reinterpret_cast<void*>(&CreateFixture)};
+    void** object = vt;
+    const HANDLE start = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+
+    struct Work {
+        HANDLE start;
+        void*** object;
+    } work{start, &object};
+
+    HANDLE threads[16];
+    const LPTHREAD_START_ROUTINE run = [](LPVOID p) -> DWORD {
+        const auto& w = *static_cast<Work*>(p);
+        if (WaitForSingleObject(w.start, 10000) != WAIT_OBJECT_0) {
+            return 1;
+        }
+
+        Rs7Dinput_Wrap(w.object);
+        const auto create = reinterpret_cast<HRESULT(WINAPI*)(void*, REFGUID, void**, LPUNKNOWN)>((*w.object)[3]);
+
+        create(w.object, GUID{}, nullptr, nullptr);
+
+        return 0;
+    };
+
+    for (HANDLE& t : threads) {
+        t = rs7test::Must(CreateThread(nullptr, 0, run, &work, 0, nullptr), "CreateThread");
+    }
+
+    SetEvent(start);
+
+    if (WaitForMultipleObjects(16, threads, TRUE, 10000) != WAIT_OBJECT_0) {
+        std::printf("FATAL: DirectInput installers did not finish\n");
+        std::abort();
+    }
+
+    for (HANDLE t : threads) {
+        CloseHandle(t);
+    }
+
+    CloseHandle(start);
+    CHECK_EQ(g_createCalls, 16);
+}
 
 TEST(dinput_background_holds_keyboard_and_mouse_to_foreground) {
     const DWORD kb = DI8DEVTYPE_KEYBOARD | (DI8DEVTYPEKEYBOARD_PCENH << 8);

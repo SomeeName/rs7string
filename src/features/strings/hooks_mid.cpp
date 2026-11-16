@@ -51,14 +51,14 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GIZ1(Rs7Mid::Context& c) {
 // and the flags of its closing `cmp edi,eax`, which the callback reproduces. Anything else: the stock span.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GSSS(Rs7Mid::Context& c) {
     const uint8_t* const gs = reinterpret_cast<const uint8_t*>(c.ecx);
-    if (!rs7gs::IsNative(gs) || Dword(c.ecx + 0xA8) != c.edx || gs[0xA3] == 0) {
+    if (!rs7gs::IsNative(gs) || Dword(c.ecx + rs7gs::kInfo) != c.edx || gs[rs7gs::kTail + 3] == 0) {
         return;
     }
 
-    const uint32_t count = *reinterpret_cast<const uint8_t*>(c.edx + 0x41);
+    const uint32_t count = *reinterpret_cast<const uint8_t*>(c.edx + rs7gs::kInfoLoaded);
 
     for (uint32_t i = 0; i < count; ++i) {
-        c.esi = Dword(c.ecx + 0x40 + 4 * i);
+        c.esi = Dword(c.ecx + rs7gs::kMain + 4 * i);
         *reinterpret_cast<uint8_t*>(c.esi + 0x70) = 1;
     }
 
@@ -76,7 +76,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GSSE(Rs7Mid::Context& c) {
     }
 
     for (uint32_t i = 0; i < 8; ++i) {
-        c.edi = Dword(c.ecx + 0x40 + 4 * i);
+        c.edi = Dword(c.ecx + rs7gs::kMain + 4 * i);
         if (c.edi) {
             *reinterpret_cast<uint8_t*>(c.edi + 0x70) = uint8_t(c.ebx);
         }
@@ -97,13 +97,14 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GSA1(Rs7Mid::Context& c) {
 
 // ---- renderer mesh collection, Rnd_StringRenderer_Setup 0x541880 (once per guitar setup) ----
 // GRM3 0x541EE5 `mov edx,[ebp+10h]; fld dword [edx+1199D9Ch]` (the guitar V row of mesh s, EDX = 4*s): strings 6/7
-// (EDX >= 18h) load g_rs7_ns_v instead (the stock table has six rows); the others replay the stock bytes. The old stub
-// compared EDX with 18h and left those flags (Compare32). On a full x87 stack (never at this site) the replay runs.
+// (EDX 18h / 1Ch) load g_rs7_ns_v instead (the stock table has six rows); the others replay the stock bytes. The old
+// stub compared EDX with 18h and left those flags (Compare32). On a full x87 stack (never at this site) the replay
+// runs.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GRM3(Rs7Mid::Context& c) {
     const uint32_t row = Dword(c.ebp + 0x10);
 
     c.Compare32(row, 0x18);
-    if (row < 0x18 || !c.PushSt0(g_rs7_ns_v[(row - 0x18) / 4])) {
+    if (row < 0x18 || row >= 0x18 + 4 * 2 || !c.PushSt0(g_rs7_ns_v[(row - 0x18) / 4])) {
         return;
     }
 

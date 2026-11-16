@@ -4,11 +4,10 @@ import struct
 
 import pytest
 from unicorn.x86_const import *
+from emu_harness import needs_emu
 from emu_harness import Emu, CODE, DATA, STACK, RET_MAGIC, site_va, FLAGS_MASK, DLL, SNAPSHOT
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 GS, INFO, GUITAR, CN, TPL = (DATA + x for x in (0x10000, 0x12000, 0x14000, 0x20000, 0x30000))
 
 
@@ -183,7 +182,7 @@ def test_stop_pluck_targets_native_main_not_ghost_prefix(pair, s):
 )
 def test_added_string_access_rejects_unusable_slots(pair, sid, start, reject, reg, case):
     if case == "fret255" and sid != "CLGU":
-        return  # release/stop paths do not receive a fret
+        pytest.skip("release/stop paths do not receive a fret")
     e = pair[1]
     setup(e, 8)
     s = 8 if case == "index8" else 255 if case == "index255" else 7
@@ -289,7 +288,12 @@ def test_bend_list_selects_every_authored_bending_string(pair, mask):
 @pytest.mark.parametrize("s", range(8))
 @pytest.mark.parametrize(
     "sid,start,end,ghost",
-    [("CLGU", 0x7E3ED5, 0x7E3EE6, True), ("CLGE", 0x7E4347, 0x7E4353, True), ("CLVB", 0x7E4178, 0x5992E0, False)],
+    [
+        ("CLGU", 0x7E3ED5, 0x7E3EE6, True),
+        ("CLGE", 0x7E4347, 0x7E4353, True),
+        ("CLVB", 0x7E4178, 0x5992E0, False),
+        ("CLVE", 0x7E442E, 0x5992E0, False),
+    ],
 )
 def test_published_count_keeps_added_strings_off_the_six_slot_prefix(pair, published, s, sid, start, end, ghost):
     """feat/publish raises InstrumentInfo +0Bh to 7/8: strings 0-5 stay on the stock prefix, 6/7 still
@@ -308,11 +312,61 @@ def test_published_count_keeps_added_strings_off_the_six_slot_prefix(pair, publi
         regs.update({UC_X86_REG_EDX: GS, UC_X86_REG_ECX: s})
     if sid == "CLVB":
         regs.update({UC_X86_REG_EAX: GS, UC_X86_REG_ECX: s, UC_X86_REG_EDX: INFO})
-    reject = {"CLGU": 0x7E3F14, "CLGE": 0x7E4373, "CLVB": 0x7E4189}[sid]
+    if sid == "CLVE":  # the note-end stop: the main string 6/7 stops its vibration loop (it stayed stuck before)
+        regs.update({UC_X86_REG_EAX: 0xAB00 | s, UC_X86_REG_ECX: GS, UC_X86_REG_EDX: INFO})
+    reject = {"CLGU": 0x7E3F14, "CLGE": 0x7E4373, "CLVB": 0x7E4189, "CLVE": 0x7E4443}[sid]
     if s >= published:
         e.run(start, reject, regs)
         assert e.uc.reg_read(UC_X86_REG_ESP) == STACK + 0x80000
         return
     e.run(start, end, regs)
-    reg = UC_X86_REG_ESI if sid == "CLVB" else UC_X86_REG_ECX
+    reg = UC_X86_REG_ESI if sid in ("CLVB", "CLVE") else UC_X86_REG_ECX
     assert e.uc.reg_read(reg) == DATA + 0x40000 + (8 * ghost + s) * 0x200
+
+
+@pytest.mark.parametrize("count", [4, 6])
+@pytest.mark.parametrize("s", [0, 3, 5, 6, 7, 0xFF])
+def test_note_end_stop_up_to_six_strings_equals_stock(pair, count, s):
+    """CLVE with the stock counts: the same continuation and registers as the stock bytes (accept: the call with ESI =
+    the stock slot; reject: past the call)."""
+    end = 0x5992E0 if s < count else 0x7E4443
+    regs = {
+        UC_X86_REG_ESP: STACK + 0x80000,
+        UC_X86_REG_EAX: 0xAB00 | s,
+        UC_X86_REG_ECX: GS,
+        UC_X86_REG_EDX: INFO,
+        UC_X86_REG_ESI: 0x5E5E5E5E,
+    }
+    outputs = []
+    for e in pair:
+        setup(e)
+        e.uc.mem_write(INFO + 0xB, bytes([count]))
+        e.run(0x7E442E, end, regs)
+        outputs.append(e.regs(UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESI, UC_X86_REG_ESP))
+    assert outputs[0] == outputs[1]
+
+
+@pytest.mark.parametrize(
+    "sid,join",
+    [("N18", 0x10), ("N19", 7), ("N20", 7)],
+)
+@pytest.mark.parametrize("s", [6, 7])
+def test_single_note_bends_join_the_native_string_6_and_7(pair, sid, join, s):
+    """Eight strings (C-lite counts 8): a single-note bend / release on string 6 or 7 joins the stock code with that
+    string's native object (string 7 was left without a bend)."""
+    if s == 6 and sid == "N18":
+        pytest.skip("string 6 bends go through Rs7_S7BendTarget, which logs through the OS once (test_midhook_cold)")
+    e = pair[1]
+    setup(e, 8)
+    e.uc.mem_write(INFO + 0xB, bytes([8]))
+    va = site_va(sid)
+    length = 9 if sid == "N18" else 5
+    regs = {UC_X86_REG_ESP: STACK + 0x80000, UC_X86_REG_EBP: STACK + 0x90000}
+    if sid == "N18":
+        regs.update({UC_X86_REG_EAX: s, UC_X86_REG_EDX: 5, UC_X86_REG_ECX: GS, UC_X86_REG_ESI: INFO})
+        out = UC_X86_REG_ECX
+    else:
+        regs.update({UC_X86_REG_EAX: s, UC_X86_REG_EDX: INFO, UC_X86_REG_ECX: GS})
+        out = UC_X86_REG_EAX
+    e.run(va, va + length + join, regs)
+    assert e.uc.reg_read(out) == DATA + 0x40000 + s * 0x200

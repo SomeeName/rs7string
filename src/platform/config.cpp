@@ -6,41 +6,20 @@
 #include <cwctype>
 
 namespace {
-// Long enough for any sensible value; a longer one is not cut short (a truncated "C8C8C8   junk"
-// would parse): *tooLong is set and the caller treats the value as invalid.
-constexpr DWORD kValueMax = 256;
+// One more than the longest value plus its terminator: GetPrivateProfileString returns nSize - 1 both for an exact fit
+// and for a cut value, so a value of exactly kRs7IniValueMax characters must stay below that count.
+constexpr DWORD kReadSize = kRs7IniValueMax + 2;
 
-std::wstring ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* ini, bool* tooLong) {
-    wchar_t buf[kValueMax] = {};
-    const DWORD n = GetPrivateProfileStringW(section, key, L"", buf, kValueMax, ini);
+// The text of [section] key, or `fallback` if the key is missing. *tooLong: longer than kRs7IniValueMax (the text is
+// then only a prefix).
+std::wstring Read(const wchar_t* section, const wchar_t* key, const wchar_t* fallback, const wchar_t* iniPath,
+                  bool* tooLong) {
+    wchar_t buf[kReadSize] = {};
+    const DWORD n = GetPrivateProfileStringW(section, key, fallback, buf, kReadSize, iniPath);
 
-    *tooLong = n >= kValueMax - 1;  // the API returns nSize - 1 when it truncated
+    *tooLong = n > DWORD(kRs7IniValueMax);
 
     return std::wstring(buf, n);
-}
-
-int ReadInt(const wchar_t* section, const wchar_t* key, int def, const wchar_t* ini, int hi = 1) {
-    wchar_t buf[kValueMax] = {};
-    const DWORD n = GetPrivateProfileStringW(section, key, L"\x01", buf, kValueMax, ini);
-    if (n == 1 && buf[0] == 1) {
-        return def;
-    }
-
-    wchar_t* end = nullptr;
-
-    errno = 0;
-    const long v = std::wcstol(buf, &end, 10);
-
-    while (std::iswspace(*end)) {
-        ++end;
-    }
-
-    if (n >= kValueMax - 1 || end == buf || !n || *end || errno == ERANGE || v < 0 || v > hi) {
-        Rs7Log("config: [%ls] %ls invalid integer; disabled", section, key);
-        return 0;
-    }
-
-    return int(v);
 }
 
 bool Blank(wchar_t ch) {
@@ -63,21 +42,50 @@ int HexDigit(wchar_t ch) {  // ASCII only (iswxdigit would depend on the locale)
 }  // namespace
 
 int Rs7Config_ReadInt(const wchar_t* section, const wchar_t* key, int def, const wchar_t* iniPath, int hi) {
-    return ReadInt(section, key, def, iniPath, hi);
+    std::wstring text;
+    bool tooLong = false;
+    if (!Rs7Config_ReadPresent(section, key, iniPath, &text, &tooLong)) {
+        return def;
+    }
+
+    const wchar_t* buf = text.c_str();
+    wchar_t* end = nullptr;
+
+    errno = 0;
+    const long v = std::wcstol(buf, &end, 10);
+
+    while (std::iswspace(*end)) {
+        ++end;
+    }
+
+    const bool number = !tooLong && end != buf && !text.empty() && !*end && errno != ERANGE;
+
+    if (!number || v < 0 || v > hi) {
+        Rs7Log("config: [%ls] %ls in rs7string.ini %s (a whole number from 0 to %d); using 0 until fixed "
+               "(invalid integer)",
+               section, key, number ? "is out of range" : "is not a whole number", hi);
+        return 0;
+    }
+
+    return int(v);
 }
 
 std::wstring Rs7Config_ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, bool* tooLong) {
-    return ReadString(section, key, iniPath, tooLong);
+    return Read(section, key, L"", iniPath, tooLong);
 }
 
-bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out) {
-    wchar_t buf[kValueMax] = {};
-    const DWORD n = GetPrivateProfileStringW(section, key, L"\x01", buf, kValueMax, iniPath);
-    if (n == 1 && buf[0] == 1) {
+bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out,
+                           bool* tooLong) {
+    bool cut = false;
+    std::wstring text = Read(section, key, L"\x01", iniPath, &cut);
+    if (text.size() == 1 && text[0] == 1) {
         return false;
     }
 
-    *out = std::wstring(buf, n);
+    *out = std::move(text);
+    if (tooLong) {
+        *tooLong = cut;
+    }
 
     return true;
 }

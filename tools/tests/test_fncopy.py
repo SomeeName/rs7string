@@ -12,7 +12,8 @@ from unicorn import UC_ARCH_X86, UC_HOOK_CODE, UC_MODE_32, UC_PROT_ALL, Uc
 from unicorn.x86_const import UC_X86_REG_EDI, UC_X86_REG_ESP
 
 import gen_fncopy
-from emu_common import needs_exe
+from emu_common import needs_exe, run_checked
+from emu_harness import install_teb
 
 pytestmark = needs_exe
 
@@ -28,6 +29,7 @@ def test_generated_header_is_current():
 
 def test_every_count_byte_of_a_counted_copy_is_moved():
     text, base = gen_fncopy.load_text()
+    checked = 0
     for fn in gen_fncopy.FNS:
         if not fn.count:
             continue
@@ -37,6 +39,8 @@ def test_every_count_byte_of_a_counted_copy_is_moved():
             for op in i.operands:
                 if op.type == 3 and op.size == 1 and op.mem.disp == 0xB and op.mem.index == 0 and op.mem.base:
                     assert i.address - fn.start in moved, f"{fn.id} {i.address:08X} not moved"
+                    checked += 1
+    assert checked, "no counted copy reads a count byte (+0Bh): nothing was checked"
 
 
 # ---- ResetState 0x59AC20 (EDI = GuitarStrings): stock vs copy ----
@@ -60,6 +64,7 @@ def build_copy(fid: str) -> tuple[gen_fncopy.Fn, bytes]:
 def run_reset(native: bool, count: int, loaded: int):
     text, base = gen_fncopy.load_text()
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     for a, n in (
         (GS, 0x1000),
         (INFO, 0x1000),
@@ -99,7 +104,7 @@ def run_reset(native: bool, count: int, loaded: int):
     uc.mem_write(STACK, struct.pack("<I", RET))
     uc.reg_write(UC_X86_REG_ESP, STACK)
     uc.reg_write(UC_X86_REG_EDI, GS)
-    uc.emu_start(entry, RET, count=100000)
+    run_checked(uc, entry, RET, count=100000)
     return [bytes(uc.mem_read(k + 0x6C, 0x10)) for k in kid]
 
 
@@ -131,6 +136,7 @@ def run_transforms(native: bool, count: int, modes: list[int], left_handed: bool
     """The euler triple each rotation call received, per (string, main/ghost) in call order."""
     text, base = gen_fncopy.load_text()
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     for a, n in (
         (GS, 0x1000),
         (OWNER_XF, 0x1000),
@@ -180,7 +186,7 @@ def run_transforms(native: bool, count: int, modes: list[int], left_handed: bool
     uc.mem_write(STACK, struct.pack("<II", RET, GS))
     uc.reg_write(UC_X86_REG_ESP, STACK)
     uc.reg_write(UC_X86_REG_EDI, OWNER_XF)
-    uc.emu_start(entry, RET, count=100000)
+    run_checked(uc, entry, RET, count=100000)
     assert len(seen) == 2 * count
     return [e for _, e in seen[0::2]], [e for _, e in seen[1::2]]  # main, ghost per string
 

@@ -20,7 +20,7 @@ enum class Rs7UiTab : uint8_t { Status, Colour, Neck, Tuner, Debug, Window, Play
 
 enum class Rs7UiKind : uint8_t {
     Section,  // text: the section title (in Player: the title of a player tab, label: the tab's label)
-    Setting,  // text: a setting id ("neck.string7_v"), its control, label and help from the settings table (in
+    Setting,  // text: a setting id ("neck.spacing_guitar7"), its control, label and help from the settings table (in
               // Player: label and hint from the item)
     Row,      // text: the row name; live writes the value
     OnOff,    // text: the row name; live returns ON/off and writes the detail (may be empty)

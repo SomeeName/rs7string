@@ -6,7 +6,6 @@
 struct Rs7OverlayUi {
     // Set by overlay.cpp every frame.
     const wchar_t* iniPath = L"";
-    const wchar_t* gameDir = L"";
     int hotkey = 0;
     HWND hwnd = nullptr;
     unsigned long renderTid = 0, wndTid = 0;

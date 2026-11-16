@@ -1,22 +1,23 @@
 #include "d3d/worker.h"
+#include "d3d/hookutil.h"
 #include "d3d/iids.h"
+#include "d3d/present.h"
 #include "d3d/sehread.h"
+#include "d3d/swap_hook.h"
 #include "features/colours/colours.h"
 #include "model/groups.h"
 #include "platform/log.h"
-#include <cstdio>
-#include <cstring>
+#include "platform/seh.h"
 #include <string>
 #include <vector>
 
 namespace {
 constexpr DWORD kInstallDelayMs = 15000, kPollMs = 2000, kHookedPollMs = 10000, kRecheckMs = 1000;
-constexpr unsigned kMaxRejectLines = 64;
+constexpr unsigned kMaxRejectLines = 64, kMaxOverlayTries = 5;
+constexpr int kLockTries = 20;
+constexpr DWORD kLockWaitMs = 5;
 const Rs7SehReader g_mem{};
-
-const char* FamilyName(Rs7Family f) {
-    return f == Rs7Family::Note ? "note" : "additive";
-}
+using rs7d3d::FamilyName;
 
 const char* StateName(Rs7CandState s) {
     switch (s) {
@@ -39,8 +40,8 @@ const char* StateName(Rs7CandState s) {
 
 // The game's device from a texture in the list. SEH-guarded; the caller holds the list lock, so the
 // texture cannot be freed meanwhile. Returns the raw pointer (the game keeps the device alive) if its
-// GetTexture/SetTexture slots point into d3d9.dll. (The vtable itself need not: d3d9.dll 10.0.26100
-// gives every device its own vtable copy in private heap memory - observed by test_d3d_hook.cpp.)
+// GetTexture/SetTexture slots point into d3d9.dll or to our ramp thunks. (The vtable itself need not:
+// d3d9.dll 10.0.26100 gives every device its own vtable copy in private heap memory - observed by test_d3d_hook.cpp.)
 IDirect3DDevice9* DeviceOf(uintptr_t tex, uintptr_t lo, uintptr_t hi) {
     __try {
         auto* base = reinterpret_cast<IDirect3DBaseTexture9*>(tex);
@@ -59,27 +60,30 @@ IDirect3DDevice9* DeviceOf(uintptr_t tex, uintptr_t lo, uintptr_t hi) {
 
         dev->Release();
         const uintptr_t* vt = *reinterpret_cast<uintptr_t* const*>(dev);
-        const uintptr_t get = vt[64], set = vt[65];
+        const uintptr_t get = vt[rs7swap::kSlotGet], set = vt[rs7swap::kSlotSet];
 
-        return get >= lo && get < hi && set >= lo && set < hi ? dev : nullptr;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        const bool getOk = (get >= lo && get < hi) || get == reinterpret_cast<uintptr_t>(&Rs7_Thunk_GetTexture);
+        const bool setOk = (set >= lo && set < hi) || set == reinterpret_cast<uintptr_t>(&Rs7_Thunk_SetTexture);
+
+        return getOk && setOk ? dev : nullptr;
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
 
 // Holds the game's list lock for the walk (and the device acquisition) and leaves it on every path,
-// a C++ exception or an SEH fault included (__finally). False: the lock stayed busy (20 x 5 ms).
+// a C++ exception or an SEH fault included (__finally). False: the lock stayed busy (kLockTries x kLockWaitMs).
 bool LockedWalk(CRITICAL_SECTION* cs, uintptr_t head, uintptr_t lo, uintptr_t hi, Rs7TexWalk* w, bool wantDevice,
                 IDirect3DDevice9** dev) {
     bool got = false;
 
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < kLockTries; ++i) {
         if (TryEnterCriticalSection(cs)) {
             got = true;
             break;
         }
 
-        Sleep(5);
+        Sleep(kLockWaitMs);
     }
 
     if (!got) {
@@ -104,31 +108,12 @@ struct Ctx {
     uintptr_t head, lo, hi;
     DWORD d3d9Tick;
     bool hooked = false, busyLogged = false, fullLogged = false, noDeviceLogged = false;
-    unsigned installFails = 0, rounds = 0;
+    unsigned installFails = 0, rounds = 0, overlayTries = 0;
+    IDirect3DDevice9* dev = nullptr;  // the hooked device (the game keeps it alive)
     Rs7TexWalk walk;
     std::vector<uintptr_t> lastFound;
     std::vector<std::string> lastRejects, loggedRejects;
 };
-
-// Device finder only (overlay without the ramp copy): no candidates, no texture hooks.
-void FindDeviceOnly(Ctx& x, bool wantDevice, IDirect3DDevice9* dev) {
-    if (!wantDevice) {
-        return;
-    }
-
-    if (!dev) {
-        if (!x.noDeviceLogged) {
-            Rs7Log("overlay: no device yet (no valid d3d texture in the list)");
-        }
-        x.noDeviceLogged = true;
-        return;
-    }
-
-    x.hooked = true;
-    if (x.opts.onDevice) {
-        x.opts.onDevice(dev);
-    }
-}
 
 // Each reject reason once, at most kMaxRejectLines of them.
 void LogNewRejects(Ctx& x, const std::vector<std::string>& rejects) {
@@ -160,18 +145,18 @@ void LogWalkIfChanged(Ctx& x) {
     }
 
     if (x.rounds++ == 0 || found != x.lastFound || w.rejects != x.lastRejects) {
-        unsigned note = 0, add = 0;
+        unsigned note = 0, add = 0, emb = 0;
 
         for (const auto& f : w.found) {
-            (f.family == Rs7Family::Note ? note : add)++;
+            (f.family == Rs7Family::Note ? note : f.family == Rs7Family::Additive ? add : emb)++;
         }
 
-        Rs7Log(
-            "ramp: texture list: %u nodes, %u source textures, %u name matches, %u candidates (note %u, additive %u)%s",
-            w.nodes, w.sources, w.nameMatches, unsigned(w.found.size()), note, add,
-            w.readFault    ? ", read fault"
-            : w.cycleOrCap ? ", cycle or node cap"
-                           : "");
+        Rs7Log("ramp: texture list: %u nodes, %u source textures, %u name matches, %u candidates (note %u, additive "
+               "%u, embedded %u)%s",
+               w.nodes, w.sources, w.nameMatches, unsigned(w.found.size()), note, add, emb,
+               w.readFault    ? ", read fault"
+               : w.cycleOrCap ? ", cycle or node cap"
+                              : "");
         LogNewRejects(x, w.rejects);
         x.lastFound = found;
         x.lastRejects = w.rejects;
@@ -209,8 +194,11 @@ void InstallOnDevice(Ctx& x, IDirect3DDevice9* dev) {
 
     if (Rs7Swap_InstallOn(dev)) {
         x.hooked = true;
+        x.dev = dev;
         Rs7Swap_UpdateV6("hooked");
+
         if (x.opts.onDevice) {
+            ++x.overlayTries;
             x.opts.onDevice(dev);  // the overlay (Present/Reset)
         }
     } else if (++x.installFails <= 5) {
@@ -219,17 +207,13 @@ void InstallOnDevice(Ctx& x, IDirect3DDevice9* dev) {
 }
 
 void Round(Ctx& x) {
-    if (!x.opts.ramp && x.hooked) {  // device finder only: nothing to walk for any more
-        if (x.opts.recheck) {
-            x.opts.recheck();
-        }
-        return;
-    }
-
     const bool wantDevice = !x.hooked && GetTickCount() - x.d3d9Tick >= kInstallDelayMs;
+    const bool retryOverlay =
+        x.hooked && x.opts.onDevice && !Rs7Present_Installed() && x.overlayTries < kMaxOverlayTries;
     IDirect3DDevice9* dev = nullptr;
 
-    if (!LockedWalk(x.cs, x.head, x.lo, x.hi, &x.walk, wantDevice, &dev)) {
+    // The overlay retry takes the device from this walk (a live texture's), not the pointer cached at the install.
+    if (!LockedWalk(x.cs, x.head, x.lo, x.hi, &x.walk, wantDevice || retryOverlay, &dev)) {
         if (!x.busyLogged) {
             Rs7Log("ramp: texture list lock busy, skipping this round");
         }
@@ -237,26 +221,17 @@ void Round(Ctx& x) {
         return;
     }
 
-    if (!x.opts.ramp) {
-        FindDeviceOnly(x, wantDevice, dev);
-        return;
-    }
-
     LogWalkIfChanged(x);
-    AddCandidates(x);
     if (!x.walk.readFault && !x.walk.cycleOrCap) {
         Rs7Ramp_Reconcile(x.walk);
     }
-
-    if (x.hooked) {
-        Rs7Swap_Recheck();
-        if (x.opts.recheck) {
-            x.opts.recheck();
-        }
-    }
+    AddCandidates(x);  // reconcile identity changes before deciding an address is already present
 
     if (wantDevice) {
         InstallOnDevice(x, dev);
+    } else if (retryOverlay && dev && dev == x.dev) {
+        ++x.overlayTries;
+        x.opts.onDevice(dev);  // the ramp hook is in, the overlay's failed: retry a few rounds on the same device
     }
 }
 
@@ -265,23 +240,22 @@ void Round(Ctx& x) {
 // copy and the overlay are off, so check every second, not only every 10 s round.
 void RecheckGuarded(Ctx* x) {
     __try {
-        if (x->opts.ramp) {
-            Rs7Swap_Recheck();
-        }
+        Rs7Swap_Recheck();
         if (x->opts.recheck) {
             x->opts.recheck();
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         Rs7Ramp_CountFault();
     }
 }
 
-// No C++ objects here: an SEH fault or a C++ exception from a round is counted and the worker goes on
-// (LockedWalk has already left the game's lock).
+// An SEH fault or a C++ exception from a round is counted and the worker goes on (LockedWalk has already
+// left the game's lock). Unwinding past __except runs no destructors: a fault inside Round leaks that
+// round's temporaries (vectors, strings); Ctx stays valid and is reused.
 void RoundGuarded(Ctx* x) {
     __try {
         Round(*x);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         Rs7Ramp_CountFault();
     }
 }
@@ -300,7 +274,7 @@ void Rs7Ramp_Reconcile(const Rs7TexWalk& w) {
         bool listed = false;
 
         for (const auto& f : w.found) {
-            listed = listed || (reinterpret_cast<void*>(f.d3d) == d3d && f.family == c->family);
+            listed = listed || (reinterpret_cast<void*>(f.d3d) == d3d && f.family == c->family && f.obj == c->obj);
         }
 
         if (listed) {
@@ -329,6 +303,10 @@ void Rs7Ramp_Reconcile(const Rs7TexWalk& w) {
     }
 }
 
+IDirect3DDevice9* Rs7Ramp_DeviceOfForTests(uintptr_t tex, uintptr_t lo, uintptr_t hi) {
+    return DeviceOf(tex, lo, hi);
+}
+
 void Rs7Ramp_RunWorker(const Rs7SwapCfg& cfg, DWORD d3d9SeenTick, const Rs7WorkerOpts& opts) {
     try {
         Ctx x;
@@ -349,15 +327,10 @@ void Rs7Ramp_RunWorker(const Rs7SwapCfg& cfg, DWORD d3d9SeenTick, const Rs7Worke
         Rs7Swap_SetEngine(x.cs, x.lo, x.hi);
         Rs7Tex_Prepare(&x.walk);
 
-        if (!opts.ramp) {
-            Rs7Log("overlay: device finder started (no ramp copy): d3d9.dll %08X-%08X, list head %08X, hook after %u s",
-                   unsigned(x.lo), unsigned(x.hi), unsigned(x.head), unsigned(kInstallDelayMs / 1000));
-        } else {
-            Rs7Log("ramp: worker started: d3d9.dll %08X-%08X, list head %08X, lock %08X, colours %06X/%06X, "
-                   "allow_inexact=%d, hook after %u s, tid %lu",
-                   unsigned(x.lo), unsigned(x.hi), unsigned(x.head), unsigned(g_rs7_texlist_cs), unsigned(cfg.rgb[0]),
-                   unsigned(cfg.rgb[1]), int(cfg.allowInexact), unsigned(kInstallDelayMs / 1000), GetCurrentThreadId());
-        }
+        Rs7Log("ramp: worker started: d3d9.dll %08X-%08X, list head %08X, lock %08X, colours %06X/%06X, "
+               "hook after %u s, tid %lu",
+               unsigned(x.lo), unsigned(x.hi), unsigned(x.head), unsigned(g_rs7_texlist_cs), unsigned(cfg.rgb[0]),
+               unsigned(cfg.rgb[1]), unsigned(kInstallDelayMs / 1000), GetCurrentThreadId());
 
         for (;;) {
             RoundGuarded(&x);
@@ -373,6 +346,7 @@ void Rs7Ramp_RunWorker(const Rs7SwapCfg& cfg, DWORD d3d9SeenTick, const Rs7Worke
             }
         }
     } catch (...) {
-        // Never let an exception end the game's process from this thread.
+        // The setup above (Ctx, Rs7Tex_Prepare's reserve, logging) may throw std::bad_alloc; the rounds catch
+        // their own (RoundGuarded, RecheckGuarded). Never let an exception end the game's process from this thread.
     }
 }

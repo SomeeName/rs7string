@@ -11,9 +11,9 @@ void Rs7_Mid_SE3(Rs7Mid::Context&);
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"SE1", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_SE1},
-    {"SE2", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_SE2},
-    {"SE3", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_SE3},
+    Rs7_Mid("SE1", &Rs7_Mid_SE1),
+    Rs7_Mid("SE2", &Rs7_Mid_SE2),
+    Rs7_Mid("SE3", &Rs7_Mid_SE3),
 };
 }  // namespace
 

@@ -1,5 +1,7 @@
 """tools/check_analyze.py: reading /analyze result files and the shrink-only baseline."""
 
+import json
+
 import check_analyze
 import pytest
 
@@ -24,6 +26,12 @@ def _results(tmp_path, tests_files: dict[str, str], dll=True):
     if dll:
         (tmp_path / "rs7string").mkdir()
         (tmp_path / "rs7string" / "config.nativecodeanalysis.xml").write_text(_XML.format(""), encoding="utf-8")
+
+    for project in check_analyze.PROJECTS:
+        folder = tmp_path / project
+        if folder.exists():
+            reports = sorted(folder.rglob("*.nativecodeanalysis.xml"))
+            (folder / "analysis-reports.txt").write_text("\n".join(str(p) for p in reports), encoding="utf-8")
 
     return tmp_path
 
@@ -62,6 +70,31 @@ def test_defect_without_location_names_the_file(tmp_path):
         check_analyze.findings(results)
 
 
+def test_missing_translation_unit_report_fails(tmp_path):
+    results = _results(tmp_path, {"test_patch": _XML.format(""), "test_gpu": _XML.format("")})
+    (results / "rs7string_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
+    with pytest.raises(check_analyze.AnalyzeError, match="missing analysis report.*test_gpu"):
+        check_analyze.findings(results)
+
+
+def test_missing_report_manifest_fails(tmp_path):
+    results = _results(tmp_path, {"test_patch": _XML.format("")})
+    (results / "rs7string/analysis-reports.txt").unlink()
+    with pytest.raises(check_analyze.AnalyzeError, match="analysis-reports.txt"):
+        check_analyze.findings(results)
+
+
+def test_update_does_not_shrink_baseline_when_report_is_missing(tmp_path, monkeypatch):
+    results = _results(tmp_path / "results", {"test_patch": _XML.format(""), "test_gpu": _XML.format("")})
+    (results / "rs7string_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
+    baseline = _baseline_file(tmp_path, monkeypatch, 3)
+    original = baseline.read_bytes()
+    monkeypatch.setattr(check_analyze, "RESULTS", results)
+    monkeypatch.setattr("sys.argv", ["check_analyze", "--update"])
+    assert check_analyze.main() == 1
+    assert baseline.read_bytes() == original
+
+
 def test_main_reports_missing_results_in_one_line(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(check_analyze, "RESULTS", tmp_path)
     monkeypatch.setattr("sys.argv", ["check_analyze.py"])
@@ -98,3 +131,42 @@ def test_write_baseline_refuses_growth_unless_allowed():
     grew, grown = check_analyze.rewrite({"new.cpp::H::C6385": 1}, base, allow_grow=True)
     assert grown == []
     assert grew == {"new.cpp::H::C6385": _entry(1, "")}
+
+
+def _baseline_file(tmp_path, monkeypatch, count):
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps({"a::F::C1": {"count": count, "note": "x"}}), encoding="utf-8")
+    monkeypatch.setattr(check_analyze, "BASELINE", path)
+    return path
+
+
+def test_slack_notes_counts_below_the_baseline():
+    base = {"a::F::C1": {"count": 3, "note": "x"}, "b::F::C2": {"count": 1, "note": "x"}}
+    now = {"a::F::C1": 2, "b::F::C2": 1}
+
+    assert check_analyze.slack(now, base) == ["baseline can shrink: a::F::C1 3 -> 2"]
+    assert check_analyze.compare(now, base) == []
+
+
+def test_update_only_shrinks(tmp_path, monkeypatch):
+    path = _baseline_file(tmp_path, monkeypatch, 3)
+    monkeypatch.setattr(check_analyze, "findings", lambda: {"a::F::C1": 2})
+    monkeypatch.setattr("sys.argv", ["check_analyze", "--update"])
+
+    assert check_analyze.main() == 0
+    assert json.loads(path.read_text(encoding="utf-8"))["a::F::C1"] == {"count": 2, "note": "x"}
+
+    monkeypatch.setattr(check_analyze, "findings", lambda: {"a::F::C1": 5})
+    assert check_analyze.main() == 1
+
+
+def test_strict_fails_on_slack_default_passes(tmp_path, monkeypatch, capsys):
+    _baseline_file(tmp_path, monkeypatch, 3)
+    monkeypatch.setattr(check_analyze, "findings", lambda: {"a::F::C1": 2})
+
+    monkeypatch.setattr("sys.argv", ["check_analyze"])
+    assert check_analyze.main() == 0
+    assert "baseline can shrink: a::F::C1 3 -> 2" in capsys.readouterr().out
+
+    monkeypatch.setattr("sys.argv", ["check_analyze", "--strict"])
+    assert check_analyze.main() == 1

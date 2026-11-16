@@ -1,6 +1,8 @@
 // The song-end log's mid-hooks SE1-SE3 (songend.h).
+#include "features/allocstats/allocstats.h"
 #include "features/songend/songend.h"
 #include "platform/midhook.h"
+#include "platform/safecopy.h"
 
 namespace {
 void SongEnd(uint32_t site, Rs7Mid::Context& context) {
@@ -20,6 +22,11 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_SE1(Rs7Mid::Context& conte
 }
 
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_SE2(Rs7Mid::Context& context) {
+    uint16_t old = 0;
+
+    if (Rs7_SafeCopy(&old, reinterpret_cast<const void*>(uintptr_t(context.esp) + 4), sizeof old) && old == 3) {
+        Rs7Alloc_Snapshot("song end");  // controlled by alloc_stats independently of song_end_log
+    }
     SongEnd(2, context);
 }
 

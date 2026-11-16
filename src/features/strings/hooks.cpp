@@ -4,7 +4,9 @@
 #include "features/allocstats/allocstats.h"
 #include "features/headstock/headstock.h"
 #include "features/string7/string7.h"
+#include "model/instrument.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <cstring>
 
 extern "C" {
@@ -19,14 +21,15 @@ using namespace rs7gs;
 rs7gs::State rs7gs::g_strings = {};
 
 namespace {
-bool InfoAdd(uint8_t* info) {
-    for (auto& slot : g_strings.infos) {
+uint32_t InfoAdd(uint8_t* info) {
+    for (uint32_t i = 0; i < kMaxInfos; ++i) {
+        auto& slot = g_strings.infos[i];
         if (_InterlockedCompareExchangePointer(reinterpret_cast<void* volatile*>(&slot), info, nullptr) == nullptr) {
-            return true;
+            return i + 1;
         }
     }
 
-    return false;
+    return 0;
 }
 
 bool InfoHas(const uint8_t* info) {
@@ -60,27 +63,44 @@ extern "C" void __cdecl Rs7Gs_InfoAllocated(uint8_t* info) {
     }
 
     std::memset(info + kStockInfoSize, 0, kInfoSize - kStockInfoSize);
-    At<uint32_t>(info, kInfoMagicOff) = kInfoMagic;
-    if (InfoAdd(info)) {
+    UncheckedField<uint32_t>(info, kInfoMagicOff) = kInfoMagic;
+    if (InfoHas(info) || InfoAdd(info)) {
         Rs7Alloc_Inc(kAkInfos);
-    } else if (Upto(&g_strings.logNoInfo, 1)) {
+    } else if (Rs7Log_Upto(&g_strings.logNoInfo, 1)) {
         Rs7Log("gsnative: InstrumentInfo registry full (%p stays 6-string)", info);
+    }
+}
+
+uint32_t rs7gs::ReserveInfo() {
+    return InfoAdd(reinterpret_cast<uint8_t*>(uintptr_t(1)));
+}
+
+void rs7gs::FinishInfo(uint32_t token, uint8_t* info) {
+    if (!token || token > kMaxInfos) {
+        return;
+    }
+
+    auto& slot = g_strings.infos[token - 1];
+
+    _InterlockedExchangePointer(reinterpret_cast<void* volatile*>(&slot), info);
+    if (info) {
+        Rs7Gs_InfoAllocated(info);
     }
 }
 
 extern "C" uint32_t __cdecl Rs7Gs_InfoFreeSize(uint8_t* info) {
     if (info && InfoRemove(info)) {
         Rs7Alloc_Dec(kAkInfos);
-        At<uint32_t>(info, kInfoMagicOff) = 0;
+        UncheckedField<uint32_t>(info, kInfoMagicOff) = 0;
         return kInfoSize;
     }
 
-    // A native-sized info the registry did not take (full): its magic still tells.
+    // GIA1 requests the stock size when no registry slot can be reserved.
     return kStockInfoSize;
 }
 
 extern "C" int __cdecl Rs7Gs_InfoNative(const uint8_t* info) {
-    return InfoHas(info) && Rd<uint32_t>(info, kInfoMagicOff) == kInfoMagic;
+    return InfoHas(info) && UncheckedRead<uint32_t>(info, kInfoMagicOff) == kInfoMagic;
 }
 
 // 0 = ready, else the first failing check (diagnostic, [debug] publish_trace): 1 strings not native, 2 strings
@@ -91,23 +111,25 @@ extern "C" int __cdecl Rs7Gs_ExtraWhy(uint8_t* guitar) {
         return 1;
     }
 
-    uint8_t* gs = Rd<uint8_t*>(guitar, 0x0C);
+    uint8_t* gs = UncheckedRead<uint8_t*>(guitar, rs7::kGuitarStrings);
     if (!IsNative(gs)) {
         return 1;
     }
-    if (!Rd<uint8_t>(gs, kTail + 3)) {
-        return 2;
-    }
 
-    uint8_t* info = Rd<uint8_t*>(gs, kInfo);
+    uint8_t* info = UncheckedRead<uint8_t*>(gs, kInfo);
     if (!Rs7Gs_InfoNative(info)) {
         return 3;
     }
-    if (Rd<uint8_t*>(guitar, 0x24) != info) {
+    if (UncheckedRead<uint8_t*>(guitar, rs7::kGuitarInfo) != info) {
         return 4;
     }
 
-    for (int s = 6; s < 8; ++s) {
+    const int loaded = UncheckedRead<uint8_t>(info, kInfoLoaded);
+    if (loaded > kCapacity || (loaded > kStock && !UncheckedRead<uint8_t>(gs, kTail + 3))) {
+        return 2;
+    }
+
+    for (int s = kStock; s < loaded; ++s) {
         for (int ghost = 0; ghost < 2; ++ghost) {
             uint8_t* obj = Child(gs, s, ghost != 0);
             const int at = 8 + (s - 6) * 6 + ghost * 3;
@@ -117,7 +139,7 @@ extern "C" int __cdecl Rs7Gs_ExtraWhy(uint8_t* guitar) {
             if (!Entity(obj)) {
                 return at + 1;
             }
-            if (!Rd<uint8_t>(obj, 0x50)) {
+            if (!UncheckedRead<uint8_t>(obj, 0x50)) {
                 return at + 2;
             }
         }
@@ -130,12 +152,35 @@ extern "C" int __cdecl Rs7Gs_ExtraReady(uint8_t* guitar) {
     return Rs7Gs_ExtraWhy(guitar) == 0;
 }
 
+void rs7gs::RefreshBuildCounts(uint8_t* gs, uint8_t* info) {
+    if (!info) {
+        return;
+    }
+
+    const bool native = Rs7Gs_InfoNative(info) != 0;
+
+    if (!native || !IsNative(gs) || Rs7_SafeRead<uint8_t*>(gs, kInfo) != info ||
+        !Rs7_SafeRead<uint8_t>(gs, kTail + 3)) {
+        // FromProfile writes +0Bh after GSC1. Stock loops need the cap again before their first consumer.
+        if (Rs7_SafeRead<uint8_t>(info, rs7::kInfoStrings) > kStock) {
+            UncheckedField<uint8_t>(info, rs7::kInfoStrings) = kStock;
+        }
+        if (native) {
+            UncheckedField<uint8_t>(info, kInfoActive) = UncheckedField<uint8_t>(info, kInfoLoaded) =
+                Rs7_SafeRead<uint8_t>(info, rs7::kInfoStrings);
+        }
+    } else {
+        UncheckedField<uint8_t>(info, kInfoActive) = 0;
+        RefreshCounts(info, g_rs7_s7_on != 0);
+    }
+}
+
 extern "C" uint8_t* __cdecl Rs7Gs_Construct(uint8_t* guitar, uint8_t* gs) {
     if (!gs) {
         return gs;
     }
 
-    uint8_t* info = guitar ? Rd<uint8_t*>(guitar, 0x24) : nullptr;
+    uint8_t* info = guitar ? UncheckedRead<uint8_t*>(guitar, rs7::kGuitarInfo) : nullptr;
 
     if (!InfoHas(info)) {
         info = nullptr;  // a stock-sized info: the loops stay stock (aliases)
@@ -158,14 +203,11 @@ extern "C" uint8_t* __cdecl Rs7Gs_Construct(uint8_t* guitar, uint8_t* gs) {
     Rs7Alloc_Inc(kAkGuitarStrings);
     InitTail(gs, guitar, info, em, eg);
 
-    if (info) {
-        At<uint8_t>(info, kInfoActive) = 0;
-        RefreshCounts(info, g_rs7_s7_on != 0);
-    }
+    RefreshBuildCounts(gs, guitar ? UncheckedRead<uint8_t*>(guitar, rs7::kGuitarInfo) : nullptr);
 
     _InterlockedIncrement(&g_strings.native);
     Rs7_S7Record(gs);  // N5's per-guitar visibility state (string7.h)
-    if (Upto(&g_strings.logCtor, 6)) {
+    if (Rs7Log_Upto(&g_strings.logCtor, 6)) {
         Rs7Log("gsnative: guitar %p strings %p native (capacity 8, strings 6/7 %p %p, ghosts %p %p, info %p%s)", guitar,
                gs, em[0], em[1], eg[0], eg[1], info, info ? "" : " NOT native: stock loops");
     }
@@ -178,18 +220,18 @@ extern "C" uint32_t __cdecl Rs7Gs_MeshCount(uint8_t* gs) {
         return kStock;
     }
 
-    uint8_t* info = Rd<uint8_t*>(gs, kInfo);
-    if (!Rs7Gs_InfoNative(info) || !Rd<uint8_t>(gs, kTail + 3)) {
+    uint8_t* info = UncheckedRead<uint8_t*>(gs, kInfo);
+    if (!Rs7Gs_InfoNative(info) || !UncheckedRead<uint8_t>(gs, kTail + 3)) {
         return kStock;
     }
 
-    const uint32_t n = Rd<uint8_t>(info, kInfoLoaded);
+    const uint32_t n = UncheckedRead<uint8_t>(info, kInfoLoaded);
 
     return n > uint32_t(kStock) && n <= uint32_t(kCapacity) ? n : uint32_t(kStock);
 }
 
 extern "C" uint8_t* __cdecl Rs7Gs_SegHandle(uint8_t* guitar, uint32_t s) {
-    return s == 6 ? Rs7Asset_Seg7Colour(guitar) : nullptr;
+    return Rs7Asset_SegColour(guitar, s);
 }
 
 void Rs7Gs_Stats(Rs7GsStats* out) {

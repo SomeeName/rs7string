@@ -6,7 +6,7 @@
 #include "d3d/swap.h"
 #include "d3d/swap_ramp.h"
 #include "features/colours/colours.h"
-#include "platform/patch.h"
+#include "platform/seh.h"
 #include <cstdio>
 #include <cstring>
 
@@ -42,10 +42,23 @@ HookState g_hook;
 namespace {
 using rs7d3d::LogQuiet;
 using rs7swap::g_hook;
+using rs7swap::kSlotGet;
+using rs7swap::kSlotSet;
 using rs7swap::kStages;
-constexpr unsigned kSlotGet = 64, kSlotSet = 65;
+static_assert(kSlotSet == kSlotGet + 1, "VtSlotPair hooks two neighbouring slots");
 
-// Describes where a d3d9 entry point really goes: "d3d9.dll", or "inline-hooked -> <module>".
+// GetTexture is written first: once SetTexture can swap, GetTexture already hides it.
+const rs7d3d::VtSlotPair kSlots{
+    "ramp",
+    kSlotGet,
+    {reinterpret_cast<uintptr_t>(&Rs7_Thunk_GetTexture), reinterpret_cast<uintptr_t>(&Rs7_Thunk_SetTexture)}};
+
+// d3d9's entry points of slots 64/65.
+rs7d3d::SlotValues Orig() {
+    return {reinterpret_cast<uintptr_t>(g_hook.origGet), reinterpret_cast<uintptr_t>(g_hook.origSet)};
+}
+
+// The destination of the jump at an inline-hooked entry point (E9 / EB / FF25), or 0.
 uintptr_t JumpTarget(uintptr_t fn) {
     uint8_t b[6] = {};
     if (!g_hook.mem.Read(fn, b, sizeof b)) {
@@ -73,6 +86,7 @@ uintptr_t JumpTarget(uintptr_t fn) {
     return 0;
 }
 
+// Where a d3d9 entry point really goes: "d3d9.dll", or "inline-hooked -> <module>".
 void DescribeBody(uintptr_t fn, char* out, size_t n) {
     char mod[MAX_PATH];
     const uintptr_t to = JumpTarget(fn);
@@ -91,7 +105,7 @@ extern "C" HRESULT __stdcall Rs7_SetTextureHook(IDirect3DDevice9* dev, DWORD sta
 
     __try {
         bind = rs7swap::OnSet(dev, stage, tex);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         bind = tex;
         rs7swap::AfterFault();
     }
@@ -110,15 +124,11 @@ extern "C" HRESULT __stdcall Rs7_GetTextureHook(IDirect3DDevice9* dev, DWORD sta
             (*out)->AddRef();
             Rs7Ramp_CountHidden();
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         Rs7Ramp_CountFault();
     }
 
     return hr;
-}
-
-bool Rs7Swap_Installed() {
-    return g_hook.installed;
 }
 
 bool Rs7Swap_InstallOn(void* device) {
@@ -127,9 +137,7 @@ bool Rs7Swap_InstallOn(void* device) {
     }
 
     void** vt = *static_cast<void***>(device);
-    void* const thSet = reinterpret_cast<void*>(&Rs7_Thunk_SetTexture);
-    void* const thGet = reinterpret_cast<void*>(&Rs7_Thunk_GetTexture);
-    if (vt[kSlotSet] == thSet && vt[kSlotGet] == thGet) {
+    if (kSlots.Ours(vt)) {
         return true;  // idempotent
     }
 
@@ -148,22 +156,8 @@ bool Rs7Swap_InstallOn(void* device) {
     g_hook.dev = static_cast<IDirect3DDevice9*>(device);
     g_hook.vt = vt;
     g_hook.deviceOk = true;
-    uintptr_t old = 0;
 
-    // GetTexture first: once SetTexture can swap, GetTexture already hides it.
-    if (!Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&vt[kSlotGet]), reinterpret_cast<uintptr_t>(thGet), &old)) {
-        LogQuiet("ramp: device %p vtable %p: cannot write slot %u - not hooked", device, static_cast<void*>(vt),
-                 kSlotGet);
-        g_hook.dev = nullptr;
-        g_hook.vt = nullptr;
-        return false;
-    }
-
-    if (!Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&vt[kSlotSet]), reinterpret_cast<uintptr_t>(thSet), &old)) {
-        Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&vt[kSlotGet]), reinterpret_cast<uintptr_t>(g_hook.origGet),
-                           &old);
-        LogQuiet("ramp: device %p vtable %p: cannot write slot %u - not hooked", device, static_cast<void*>(vt),
-                 kSlotSet);
+    if (!kSlots.Write(device, vt, Orig())) {
         g_hook.dev = nullptr;
         g_hook.vt = nullptr;
         return false;
@@ -185,43 +179,18 @@ void Rs7Swap_Recheck() {
         return;
     }
 
-    uintptr_t slots[2] = {};
-    if (!g_hook.mem.Read(reinterpret_cast<uintptr_t>(&g_hook.vt[kSlotGet]), slots, sizeof slots)) {
-        return;
-    }
+    kSlots.Recheck(g_hook.dev, g_hook.vt, Orig(), g_hook.mem, &foreignLogged);
+}
 
-    const uintptr_t thGet = reinterpret_cast<uintptr_t>(&Rs7_Thunk_GetTexture);
-    const uintptr_t thSet = reinterpret_cast<uintptr_t>(&Rs7_Thunk_SetTexture);
-    if (slots[0] == thGet && slots[1] == thSet) {
-        return;
-    }
-
-    if (slots[0] == reinterpret_cast<uintptr_t>(g_hook.origGet) &&
-        slots[1] == reinterpret_cast<uintptr_t>(g_hook.origSet)) {
-        uintptr_t old = 0;
-        const bool ok = Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&g_hook.vt[kSlotGet]), thGet, &old) &&
-                        Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&g_hook.vt[kSlotSet]), thSet, &old);
-
-        LogQuiet("ramp: device %p: slots were reset to d3d9's entry points - %s", static_cast<void*>(g_hook.dev),
-                 ok ? "hooked again" : "re-hook FAILED");
-        return;
-    }
-
-    if (!foreignLogged) {
-        foreignLogged = true;
-        LogQuiet("ramp: device %p: slot 64/65 now %08X/%08X (not ours, not d3d9's): left alone",
-                 static_cast<void*>(g_hook.dev), unsigned(slots[0]), unsigned(slots[1]));
+void Rs7Swap_SetOverlayDrawing(IDirect3DDevice9* dev, bool drawing) {
+    if (dev == g_hook.dev) {
+        g_hook.overlayDrawing = drawing;
     }
 }
 
 void Rs7Swap_UninstallForTests() {
     if (g_hook.vt) {
-        uintptr_t old = 0;
-
-        Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&g_hook.vt[kSlotSet]),
-                           reinterpret_cast<uintptr_t>(g_hook.origSet), &old);
-        Rs7_WritePtrAtomic(reinterpret_cast<uintptr_t>(&g_hook.vt[kSlotGet]),
-                           reinterpret_cast<uintptr_t>(g_hook.origGet), &old);
+        kSlots.Restore(g_hook.vt, Orig());
     }
 
     rs7swap::ResetRamp();
@@ -236,6 +205,7 @@ void Rs7Swap_UninstallForTests() {
     g_hook.origGet = nullptr;
     g_hook.installed = false;
     g_hook.deviceOk = true;
+    g_hook.overlayDrawing = false;
 }
 
 HRESULT Rs7Swap_RawGetTextureForTests(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out) {

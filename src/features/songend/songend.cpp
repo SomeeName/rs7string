@@ -1,7 +1,8 @@
 #include "features/songend/songend.h"
-#include "features/allocstats/allocstats.h"
-#include "features/scene/scene.h"
+#include "model/objtable.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -12,7 +13,7 @@ namespace {
 constexpr unsigned kMaxLines = 400;  // per run; a song end costs 1-3 lines
 volatile LONG g_lines;
 
-// The session fields of .
+// The song session fields the log reads.
 struct Session {
     uint32_t vtable = 0, id = 0, song = 0;
     uint16_t state = 0, pending = 0;
@@ -25,43 +26,26 @@ Session ReadSession(uint32_t s) {
     Session r;
     const uint8_t* p = reinterpret_cast<const uint8_t*>(uintptr_t(s));
 
-    r.ok = s && rs7s7d::SafeCopy(&r.vtable, p, 4) && rs7s7d::SafeCopy(&r.id, p + 8, 4) &&
-           rs7s7d::SafeCopy(&r.song, p + 0x78, 4) && rs7s7d::SafeCopy(&r.state, p + 0x390, 2) &&
-           rs7s7d::SafeCopy(&r.pending, p + 0x392, 2) && rs7s7d::SafeCopy(&r.flags, p + 0x394, 1) &&
-           rs7s7d::SafeCopy(&r.time, p + 0x3B4, 4);
+    r.ok = s && Rs7_SafeCopyZero(&r.vtable, p, 4) && Rs7_SafeCopyZero(&r.id, p + 8, 4) &&
+           Rs7_SafeCopyZero(&r.song, p + 0x78, 4) && Rs7_SafeCopyZero(&r.state, p + 0x390, 2) &&
+           Rs7_SafeCopyZero(&r.pending, p + 0x392, 2) && Rs7_SafeCopyZero(&r.flags, p + 0x394, 1) &&
+           Rs7_SafeCopyZero(&r.time, p + 0x3B4, 4);
 
     return r;
 }
 
-// When each session last entered state 3 (playing): the end line says how long the song ran.
-struct Start {
-    uint32_t session;
-    DWORD tick;
-};
-
-Start g_start[4];
+// The tick each session last entered state 3 (playing): the end line says how long the song ran. A full table replaces
+// its entries in turn.
+rs7::ObjTable<uint32_t, DWORD, 4> g_start;
 
 void NoteStart(uint32_t s) {
-    Start* slot = &g_start[0];
-
-    for (Start& x : g_start) {
-        if (x.session == s || !x.session) {
-            slot = &x;
-            break;
-        }
-    }
-
-    *slot = Start{s, GetTickCount()};
+    g_start.Put(s, GetTickCount());
 }
 
 double SecondsPlaying(uint32_t s) {
-    for (const Start& x : g_start) {
-        if (x.session == s) {
-            return double(GetTickCount() - x.tick) / 1000.0;
-        }
-    }
+    const DWORD* tick = g_start.Find(s);
 
-    return -1.0;
+    return tick ? double(GetTickCount() - *tick) / 1000.0 : -1.0;
 }
 
 bool InImage(uint32_t a) {
@@ -82,7 +66,7 @@ bool InImage(uint32_t a) {
 bool IsReturn(uint32_t a) {
     uint8_t b[7];
 
-    return InImage(a) && rs7s7d::SafeCopy(b, reinterpret_cast<const void*>(uintptr_t(a - 7)), 7) &&
+    return InImage(a) && Rs7_SafeCopyZero(b, reinterpret_cast<const void*>(uintptr_t(a - 7)), 7) &&
            rs7end::EndsInCall(b);
 }
 
@@ -93,7 +77,7 @@ void Backtrace(uint32_t ebp, const uint32_t* sp, char* out, size_t n) {
 
     for (int i = 0; i < 10 && ebp && !(ebp & 3) && at < n; ++i) {
         uint32_t fr[2];
-        if (!rs7s7d::SafeCopy(fr, reinterpret_cast<const void*>(uintptr_t(ebp)), 8)) {
+        if (!Rs7_SafeCopyZero(fr, reinterpret_cast<const void*>(uintptr_t(ebp)), 8)) {
             break;
         }
         if (!InImage(fr[1])) {
@@ -115,7 +99,7 @@ void Backtrace(uint32_t ebp, const uint32_t* sp, char* out, size_t n) {
 
     for (int i = 0; i < 160 && found < 14 && at < n; ++i) {
         uint32_t v;
-        if (!rs7s7d::SafeCopy(&v, sp + i, 4)) {
+        if (!Rs7_SafeCopyZero(&v, sp + i, 4)) {
             break;
         }
         if (!IsReturn(v)) {
@@ -127,10 +111,6 @@ void Backtrace(uint32_t ebp, const uint32_t* sp, char* out, size_t n) {
     }
 }
 
-bool Budget() {
-    return InterlockedIncrement(&g_lines) <= LONG(kMaxLines);
-}
-
 void SessionText(const Session& s, char* out, size_t n) {
     std::snprintf(out, n, "vtable %08X id %u state %u pending %u +394h %02X song +78h %08X time %.2f s", s.vtable, s.id,
                   s.state, s.pending, s.flags, s.song, double(s.time));
@@ -140,12 +120,12 @@ void OnEvent(const Rs7Mid::Context& c) {  // SE1
     const auto* stack = reinterpret_cast<const uint32_t*>(c.esp);
     const uint32_t session = c.ecx;
     uint32_t ev[3] = {};
-    if (!rs7s7d::SafeCopy(ev, reinterpret_cast<const void*>(uintptr_t(stack[1])), 12)) {
+    if (!Rs7_SafeCopyZero(ev, reinterpret_cast<const void*>(uintptr_t(stack[1])), 12)) {
         return;
     }
 
     const Session s = ReadSession(session);
-    if (!s.ok || !rs7end::IsEndEvent(ev[0], ev[1], s.id) || !Budget()) {
+    if (!s.ok || !rs7end::IsEndEvent(ev[0], ev[1], s.id) || !Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -167,10 +147,7 @@ void OnLeave(const Rs7Mid::Context& c) {  // SE2
     if (to == 3) {
         NoteStart(session);
     }
-    if (old == 3) {
-        Rs7Alloc_Snapshot("song end");  // leak audit ([debug] alloc_stats)
-    }
-    if (!Budget()) {
+    if (!Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -195,7 +172,7 @@ void OnLeave(const Rs7Mid::Context& c) {  // SE2
 
 void OnNoSong(const Rs7Mid::Context& c) {  // SE3
     const uint32_t session = c.esi;
-    if (!Budget()) {
+    if (!Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -287,24 +264,16 @@ bool rs7end::EndsInCall(const uint8_t b[7]) {
     return false;
 }
 
-unsigned rs7end::Lines() {
-    return unsigned(g_lines);
-}
-
 extern "C" __declspec(dllexport) void __cdecl Rs7End_OnSite(uint32_t site, const uint32_t* f) {
     // Compatibility for the former PUSHAD ABI. The saved ESP slot is after
     // PUSHFD; the actual live stack starts immediately after the nine dwords.
-    __try {
-        if (!g_rs7_endlog) {
-            return;
-        }
-
+    __try {  // Rs7End_OnContext checks g_rs7_endlog
         Rs7Mid::Context c{};
 
         std::memcpy(&c, f, 9 * sizeof(uint32_t));
         c.esp = uint32_t(uintptr_t(f + 9));
         Rs7End_OnContext(site, c);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         g_rs7_endlog = 0;
         Rs7Log("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
     }
@@ -315,7 +284,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7End_OnContext(uint32_t site, co
         if (g_rs7_endlog) {
             OnSite(site, c);
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         g_rs7_endlog = 0;
         Rs7Log("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
     }

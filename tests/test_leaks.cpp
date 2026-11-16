@@ -4,6 +4,7 @@
 #include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstdint>
 #include <cstring>
@@ -88,7 +89,7 @@ TEST(sidestore_does_not_keep_inactive_entries_and_caps_active_ones) {
 }
 
 TEST(assetload_head_slots_are_released_with_the_guitar) {
-    const uintptr_t was = g_rs7_asset_on;
+    rs7test::Restore restore_g_rs7_asset_on(g_rs7_asset_on);
 
     g_rs7_asset_on = 1;
     Rs7Alloc_ResetForTests();
@@ -124,7 +125,6 @@ TEST(assetload_head_slots_are_released_with_the_guitar) {
     CHECK_EQ(Rs7Asset_LiveHeads(), 0);
     Rs7Asset_ForgetStrings(nullptr);
     Rs7Alloc_ResetForTests();
-    g_rs7_asset_on = was;
 }
 
 TEST(nslot_t8_c8_follow_the_song_object) {

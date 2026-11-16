@@ -22,13 +22,12 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI,
 )
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT
 from midhook_oracle import EBP, Case, Helper, Spec, oracle_tests
 from midhook_stock import RET_AT, Ref, W, ruled, stock_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 SPECS: dict[str, tuple[Spec, list[Case]]] = {}
@@ -68,6 +67,8 @@ register(
 
 # ---- GIA1: `push 38h; mov [esi+4Ch],ebx; call 0x8F9D40` -> 48h, then Rs7Gs_InfoAllocated(a non-NULL info) ---------
 # The allocator stand-in returns its second argument (the case's [esp]), so both branches run.
+# Registry reservations deliberately change DLL-owned writes from the frozen stub. The stock reference below checks
+# the game-facing contract; tests/strings/test_failures.cpp covers capacity and failed allocations.
 register(
     Spec(
         "GIA1",
@@ -79,7 +80,7 @@ register(
         patch=callee("8B 44 24 08 C3"),  # mov eax,[esp+8]; ret
     ),
     [
-        Case(f"info{n}", regs={UC_X86_REG_ESI: D, UC_X86_REG_EBX: 0x1234}, stack={0: info})
+        Case(f"info{n}", regs={UC_X86_REG_ESI: D, UC_X86_REG_EBX: 0x1234}, stack={0: info}, frozen=False)
         for n, info in enumerate((0, D + 0x600))
     ],
 )

@@ -2,7 +2,9 @@
 // CMFALL), RSMods' glow correction (GLW, Rs7_GlowFixPtr) and startup.
 #include "features/colours/state.h"
 #include "model/groups.h"
+#include "platform/freeze.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_glow_fix = 0;
 extern "C" __declspec(dllexport) uintptr_t g_rs7_colormgr = 0;
@@ -26,6 +28,9 @@ void Rs7Colour_Start(Rs7ColourConfig& cfg) {
     cfg.string6Rgb = effectiveRgb[0];
     cfg.string6RgbCb = effectiveRgb[1];
     rs7colour::SetPalette(effectiveRgb);
+    const uint32_t rgb8[2] = {cfg.string7Rgb, cfg.string7RgbCb};
+
+    rs7colour::SetPalette8(rgb8);  // the eighth string ([color] string7_color)
     Rs7Log("colour: RSMods Extended Range automatic=%d available=%d effective=%06X/%06X", cfg.rsmodsExtendedRange,
            rs7rsmods::Cached().valid, unsigned(cfg.string6Rgb), unsigned(cfg.string6RgbCb));
     // RSMods' custom string colours leave a pure red string's glow outline near black (Rs7_GlowFixPtr).
@@ -34,7 +39,7 @@ void Rs7Colour_Start(Rs7ColourConfig& cfg) {
 }
 
 // The native layout widens the ColourManager at creation (CM* sites: 0xDD0 -> 0x1BD0 bytes, 6 -> 8 columns). The
-// game builds its one manager once, ~12 s after launch (fix/colours2, measured with tests/colours2/cmtime.py); one
+// game builds its one manager once, ~12 s after launch (measured); one
 // that already exists keeps the stock 6-column layout in a 0xDD0 block, which the 8-column readers would misread
 // (rotated string colours, black 7th string) and a rebuild would overflow. Then the native matrix is refused.
 void Rs7Colour_CheckManager(uint32_t d3d9Tick) {
@@ -53,6 +58,64 @@ void Rs7Colour_CheckManager(uint32_t d3d9Tick) {
         Rs7Log("colour: ColourManager not built yet (%.1f s after d3d9) - native 8-column layout from its creation",
                (GetTickCount() - d3d9Tick) / 1000.0);
     }
+}
+
+bool Rs7Colour_CanPatchFrozen(uintptr_t ctorSite, uintptr_t allocSite) {
+    g_colour.patchRefusal = {};
+    g_colour.patchReason = "missing-anchor";
+    g_colour.patchRange = "none";
+    void* manager = nullptr;
+
+    if (!ctorSite || !allocSite) {
+        g_colour.patchRefusal.address = ctorSite;
+        g_colour.patchRefusal.value = allocSite;
+        return false;
+    }
+
+    g_colour.patchRefusal.address = g_rs7_colormgr;
+    g_colour.patchReason = "unreadable-manager-slot";
+    if (!g_rs7_colormgr || !Rs7_SafeCopy(&manager, reinterpret_cast<const void*>(g_rs7_colormgr), sizeof manager)) {
+        return false;
+    }
+
+    if (manager) {
+        g_colour.patchReason = "manager-non-null";
+        g_colour.patchRefusal.value = reinterpret_cast<uintptr_t>(manager);
+        return false;
+    }
+
+    // Boundaries already identified by sites.json and gen_colournative.py: constructor 517F70..518550,
+    // creation 518AC0..518AF0. Anchor them to resolved sites so relocation is preserved.
+    const Rs7Range ctor{ctorSite - (0x5184F6 - 0x517F70), ctorSite + (0x518550 - 0x5184F6)};
+    const Rs7Range alloc{allocSite - (0x518AC4 - 0x518AC0), allocSite + (0x518AF0 - 0x518AC4)};
+
+    g_colour.patchRange = "constructor";
+
+    if (Rs7_FrozenThreadCallsRange(ctor, &g_colour.patchRefusal)) {
+        g_colour.patchReason = Rs7_FrozenReasonName(g_colour.patchRefusal.reason);
+        return false;
+    }
+
+    g_colour.patchRange = "creation";
+
+    if (Rs7_FrozenThreadCallsRange(alloc, &g_colour.patchRefusal)) {
+        g_colour.patchReason = Rs7_FrozenReasonName(g_colour.patchRefusal.reason);
+        return false;
+    }
+
+    g_colour.patchReason = "none";
+
+    return true;
+}
+
+void Rs7Colour_LogPatchRefusal() {
+    const Rs7FrozenRefusal& r = g_colour.patchRefusal;
+
+    Rs7Log("colour: frozen recheck refused reason=%s tid=%lu eip=%08X esp=%08X StackLimit=%08X StackBase=%08X "
+           "address=%08X value=%08X range=%s[%08X,%08X) fs=%04lX teb=%08X error=%lu state=%08lX protect=%08lX",
+           g_colour.patchReason, r.tid, unsigned(r.eip), unsigned(r.esp), unsigned(r.stackLimit), unsigned(r.stackBase),
+           unsigned(r.address), unsigned(r.value), g_colour.patchRange, unsigned(r.range.lo), unsigned(r.range.hi),
+           r.fs, unsigned(r.teb), r.error, r.state, r.protect);
 }
 
 // ---- ColourManager mid-hooks (CMINIT / CMBUILD: hooks_publish.cpp)
@@ -88,9 +151,9 @@ void __cdecl Rs7Colour_CMFALL(Rs7Mid::Context& c) {
     if (c.edx < 6) {
         c.eax = *reinterpret_cast<const uint32_t*>(c.ebp + c.edx * 4 - 0x1C);
     } else if (c.edx == 6) {
-        c.eax = g_colour.fallback7;
+        c.eax = g_colour.fallback7[Rs7Colour_Mode()];
     } else {
-        c.eax = c.edx == 7 ? rs7colour::kPlaceholder[0] : 0;
+        c.eax = c.edx == 7 ? rs7colour::Colour8(Rs7Colour_Mode()) : 0;
     }
     c.esp -= 4;
     *reinterpret_cast<uint32_t*>(c.esp) = c.esi;  // replay PUSH ESI

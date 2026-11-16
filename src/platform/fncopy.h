@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-// Relocated copies of whole game functions (issue #18 stage 4, tools/gen_fncopy.py): the bytes of
+// Relocated copies of whole game functions (tools/gen_fncopy.py): the bytes of
 // the unpacked exe with listed same-length instruction edits and calls into this DLL, rel32 branches
 // out of the function relocated. Built once at startup from live memory, before any site is written.
 

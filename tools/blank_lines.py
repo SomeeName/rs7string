@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Blank lines between the statements of function bodies (the rule set of AGENTS.md "Code structure").
+"""Blank lines between the statements of function bodies (the rule set of docs/agents/code-structure.md).
 
     uv run python tools/blank_lines.py [--check] [--verbose] FILE...
 

@@ -4,6 +4,7 @@
 #include "features/window/window.h"
 #include "imgui.h"
 #include "model/status.h"
+#include "model/tuning.h"
 #include "platform/log.h"
 #include "platform/settings.h"
 #include "platform/uilayout.h"
@@ -13,6 +14,8 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
+#include <vector>
 
 namespace {
 // The tabs, by index: the first ones are the Rs7UiTab values (platform/uilayout.h), the log tab follows them.
@@ -25,6 +28,8 @@ constexpr Tab kTabs[] = {{"status", "Status"}, {"colour", "Colour"}, {"neck", "N
                          {"debug", "Debug"},   {"window", "Window"}, {"log", "Log"}};
 constexpr int kTabCount = int(sizeof kTabs / sizeof kTabs[0]);
 constexpr int kLogTab = int(Rs7UiTab::Window) + 1;
+constexpr unsigned kLogLines = 200;     // lines the log tab shows
+constexpr float kRowNameWidth = 11.0f;  // status rows: value column, in font sizes
 
 constexpr bool TabIs(Rs7UiTab t, const char* name) {
     const char* a = kTabs[int(t)].name;
@@ -57,17 +62,26 @@ const char* KeyName(int vk, char* buf, size_t n) {
     return buf;
 }
 
+// Opens a tooltip with wrapped text; close it with EndWrappedTooltip.
+void BeginWrappedTooltip(const char* text) {
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+    ImGui::TextUnformatted(text);
+}
+
+void EndWrappedTooltip() {
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+
 void Help(const Rs7SetDef& d) {
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         return;
     }
 
-    ImGui::BeginTooltip();
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
-    ImGui::TextUnformatted(d.help);
+    BeginWrappedTooltip(d.help);
     ImGui::TextDisabled("rs7string.ini [%ls] %ls (default %s)", d.section, d.key, d.def[0] ? d.def : "empty");
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
+    EndWrappedTooltip();
 }
 
 // The state after a control. Restart-only keys carry " *" in their label (kRestartNote) instead of a tag; the player
@@ -113,11 +127,8 @@ void HintMarker(const char* hint) {
         return;
     }
 
-    ImGui::BeginTooltip();
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
-    ImGui::TextUnformatted(hint);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
+    BeginWrappedTooltip(hint);
+    EndWrappedTooltip();
 }
 
 // After a control: the table's help as a tooltip and the tags, or in the player view the "(?)" hint and the badge. A
@@ -172,6 +183,20 @@ void NarrowFor(bool player) {
     }
 }
 
+// Edit state of one setting: the last commit result (logged when a slider is released) and the text field.
+struct EditState {
+    Rs7SetResult last = Rs7SetResult::Unchanged;
+    bool editing = false;
+    char text[kRs7SetTextMax] = {};
+};
+
+// One per setting of the store; the count is fixed once the tables are linked.
+EditState& EditStateOf(int i) {
+    static std::vector<EditState> states = std::vector<EditState>(size_t(Rs7Set_Count()));
+
+    return states[size_t(i)];
+}
+
 // One control per setting, typed by the table; every change goes through Rs7Set_Commit (the same path
 // as "o set"). Text keys commit on Enter or when the field loses focus. A Player item brings its own plain label and
 // hint (platform/uilayout.h); other items use the table's label and help.
@@ -187,8 +212,7 @@ void Edit(const Rs7UiItem& it) {
 
     const Rs7SetDef& d = Rs7Set_Def(i);
     Rs7SetValue v = Rs7Set_State(i).value;
-    static Rs7SetResult last[64];
-    static bool editing[64];
+    EditState& es = EditStateOf(i);
     char label[160];
 
     std::snprintf(label, sizeof label, "%s%s", player && it.label ? it.label : d.label,
@@ -225,16 +249,15 @@ void Edit(const Rs7UiItem& it) {
             changed = EditRgb(label, v);
             break;
         case Rs7SetType::Text: {
-            static char bufs[64][kRs7SetTextMax];
-            char* buf = bufs[i % 64];
+            char* buf = es.text;
 
-            if (!editing[i % 64]) {
+            if (!es.editing) {
                 std::snprintf(buf, kRs7SetTextMax, "%s", v.text);
             }
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
             const bool enter = ImGui::InputText(label, buf, kRs7SetTextMax, ImGuiInputTextFlags_EnterReturnsTrue);
 
-            editing[i % 64] = ImGui::IsItemActive();
+            es.editing = ImGui::IsItemActive();
 
             if (enter || ImGui::IsItemDeactivatedAfterEdit()) {
                 const Rs7SetResult r = Rs7Set_SetText(d.id, buf);
@@ -248,13 +271,16 @@ void Edit(const Rs7UiItem& it) {
         }
     }
 
+    if (ImGui::IsItemActivated()) {
+        es.last = Rs7SetResult::Unchanged;  // a drag that changes nothing must not log the previous drag's result
+    }
     ImGui::EndDisabled();
 
     if (changed) {
         const Rs7SetResult r = Rs7Set_Commit(i, v);
 
         if (r != Rs7SetResult::Unchanged) {
-            last[i % 64] = r;
+            es.last = r;
         }
         // Sliders change every frame while dragged: log the bool flips at once, the rest when released.
         if (d.type == Rs7SetType::Bool && r != Rs7SetResult::Unchanged) {
@@ -262,16 +288,22 @@ void Edit(const Rs7UiItem& it) {
         }
     }
 
-    if (d.type != Rs7SetType::Bool && d.type != Rs7SetType::Text && ImGui::IsItemDeactivatedAfterEdit()) {
-        LogUiSet(i, last[i % 64]);
+    if (d.type != Rs7SetType::Bool && d.type != Rs7SetType::Text && ImGui::IsItemDeactivatedAfterEdit() &&
+        es.last != Rs7SetResult::Unchanged) {
+        LogUiSet(i, es.last);
     }
     Decorate(it, i, locked);
     ImGui::PopID();
 }
 
-void Row(const char* name, const char* fmt, ...) {
+// A status row's grey name; the value follows on the same line.
+void RowName(const char* name) {
     ImGui::TextColored(kGrey, "%s", name);
-    ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
+    ImGui::SameLine(ImGui::GetFontSize() * kRowNameWidth);
+}
+
+void Row(const char* name, const char* fmt, ...) {
+    RowName(name);
     char buf[512];
     va_list ap;
 
@@ -281,9 +313,17 @@ void Row(const char* name, const char* fmt, ...) {
     ImGui::TextUnformatted(buf);
 }
 
+void ColouredRow(const char* name, const ImVec4& colour, const char* fmt, ...) {
+    RowName(name);
+    va_list ap;
+
+    va_start(ap, fmt);
+    ImGui::TextColoredV(colour, fmt, ap);
+    va_end(ap);
+}
+
 void OnOff(const char* name, bool on, const char* detail) {
-    ImGui::TextColored(kGrey, "%s", name);
-    ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
+    RowName(name);
     ImGui::TextColored(on ? kGreen : kGrey, "%s", on ? "ON" : "off");
 
     if (detail && *detail) {
@@ -297,12 +337,17 @@ void Section(const char* title) {
     ImGui::SeparatorText(title);
 }
 
+// Rs7Ui_TabItems, clamped to what fits in `items` (it returns the full count).
+int TabItems(Rs7UiTab tab, const Rs7UiItem* (&items)[kRs7UiMaxTabItems]) {
+    const int n = Rs7Ui_TabItems(tab, items, kRs7UiMaxTabItems);
+
+    return n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+}
+
 // The features' items of one tab (platform/uilayout.h), in list order.
 void Items(Rs7UiTab tab) {
     const Rs7UiItem* items[kRs7UiMaxTabItems];
-    int n = Rs7Ui_TabItems(tab, items, kRs7UiMaxTabItems);
-
-    n = n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+    const int n = TabItems(tab, items);
 
     for (int i = 0; i < n; ++i) {
         const Rs7UiItem& it = *items[i];
@@ -340,9 +385,7 @@ void TabStatus(const Rs7OverlayUi& ui) {
     if (st.state == Rs7StartState::Patched) {
         Row("sites", "%u resolved, %u written (memory protection via %s)", st.resolved, st.written, st.protect);
     } else if (st.state == Rs7StartState::Failed) {
-        ImGui::TextColored(kGrey, "sites");
-        ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
-        ImGui::TextColored(kRed, "NOTHING PATCHED: %s", st.error);
+        ColouredRow("sites", kRed, "NOTHING PATCHED: %s", st.error);
     } else {
         Row("sites", "starting");
     }
@@ -350,28 +393,15 @@ void TabStatus(const Rs7OverlayUi& ui) {
     Section("song");
     const Rs7SongStatus s = Rs7Status_Song();
 
-    if (!s.songs) {
-        Row("last song setup", "none yet");
-    } else {
-        const int strings = s.active ? 7 : s.bass ? 4 : 6;
+    Rs7StatusRow rows[6];
+    const int rowCount = Rs7Status_SongRows(s, rows, int(std::size(rows)));
 
-        ImGui::TextColored(kGrey, "7-string mode");
-        ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
-        if (s.active) {
-            ImGui::TextColored(kGreen, "ON (low B = MIDI %d, t6 = %d)", 35 + s.t6, s.t6);
+    for (int i = 0; i < rowCount; ++i) {
+        if (rows[i].on) {
+            ColouredRow(rows[i].label, kGreen, "%s", rows[i].text);
         } else {
-            ImGui::TextColored(kGrey, "off");
+            Row(rows[i].label, "%s", rows[i].text);
         }
-        Row("strings", "%d (%d SNG tuning entries%s)", strings, s.entries, s.bass ? ", bass" : "");
-        char tun[96] = {};
-        size_t n = 0;
-
-        for (int k = 0; k < s.entries && k < 8 && n + 8 < sizeof tun; ++k) {
-            n += size_t(std::snprintf(tun + n, sizeof tun - n, "%s%d", k ? " " : "", int(s.tuning[k])));
-        }
-
-        Row("tuning offsets", "%s", tun);
-        Row("song setups", "%ld this run", s.songs);
     }
 
     Row("colour mode", "%s", Rs7Colour_ModeName());
@@ -394,16 +424,16 @@ void TabStatus(const Rs7OverlayUi& ui) {
 }
 
 void TabLog(Rs7OverlayUi& ui) {
-    static char lines[200][240];
+    static char lines[kLogLines][kRs7LogTailLen];
     static unsigned count = 0;
     static unsigned long seq = ~0ul;
     unsigned got = 0;
-    char tmp[1][240];
+    char tmp[1][kRs7LogTailLen];
     // Copy the tail only when something was logged (the counter changed).
     const unsigned long now = Rs7Log_Tail(tmp, 0, &got);
 
     if (now != seq) {
-        seq = Rs7Log_Tail(lines, 200, &count);
+        seq = Rs7Log_Tail(lines, kLogLines, &count);
     }
     ImGui::Checkbox("follow", &ui.logFollow);
     ImGui::SameLine();
@@ -433,11 +463,17 @@ void SaveBar(Rs7OverlayUi& ui) {
 
     if (ImGui::Button(save)) {
         const int n = Rs7Set_Save(ui.iniPath);
-        char r[96];
 
-        std::snprintf(r, sizeof r, n < 0 ? "save FAILED (see log)" : "%d key(s) saved", n);
-        ui.saveResult = r;
-        Rs7Log("overlay: ui save -> %d keys written to %ls", n, ui.iniPath);
+        if (n < 0) {
+            ui.saveResult = "Could not save rs7string.ini. Is it write-protected? See rs7string.log.";
+            Rs7Log("overlay: ui save -> write error, %ls not fully saved", ui.iniPath);
+        } else {
+            char r[32];
+
+            std::snprintf(r, sizeof r, "%d key(s) saved", n);
+            ui.saveResult = r;
+            Rs7Log("overlay: ui save -> %d keys written to %ls", n, ui.iniPath);
+        }
     }
 
     ImGui::EndDisabled();
@@ -471,7 +507,7 @@ void TechnicalTabs(Rs7OverlayUi& ui) {
         }
 
         switch (t) {
-            case 0:
+            case int(Rs7UiTab::Status):
                 TabStatus(ui);
                 break;
             case kLogTab:
@@ -492,9 +528,7 @@ void TechnicalTabs(Rs7OverlayUi& ui) {
 // The Settings of one player tab.
 void PlayerTab(const Rs7UiPlayerTab& tab) {
     const Rs7UiItem* items[kRs7UiMaxTabItems];
-    int n = Rs7Ui_TabItems(Rs7UiTab::Player, items, kRs7UiMaxTabItems);
-
-    n = n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+    const int n = TabItems(Rs7UiTab::Player, items);
 
     for (int i = tab.first; i < tab.first + tab.count && i < n; ++i) {
         Edit(*items[i]);

@@ -17,6 +17,8 @@ from pathlib import Path
 BASE = Path.home() / "Desktop" / "rocksmith-assets"
 TEMPLATES = BASE / "base/dependency_guitarstandardinlinedrh.psarc/assets/gameplay/guitar_standard_inline"
 TEMPLATES_LH = BASE / "base/dependency_guitarstandardinlinedlh.psarc/assets/gameplay/guitar_standard_inline"
+TEMPLATES_BASS = BASE / "base/dependency_guitarbassinlinedrh.psarc/assets/gameplay/guitar_bass_inline"
+TEMPLATES_BASS_LH = BASE / "base/dependency_guitarbassinlinedlh.psarc/assets/gameplay/guitar_bass_inline"
 OUTPUTS = BASE / "edited/own"
 DEST = Path(__file__).resolve().parents[1] / "data/headstock"
 PREFIX = b"RS7H1\n"
@@ -221,7 +223,7 @@ def unpack(data, templates):
 
 
 def nif_artifact(name, templates, tid, outputs_dir, index):
-    report = json.loads((outputs_dir / (name + ".json")).read_text())
+    report = json.loads((outputs_dir / (name + ".json")).read_text(encoding="utf-8"))
     if report["template_sha256"] != hashlib.sha256(templates[tid]).hexdigest():
         raise ValueError("provenance template hash mismatch")
     data = (outputs_dir / name).read_bytes()
@@ -244,33 +246,59 @@ def nif_artifact(name, templates, tid, outputs_dir, index):
 
 
 LH_NAMES = ("epi_whilshire_cherry_lh.nif", "epi_whilshire_peg.nif")
+# The packages built from one template pair besides the right-handed guitar one (hsbuild_io.h Rs7HsKit): template 0 =
+# the frame, template 1 = its peg, both from the user's own archive; the textures are the right-handed package's.
+KITS = {
+    "lh": dict(
+        templates=TEMPLATES_LH,
+        names=LH_NAMES,
+        nifs=("rs7_inline7_lh.nif", "rs7_inline8_lh.nif"),
+        bin="rs7string_headstock_lh.bin",
+        audit="audit_lh.json",
+    ),
+    "bass": dict(
+        templates=TEMPLATES_BASS,
+        names=("bass_thunder.nif", "peg_2clove.nif"),
+        nifs=("rs7_bass5.nif", "rs7_bass6.nif"),
+        bin="rs7string_headstock_bass.bin",
+        audit="audit_bass.json",
+    ),
+    "bass_lh": dict(
+        templates=TEMPLATES_BASS_LH,
+        names=("bass_thunder_lh.nif", "peg_2clove.nif"),
+        nifs=("rs7_bass5_lh.nif", "rs7_bass6_lh.nif"),
+        bin="rs7string_headstock_bass_lh.bin",
+        audit="audit_bass_lh.json",
+    ),
+}
 
 
-def generate_lh(templates_lh_dir, outputs_dir, dest):
-    """Left-handed in-line package: same v1 format, template 0 = the left-handed guitar frame
-    (epi_whilshire_cherry_lh.nif), template 1 = the peg (both read from the user's
-    dependency_guitarstandardinlinedlh.psarc). One artifact, rs7_inline7_lh.nif; the textures are
-    shared with the right-handed package."""
-    templates = [(templates_lh_dir / n).read_bytes() for n in LH_NAMES]
+def generate_kit(kit, templates_dir, outputs_dir, dest):
+    """One template-pair package (KITS): same v1 format as the right-handed one, its models as copy/insert artifacts."""
+    k = KITS[kit]
+    templates = [(templates_dir / n).read_bytes() for n in k["names"]]
     index = windows(templates)
-    name = "rs7_inline7_lh.nif"
-    data, ops, info = nif_artifact(name, templates, 0, outputs_dir, index)
-    encoded = package(templates, [(name, data, ops)])
+    artifacts, info_all = [], {}
+    for name in k["nifs"]:
+        data, ops, info = nif_artifact(name, templates, 0, outputs_dir, index)
+        artifacts.append((name, data, ops))
+        info_all[name] = info
+    encoded = package(templates, artifacts)
     audit_runs(encoded, templates, index)
-    assert unpack(encoded, templates) == {name: data}
+    assert unpack(encoded, templates) == {n: d for n, d, _ in artifacts}
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "rs7string_headstock_lh.bin").write_bytes(encoded)
+    (dest / k["bin"]).write_bytes(encoded)
     audit = {
-        name: info,
+        **info_all,
         "package": dict(
             bytes=len(encoded),
             sha256=hashlib.sha256(encoded).hexdigest(),
-            templates=list(LH_NAMES),
+            templates=list(k["names"]),
             template_16_byte_runs=0,
             nif_literal_template_16_byte_runs=0,
         ),
     }
-    (dest / "audit_lh.json").write_text(json.dumps(audit, indent=2) + "\n", newline="\n")
+    (dest / k["audit"]).write_text(json.dumps(audit, indent=2) + "\n", newline="\n")
     print(json.dumps(audit, indent=2))
 
 
@@ -312,11 +340,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--templates", type=Path, default=TEMPLATES)
     ap.add_argument("--templates-lh", type=Path, default=TEMPLATES_LH)
-    ap.add_argument("--only", choices=("rh", "lh"), help="build just one package (default: both)")
+    ap.add_argument("--only", choices=("rh", *KITS), help="build just one package (default: all)")
     ap.add_argument("--outputs", type=Path, default=OUTPUTS)
     ap.add_argument("--dest", type=Path, default=DEST)
     args = ap.parse_args()
-    if args.only != "lh":
+    if args.only in (None, "rh"):
         generate(args.templates, args.outputs, args.dest)
-    if args.only != "rh":
-        generate_lh(args.templates_lh, args.outputs, args.dest)
+    for kit, k in KITS.items():
+        if args.only in (None, kit):
+            generate_kit(kit, args.templates_lh if kit == "lh" else k["templates"], args.outputs, args.dest)

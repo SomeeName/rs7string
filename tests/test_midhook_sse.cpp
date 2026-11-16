@@ -1,4 +1,4 @@
-// The sse mid-hook mode (Rs7Mid::Mode::Sse, ARCHITECTURE.md section 15 "Sse mode") on the hardware, the exact x87
+// The sse mid-hook mode (Rs7Mid::Mode::Sse, ARCHITECTURE.md section 14 "Sse mode") on the hardware, the exact x87
 // compare and ADD flag helpers W / R2 / R6 use, and the relocator's FCOMP m32. Hardware references are emitted
 // machine code (Asm), no inline assembly.
 #include "platform/midhook.h"

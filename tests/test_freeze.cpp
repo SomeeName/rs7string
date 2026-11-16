@@ -4,6 +4,7 @@
 #include "platform/isolate.h"
 #include "platform/patch.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstring>
 #include <string>
@@ -101,8 +102,7 @@ struct Parked {
     ~Parked() {
         if (h) {
             TerminateThread(h, 0);  // test only: the loop never returns
-            WaitForSingleObject(h, 2000);
-            CloseHandle(h);
+            rs7test::Join(h, 2000);
         }
 
         if (code) {
@@ -114,7 +114,7 @@ struct Parked {
 void Nothing(void*) {}
 }  // namespace
 
-TEST(freeze_lists_this_process_threads) {
+TIMING_TEST(freeze_lists_this_process_threads) {
     unsigned long ids[1024];
     const size_t n = Rs7_FreezeListThreads(ids, 1024);
     bool self = false;
@@ -127,8 +127,7 @@ TEST(freeze_lists_this_process_threads) {
     CHECK(self);
     Parked p;
 
-    CHECK(p.ready);
-    if (!p.ready) {
+    if (!rs7test::Ready(p.ready, "parked worker did not reach its loop")) {
         return;
     }
 
@@ -142,7 +141,7 @@ TEST(freeze_lists_this_process_threads) {
     CHECK(other);
 }
 
-TEST(freeze_stops_every_other_thread_while_fn_runs) {
+TIMING_TEST(freeze_stops_every_other_thread_while_fn_runs) {
     InterlockedExchange(&g_stop, 0);
     InterlockedExchange(&g_spin, 0);
     InterlockedExchange(&g_progressRequested, 1);
@@ -164,15 +163,8 @@ TEST(freeze_stops_every_other_thread_while_fn_runs) {
 
     const auto stopCounter = [&] {
         InterlockedExchange(&g_stop, 1);
-        const DWORD stopped = WaitForSingleObject(t, 5000);
-
-        CHECK_EQ(stopped, WAIT_OBJECT_0);
-        CloseHandle(t);
-        // On a failed join the worker may still be about to acknowledge progress. Keep its event
-        // alive until process exit rather than letting it signal a closed/reused handle.
-        if (stopped == WAIT_OBJECT_0) {
-            CloseHandle(progress);
-        }
+        rs7test::Join(t);
+        CloseHandle(progress);
     };
     const DWORD started = WaitForSingleObject(progress, 5000);
 
@@ -198,11 +190,10 @@ TEST(freeze_stops_every_other_thread_while_fn_runs) {
     stopCounter();
 }
 
-TEST(freeze_times_out_without_calling_fn_while_a_thread_stands_inside_a_range) {
+TIMING_TEST(freeze_times_out_without_calling_fn_while_a_thread_stands_inside_a_range) {
     Parked p;
 
-    CHECK(p.ready);
-    if (!p.ready) {
+    if (!rs7test::Ready(p.ready, "parked worker did not reach its loop")) {
         return;
     }
 
@@ -232,7 +223,7 @@ TEST(freeze_times_out_without_calling_fn_while_a_thread_stands_inside_a_range) {
     CHECK(!st.timedOut);
 }
 
-TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
+TIMING_TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
     // The isolate policy with ranges: a failing write restores the round inside the same freeze.
     static uint8_t buf[3][8];
 
@@ -283,7 +274,7 @@ TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
     ops.log = [&](const std::string& m) {
         x.log.push_back(m);
     };
-    const auto savedDg = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     std::vector<size_t> written;
@@ -301,7 +292,6 @@ TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
 
     CHECK_EQ(freezes, 2);  // one freeze per round, logged after it
     Rs7_ResetFeatureFailures();
-    g_rs7_diagrams = savedDg;
 }
 
 // ---- bounded thread control (startup hang, smoke frame-2: GetThreadContext blocked inside WoW64) ----------
@@ -331,8 +321,7 @@ struct Spinner {
         InterlockedExchange(&stop, 1);
 
         if (h) {
-            WaitForSingleObject(h, 5000);
-            CloseHandle(h);
+            rs7test::Join(h);
         }
     }
 
@@ -363,6 +352,12 @@ Spinner* g_victim = nullptr;
 volatile LONG g_hookStalls = 0;  // how many more calls on the victim should stall
 HANDLE g_releaseWedge = nullptr;
 unsigned g_suspendStallMs = 0;
+HANDLE g_completing = nullptr, g_finishCompletion = nullptr;
+
+void PauseCompletion() {
+    SetEvent(g_completing);
+    WaitForSingleObject(g_finishCompletion, 5000);
+}
 
 int WowLikeContext(void* h, unsigned long tid, void* c) {
     if (g_victim && tid == g_victim->tid && InterlockedCompareExchange(&g_hookStalls, 0, 0) > 0) {
@@ -380,6 +375,19 @@ int WowLikeContext(void* h, unsigned long tid, void* c) {
 int WedgedContext(void* h, unsigned long tid, void* c) {
     if (g_victim && tid == g_victim->tid) {
         WaitForSingleObject(g_releaseWedge, 10000);
+    }
+
+    return GetThreadContext(static_cast<HANDLE>(h), static_cast<CONTEXT*>(c));
+}
+
+// Stalls once until the coordinator abandons the attempt (resumes everything), however long the victim alone runs.
+int OnceWedgedContext(void* h, unsigned long tid, void* c) {
+    if (g_victim && tid == g_victim->tid && InterlockedCompareExchange(&g_hookStalls, 0, 0) > 0) {
+        InterlockedDecrement(&g_hookStalls);
+
+        while (!Rs7_FreezeAbortedForTests()) {
+            Sleep(1);
+        }
     }
 
     return GetThreadContext(static_cast<HANDLE>(h), static_cast<CONTEXT*>(c));
@@ -406,18 +414,25 @@ void ResetHooks() {
 }
 }  // namespace
 
-TEST(freeze_context_stall_resumes_everything_and_retries) {
+// WoW64's GetThreadContext waits for the target to reach a safe point while we hold it suspended: only the target
+// is let run, then suspended and read again; nothing else is resumed and the attempt is not abandoned.
+TIMING_TEST(freeze_context_stall_lets_only_the_target_run_and_reads_it_again) {
     Spinner v;
 
-    CHECK(v.h != nullptr && v.Moves());
+    CHECK(v.h != nullptr);
     if (!v.h) {
+        return;
+    }
+    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
     g_victim = &v;
-    InterlockedExchange(&g_hookStalls, 1);  // the first context read stalls, the retry does not
+    InterlockedExchange(&g_hookStalls, 1);  // the first context read stalls, the second does not
     Rs7_FreezeSetTestHooks(nullptr, &WowLikeContext);
-    Rs7_FreezeSetTiming(50, 2000);
+    // 150 ms, not 50: on a busy machine another thread of the test process can take 50 ms to stop and counts as a
+    // stall of its own.
+    Rs7_FreezeSetTiming(150, 2000);
     int calls = 0;
     Rs7FreezeStats st;
     const double t = NowMs();
@@ -427,13 +442,47 @@ TEST(freeze_context_stall_resumes_everything_and_retries) {
 
     ResetHooks();
     CHECK_EQ(calls, 1);
+    CHECK_EQ(st.stalls, 0u);
+    CHECK_EQ(st.released, 1u);
+    CHECK_EQ(st.nEvents, 0u);
+    CHECK(took < 1500.0);
+    CHECK_EQ(v.SuspendCount(), DWORD(0));  // balanced: nothing left suspended
+    CHECK(v.Moves());
+    char line[512];
+
+    Rs7_FreezeDescribe(st, line, sizeof line);
+    CHECK(std::strstr(line, "0 stalls, 1 released") != nullptr);
+}
+
+// A target that never gets past its stall even when let run alone: everything is resumed and the attempt retried.
+TIMING_TEST(freeze_context_stall_that_survives_the_release_resumes_everything_and_retries) {
+    Spinner v;
+
+    CHECK(v.h != nullptr);
+    if (!v.h) {
+        return;
+    }
+    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+        return;
+    }
+
+    g_victim = &v;
+    Rs7_FreezeSetTestHooks(nullptr, &OnceWedgedContext);
+    Rs7_FreezeSetTiming(150, 2000);
+    InterlockedExchange(&g_hookStalls, 1);
+    int calls = 0;
+    Rs7FreezeStats st;
+
+    CHECK(Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
+    ResetHooks();
+    CHECK_EQ(calls, 1);
     CHECK_EQ(st.stalls, 1u);
+    CHECK_EQ(st.released, 1u);
     CHECK_EQ(st.nEvents, 1u);
     CHECK_EQ(st.events[0].op, 'C');
     CHECK_EQ(st.events[0].tid, static_cast<unsigned long>(v.tid));
     CHECK(st.events[0].releaseMs >= 0.0f);
-    CHECK(took < 1500.0);
-    CHECK_EQ(v.SuspendCount(), DWORD(0));  // balanced: nothing left suspended
+    CHECK_EQ(v.SuspendCount(), DWORD(0));
     CHECK(v.Moves());
     char line[512];
 
@@ -442,11 +491,14 @@ TEST(freeze_context_stall_resumes_everything_and_retries) {
     CHECK(std::strstr(line, "stall 1: GetThreadContext") != nullptr);
 }
 
-TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_writing) {
+TIMING_TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_writing) {
     Spinner v;
 
-    CHECK(v.h != nullptr && v.Moves());
+    CHECK(v.h != nullptr);
     if (!v.h) {
+        return;
+    }
+    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
@@ -466,7 +518,8 @@ TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_writing) {
     CHECK(st.timedOut);
     CHECK(st.lastWasStall);
     CHECK(!st.wedged);
-    CHECK(st.stalls >= 2u);
+    CHECK(st.stalls >= 1u);
+    CHECK(st.released >= 2u);
     CHECK(took < 300.0 + 2000.0 + 500.0);  // deadline + one stall/grace, never unbounded
     CHECK_EQ(v.SuspendCount(), DWORD(0));
     CHECK(v.Moves());
@@ -477,11 +530,14 @@ TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_writing) {
     CHECK(std::strstr(line, "kept stalling") != nullptr);
 }
 
-TEST(freeze_wedged_reader_releases_threads_and_refuses_until_it_returns) {
+TIMING_TEST(freeze_wedged_reader_releases_threads_and_refuses_until_it_returns) {
     Spinner v;
 
-    CHECK(v.h != nullptr && v.Moves());
+    CHECK(v.h != nullptr);
     if (!v.h) {
+        return;
+    }
+    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
@@ -539,11 +595,14 @@ TEST(freeze_wedged_reader_releases_threads_and_refuses_until_it_returns) {
     g_releaseWedge = nullptr;
 }
 
-TEST(freeze_suspend_stall_resumes_what_the_reader_suspends_late) {
+TIMING_TEST(freeze_suspend_stall_resumes_what_the_reader_suspends_late) {
     Spinner v;
 
-    CHECK(v.h != nullptr && v.Moves());
+    CHECK(v.h != nullptr);
     if (!v.h) {
+        return;
+    }
+    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
@@ -551,7 +610,7 @@ TEST(freeze_suspend_stall_resumes_what_the_reader_suspends_late) {
     g_suspendStallMs = 300;
     InterlockedExchange(&g_hookStalls, 1);  // first SuspendThread on the victim takes 300 ms
     Rs7_FreezeSetTestHooks(&SlowSuspend, nullptr);
-    Rs7_FreezeSetTiming(50, 2000);
+    Rs7_FreezeSetTiming(150, 2000);
     int calls = 0;
     Rs7FreezeStats st;
 
@@ -564,4 +623,50 @@ TEST(freeze_suspend_stall_resumes_what_the_reader_suspends_late) {
     CHECK(st.events[0].releaseMs >= 0.0f);
     CHECK_EQ(v.SuspendCount(), DWORD(0));  // the late suspend was undone by the reader itself
     CHECK(v.Moves());
+}
+
+TIMING_TEST(freeze_keeps_a_returning_wedged_reader_busy_until_completion_is_published) {
+    Spinner v;
+
+    CHECK(v.h != nullptr && v.Moves());
+    if (!v.h) {
+        return;
+    }
+
+    g_releaseWedge = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_completing = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_finishCompletion = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_victim = &v;
+    Rs7_FreezeSetTestHooks(nullptr, &WedgedContext);
+    Rs7_FreezeSetCompletionHookForTests(PauseCompletion);
+    Rs7_FreezeSetTiming(50, 100);
+    int calls = 0;
+    Rs7FreezeStats st;
+
+    CHECK(!Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
+    CHECK(st.wedged);
+    SetEvent(g_releaseWedge);
+    CHECK_EQ(WaitForSingleObject(g_completing, 5000), WAIT_OBJECT_0);
+    CHECK(Rs7_FreezeReaderBusy());
+    // Release the publication hook before any CHECK that could run a new job on the unfixed code.
+    SetEvent(g_finishCompletion);
+
+    const ULONGLONG end = GetTickCount64() + 5000;
+
+    while (Rs7_FreezeReaderBusy() && GetTickCount64() < end) {
+        Sleep(1);
+    }
+
+    CHECK(!Rs7_FreezeReaderBusy());
+    // A normal freeze joins the reader after publication before the hooks and their events are removed.
+    CHECK(Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
+    Rs7_FreezeSetCompletionHookForTests(nullptr);
+    ResetHooks();
+    CHECK_EQ(calls, 1);
+    CHECK_EQ(v.SuspendCount(), DWORD(0));
+    CHECK(v.Moves());
+    CloseHandle(g_releaseWedge);
+    CloseHandle(g_completing);
+    CloseHandle(g_finishCompletion);
+    g_releaseWedge = g_completing = g_finishCompletion = nullptr;
 }

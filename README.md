@@ -1,33 +1,69 @@
 # rs7string
 
-**Native seven-string guitar support for Rocksmith 2014 Remastered.**
+**Seven- and eight-string guitars and five- and six-string basses for Rocksmith 2014 Remastered.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)](#requirements)
 [![Game: Rocksmith 2014 Remastered PC](https://img.shields.io/badge/game-Rocksmith%202014%20Remastered%20PC-orange.svg)](#requirements)
 [![Game build: September 2022](https://img.shields.io/badge/game%20build-Sept%202022-lightgrey.svg)](#requirements)
 [![Release](https://img.shields.io/github/v/release/SomeeName/rs7string?include_prereleases&label=release)](https://github.com/SomeeName/rs7string/releases)
+[![Docs](https://img.shields.io/badge/docs-someename.github.io%2Frs7string-8A2BE2.svg)](https://someename.github.io/rs7string/)
 
-rs7string is a small mod that adds a low B string to Rocksmith 2014 Remastered. You play
-seven-string charts on a seven-string highway, and notes on the low B string are detected and scored
-like any other note. Six-string songs and bass songs are not changed. The mod plays charts made for
-seven strings; it does not convert six-string charts.
+rs7string is a small mod that adds extra strings to Rocksmith 2014 Remastered: a low B (and a low F# on eight
+strings) for guitar, and a low B and high C for bass. You play on a highway with the right number of strings, and notes on the
+extra strings are detected and scored like any other note. Six-string guitar and four-string bass songs are not
+changed. The mod plays charts made for the extra strings; it does not convert six-string charts.
 
 > [!TIP]
-> Want to chart your own seven-string songs? [DotCharter](https://github.com/SomeeName/DotCharter)
-> is a free charting editor that exports seven-string arrangements in the format rs7string plays.
-> See [Making seven-string charts](#making-seven-string-charts).
+> **New: the documentation is now a website**, with search, a dark mode and a start page for players, chart makers
+> and developers: **[someename.github.io/rs7string](https://someename.github.io/rs7string/)**. The same pages are
+> also in this repository.
+>
+> Want to chart your own songs? [DotCharter](https://github.com/SomeeName/DotCharter) is a free charting editor
+> that exports seven- and eight-string guitar and five- and six-string bass arrangements in the format rs7string
+> plays. See [Making charts](#making-charts).
 
-<img width="1922" height="1107" alt="showcase" src="https://github.com/user-attachments/assets/f8ecad58-917e-4565-abb6-996a14270a64" />
+## Start here
 
-<details>
+<div class="grid cards" markdown>
+
+- **I want to play**
+
+    ---
+
+    Install the mod, load your first extended song and set it up the way you like.
+
+    [Install guide](docs/release/INSTALL.md) · [Settings](docs/release/SETTINGS.md) · [FAQ](#faq)
+
+- **I want to make charts**
+
+    ---
+
+    What a chart for seven or eight strings or a five- or six-string bass needs, and how to test it.
+
+    [Charting guide](docs/release/CHARTING.md) · [Chart tools](docs/release/CHART-TOOLS.md)
+
+- **I want to work on the code**
+
+    ---
+
+    How the mod works in five minutes, then building, testing and the full architecture.
+
+    [Developer start](docs/GETTING-STARTED.md) · [Development](docs/DEVELOPMENT.md)
+
+</div>
+
+<img width="1922" height="1107" alt="Rocksmith gameplay with rs7string" src="https://github.com/user-attachments/assets/f8ecad58-917e-4565-abb6-996a14270a64" />
+
+<details class="github-only" markdown="1">
 <summary><b>Contents</b></summary>
 
+- [Start here](#start-here)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick install](#quick-install)
 - [Known issues](#known-issues)
-- [Making seven-string charts](#making-seven-string-charts)
+- [Making charts](#making-charts)
 - [Settings](#settings)
 - [FAQ](#faq)
 - [How this project was made](#how-this-project-was-made)
@@ -39,16 +75,21 @@ seven strings; it does not convert six-string charts.
 
 ## Features
 
-- **Seven-string highway** with note detection and scoring on the low B string. Alternate tunings work.
-- **Own colour for the seventh string** (light grey by default), with a separate colourblind setting.
-- **Fret grid and fret bars** that span all seven strings.
-- **Seven-string tuner** that starts on low B. Song pages show names such as `B Standard 7Str`.
-- **Chords with the seventh string**: seven-row chord diagrams, finger numbers, open-string bars and
+- **Seven- and eight-string guitar** with note detection and scoring on every string. Alternate tunings work.
+- **Five- and six-string bass** (low B, and a high C on the six-string) with its own strings, frets and headstock.
+- **Local co-op**: each player gets their own instrument. Player 2 can play a seven- or eight-string guitar or a
+  five- or six-string bass.
+- **Low tunings** down to G0 are detected, with no workaround needed.
+- **More than five arrangements per song**, in scrolling lists, in single player and in co-op.
+- **Own colours for the extra strings**, with separate colourblind settings.
+- **Fret grid and fret bars** that span all the strings.
+- **Tuner** that starts on the lowest string. Song pages show names such as `B Standard 7Str`.
+- **Chords with the extra strings**: extra-row chord diagrams, finger numbers, open-string bars and
   technique visuals.
-- **Seven-peg headstock**, built on first start from your own installed game. Right- and left-handed
-  profiles are supported.
+- **Matching headstocks** (seven, eight or bass pegs), built on first start from your own installed game.
+  Right- and left-handed profiles are supported.
 - **Reversed string order** works on the highway, fret bars and floor bars.
-- **Plain PSARC loading built in**: any CDLC enabler for the supported game build works.
+- **Plain (unencrypted) CDLC packages load built in**: any CDLC enabler for the supported game build works.
 - **Freeze fix** for clicks in the CDLC enabler's console.
 - **F9 overlay** for settings and status while you play.
 
@@ -59,28 +100,30 @@ The full list is in the [changelog](docs/release/CHANGELOG.md).
 | You need | Notes |
 |---|---|
 | Rocksmith 2014 Remastered for PC (Steam) | **September 2022 build** only. Learn & Play is not supported. The mod checks the build at startup. |
-| A CDLC enabler for that build | Still needed so the game accepts custom songs. rs7string does not replace it. |
-| A seven-string guitar | And a working Rocksmith audio input. |
-| Seven-string charts | Made for rs7string, for example with [DotCharter](https://github.com/SomeeName/DotCharter). See [Making seven-string charts](#making-seven-string-charts). |
+| A CDLC enabler for that build | A separate mod that lets the game load custom songs (CDLC), for example [RSCDLCEnabler-TooManyCoresFix](https://github.com/Lovrom8/RSCDLCEnabler-TooManyCoresFix). rs7string does not replace it. |
+| A 7- or 8-string guitar, or a 5- or 6-string bass | And a working Rocksmith audio input. |
+| Extended charts | Made for rs7string, for example with [DotCharter](https://github.com/SomeeName/DotCharter). See [Making charts](#making-charts). |
 
 > [!NOTE]
-> RSMods and RS_ASIO are optional. rs7string works with or without them, and both were tested
-> together with it. macOS, Wine/Proton and Steam Deck have not been tested.
+> [RSMods](https://github.com/Lovrom8/RSMods) (a collection of game tweaks) and RS_ASIO (lets the game use
+> ASIO audio interfaces) are optional. rs7string works with or without them, and both were tested together with it. macOS, Wine/Proton and Steam Deck have not been tested.
 
 ## Quick install
 
 > [!IMPORTANT]
-> The download link will be added with the release.
+> Download the zip from the [latest release](https://github.com/SomeeName/rs7string/releases/latest).
 
-1. Close Rocksmith and back up any existing `dinput8.dll` in the game folder (the folder with
-   `Rocksmith2014.exe`).
+1. Close Rocksmith and back up any existing `dinput8.dll`, `rs7string.ini` and `chord-diagrams` folder in the
+   game folder (the folder with `Rocksmith2014.exe`). If `dinput8.dll` belongs to another mod, check
+   [compatibility](docs/release/INSTALL.md#compatibility) before replacing it.
 2. Install a CDLC enabler for the September 2022 build, following its own instructions.
-3. Copy these release files into the game folder: `dinput8.dll`, `rs7string.ini`,
-   `rs7string_headstock.bin`, `rs7string_headstock_lh.bin`, `rs7string_headstock.LICENSE.md` and the
+3. Unzip the release outside the game folder. From its `bin\Release` folder, copy these files into the game folder: `dinput8.dll`, `rs7string.ini`,
+   the four `rs7string_headstock*.bin` files, `rs7string_headstock.LICENSE.md` and the
    `chord-diagrams` folder.
-4. Put seven-string charts (`*_p.psarc`) into the game's `dlc` folder.
-5. Start the game. On first start the headstock builder creates the seven-string headstock from your
-   own install. Press **F9** to check the status.
+4. Put charts for the extra strings (`*_p.psarc`) into the game's `dlc` folder.
+5. Start the game and press **F9** to open the rs7string overlay (an in-game menu), then open
+   **Advanced > Status** to check that the mod is running. The first time the game loads a guitar (and later an
+   extended bass), the mod builds the headstocks from your own game files. That takes a moment, once.
 
 Details, checks, troubleshooting and uninstall: [install guide](docs/release/INSTALL.md).
 
@@ -88,97 +131,87 @@ Details, checks, troubleshooting and uninstall: [install guide](docs/release/INS
 
 | Issue | What to do |
 |---|---|
-| Local co-op: only player 1 gets the seven-string guitar. | Player 2 plays with six strings. Low-B notes cannot be hit by player 2. |
-| Eight-string charts are not supported yet. | Leave `[neck] eight=0`. |
-| Some generic chords from the game's chord database show six-row diagrams. | Cosmetic. Chords from the chart itself show seven rows. |
+| Local co-op with a guitar and a five- or six-string bass: the bass's low B is green, not grey. | Cosmetic: both share one string colour while a guitar plays. Single-player bass shows it grey. |
+| Some generic chords from the game's chord database show six-row diagrams. | Cosmetic. Chords from the chart itself show every string. |
 | Chord matching can accept low chords with missing notes. | A seven-note chord may miss up to two notes by default. See `[chords] wide_misses` in [SETTINGS](docs/release/SETTINGS.md). |
 | Tuner arrow keys work only in the precision view. | Play a note or press Space to enter it. |
-| The overlay does not block mouse input. | A click on the overlay can also reach the game. |
 | With the reversed string order, headstock strings 1-6 fade out before the posts do. | Cosmetic. |
 
 The install guide has the [full list of limits](docs/release/INSTALL.md#known-limitations).
-Technical limits are in [ARCHITECTURE.md](docs/ARCHITECTURE.md#14-known-limitations-and-open-risks-10).
+Technical limits are in [ARCHITECTURE.md](docs/architecture/13-known-limitations-and-open-risks.md#13-known-limitations-and-open-risks-10).
 
-## Making seven-string charts
+## Making charts
 
-Seven-string charts use the game's normal Lead or Rhythm arrangements with a seven-entry tuning.
+Charts for seven or eight strings use the game's normal Lead or Rhythm arrangements with a longer tuning. Five- and
+six-string bass charts are marked as extended bass.
 
 ### With DotCharter (recommended)
 
-[DotCharter](https://github.com/SomeeName/DotCharter) is a free charting editor and guitar game for
-Windows. It edits seven-string guitar arrangements like any other and exports them in the layout
-rs7string reads.
+[DotCharter](https://github.com/SomeeName/DotCharter) is a free charting editor and guitar game for Windows. It
+edits extended arrangements like any other and exports them in the layout rs7string reads.
 
-1. Download the latest [DotCharter release](https://github.com/SomeeName/DotCharter/releases/latest)
-   and unzip it.
+1. Download the latest [DotCharter release](https://github.com/SomeeName/DotCharter/releases/latest) and unzip it.
 2. Create or import a song (audio, Guitar Pro, Editor on Fire, Rocksmith XML or MIDI).
-3. In the arrangement's settings, set **Strings** to 7 and the tuning, for example B Standard.
-4. Chart as usual. The low B string is the seventh row in the editor and on the 3D highway.
+3. In the arrangement's settings, set the number of strings and the tuning, for example 7 strings in B Standard.
+4. Chart as usual. The extra strings are extra rows in the editor and on the 3D highway.
 5. Export as a Rocksmith package and copy the `*_p.psarc` into the game's `dlc` folder.
 
-Good to know:
+Extended arrangements are written as **plain (unencrypted) packages**, which rs7string loads built in next to a CDLC
+enabler. Chords keep their notes on the extra strings (the [RS7X block](docs/release/RS7X-SPEC.md)).
 
-- Seven-string arrangements are written as **plain (unencrypted) packages**. rs7string's built-in
-  plain-PSARC loading plays them together with a CDLC enabler for the September 2022 build.
-- Chord notes on the seventh string are stored in the song file's **RS7X block**, so chords stay
-  chords. For an rs7string build from before the RS7X block, turn on **Split 7th-string chords** in
-  the export dialog; those chord notes are then written as single notes.
-- Seven-string arrangements play on **Windows only**. Mac packages are six-string only.
-- Eight-string guitar arrangements are recognised, but not exported yet; rs7string plays seven
-  strings.
-- Bass arrangements and six-string arrangements in the same song export normally.
-
-### By hand or with your own tools
+### Other tools
 
 - **Chart authors:** read the [charting guide](docs/release/CHARTING.md).
-- **Tool authors:** the chord data format is in the [RS7X specification](docs/release/RS7X-SPEC.md).
+- **Tool authors:** start with the [chart tools guide](docs/release/CHART-TOOLS.md); the byte layout of the chord data is in the
+  [RS7X specification](docs/release/RS7X-SPEC.md).
 - **rs7chart**, the chart build and check tool, will be published later.
 
 ## Settings
 
-Most settings live in `rs7string.ini` next to `dinput8.dll`. Many can also be changed live in the
+Most settings live in `rs7string.ini` next to `dinput8.dll`. Many can also be changed in the
 **F9** overlay. Every key, its default and when it takes effect: [SETTINGS.md](docs/release/SETTINGS.md).
 
 ## FAQ
 
-<details>
+<details markdown="1">
 <summary><b>Does it work without RSMods or RS_ASIO?</b></summary>
 
-Yes. rs7string works with or without them. This was verified in game. Both were also tested together
-with rs7string.
+Yes. Both are optional and were tested with rs7string.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Does it support eight-string guitars?</b></summary>
 
-Not yet. Eight-string support is prepared internally but not playable. Leave `[neck] eight=0`.
+Yes. Eight-string charts get eight string lines, an eight-peg headstock, the tuner and scoring for the eighth
+string; no setting is needed. Seven-string songs are unchanged.
 
 </details>
 
-<details>
+<details markdown="1">
+<summary><b>Does it support five- and six-string bass?</b></summary>
+
+Yes. A bass chart marked as five-string (low B) or six-string (low B and high C) gets a bass with that many strings
+and a matching headstock. Four-string bass songs are unchanged.
+
+</details>
+
+<details markdown="1">
 <summary><b>Does it work in local co-op?</b></summary>
 
-Only player 1 gets the seven-string guitar. Player 2 plays with six strings.
+Yes. Each player gets their own instrument. Player 2 can play a seven- or eight-string guitar or a five- or
+six-string bass, and each player's notes, chords, tuner and scoring follow their own arrangement.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Can it play my six-string charts on a seven-string guitar?</b></summary>
 
-No. It plays charts made for seven strings. Renaming or retuning a six-string chart does not convert it.
+No. It plays charts made for the extra strings. Renaming or retuning a six-string chart does not convert it.
 
 </details>
 
-<details>
-<summary><b>How do I make my own seven-string charts?</b></summary>
-
-Use [DotCharter](https://github.com/SomeeName/DotCharter): set the arrangement to seven strings,
-chart it, and export a Rocksmith package. See [Making seven-string charts](#making-seven-string-charts).
-
-</details>
-
-<details>
+<details markdown="1">
 <summary><b>Is it safe and legal?</b></summary>
 
 - rs7string ships no Ubisoft assets and uses no Ubisoft encryption keys.
@@ -207,7 +240,7 @@ Expect rough edges, and please report them.
 
 Bug reports and pull requests are welcome.
 
-- **Bug reports:** open an issue and include your `rs7string.log`. Remove personal paths and do not
+- **Bug reports:** open an [issue](https://github.com/SomeeName/rs7string/issues) and include your `rs7string.log`. Remove personal paths and do not
   attach game files.
 - **Code and docs:** read [CONTRIBUTING.md](CONTRIBUTING.md). Build notes are in
   [DEVELOPMENT.md](docs/DEVELOPMENT.md), the design in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -220,9 +253,9 @@ Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 rs7string is released under the [MIT License](LICENSE).
 
-- The [chord-diagram recipes](data/chord-diagrams/LICENSE) and the
-  [headstock data](data/headstock/LICENSE.md) carry their own MIT licences.
-- Bundled libraries are in [third_party](third_party). See [NOTICE.md](NOTICE.md).
+- The [chord-diagram recipes](https://github.com/SomeeName/rs7string/blob/main/data/chord-diagrams/LICENSE) and the
+  [headstock data](https://github.com/SomeeName/rs7string/blob/main/data/headstock/LICENSE.md) carry their own MIT licences.
+- Bundled libraries are in [third_party](https://github.com/SomeeName/rs7string/tree/main/third_party). See [NOTICE.md](NOTICE.md).
 
 Rocksmith is a trademark of Ubisoft. This project is not affiliated with or endorsed by Ubisoft.
 Thanks to the authors of the Rocksmith CDLC enablers, [RSMods](https://github.com/Lovrom8/RSMods),

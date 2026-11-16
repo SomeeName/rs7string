@@ -1,4 +1,4 @@
-"""Reproduce issue #20 signatures from the unpacked analysis copy (read-only).
+"""Reproduce the chord-diagram signatures from the unpacked analysis copy (read-only).
 
 Run once from this checkout: uv run python tools/diagrams_sites.py
 Writes only sites.json here. Never reads protected archives or uses keys.
@@ -40,7 +40,7 @@ def main():
             pattern=b.hex(" ").upper(),
             offset="0x0",
             expect=b[:n].hex(" ").upper(),
-            note=f"CONFIRMED 0x{va:06X}: issue #20 chord diagrams; diagrams7 gates all writes",
+            note=f"CONFIRMED 0x{va:06X}: chord diagrams; diagrams7 gates all writes",
         )
         if not ident.startswith("X_"):
             entry["length"] = n

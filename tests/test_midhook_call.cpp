@@ -1,4 +1,4 @@
-// Call-site mid-hooks (Rs7Mid_BuildCall, Hook::PrepareCall; ARCHITECTURE.md section 15 "Call sites"): a small caller
+// Call-site mid-hooks (Rs7Mid_BuildCall, Hook::PrepareCall; ARCHITECTURE.md section 14 "Call sites"): a small caller
 // `push imm32; call callee; ret` runs stock and hooked on identical registers and flags. The callee is
 // `inc [g_calleeRuns]; mov eax,[esp+4]; add eax,ecx; ret 4` (stdcall-like cleanup, flags from the ADD).
 #include "midhook_run.h"
@@ -240,7 +240,7 @@ void __cdecl AddArg(Rs7Mid::Context& c) {
 }
 }  // namespace
 
-// Call-in entries (Rs7Mid::CallIn; ARCHITECTURE.md section 15 "Call-in entries"): the call entry with a `ret N`
+// Call-in entries (Rs7Mid::CallIn; ARCHITECTURE.md section 14 "Call-in entries"): the call entry with a `ret N`
 // continuation, no callee.
 TEST(midhook_callin_build_sizes_and_rejections) {
     uint8_t out[32]{};
@@ -262,9 +262,11 @@ TEST(midhook_callin_returns_to_the_caller_with_the_edited_registers) {
         Page page;
         Rs7Mid::CallIn callIn{&AddArg, mode, 4};
 
-        CHECK(page.p && callIn.Entry() != 0);
-        CHECK_EQ(callIn.Entry(), callIn.Entry());  // built once
-        page.Caller(16, callIn.Entry());
+        const uintptr_t entry = callIn.Entry();
+
+        CHECK(page.p && entry != 0);
+        CHECK_EQ(callIn.Entry(), entry);  // built once: a later call returns the first entry
+        page.Caller(16, entry);
 
         for (const uint32_t flags : kFlagPatterns) {
             Regs stock = Run(page.Stock(), flags);

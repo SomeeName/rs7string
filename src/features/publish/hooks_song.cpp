@@ -2,14 +2,12 @@
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
 #include "features/strings/strings.h"
+#include "model/instrument.h"
+#include "platform/field.h"
 #include "platform/log.h"
-#include <intrin.h>
 
 namespace {
-template <class T>
-T& At(uint8_t* p, unsigned off) {
-    return *reinterpret_cast<T*>(p + off);
-}
+using rs7mem::UncheckedField;
 }  // namespace
 
 // Lifecycle log line (capped). Exported so the emulator tests can stub it (no Win32 there).
@@ -17,7 +15,7 @@ extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rs7Song_Note(
                                                                                 unsigned a, unsigned b) {
     static volatile long lines = 0;
 
-    if (_InterlockedIncrement(&lines) <= 200) {
+    if (Rs7Log_Upto(&lines, 200)) {
         Rs7Log("song detector: %s (info %p, %u, %u)", what, info, a, b);
     }
 }
@@ -39,7 +37,7 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
     }
 
     auto* det = static_cast<uint8_t*>(detector);
-    const bool bass = At<int>(det, rs7::kDetInstrument) == 2;
+    const bool bass = rs7::IsBassKind(UncheckedField<int>(det, rs7::kDetInstrument));
     const unsigned count = rs7pubstate::Count(n, bass);
 
     Rs7Pitch_SetSongCount(det, 0);  // a previous song of this detector does not carry over
@@ -47,15 +45,15 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
         return;  // the stock width: nothing to widen
     }
 
-    auto* guitar = At<uint8_t*>(static_cast<uint8_t*>(session), rs7::kSessionGuitar);
-    auto* info = guitar ? At<uint8_t*>(guitar, 0x24) : nullptr;
+    auto* guitar = UncheckedField<uint8_t*>(static_cast<uint8_t*>(session), rs7::kSessionGuitar);
+    auto* info = rs7::GuitarInfo(guitar);
 
     if (!Rs7Gs_InfoNative(info)) {
         Rs7Song_Note("not widened: the guitar's InstrumentInfo is not native", info, count, 0);
         return;
     }
 
-    // Review F3: GridBuild gave up on this guitar's cells 6/7 (5 s timeout): no neck geometry for the extra strings, so
+    // GridBuild gave up on this guitar's cells 6/7 (5 s timeout): no neck geometry for the extra strings, so
     // the song stays at the stock width instead of scoring strings that cannot be drawn.
     if (Rs7Publish_NeckFailed(guitar)) {
         Rs7Song_Note("not widened: the neck of this guitar failed (GridBuild timed out without cells 6/7)", info, count,
@@ -63,7 +61,7 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
         return;
     }
 
-    const unsigned built = At<uint8_t>(info, 0x0B);
+    const unsigned built = UncheckedField<uint8_t>(info, rs7::kInfoStrings);
 
     if (built != count) {
         Rs7Song_Note("not widened: the guitar was built with another string count (song, guitar)", info, count, built);
@@ -84,7 +82,7 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
     const int lowest = rs7pubstate::Lowest(tuning, count, false);
 
     Rs7Pitch_SetSongCount(det, count);
-    At<uint32_t>(det, rs7p::kDetCount) = count;
-    At<int>(det, rs7::kDetLowestOpen) = lowest;
+    UncheckedField<uint32_t>(det, rs7p::kDetCount) = count;
+    UncheckedField<int>(det, rs7::kDetLowestOpen) = lowest;
     Rs7Song_Note("detector widened", info, count, unsigned(lowest));
 }

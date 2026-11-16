@@ -1,6 +1,7 @@
-#include "features/scene/scene.h"
 #include "features/testdrive/testdrive.h"
+#include "model/gamestring.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <cstring>
 
@@ -8,12 +9,10 @@ namespace {
 constexpr DWORD kPollMs = 100;
 constexpr size_t kNameCap = 64;
 
-using rs7s7d::SafeCopy;
-
 uint32_t ReadPtr(uintptr_t a) {
     uint32_t v = 0;
 
-    return SafeCopy(&v, reinterpret_cast<const void*>(a), 4) ? v : 0;
+    return Rs7_SafeCopyZero(&v, reinterpret_cast<const void*>(a), 4) ? v : 0;
 }
 
 DWORD WINAPI Poller(LPVOID) {
@@ -35,6 +34,10 @@ DWORD WINAPI Poller(LPVOID) {
 }  // namespace
 
 bool Rs7Ui_ReadState(uintptr_t global, char* out, size_t cap) {
+    if (!out || !cap) {
+        return false;
+    }
+
     out[0] = 0;
     const uint32_t manager = ReadPtr(global);
     const uint32_t state = manager ? ReadPtr(manager + kUiStateCurrent) : 0;
@@ -43,18 +46,11 @@ bool Rs7Ui_ReadState(uintptr_t global, char* out, size_t cap) {
         return false;
     }
 
-    const uintptr_t str = state + kUiStateName;
-    const uint32_t text = ReadPtr(str + 0x14) == str + 0x10 ? uint32_t(str) : ReadPtr(str);
-    const uint32_t end = ReadPtr(str + 0x10);
-
-    if (!text || end <= text || end - text >= cap || end - text >= kNameCap) {
-        return false;
-    }
-
     char buf[kNameCap];
-    const size_t n = end - text;
-
-    if (!SafeCopy(buf, reinterpret_cast<const void*>(uintptr_t(text)), n)) {
+    size_t n = 0;
+    const size_t limit = cap < kNameCap ? cap : kNameCap;
+    if (!rs7::ReadGameString(reinterpret_cast<const void*>(uintptr_t(state + kUiStateName)), buf, limit, false, &n) ||
+        !n) {
         return false;
     }
 

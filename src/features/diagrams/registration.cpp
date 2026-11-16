@@ -3,6 +3,7 @@
 // Diagrams; the X_D* refs (the game's dictionary functions GamePut calls) are data references and stay in the Core
 // group (Rs7_FeatureOf).
 #include "features/diagrams/diagrams.h"
+#include "model/gates.h"
 #include "model/groups.h"
 
 extern "C" {
@@ -16,14 +17,14 @@ extern uintptr_t g_rs7_dkey, g_rs7_dnumber, g_rs7_dset, g_rs7_ddrop;
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"DGM", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_DGM},
-    {"DGB", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_DGB},
-    {"DGS", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_DGS},
-    {"TP13", nullptr, &g_rs7_resume_TP13, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP13},
-    {"X_DKEY", nullptr, nullptr, &g_rs7_dkey, false, true},
-    {"X_DNUMBER", nullptr, nullptr, &g_rs7_dnumber, false, true},
-    {"X_DSET", nullptr, nullptr, &g_rs7_dset, false, true},
-    {"X_DDROP", nullptr, nullptr, &g_rs7_ddrop, false, true},
+    Rs7_Mid("DGM", &Rs7_Mid_DGM).Gate(kRs7GateDiagrams),
+    Rs7_Mid("DGB", &Rs7_Mid_DGB).Gate(kRs7GateDiagrams),
+    Rs7_Mid("DGS", &Rs7_Mid_DGS).Gate(kRs7GateDiagrams),
+    Rs7_Mid("TP13", &Rs7_Mid_TP13, &g_rs7_resume_TP13).Gate(kRs7GateDiagrams),
+    Rs7_Ref("X_DKEY", &g_rs7_dkey),
+    Rs7_Ref("X_DNUMBER", &g_rs7_dnumber),
+    Rs7_Ref("X_DSET", &g_rs7_dset),
+    Rs7_Ref("X_DDROP", &g_rs7_ddrop),
 };
 }  // namespace
 

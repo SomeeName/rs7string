@@ -20,7 +20,6 @@ extern const Target kTargets[];
 extern const size_t kTargetCount;
 
 int Rs7x(const uint8_t* d, size_t n);
-int Dxt(const uint8_t* d, size_t n);
 int Settings(const uint8_t* d, size_t n);
 int Ini(const uint8_t* d, size_t n);
 int Text(const uint8_t* d, size_t n);
@@ -28,14 +27,23 @@ int Package(const uint8_t* d, size_t n);
 int Nif(const uint8_t* d, size_t n);
 int Dds(const uint8_t* d, size_t n);
 int Recipe(const uint8_t* d, size_t n);
+int Nslot(const uint8_t* d, size_t n);
+int Plain(const uint8_t* d, size_t n);
+int Pattern(const uint8_t* d, size_t n);
+int TuningName(const uint8_t* d, size_t n);
+int Redact(const uint8_t* d, size_t n);
 Seeds Rs7xSeeds();
-Seeds DxtSeeds();
 Seeds SettingsSeeds();
 Seeds IniSeeds();
 Seeds TextSeeds();
 Seeds NoSeeds();
 Seeds DdsSeeds();
 Seeds RecipeSeeds();
+Seeds NslotSeeds();
+Seeds PlainSeeds();
+Seeds PatternSeeds();
+Seeds TuningNameSeeds();
+Seeds RedactSeeds();
 
 // Helpers for the targets.
 std::vector<uint8_t> Bytes(const std::string& s);

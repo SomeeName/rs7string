@@ -2,13 +2,87 @@
 #include "d3d/swap.h"
 #include "d3d/worker.h"
 #include "features/colours/colours.h"
-#include "platform/dxt.h"
 #include "swap_fixture.h"
 #include "test.h"
 #include <cstring>
 #include <vector>
 
 using namespace rs7swapfix;
+
+TEST(d3d_recolour_retries_the_same_colours_after_a_failed_write) {
+    Device d;
+    if (!rs7d3d::Have(d)) {
+        return;
+    }
+
+    Begin();
+    const auto lv = Stock(2);
+    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, lv);
+
+    Add(stock);
+    CHECK(Rs7Swap_InstallOn(d.dev));
+    d.dev->SetTexture(0, stock);
+    auto* ours = static_cast<IDirect3DTexture9*>(Rs7Cand_Find(stock)->ours);
+    D3DLOCKED_RECT locked{};
+    const HRESULT lockHr = ours->LockRect(0, &locked, nullptr, 0);
+
+    CHECK(SUCCEEDED(lockHr));
+    const Rs7SwapCfg next = {{0x112233, 0xFF8000}};
+    Capturing cap;
+
+    Rs7Swap_RequestRecolour(next.rgb);
+    d.dev->SetTexture(2, nullptr);
+    CHECK(Logged("ramp: recolour of copy", "failed"));
+    // Another identical stock must not share the copy whose repaint failed.
+    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, lv);
+
+    Add(other);
+    d.dev->SetTexture(1, other);
+    auto* current = static_cast<IDirect3DTexture9*>(Rs7Cand_Find(other)->ours);
+
+    CHECK(current && current != ours);
+    // A successful current-generation copy must not be repainted when retrying the failed one.
+    D3DLOCKED_RECT currentLocked{};
+    const HRESULT currentHr = current ? current->LockRect(0, &currentLocked, nullptr, 0) : E_FAIL;
+
+    CHECK(SUCCEEDED(currentHr));
+    if (SUCCEEDED(lockHr)) {
+        CHECK(SUCCEEDED(ours->UnlockRect(0)));
+    }
+
+    Lines().clear();
+    Rs7Swap_RequestRecolour(next.rgb);
+    d.dev->SetTexture(2, nullptr);
+    CHECK(Logged("ramp: recoloured 2 copies", "0 failed"));
+    if (current && SUCCEEDED(currentHr)) {
+        CHECK(SUCCEEDED(current->UnlockRect(0)));
+    }
+    CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(lv, next)));
+    End(d.dev);
+    CHECK_EQ(other->Release(), 0ul);
+    CHECK_EQ(stock->Release(), 0ul);
+}
+
+TEST(d3d_reconcile_retires_a_refusal_when_the_engine_object_changes) {
+    Begin();
+    void* const tex = reinterpret_cast<void*>(0x10000000);
+
+    CHECK(Rs7Cand_Add(tex, Rs7Family::Note, "note_gradient_map.dds", 0x1000) >= 0);
+    Rs7Cand_Find(tex)->state = Rs7CandState::Refused;
+    Rs7TexWalk walk;
+    Rs7TexFound found{};
+
+    found.d3d = reinterpret_cast<uintptr_t>(tex);
+    found.family = Rs7Family::Note;
+    found.obj = 0x2000;
+    walk.found.push_back(found);
+    Rs7Ramp_Reconcile(walk);
+    CHECK(Rs7Cand_Find(tex) == nullptr);
+    CHECK(Rs7Cand_Add(tex, found.family, "note_gradient_map.dds", found.obj) >= 0);
+    CHECK(Rs7Cand_Find(tex)->state == Rs7CandState::Pending);
+    CHECK_EQ(Rs7Cand_Find(tex)->obj, uintptr_t(0x2000));
+    Rs7Cand_ResetForTests();
+}
 
 TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
     Device d;
@@ -54,7 +128,7 @@ TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
     CHECK(V6On());
     CHECK(Rs7Cand_Find(stock) && Rs7Cand_Find(stock)->state == Rs7CandState::Active);
     CHECK(Logged("ramp: process note", "fmt=22 256x128 levels=1 pool=1"));
-    CHECK(Logged("ramp: built", "self-check exact=1 v6-pure=1 changed-lines=4"));
+    CHECK(Logged("ramp: built", "self-check exact=1 v6-pure=1 changed-lines=8"));
     CHECK(Logged("ramp: V6 ON"));
     End(d.dev);
     CHECK_EQ(stock->Release(), 0ul);  // every reference we took is gone again
@@ -123,7 +197,7 @@ TEST(d3d_default_pool_stock_is_refused_and_v6_stays_off) {
     CHECK_EQ(stock->Release(), 0ul);
 }
 
-TEST(d3d_dxt1_refused_unless_allow_inexact) {
+TEST(d3d_dxt1_ramp_refused) {
     Device d;
     if (!rs7d3d::Have(d)) {
         return;
@@ -136,39 +210,6 @@ TEST(d3d_dxt1_refused_unless_allow_inexact) {
         return;
     }
 
-    std::vector<uint8_t> blocks;
-    D3DLOCKED_RECT lr{};
-
-    if (SUCCEEDED(stock->LockRect(0, &lr, nullptr, 0))) {
-        for (unsigned by = 0; by < 32; ++by) {
-            for (unsigned bx = 0; bx < 64; ++bx) {
-                uint8_t* b = static_cast<uint8_t*>(lr.pBits) + by * lr.Pitch + bx * 8;
-                const uint16_t c0 = uint16_t(0xF800 | (bx << 5)), c1 = uint16_t(0x001F | (by << 6));
-
-                std::memcpy(b, &c0, 2);
-                std::memcpy(b + 2, &c1, 2);
-                const uint32_t idx = 0xE4E4E4E4u ^ (bx * 0x01010101u);
-
-                std::memcpy(b + 4, &idx, 4);
-            }
-        }
-
-        blocks.resize(size_t(lr.Pitch) * 32);
-        std::memcpy(blocks.data(), lr.pBits, blocks.size());
-        const INT pitch = lr.Pitch;
-
-        stock->UnlockRect(0);
-        lr.Pitch = pitch;
-    }
-
-    std::vector<Rs7Image> decoded(1);
-
-    decoded[0].w = 256;
-    decoded[0].h = 128;
-    decoded[0].px.resize(256 * 128);
-    CHECK(Rs7_DecodeDxt(blocks.data(), blocks.size(), size_t(lr.Pitch), 256, 128, false, decoded[0].px.data(),
-                        decoded[0].px.size()));
-
     Begin();
     Add(stock);
     Rs7Swap_InstallOn(d.dev);
@@ -178,33 +219,10 @@ TEST(d3d_dxt1_refused_unless_allow_inexact) {
 
         d.dev->SetTexture(0, stock);
         CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Refused);
-        CHECK(Logged("ramp: refuse note", "allow_inexact"));
+        CHECK(Logged("ramp: refuse note", "DXT ramps are not copied"));
         CHECK(RawBound(d.dev, 0) == static_cast<IDirect3DBaseTexture9*>(stock));
     }
 
-    End(d.dev);
-
-    Rs7SwapCfg inexact = kCfg;
-
-    inexact.allowInexact = true;
-    Begin(inexact);
-    Add(stock);
-    Rs7Swap_InstallOn(d.dev);
-    d.dev->SetTexture(0, stock);
-    Rs7Cand* c = Rs7Cand_Find(stock);
-
-    CHECK(c && c->state == Rs7CandState::Active);
-
-    if (c && c->ours) {
-        auto* ours = static_cast<IDirect3DTexture9*>(c->ours);
-        D3DSURFACE_DESC od{};
-
-        ours->GetLevelDesc(0, &od);
-        CHECK(od.Format == D3DFMT_A8R8G8B8);
-        CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(decoded, inexact)));
-    }
-
-    CHECK(V6On());
     End(d.dev);
     CHECK_EQ(stock->Release(), 0ul);
 }
@@ -249,7 +267,7 @@ TEST(d3d_recolour_repaints_the_live_copy) {
     IDirect3DBaseTexture9* raw = RawBound(d.dev, 1);
 
     CHECK(raw != nullptr && raw != static_cast<IDirect3DBaseTexture9*>(a));
-    const Rs7SwapCfg next = {{0x112233, 0xFF8000}, false};
+    const Rs7SwapCfg next = {{0x112233, 0xFF8000}};
 
     Rs7Swap_RequestRecolour(next.rgb);
     Capturing cap;
@@ -301,7 +319,7 @@ TEST(d3d_recolour_repaints_the_live_copy) {
     CHECK_EQ(b->Release(), 0ul);
 }
 
-// ---- Batch B review: stale candidates -----------------------------------------------------------
+// ---- stale candidates --------------------------------------------------------------------------
 
 TEST(d3d_stale_candidate_is_retired_not_swapped) {
     Device d;
@@ -373,6 +391,7 @@ TEST(d3d_gone_active_candidate_is_released_on_the_render_thread) {
     Rs7TexFound f{};
 
     f.d3d = reinterpret_cast<uintptr_t>(stock);
+    f.obj = 0x1000;
     f.family = Rs7Family::Note;
     listed.found.push_back(f);
     Rs7Ramp_Reconcile(listed);  // listed again: the count restarts
@@ -407,11 +426,12 @@ TEST(d3d_refused_candidate_gone_from_the_list_unblocks_v6) {
     Rs7Swap_InstallOn(d.dev);
     d.dev->SetTexture(0, note);
     d.dev->SetTexture(1, bad);
-    CHECK(V6Off());  // a refused additive keeps V6 off (D6)
+    CHECK(V6Off());  // a refused additive keeps V6 off
     Rs7TexWalk w;
     Rs7TexFound f{};
 
     f.d3d = reinterpret_cast<uintptr_t>(note);
+    f.obj = 0x1000;
     f.family = Rs7Family::Note;
     w.found.push_back(f);
     Capturing cap;

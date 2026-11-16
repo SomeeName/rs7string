@@ -1,9 +1,9 @@
 // Template / ChordNotes pointer redirects (nslot.h): every stride site that turns a template id into
 // `begin + id * 48h` (a ChordNotes id into `begin + id * 948h`) gets the song's superset record instead (T8 / C8,
-// Rs7Ns_TplRecord / Rs7Ns_CnRecord: the stock record when the vector is not registered). Each callback skips the
+// Rs7Ns_TplRecord / Rs7Ns_CnRecord: an empty superset when the vector is not registered). Each callback skips the
 // replay and does the replaced instructions' other work itself (the scratch register = id * 9 / id * 948h).
 //
-// Mid-hooks converted from naked stubs (refactor step 7, frozen at b8c0ed7, tools/tests/test_midhook_nslot.py).
+// Mid-hooks converted from naked stubs (frozen at b8c0ed7, tools/tests/test_midhook_nslot.py).
 // Light mode (integer only, LIGHT_CALLBACKS in tools/tests/emu_harness.py) for the play-time sites; TP11 and DS1 run
 // on the loader thread (SNG_Song_PostProcessNotes) and use full mode. The old stubs left the lookup's flags; no
 // continuation reads them (contract "free").
@@ -112,7 +112,8 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TP12(Context& c) {
 // DS1 - double-stop count over the T8 frets. 0x55B9ED in SNG_Song_PostProcessNotes (ECX = chord id, ESI = template
 // vector begin): `lea ecx,[ecx+ecx*8]; xor edx,edx; lea eax,[esi+ecx*8+4]; lea ecx,[edx+6]` sets up the count of
 // frets != -1 over the template's six frets (the note gets 0x02000000 when it is 2). Here: EAX / ECX = the frets and
-// count of rs7ns::DoubleStopSpan (a T8: frets[8] over 7 strings; an unregistered vector: the stock +4 over 6), EDX = 0.
+// count of rs7ns::DoubleStopSpan (a T8: frets[8] over all 8 strings; an unregistered vector: an empty T8), EDX
+// = 0.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_DS1(Context& c) {
     const rs7ns::FretSpan span = rs7ns::DoubleStopSpan(c.esi, c.ecx, Rs7Ns_TplRecord(c.esi, c.ecx));
 

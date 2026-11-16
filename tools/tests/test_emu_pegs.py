@@ -40,13 +40,13 @@ pytestmark = needs_emu
 
 
 HEAD_MEM = DATA + 0x30000  # guitar / headstock / PegSet for the native PegSet tests
-PEG_MAGIC = 0x50375352  # "RS7P" at PegSet +1D0h (features/headstock/pegset.h; diagnostic only, review #1)
+PEG_MAGIC = 0x50375352  # "RS7P" at PegSet +1D0h (features/headstock/pegset.h; diagnostic only)
 PEG_OWNERS = 64  # RS7_PEG_OWNERS: the native PegSet ownership table g_rs7_pegsets
 PEG_MODES = ["native", "stock", "stale-tail"]  # registered / boot PegSet / rs7 tail bytes but not registered
 
 
 def set_owners(emu: Emu, *pegsets: int):
-    """g_rs7_pegsets = pegsets (the rest free). Native identification is this table only (review #1)."""
+    """g_rs7_pegsets = pegsets (the rest free). Native identification is this table only."""
     tbl = list(pegsets) + [0] * (PEG_OWNERS - len(pegsets))
     emu.uc.mem_write(emu.exports["g_rs7_pegsets"], struct.pack(f"<{PEG_OWNERS}I", *tbl))
 
@@ -116,7 +116,7 @@ def test_psc1_ctor_is_stock_for_the_six_and_extends_to_eight(emus, pegs):
     assert patched[0x1CC:0x1D0] == bytes([8, 0, 0, 0])
     assert struct.unpack_from("<I", patched, 0x1D0)[0] == PEG_MAGIC
     assert stock[0x15C:0x1D4] == b"\xcd" * 0x78  # stock writes nothing past its 0x15C bytes
-    assert owners(emus[1]) == [HEAD_MEM] and owners(emus[0]) == []  # PSC1 registered it (review #1)
+    assert owners(emus[1]) == [HEAD_MEM] and owners(emus[0]) == []  # PSC1 registered it
 
 
 def test_psc1_full_ownership_table_leaves_the_pegset_stock(emus, pegs):
@@ -186,7 +186,7 @@ def test_psd_dtor_releases_eight_slots_in_the_stock_order(emus, pegs, mode):
 
 
 def peg_img(count: int, tail: bool) -> bytes:
-    """tail: the rs7 tail bytes (capacity 8, magic) - which do not make a PegSet native (review #1)."""
+    """tail: the rs7 tail bytes (capacity 8, magic) - which do not make a PegSet native."""
     img = bytearray(0x1D4)
     struct.pack_into("<H", img, 4, count)
     if tail:
@@ -300,7 +300,7 @@ def edge_page(emus):
 @pytest.fixture
 def edge_pegset(edge_page, pegs):
     """A stock (boot) PegSet whose 15Ch bytes end exactly at the end of a mapped page with nothing
-    readable after it: any read of the old +1CCh/+1D0h tail check faults (review #1)."""
+    readable after it: any read of the old +1CCh/+1D0h tail check faults."""
     return edge_page - 0x15C
 
 
@@ -344,21 +344,34 @@ def test_peg_bounds_stock_pegset_at_a_page_end(emus, edge_pegset, sid):
 
 
 @pytest.mark.parametrize(
-    "count,mode,want", [(6, "native", 7), (4, "native", 4), (6, "stock", 6), (6, "stale-tail", 6), (5, "native", 5)]
+    "count,mode,kind,want",
+    [
+        (6, "native", 1, 7),
+        (4, "native", 2, 4),
+        (6, "native", 2, 6),
+        (6, "stock", 1, 6),
+        (6, "stale-tail", 1, 6),
+        (5, "native", 2, 5),
+        (7, "native", 1, 7),
+        (8, "native", 1, 7),
+        (8, "stock", 1, 8),
+    ],
 )
-def test_psl1_load_count(emus, pegs, head_on, count, mode, want):
+def test_psl1_load_count(emus, pegs, head_on, count, mode, kind, want):
     """A 6-string guitar's native PegSet loads 7 (switch on); bass, a PegSet constructed before the
-    patch (with or without rs7 tail bytes) and the switch off load the instrument's count. ECX = 0."""
+    patch (with or without rs7 tail bytes) and the switch off load the instrument's count. An 8-string
+    guitar's native PegSet loads 7 with the switch on or off (no model seats an 8th peg). ECX = 0."""
     info, ps = HEAD_MEM + 0x400, HEAD_MEM
     own_for(emus, ps, mode)
     img = bytearray(peg_img(0, mode != "stock"))
     inf = bytearray(0x40)
+    inf[0] = kind
     inf[0x0B] = count
     stock, patched = run_s7_site(
         emus, "PSL1", {UC_X86_REG_EDI: info, UC_X86_REG_EBX: ps}, {ps: bytes(img), info: bytes(inf)}
     )
     assert stock[0][0] == count and stock[0][2] == 0
-    exp = want if head_on else count
+    exp = want if head_on or (count > 7 and mode == "native") else count
     assert patched[0][0] == exp and patched[0][1:] == stock[0][1:] and patched[2:] == stock[2:]
 
 
@@ -476,7 +489,7 @@ def run_psl2(emus, img: bytes):
 
 def test_psl2_is_a_call_site_not_a_jmp_over_0x59c611():
     """0x59C587 `jne 0x59C615` enters 0x59C611's second instruction: PSL2 must leave 0x59C611..0x59C617
-    alone (the issue #18 boot crash) and redirect only the call at 0x59C60C."""
+    alone (the boot crash) and redirect only the call at 0x59C60C."""
     site = next(s for s in sitetable.load(SITES)[1] if s.id == "PSL2")
     assert site.kind == "call" and site_va("PSL2") == 0x59C60C
 

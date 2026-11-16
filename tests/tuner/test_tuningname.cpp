@@ -1,14 +1,43 @@
 #include "config_fixture.h"
 #include "features/tuner/hooks.h"
+#include "features/tuner/state.h"
 #include "features/tuner/tuningname.h"
 #include "tempfile.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 
 using rs7tn::Name7;
+
+TEST(tuningname_active_calls_are_private_to_each_thread) {
+    rs7test::Restore restore_names(g_rs7_tn_on);
+    uint8_t out[0x18] = {};
+    uint32_t handles[rs7tuner::kNameCalls] = {};
+    int opened = 0;
+
+    g_rs7_tn_on = 1;
+    const uint32_t outer = Rs7_TnUuidPre(out);
+
+    CHECK(outer != 0);
+    std::thread worker([&]() {
+        for (auto& h : handles) {
+            h = Rs7_TnUuidPre(out);
+            opened += h != 0;
+        }
+
+        for (int i = rs7tuner::kNameCalls - 1; i >= 0; --i) {
+            Rs7_TnUuidPost(handles[i]);
+        }
+    });
+
+    worker.join();
+    CHECK_EQ(opened, rs7tuner::kNameCalls);
+    Rs7_TnUuidPost(outer);
+}
 
 namespace {
 // t = strings 0..5 all k, the 7th string t6.
@@ -104,7 +133,7 @@ TEST(tuningname_alternate_near_misses_are_unknown) {
 
 TEST(tuningname_unknown_7th_string_offsets) {
     for (const Row& r : kOwnerList) {
-        for (int d : {-3, -1, 1, 2, 5, -12, 12}) {  // only k and k - 2 are names
+        for (int d : {-6, -1, 1, 2, 5, -12, 12}) {  // only k, k - 2 and k - 3 .. k - 5 are names
             CHECK(Uniform(r.k, r.k + d) == nullptr);
         }
     }
@@ -175,13 +204,14 @@ TEST(tuningname_known_display_with_decoration) {
     rs7tn::Config c;
     const int b[7] = {0, 0, 0, 0, 0, 0, 0};
     const int bbDrop[7] = {-1, -1, -1, -1, -1, -1, -3};
-    const int custom[7] = {0, 0, 0, 0, 0, 0, -5};
+    const int custom[7] = {0, 0, 0, 0, 0, 0, -6}, dropFs[7] = {0, 0, 0, 0, 0, 0, -5};
 
     CHECK_EQ(rs7tn::KnownDisplay(b, c, 0, true), std::string("B STANDARD 7STR"));
     CHECK_EQ(rs7tn::KnownDisplay(b, c, -14, true), std::string("B STANDARD 7STR: A436"));
     CHECK_EQ(rs7tn::KnownDisplay(b, c, -14, false), std::string("B STANDARD 7STR"));
     CHECK_EQ(rs7tn::KnownDisplay(bbDrop, c, 0, true), std::string("B\xE2\x99\xAD DROP A\xE2\x99\xAD 7STR"));
     CHECK_EQ(rs7tn::KnownDisplay(custom, c, 0, true), std::string(""));
+    CHECK_EQ(rs7tn::KnownDisplay(dropFs, c, 0, true), std::string("DROP F\xE2\x99\xAF 7STR"));
     strcpy_s(c.prefix, "7Str");
     c.suffix[0] = 0;
     CHECK_EQ(rs7tn::KnownDisplay(b, c, 0, true), std::string("7STR B STANDARD"));
@@ -229,7 +259,7 @@ TEST(tuningname_config_defaults_and_overrides) {
 
 TEST(tuningname_stubs_off_without_the_switch) {
     // With g_rs7_tn_on == 0 the C entry points do nothing (the stubs do not even call them).
-    const uintptr_t was = g_rs7_tn_on;
+    rs7test::Restore restore_g_rs7_tn_on(g_rs7_tn_on);
 
     g_rs7_tn_on = 0;
     int offs[6] = {};
@@ -242,7 +272,6 @@ TEST(tuningname_stubs_off_without_the_switch) {
     g_rs7_tn_on = 1;
     CHECK_EQ(Rs7_TnArrayPre(offs, offs, &post), 0u);  // no TK key for this array: stock
     CHECK_EQ(post, 0u);
-    g_rs7_tn_on = was;
 }
 
 TEST(tuningname_eight_standard_drop_and_unknown) {
@@ -303,9 +332,69 @@ TEST(tuningname_eight_family_exact_registers_and_gates) {
 }
 
 TEST(tuningname_eight_suffix_from_seven) {
-    CHECK(rs7tn::Suffix8("7Str") == "8Str");
-    CHECK(rs7tn::Suffix8("7-String") == "8-String");
-    CHECK(rs7tn::Suffix8("") == "8Str");
-    CHECK(rs7tn::Suffix8(nullptr) == "8Str");
-    CHECK(rs7tn::Suffix8("ext") == "8Str");
+    CHECK(rs7tn::SuffixN("7Str", 8) == "8Str");
+    CHECK(rs7tn::SuffixN("7-String", 8) == "8-String");
+    CHECK(rs7tn::SuffixN("", 8) == "8Str");
+    CHECK(rs7tn::SuffixN(nullptr, 8) == "8Str");
+    CHECK(rs7tn::SuffixN("ext", 8) == "8Str");
+}
+
+TEST(tuningname_extended_bass_standard_is_named_by_its_low_b) {
+    const int beadg[6] = {0, 0, 0, 0, 0, 0}, down[6] = {-1, -1, -1, -1, -1, 0}, drop[6] = {-2, 0, 0, 0, 0, 0};
+    const rs7tn::Config c;
+
+    CHECK(std::string(rs7tn::NameBass(beadg, 5)) == "B Standard");
+    CHECK(std::string(rs7tn::NameBass(beadg, 6)) == "B Standard");
+    CHECK(std::string(rs7tn::NameBass(down, 5)) == "Bb Standard");  // [5] is not played on 5 strings
+    CHECK(rs7tn::NameBass(down, 6) == nullptr);
+    CHECK(rs7tn::NameBass(drop, 5) == nullptr);
+    CHECK(rs7tn::NameBass(beadg, 4) == nullptr);
+    CHECK(rs7tn::KnownDisplayBass(beadg, 5, c, 0, false) == "B STANDARD 5STR");
+    CHECK(rs7tn::KnownDisplayBass(beadg, 6, c, 0, false) == "B STANDARD 6STR");
+    CHECK(rs7tn::SuffixN("7-String", 5) == "5-String");
+    CHECK(rs7tn::SuffixN("", 6) == "6Str");
+}
+
+TEST(tuningname_extended_bass_drops_name_the_low_b) {
+    const int dropA[6] = {0, 0, 0, 0, -2, 0}, dropG[6] = {0, 0, 0, 0, -4, 0};
+    const int aDropFs[6] = {-2, -2, -2, -2, -5, -2}, tooLow[6] = {0, 0, 0, 0, -6, 0}, up[6] = {0, 0, 0, 0, 1, 0};
+    const rs7tn::Config c;
+
+    CHECK(std::string(rs7tn::NameBass(dropA, 5)) == "Drop A");
+    CHECK(std::string(rs7tn::NameBass(dropA, 6)) == "Drop A");
+    CHECK(std::string(rs7tn::NameBass(dropG, 5)) == "Drop G");
+    CHECK(std::string(rs7tn::NameBass(aDropFs, 6)) == "A Drop F#");
+    CHECK(rs7tn::NameBass(tooLow, 5) == nullptr);  // 6 below: no name
+    CHECK(rs7tn::NameBass(up, 5) == nullptr);      // the low B above the others
+    CHECK(rs7tn::KnownDisplayBass(dropA, 5, c, 0, false) == "DROP A 5STR");
+    CHECK(rs7tn::KnownDisplayBass(aDropFs, 6, c, 0, false) == "A DROP F\xE2\x99\xAF 6STR");
+}
+
+TEST(tuningname_deep_drops_three_to_five_below_the_family) {
+    int t7[7] = {0, 0, 0, 0, 0, 0, 0};
+    const char* seven[] = {"Drop Ab", "Drop G", "Drop F#"};
+
+    for (int d = 3; d <= 5; ++d) {
+        t7[6] = -d;
+        CHECK(Is(Name7(t7), seven[d - 3]));
+    }
+
+    t7[6] = -1;
+    CHECK(Name7(t7) == nullptr);
+    t7[6] = -6;
+    CHECK(Name7(t7) == nullptr);
+
+    const int aDropF[7] = {-2, -2, -2, -2, -2, -2, -6};
+
+    CHECK(Is(Name7(aDropF), "A Drop F"));
+
+    const int dropD8[8] = {0, 0, 0, 0, 0, 0, 0, -4}, dropDb8[8] = {0, 0, 0, 0, 0, 0, 0, -5};
+    const int dDropBb8[8] = {-4, -4, -4, -4, -4, -4, -4, -8}, dDropC8[8] = {-4, -4, -4, -4, -4, -4, -4, -6};
+    const rs7tn::Config c;
+
+    CHECK(Is(rs7tn::Name8(dropD8), "Drop D"));
+    CHECK(Is(rs7tn::Name8(dropDb8), "Drop Db"));
+    CHECK(Is(rs7tn::Name8(dDropBb8), "D Drop Bb"));
+    CHECK(Is(rs7tn::Name8(dDropC8), "D Drop C"));  // the 8-string "Drop C1" (C G C F Bb Eb G C)
+    CHECK(rs7tn::KnownDisplay8(dropDb8, c, 0, false) == "DROP D\xE2\x99\xAD 8STR");
 }

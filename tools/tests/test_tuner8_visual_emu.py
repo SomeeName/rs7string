@@ -174,7 +174,7 @@ def test_pick_setup_for_every_string(n):
 
 
 def test_stock_pick_setup_on_a_seven_built_guitar_overruns_the_six_slots():
-    # fix/menutuner, the owner's crash (tests/owner-crash1, AV at 0x5B1EF5): the stock UI_PlayerTuner_SetupPicks loops
+    # the owner's crash (tests/owner-crash1, AV at 0x5B1EF5): the stock UI_PlayerTuner_SetupPicks loops
     # to InstrumentInfo +0Bh = 7 and stores pick 6 at +144h + 18h = +15Ch, the fret byte it reads for the cell.
     m = machine(False, 6, {0x15C: 0xFE}, stock_count=7)
     calls = m.run("TS8PKS", {}, [h.SESSION])
@@ -268,6 +268,24 @@ def test_peg_widget_reaches_the_extra_pegs(pegs, s, peg):
     calls = m.run("TS8FLA", {"ecx": component(m)}, [s])
     ent = 0x20420000 + 0x400 * peg
     assert any(c[1][1] == ent or ent in c[2] for c in calls), "the widget is not at the expected peg"
+
+
+@pytest.mark.parametrize("s,seat", [(4, 0), (5, 3)])
+def test_peg_widget_borrows_a_seated_peg_for_an_empty_slot(s, seat):
+    # A 5/6-string bass on a frame without our model (2+2 headstock): PegSet count 6, slots 4/5 (low B, high C) not
+    # taken. The stock lookup read [0+4] (in-game crash data/tests/coop/crash_mptuner.mdmp); the copy uses the
+    # neighbouring seated peg like LT0 does for the letters.
+    m = machine(True, 6, pegs=6)
+    for empty in (4, 5):
+        m.uc.mem_write(0x20410000 + 0xC + 0x28 * empty, b"\x00")
+    bogus = 0x20470000  # what [0+4] would hand on as the peg entity
+    m.uc.mem_map(0, 0x1000)
+    m.put(4, bogus)
+    m.put(bogus, h.VTABLE)
+    calls = m.run("TS8FLA", {"ecx": component(m)}, [s])
+    assert not any(bogus in (c[1][1], *c[2]) for c in calls), "the widget used a peg entity read from [0+4]"
+    ent = 0x20420000 + 0x400 * seat
+    assert any(c[1][1] == ent or ent in c[2] for c in calls), "the widget is not at the neighbouring peg"
 
 
 def labels(m):

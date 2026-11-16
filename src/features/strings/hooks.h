@@ -1,5 +1,6 @@
 #pragma once
 #include "features/strings/strings.h"
+#include "platform/log.h"
 #include "platform/midhook.h"
 #include <cstdint>
 #include <intrin.h>
@@ -28,6 +29,12 @@ RS7_FNEXT(GSGL)
 RS7_FNEXT(GSHC)
 #undef RS7_FNEXT
 
+// The extra palette of strings 6/7 (non-native colours, filled by hooks_copies.cpp FillPalette): the RGB of
+// g_rs7_ns_rgb[mode][s - 6][state] (state 0 lit, 1 dimmed, 2 glow).
+inline float* Rs7Gs_NsRgb(uint32_t mode, uint32_t s, uint32_t state) {
+    return g_rs7_ns_rgb + ((mode * 2 + (s - 6)) * 3 + state) * 3;
+}
+
 extern "C" {
 
 // Mid-hook callbacks (hooks_entries.cpp: the GS<xx> entries, GRM1, GRM2; hooks_mid.cpp: the rest).
@@ -49,6 +56,8 @@ __declspec(dllexport) void __cdecl Rs7_Mid_GRM3(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_GSC1(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_GIA1Before(Rs7Mid::Context&);
 __declspec(dllexport) void __cdecl Rs7_Mid_GIA1(Rs7Mid::Context&);
+__declspec(dllexport) void __cdecl Rs7_Mid_GIP1(Rs7Mid::Context&);  // FromProfile, After
+__declspec(dllexport) extern uintptr_t g_rs7_target_GIP1;           // hooks_wrap.cpp, bound by Rs7_Startup
 
 // Link variables of the sites (hooks_mid.cpp, GRM1 / GRM2: hooks_entries.cpp), bound by Rs7_Startup from the sites'
 // resume / target.
@@ -78,12 +87,15 @@ struct State {
 
 extern State g_strings;
 
-inline bool Upto(volatile long* c, long cap) {
-    return _InterlockedIncrement(c) <= cap;
-}
+// GIA1 reserves tracking before requesting an enlarged allocation. A zero token uses the stock size;
+// FinishInfo releases the reservation on allocation failure, or registers the native allocation.
+uint32_t ReserveInfo();
+void FinishInfo(uint32_t token, uint8_t* info);
+// Construction and the later profile assignment: incomplete extras or an untracked info keep stock counts.
+void RefreshBuildCounts(uint8_t* gs, uint8_t* info);
 
 inline uint8_t* Entity(uint8_t* obj) {
-    return obj ? Rd<uint8_t*>(obj, 0x04) : nullptr;
+    return obj ? UncheckedRead<uint8_t*>(obj, 0x04) : nullptr;
 }
 
 // Calls into the game (hooks_game.cpp).

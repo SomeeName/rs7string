@@ -21,3 +21,9 @@ struct Rs7ResolveResult {
 
 // Resolves every site in [text, text + size); textVa is the runtime address of text[0].
 Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* text, size_t size, uintptr_t textVa);
+
+// Whether another resolve attempt can still help. Retrying waits for VMProtect to unpack .text, when most sites fail.
+// Once at most 1 in 20 sites fails and an attempt fails exactly the sites the previous one failed (`previous`), the
+// failures are not unpacking (a site another mod hooked first, e.g. RSMods): retrying only delays the patch past the
+// game's start-up (its ColourManager), so the caller stops and isolates them.
+bool Rs7_ResolveSettled(const Rs7ResolveResult& res, const std::vector<const Rs7Site*>& previous, int count);

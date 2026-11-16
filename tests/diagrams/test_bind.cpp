@@ -1,6 +1,7 @@
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 #include <map>
 #include <string>
@@ -123,7 +124,7 @@ TEST(diagram_manifest_rs7x_binding_is_identity_scoped_and_releases_dictionary) {
 
     rs7ns::BuildT8(stock, ext, tuning, 7, 255, t8);
     rs7ns::BuildT8(stock + rs7ns::kTplSize, none, tuning, 7, 255, t8 + rs7ns::kT8Size);
-    const auto savedEntry = g_rs7_ns[63];
+    rs7test::Restore restore_g_rs7_ns_63_(g_rs7_ns[63]);
 
     g_rs7_ns[63] = {reinterpret_cast<uintptr_t>(stock), 2, reinterpret_cast<uintptr_t>(t8), 0, 0, 0,
                     reinterpret_cast<uintptr_t>(song),  0};
@@ -164,7 +165,6 @@ TEST(diagram_manifest_rs7x_binding_is_identity_scoped_and_releases_dictionary) {
     props.clear();
     Rs7Diagram_Manifest(&props, &array, &array, &attrsA, &chord, 0);
     CHECK(props.empty());
-    g_rs7_ns[63] = savedEntry;
     g_rs7_dkey = saved[0];
     g_rs7_dnumber = saved[1];
     g_rs7_dset = saved[2];

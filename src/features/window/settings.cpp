@@ -9,12 +9,15 @@ using W = Rs7SetWhen;
 
 const Rs7SetDef kWindowDefs[] = {
     {"window.background", L"window", L"background", T::Bool, W::Restart, "0", 0, 1, "Background driving",
-     "The game window never activates itself; injected keys via \\\\.\\pipe\\rs7string.", nullptr},
+     "The game window never activates itself; injected keys via \\\\.\\pipe\\rs7string. Applies after a restart.",
+     nullptr},
     {"window.screen", L"window", L"screen", T::Int, W::Restart, "0", 0, 16, "Screen",
-     "Centre the game window on monitor N (0 = stock placement).", nullptr},
+     "Centre the game window on monitor N (0 = stock placement). Applies after a restart.", nullptr},
     {"window.console_quickedit_off", L"window", L"console_quickedit_off", T::Bool, W::Restart, "1", 0, 1,
      "Console QuickEdit off",
-     "A click into the CDLC enabler's console no longer starts a selection that blocks console writes.", nullptr},
+     "A click into the CDLC enabler's console no longer starts a selection that blocks console writes. "
+     "Applies after a restart.",
+     nullptr},
 };
 }  // namespace
 
@@ -25,8 +28,7 @@ using U = Rs7UiTab;
 using K = Rs7UiKind;
 
 const Rs7UiItem kUi[] = {
-    {U::Window, K::Section, "window (test driving)"},
-    {U::Window, K::Setting, "window.background"},
+    {U::Window, K::Section, "window"},
     {U::Window, K::Setting, "window.screen"},
 };
 }  // namespace

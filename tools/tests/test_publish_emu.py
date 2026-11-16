@@ -16,7 +16,7 @@ from unicorn.x86_const import *
 import gen_fncopy as fc
 import gen_publish as pub
 import sitetable
-from emu_harness import callin_entry, site_mid_entry
+from emu_harness import callin_entry, site_mid_entry, install_teb
 
 DLL = pub.REPO / "bin/Release/dinput8.dll"
 pytestmark = pytest.mark.skipif(not DLL.exists() or not fc.EXE.exists(), reason="needs offline exe and built DLL")
@@ -39,6 +39,7 @@ class Machine:
     def __init__(self):
         gc.collect()
         self.uc = u = Uc(UC_ARCH_X86, UC_MODE_32)
+        install_teb(u)
         # Map only the code under test; keep this emulator independent of the full memory dump.
         windows = [(f.start & ~0xFFF, (f.end + 0xFFF) & ~0xFFF) for f in pub.FNS]
         windows += [(0x40E000, 0x40F000), (0xF5A000, 0xF5B000)]
@@ -236,7 +237,7 @@ def test_wire_update_visits_only_active_records(m, n):
 
 
 def test_generated_publish_copies_current():
-    assert pub.OUT.read_text() == pub.render()
+    assert pub.OUT.read_text(encoding="utf-8") == pub.render()
 
 
 def test_classification_keeps_stock_signed_abs_wrap(m):

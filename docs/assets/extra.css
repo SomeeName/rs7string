@@ -1,0 +1,166 @@
+/* Site styling for the MkDocs Material theme (mkdocs.yml). GitHub ignores this file. */
+
+/* Colours: violet like the game's highway, amber for highlights. */
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #5b3fd1;
+  --md-primary-fg-color--light: #7c63e6;
+  --md-primary-fg-color--dark: #432aa8;
+  --md-accent-fg-color: #d97706;
+  --md-typeset-a-color: #5b3fd1;
+  --rs7-card-bg: #ffffff;
+  --rs7-card-border: rgba(91, 63, 209, 0.16);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 250;
+  --md-default-bg-color: #12111a;
+  --md-primary-fg-color: #1c1a2b;
+  --md-primary-fg-color--light: #2a2740;
+  --md-primary-fg-color--dark: #12111a;
+  --md-accent-fg-color: #f5a524;
+  --md-typeset-a-color: #a99bff;
+  --rs7-card-bg: #1a1926;
+  --rs7-card-border: rgba(169, 155, 255, 0.18);
+}
+
+/* A calmer, roomier reading column. */
+.md-typeset {
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.md-typeset h1 {
+  color: var(--md-default-fg-color);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.md-typeset h2 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+/* Tables: rounded, light header, no heavy borders. */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--rs7-card-border);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  font-size: 0.76rem;
+}
+.md-typeset table:not([class]) th {
+  background: var(--md-default-fg-color--lightest);
+  font-weight: 600;
+}
+
+/* Admonitions (GitHub "> [!NOTE]" boxes) and <details>: rounded, softer. */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.6rem;
+  border-width: 1px;
+  border-left-width: 4px;
+  box-shadow: none;
+  font-size: 0.78rem;
+}
+
+/* Code: rounded blocks. */
+.md-typeset pre > code {
+  border-radius: 0.5rem;
+}
+
+/* Cards: any list inside <div class="grid cards" markdown> on the home page. */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  background: var(--rs7-card-bg);
+  border: 1px solid var(--rs7-card-border);
+  border-radius: 0.8rem;
+  padding: 0.9rem 1rem;
+}
+.md-typeset .grid.cards > ul > li:focus-within,
+.md-typeset .grid > .card:focus-within {
+  border-color: var(--md-accent-fg-color);
+}
+.md-typeset .grid.cards > ul > li > p:first-child strong {
+  font-size: 0.9rem;
+}
+
+/* Badges row on the home page (README): keep them on one tidy line. */
+.md-typeset p > a > img[src*="shields.io"] {
+  margin: 0 0.15rem 0.2rem 0;
+  vertical-align: middle;
+}
+
+/* Images: rounded corners. */
+.md-typeset img:not([src*="shields.io"]) {
+  border-radius: 0.6rem;
+}
+
+/* Header title a bit bolder. */
+.md-header__topic:first-child {
+  font-weight: 700;
+}
+
+/* Blocks only useful on GitHub (the site has its own table of contents). */
+.md-typeset .github-only {
+  display: none;
+}
+
+/* Wide layouts already show the page outline beside the article. */
+@media screen and (min-width: 76.25em) {
+  .md-typeset .inline-contents {
+    display: none;
+  }
+}
+
+/* Phones: a wide table (4+ columns, labelled by tables.js) shows each row as a card, each cell with its header. */
+@media screen and (max-width: 44.9375em) {
+  .md-typeset__table:has(table[data-rs7-stack]) {
+    display: block;
+  }
+  .md-typeset table[data-rs7-stack] {
+    display: block;
+    border: 0;
+    overflow: visible;
+  }
+  .md-typeset table[data-rs7-stack] thead {
+    display: none;
+  }
+  .md-typeset table[data-rs7-stack] tbody,
+  .md-typeset table[data-rs7-stack] tr,
+  .md-typeset table[data-rs7-stack] td {
+    display: block;
+    width: 100%;
+  }
+  .md-typeset table[data-rs7-stack] tr {
+    margin: 0 0 0.8rem;
+    padding: 0.4rem 0.2rem;
+    border: 1px solid var(--rs7-card-border);
+    border-radius: 0.6rem;
+    background: var(--rs7-card-bg);
+  }
+  .md-typeset table[data-rs7-stack] td {
+    display: flow-root; /* contains the floated label, so a long label sets the row height */
+    border: 0;
+    padding: 0.2rem 0.8rem 0.2rem 6.2rem;
+  }
+  .md-typeset table[data-rs7-stack] td::before {
+    content: attr(data-label);
+    float: left;
+    width: 5rem;
+    margin-left: -5.4rem;
+    padding-top: 0.2rem;
+    line-height: 1.25;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--md-default-fg-color--light);
+  }
+  .md-typeset table[data-rs7-stack] td:empty {
+    display: none;
+  }
+}

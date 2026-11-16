@@ -1,32 +1,40 @@
 # rs7string documentation
 
-**Guides for players and chart authors. Start here if you downloaded the release zip.**
+**Start here if you downloaded the release zip.**
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · [Changelog](CHANGELOG.md)
 
-rs7string adds native seven-string guitar support to Rocksmith 2014 Remastered (Steam, September 2022
-build, Windows). It plays charts made for seven strings; it does not convert six-string charts.
+rs7string adds seven- and eight-string guitars and five- and six-string basses to Rocksmith 2014 Remastered
+(Steam, September 2022 build, Windows). It plays charts made for those instruments; it does not convert six-string
+guitar or four-string bass charts. Everything else in the game stays as it was.
 
-## Players
+## Play in five minutes
 
-| Guide | What is in it |
+1. **Close Rocksmith** and back up any `dinput8.dll`, `rs7string.ini` and `chord-diagrams` folder in the game
+   folder (the folder with `Rocksmith2014.exe`). If `dinput8.dll` belongs to another mod, check
+   [compatibility](INSTALL.md#compatibility) before replacing it.
+2. **Install a CDLC enabler** for the September 2022 build, if you do not have one yet. It is a separate mod that
+   lets the game load custom songs, for example
+   [RSCDLCEnabler-TooManyCoresFix](https://github.com/Lovrom8/RSCDLCEnabler-TooManyCoresFix).
+3. **Copy the mod files** from the zip's `bin\Release` folder into the game folder: `dinput8.dll`, `rs7string.ini`, the four
+   `rs7string_headstock*.bin` files, `rs7string_headstock.LICENSE.md` and the `chord-diagrams` folder.
+4. **Add a chart** made for your instrument (`*_p.psarc`) to the game's `dlc` folder.
+5. **Start the game** and press **F9** to open the rs7string overlay. **Advanced > Status** shows that the mod is
+   running. No overlay? See [troubleshooting](INSTALL.md#troubleshooting).
+
+The first time the game loads a guitar (and later an extended bass), the mod builds the headstocks from your own
+game files. That takes a moment, once. Every step in detail, with checks: [Install guide](INSTALL.md).
+
+## What do you want to do?
+
+| I want to... | Read |
 |---|---|
-| [INSTALL.md](INSTALL.md) | Requirements, install, first-start check, update, troubleshooting, known limitations, uninstall. |
-| [SETTINGS.md](SETTINGS.md) | Every `rs7string.ini` key, its default and when it takes effect. |
-| [CHANGELOG.md](CHANGELOG.md) | What is new in each version. |
-
-## Chart and tool authors
-
-| Guide | What is in it |
-|---|---|
-| [CHARTING.md](CHARTING.md) | How to make a seven-string chart, and how to test it. |
-| [RS7X-SPEC.md](RS7X-SPEC.md) | Byte layout of the RS7X block for chords on the seventh string. |
-
-## Maintainers
-
-| Guide | What is in it |
-|---|---|
-| [RELEASING.md](RELEASING.md) | How a release is prepared and published. |
+| Install, update or remove the mod, or fix a problem | [Install guide](INSTALL.md): requirements, checks, troubleshooting, known limits |
+| Change colours, tuning names, the overlay key or the neck width | [Settings](SETTINGS.md): every key, with the few most people change at the top |
+| See what is new | [Changelog](CHANGELOG.md) |
+| Make a chart for seven or eight strings or an extended bass | [Charting guide](CHARTING.md): an overview, format rules, chords and testing |
+| Add extended-range export to a chart editor or package builder | [Chart tools](CHART-TOOLS.md), then the [RS7X specification](RS7X-SPEC.md) for the byte layout |
+| Prepare a release (maintainers) | [Releasing](../RELEASING.md) |
 
 ## Licence and game assets
 

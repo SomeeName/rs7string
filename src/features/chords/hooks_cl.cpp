@@ -1,12 +1,12 @@
-// The chord loops over eight strings ([chords] native_chordloops): the CL* jmp sites and the string objects they use.
-// The stock CLB* / CLCT* / CLNF* sites are byte patches (registration.cpp); C8/T8 prefixes are unchanged, tracker child
-// queries already cover eight slots.
+// The chord loops over eight strings (written with the native strings): the CL* jmp sites and the string objects they
+// use. The stock CLB* / CLCT* / CLNF* sites are byte patches (registration.cpp); C8/T8 prefixes are unchanged, tracker
+// child queries already cover eight slots.
 //
 //   CLBM  chord bend mask test: C8 mask[8]           CLGU  chord chart bend -> ghost string (6/7)
 //   CLBA  bend data address: C8 bends[8]             CLGE  chord ghost bend release (6/7)
-//   CLVB  stop-pluck path (6/7)
+//   CLVB  stop-pluck path (6/7)                     CLVE  note-end stop-pluck path (6/7)
 //
-// CLGU / CLGE / CLVB: strings 0-5 do exactly what the replaced stock instructions did; strings >= 6 ask
+// CLGU / CLGE / CLVB / CLVE: strings 0-5 do exactly what the replaced stock instructions did; strings >= 6 ask
 // Rs7ChordLoops_Target for the string object (main or ghost) and join the stock code with it, or reject like a missing
 // string.
 //
@@ -17,6 +17,8 @@
 // their last compare (as the old stubs did); the old stubs' string 6/7 paths and CLBA left flags that no continuation
 // reads (contract "free").
 #include "features/chords/chords.h"
+#include "features/strings/strings.h"
+#include "model/instrument.h"
 #include "platform/midhook.h"
 
 using Rs7Mid::Context;
@@ -24,7 +26,7 @@ using Rs7Mid::Dword;
 
 extern "C" {
 __declspec(dllexport) uintptr_t g_rs7_resume_CLBM = 0, g_rs7_resume_CLBA = 0, g_rs7_resume_CLGU = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_CLGE = 0, g_rs7_resume_CLVB = 0;
+__declspec(dllexport) uintptr_t g_rs7_resume_CLGE = 0, g_rs7_resume_CLVB = 0, g_rs7_resume_CLVE = 0;
 }
 
 namespace {
@@ -35,7 +37,7 @@ uint32_t Low8(uint32_t r) {
 // The stock loop's `cmp string,[info+0Bh]; jae reject`: whether it accepts string s (below the InstrumentInfo's string
 // count), with the compare's flags, which the stock instructions after the site may still hold.
 bool InStockCount(Context& c, uint32_t s, uint32_t info) {
-    const uint32_t count = Rs7Mid::Byte(info + 0x0B);
+    const uint32_t count = Rs7Mid::Byte(info + rs7::kInfoStrings);
 
     c.Compare(s, count, 8);
 
@@ -155,4 +157,35 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CLVB(Context& c) {
     c.ecx = s;
     c.esi = Dword(c.eax + s * 4 + 4);
     c.jump = Resume(g_rs7_resume_CLVB);
+}
+
+// CLVE - 0x7E442E, the stop-pluck path when a note ends (AL = string, ECX = GuitarStrings, EDX = InstrumentInfo; ST0
+// live): stock `cmp al,[edx+0Bh]; jae reject; movzx eax,al`, then `fstp st0; mov esi,[ecx+eax*4+4]` and the call of
+// 0x5992E0 (resume + 0Ah) with ESI = the main string. With C-lite +0Bh counts strings 6/7, and the stock load would
+// read the ghosts past the six main slots, so the main string 6/7 never stopped its vibration loop (GSVB starts it over
+// the active count). Strings 6/7: ECX = the native main array - 4, so the stock load reads the native main string (ECX
+// is rewritten before any read after the call). Reject: 0x7E4443 (resume + 0Dh, past the call and its FLDZ; the stock
+// reject also keeps ST0).
+extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CLVE(Context& c) {
+    const uint32_t s = Low8(c.eax);
+
+    if (s >= 6) {
+        const bool main = NativeString(c.ecx, s, 0) != 0;
+
+        if (main) {
+            c.eax = s;
+            c.ecx += rs7gs::kMain - 4;
+        }
+
+        c.jump = Resume(g_rs7_resume_CLVE, main ? 0 : 0x0D);
+        return;
+    }
+
+    if (!InStockCount(c, s, c.edx)) {
+        c.jump = Resume(g_rs7_resume_CLVE, 0x0D);
+        return;
+    }
+
+    c.eax = s;
+    c.jump = Resume(g_rs7_resume_CLVE);
 }

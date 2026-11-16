@@ -11,13 +11,12 @@ import struct
 
 import pytest
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT, game_text, site_va, TEXT_VA
 from midhook_oracle import Case, Spec, oracle_tests
 from midhook_stock import Ref, W, ruled, stock_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 SPECS: dict[str, tuple[Spec, list[Case]]] = {}

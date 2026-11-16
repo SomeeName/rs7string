@@ -1,4 +1,6 @@
 #pragma once
+#include "model/slots.h"
+#include "platform/field.h"
 #include <cstdint>
 
 // Native N-slot GuitarStrings (issue #18 stage 4, docs/ARCHITECTURE.md), a member of the native 7-string unit
@@ -51,7 +53,7 @@ __declspec(dllexport) void __cdecl Rs7Gs_InfoAllocated(uint8_t* info);
 __declspec(dllexport) uint32_t __cdecl Rs7Gs_InfoFreeSize(uint8_t* info);
 // Registry membership precedes every InstrumentInfo tail read or publication write.
 __declspec(dllexport) int __cdecl Rs7Gs_InfoNative(const uint8_t* info);
-// Both capacity extras have an entity and the stock loaded-model flag (+50h).
+// Each loaded extra slot has an entity and the stock loaded-model flag (+50h).
 __declspec(dllexport) int __cdecl Rs7Gs_ExtraReady(uint8_t* guitar);
 __declspec(dllexport) int __cdecl Rs7Gs_ExtraWhy(uint8_t* guitar);
 // The entry dispatch of the copied functions (the GS<xx> mid-hooks; string7's chord pluck calls the GSPK one, kind 10):
@@ -61,12 +63,16 @@ __declspec(dllexport) uintptr_t __cdecl Rs7Gs_Target(uint32_t kind, uint8_t* reg
 // GRM1: how many main strings 0x541880 collects meshes for (renderer +4 = GuitarStrings).
 __declspec(dllexport) uint32_t __cdecl Rs7Gs_MeshCount(uint8_t* gs);
 // Rs7_CallIn_HsLoaded / Rs7_CallIn_HsSeg: the headstock segment colour handle of string s >= 6 (the
-// edited model's string_size_7, features/headstock/assetload.h), nullptr without one.
+// edited model's string_size_7 / _8, features/headstock/assetload.h), nullptr without one.
 __declspec(dllexport) uint8_t* __cdecl Rs7Gs_SegHandle(uint8_t* guitar, uint32_t s);
 // Rs7_CallIn_Attach (s >= 6): the attach point of an added string, extrapolated from strings 0 and 1
 // of the stock query. 1 = written.
 __declspec(dllexport) int __cdecl Rs7Gs_AttachExt(uint8_t* info, uint32_t s, float* out);
-// Rs7_CallIn_Shape (s >= 6), after the stock 0x5996A0: the added string's atlas row.
+// PUBGA (every string) and Rs7_CallIn_Attach (s >= 6) with a [neck] spacing_* setting for this instrument
+// (features/spacing): the stock answer (Rs7Gs_AttachExt for added strings) scaled about the centre of the stock rows to
+// that spacing. -1 = no setting or a nested query (the caller answers as stock), else 0 / 1 like the stock query.
+__declspec(dllexport) int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out);
+// Rs7_CallIn_Shape (s >= 6; a bass: s 4 / 5), after the stock 0x5996A0: the added string's atlas row.
 __declspec(dllexport) void __cdecl Rs7Gs_ShapeDone(uint8_t* obj, uint32_t s);
 }
 
@@ -114,15 +120,9 @@ constexpr uint32_t kInfoMagicOff = 0x44;
 constexpr uint32_t kInfoSize = 0x48;
 constexpr uint32_t kInfoMagic = 0x49375352;  // "RS7I"
 
-template <class T>
-T& At(uint8_t* p, uint32_t off) {
-    return *reinterpret_cast<T*>(p + off);
-}
+using rs7mem::UncheckedField;
 
-template <class T>
-T Rd(const uint8_t* p, uint32_t off) {
-    return *reinterpret_cast<const T*>(p + off);
-}
+using rs7mem::UncheckedRead;
 
 // Layout checks (pure, layout.cpp). IsNative reads +3Ah first (inside the stock 0x40 bytes), then the magic.
 bool IsNative(const uint8_t* gs);
@@ -142,6 +142,26 @@ void RefreshCounts(uint8_t* info, bool seventh);
 // the next slot of the stock row (the spacing of strings 0/1 continues). The headstock segment
 // string_size_7 ends at this point (the edited model's pitch is the same), so the 7th neck string
 // and its segment meet like strings 0-5 (tools/tests/test_nutjoint.py).
+// The stock attach-point count of an InstrumentInfo's instrument (+0: 2 = bass): Rnd_GetStringAttachPoint 0x594530
+// answers strings below it from the skeleton's stringattachpoints (4 for bass, CONFIRMED crash
+// data/tests/bass-native/crash1.mdmp: bass string 4 read a missing entry); added strings extrapolate.
+inline uint32_t StockAttachCount(const uint8_t* info) {
+    return rs7::StockStrings(info && rs7::IsBassKind(info[rs7::kInfoKind]));
+}
+
+// Extended bass: the stock strings string `s` (4 low B, 5 high C) continues from, near then far: 4 below E from 0 / 1,
+// 5 above G from 3 / 2 (one string spacing further: near + (near - far)).
+inline void BassAttachRows(uint32_t s, uint32_t* nearRow, uint32_t* farRow) {
+    *nearRow = rs7::kBassNeighbour[s == 4 ? 4 : 5];
+    *farRow = *nearRow == 0 ? 1u : 2u;
+}
+
+// Extended bass: the atlas row (v_positionString) of string 4 (low B: the E's, 0.0) and 5 (high C: the G's, 0.3); the
+// stock bass rows are 0.0 / 0.1 / 0.2 / 0.3 (CONFIRMED Rnd_VPositionBass 0x1199D8C, float[4]).
+inline float BassStringRow(uint32_t s) {
+    return s == 4 ? 0.0f : 0.3f;
+}
+
 inline void ExtrapolateAttach(const float a0[3], const float a1[3], uint32_t s, float out[3]) {
     const float k = float(int(s) - 5);
 
@@ -173,6 +193,4 @@ void Rs7Gs_Stats(Rs7GsStats* out);
 
 // The feature's hooks (registration.cpp), consumed by src/registry.cpp.
 struct Rs7HookTable;
-constexpr int kRs7StrNative =
-    1;  // Rs7Hook::strs: written only with the native N-slot GuitarStrings (issue #18 stage 4)
 extern const Rs7HookTable kRs7StringsHooks;

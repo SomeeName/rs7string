@@ -26,13 +26,12 @@ import test_midhook_calls as calls
 import test_midhook_cold as cold
 import test_midhook_x87 as x87
 from emu_common import dll_image, exe_sections
+from emu_harness import needs_emu
 from emu_harness import DLL, SNAPSHOT, site_target
 from midhook_oracle import ESP, Case, Helper, Spec, Sym
 from midhook_stock import Ref, W, returning_elsewhere, ruled, stock_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 
 def v(case: Case, key: str) -> str:
@@ -81,7 +80,7 @@ def significand(value: float) -> int:
 
 EXPORTS = dll_image()[3]
 SPECS = {**cold.SPECS, **x87.SPECS, **calls.SPECS}
-STRING6 = "string 6 (a seven-string input: stock has no string 6) takes the seven-string path"
+STRING6 = "string 6 or 7 (a seven- or eight-string input: stock has neither) takes the added-string path"
 NATIVE_PEGSET = (
     "a PegSet in g_rs7_pegsets is a native capacity-8 PegSet (every PegSet is one after PSC1 unless the table is full): "
     "its sizes, counts and bounds are the native ones"
@@ -98,24 +97,25 @@ def pool_count(c: Case):
 
 
 def bend_guard(sid: str):
-    """BD1-BD4: string 6 reads string 0's perStringMode and joins the stock body after its own lookup."""
+    """BD1-BD4: string 6 or 7 reads string 0's perStringMode and joins the stock body after its own lookup."""
 
     def expect(c: Case):
-        if v(c, "string") != "6":
+        if v(c, "string") not in ("6", "7"):
             return None
+        s = int(v(c, "string"))
         mode = h(c, "mode")
         if sid == "BD1":
-            return W("eip", "regs", eip=0x0F, regs={"edx": 6}) if mode == 0 else None
+            return W("eip", "regs", eip=0x0F, regs={"edx": s}) if mode == 0 else None
         if sid == "BD2":
-            return W("eip", "regs", eip=0x13, regs={"ecx": mode, "edx": 6})
+            return W("eip", "regs", eip=0x13, regs={"ecx": mode, "edx": s})
         if sid == "BD3":
-            return W("eip", "regs", eip=0x1C, regs={"eax": 6, "ecx": cold.BGUITAR, "edx": cold.BINFO, "edi": mode})
+            return W("eip", "regs", eip=0x1C, regs={"eax": s, "ecx": cold.BGUITAR, "edx": cold.BINFO, "edi": mode})
         return W(
             "ebp_area",
             "eip",
             "regs",
             eip=0x25,
-            regs={"eax": mode, "ecx": 6, "edx": cold.BINFO},
+            regs={"eax": mode, "ecx": s, "edx": cold.BINFO},
             at={"ebp_area": (0xE8, dword(mode))},
         )
 
@@ -195,6 +195,13 @@ def psn1(spec, cases):
     return dataclasses.replace(spec, words={"g_rs7_pegnames": table}), [
         dataclasses.replace(c, words={"g_rs7_pegnames": table}, mem={}) for c in cases
     ]
+
+
+def tf1_cases(spec, cases):
+    """TF1's frozen-stub cases plus a five-string bass (class 2, count 5), which came after the freeze."""
+    bass5 = dataclasses.replace(cases[0], id="class2-count5")
+    bass5.mem = {**bass5.mem, cold.TINFO: bytes([2]) + bytes(0x0A) + bytes([5]) + bytes(4)}
+    return spec, [*cases, bass5]
 
 
 def psr1_cases(spec, cases):
@@ -340,7 +347,7 @@ REFS: dict[str, Ref] = {
     "B1": Ref(),
     "N12": Ref(
         **ruled(
-            lambda c: W("eip", eip=5) if v(c, "string") == "6" and v(c, "on") != "0" else None,
+            lambda c: W("eip", eip=5) if v(c, "string") in ("6", "7") and v(c, "on") != "0" else None,
             STRING6 + " ([neck] string7_line: on to the stock write)",
         )
     ),
@@ -350,8 +357,16 @@ REFS: dict[str, Ref] = {
     "PM1": Ref(),
     "TF1": Ref(
         **ruled(
-            lambda c: W("regs", regs={"ebx": 0xB1B1B105}) if h(c, "count") > 6 else None,
-            "the camera's reference string is min(count, 6) - 1: a 7/8-string guitar keeps string 5",
+            lambda c: (
+                W("regs", regs={"ebx": 0xB1B1B105})
+                if h(c, "count") > 6
+                else W("regs", regs={"ebx": 0xB1B1B103})
+                if h(c, "class") == 2 and h(c, "count") == 5
+                else None
+            ),
+            "the camera's reference string is min(count, 6) - 1: a 7/8-string guitar keeps string 5, a five-string "
+            "bass string 3 (its string 4 is the low B next to string 0)",
+            variant=tf1_cases,
         )
     ),
     "V2": Ref(
@@ -365,7 +380,7 @@ REFS: dict[str, Ref] = {
         )
     ),
     "N5": Ref(),
-    **{sid: Ref() for sid in ("N18", "N22", "N19", "N20", "N23")},
+    **{sid: Ref() for sid in ("N18", "N19", "N20")},
 }
 
 

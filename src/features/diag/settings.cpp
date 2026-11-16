@@ -21,7 +21,7 @@ void ReadDiag(const wchar_t* iniPath) {
 
 const Rs7SetDef kDiagDefs[] = {
     {"debug.diagnostics", L"debug", L"diagnostics", T::Bool, W::Live, "0", 0, 1, "Diagnostics (D1-D5)",
-     "Live: the R1/R2 loggers (D1/D4). D2/D3/D5 are written only when it is 1 at startup.", ApplyDiag},
+     "Extra diagnostic logging for bug reports. Some parts only take effect after a restart.", ApplyDiag},
 };
 }  // namespace
 
@@ -54,7 +54,7 @@ Rs7DiagConfig Rs7Diag_ReadIni(const wchar_t* iniPath) {
         return c;
     }
 
-    c.diagnosticsRaw = Rs7Config_ReadInt(L"debug", L"diagnostics", 0, iniPath);
+    c.diagnosticsRaw = Rs7Set_ReadTableInt(kRs7DiagSettings, "debug.diagnostics", iniPath);
     c.diagnostics = c.diagnosticsRaw != 0;
 
     return c;

@@ -1,6 +1,7 @@
+#include "features/nslot/match.h"
 #include "features/nslot/nslot.h"
-#include "model/eight.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 
 using namespace rs7ns;
@@ -94,9 +95,9 @@ TEST(t8_ignores_columns_beyond_the_tuning_and_applies_the_capo_rule) {
     CHECK_EQ(Frets(out)[7], -1);  // only 7 tuning entries
     const int16_t tun8[8] = {};
 
-    BuildT8(t, ext, tun8, 8, 0xFF, out);  // 8 strings: not a mode the mod runs yet - no extended slots
-    CHECK_EQ(Frets(out)[6], -1);
-    CHECK_EQ(Frets(out)[7], -1);
+    BuildT8(t, ext, tun8, 8, 0xFF, out);  // 8 strings: both extended slots are populated
+    CHECK_EQ(Frets(out)[6], 3);
+    CHECK_EQ(Frets(out)[7], 5);
     const Col big[2] = {{2, 6}, {-1, -1}};
 
     BuildT8(t, big, tun, 7, 0xFF, out);  // fingers above 4 (pinky) are dropped: 0x58C300 has five
@@ -164,9 +165,6 @@ TEST(synthesized_mask_follows_fixup) {
 }
 
 TEST(t8_eight_optin_preserves_both_authored_columns) {
-    const auto saved = g_rs7_eight;
-
-    g_rs7_eight = 1;
     uint8_t t[kTplSize], out[kT8Size];
 
     StockTemplate(t);
@@ -180,7 +178,6 @@ TEST(t8_eight_optin_preserves_both_authored_columns) {
     CHECK_EQ(Midi(out)[6], 37);
     CHECK_EQ(Midi(out)[7], 28);
     CHECK_EQ(out[kT8Used], 0xC1);
-    g_rs7_eight = saved;
 }
 
 TEST(nslot_string_mask8_tests_the_c8_mask_of_strings_0_to_7) {
@@ -340,26 +337,38 @@ TEST(nslot_double_stop_span_is_stock_for_an_unregistered_vector) {
     // A T8 record: its frets[8] over the native strings.
     const FretSpan t8 = DoubleStopSpan(begin, 3, 0x20000000 + 3 * kT8Size);
 
-    CHECK(t8.frets == 0x20000000 + 3 * kT8Size + kT8Frets && t8.count == kNative);
+    CHECK(t8.frets == 0x20000000 + 3 * kT8Size + kT8Frets && t8.count == kSlots);
 }
 
 TEST(nslot_double_stop_span_through_the_registry) {
     const uint32_t begin = 0x10000000, t8 = 0x20000000;
-    const Rs7NsEntry saved = g_rs7_ns[5];
+    rs7test::Restore restore_g_rs7_ns_5_(g_rs7_ns[5]);
     auto span = [](uint32_t b, uint32_t id) {
         return DoubleStopSpan(b, id, Rs7Ns_TplRecord(b, id));
     };
-    auto isStock = [](FretSpan s, uint32_t b, uint32_t id) {
-        return s.frets == b + id * kTplSize + 4 && s.count == 6;
+    auto isEmpty = [](FretSpan s) {
+        const auto* frets = reinterpret_cast<const uint8_t*>(s.frets);
+
+        return s.count == kSlots && frets[0] == 0xFF && frets[7] == 0xFF;
     };
 
     g_rs7_ns[5] = Rs7NsEntry{begin, 4, t8, 0, 0, 0, 0x5000, 0};
     const FretSpan last = span(begin, 3);
 
-    CHECK(last.frets == t8 + 3 * kT8Size + kT8Frets && last.count == kNative);
-    CHECK(isStock(span(begin, 4), begin, 4));                  // id == tplCount
-    CHECK(isStock(span(begin + 0x100, 0), begin + 0x100, 0));  // a vector not in the registry
+    CHECK(last.frets == t8 + 3 * kT8Size + kT8Frets && last.count == kSlots);
+    CHECK(isEmpty(span(begin, 4)));          // id == tplCount
+    CHECK(isEmpty(span(begin + 0x100, 0)));  // a vector not in the registry
     g_rs7_ns[5].tplCount = 0;
-    CHECK(isStock(span(begin, 0), begin, 0));  // tplCount 0
-    g_rs7_ns[5] = saved;
+    CHECK(isEmpty(span(begin, 0)));  // tplCount 0
+}
+
+TEST(nslot_match_table_row_is_null_outside_the_subharmonic_table) {
+    const uintptr_t table = 0x0119A398;
+
+    CHECK(rs7match::TableRow(table, 22) == reinterpret_cast<const int32_t*>(table));
+    CHECK(rs7match::TableRow(table, 93) == reinterpret_cast<const int32_t*>(table + 24 * 71));
+    CHECK(!rs7match::TableRow(table, 21));  // string 7 tuned very low (open 30 + tuning)
+    CHECK(!rs7match::TableRow(table, 0));
+    CHECK(!rs7match::TableRow(table, 94));
+    CHECK(!rs7match::TableRow(0, 40));  // table not bound
 }

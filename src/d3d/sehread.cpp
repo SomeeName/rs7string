@@ -1,4 +1,5 @@
 #include "d3d/sehread.h"
+#include "platform/seh.h"
 #include <cstring>
 
 bool Rs7SehReader::Read(uintptr_t a, void* out, size_t n) const {
@@ -9,7 +10,7 @@ bool Rs7SehReader::Read(uintptr_t a, void* out, size_t n) const {
     __try {
         std::memcpy(out, reinterpret_cast<const void*>(a), n);
         return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }

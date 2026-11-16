@@ -10,9 +10,9 @@
 //                    consumed by a background-only subclass (independent of the overlay).
 //                    GetForegroundWindow calls from the exe on the game's window thread report
 //                    the game window; library/overlay callers see the real foreground window.
-//                    GetFocus on the game's thread
-//                    reports the game window instead of NULL (the game's input dispatch needs it),
-//                    and the game's keyboard is held to DISCL_FOREGROUND (src/dinput_wrap.h).
+//                    GetFocus on the game's thread reports the game window instead of NULL (the
+//                    game's input dispatch needs it), and the game's keyboard is held to
+//                    DISCL_FOREGROUND (src/dinput_wrap.h).
 //   screen=0|N       N >= 1: centre the game window in the work area of monitor N (1 = the primary
 //                    monitor, 2.. = the other monitors in EnumDisplayMonitors order). 0: stock
 //                    placement (the game centres on the primary monitor).
@@ -43,7 +43,7 @@ Rs7Window_MessageFilter Rs7Window_FilterMessage(UINT message, WPARAM w, LPARAM l
 // click into that window starts a selection ("Auswaehlen"/"Select" in the title) and from then on
 // every write to the console blocks until the selection ends (Enter / Esc / right click). A game
 // thread that writes to the console stalls with it. 1: once the process has a console (polled for
-// up to 60 s from startup on an own thread), clear ENABLE_QUICK_EDIT_MODE on its input buffer
+// up to 60 s from startup on its own thread), clear ENABLE_QUICK_EDIT_MODE on its input buffer
 // (ENABLE_EXTENDED_FLAGS set so the change is applied). A selection started via the system menu
 // (Edit > Mark) still blocks; mouse clicks no longer do. Logged as "console: ...".
 void Rs7Console_Start(const wchar_t* iniPath);

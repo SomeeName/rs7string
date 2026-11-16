@@ -9,7 +9,9 @@
 #include "d3d/swap_texio.h"
 #include "d3d/texlist.h"
 #include "features/colours/colours.h"
+#include "platform/seh.h"
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace rs7swap {
@@ -17,24 +19,35 @@ RampState g_ramp;
 }  // namespace rs7swap
 
 namespace {
+using rs7d3d::FamilyName;
 using rs7d3d::LogQuiet;
 using namespace rs7swap;
 constexpr unsigned kMaxRetries = 5, kRetryMs = 2000;
 enum class Step { Ok, Refuse, Retry };
 
-const char* FamilyName(Rs7Family f) {
-    return f == Rs7Family::Note ? "note" : "additive";
+// A candidate's family and path, copied before its state is stored (the worker may reuse the entry after that).
+struct CandName {
+    Rs7Family family;
+    char path[sizeof(Rs7Cand::path)];
+};
+
+CandName NameOf(const Rs7Cand& c) {
+    CandName n{c.family, {}};
+
+    std::memcpy(n.path, c.path, sizeof n.path - 1);
+
+    return n;
 }
 
 // The V6 rule after `what` happened to a candidate: "<family> '<path>' <what>".
-void UpdateV6For(const Rs7Cand& c, const char* what) {
+void UpdateV6For(const CandName& n, const char* what) {
     char r[160];
 
-    std::snprintf(r, sizeof r, "%s '%s' %s", FamilyName(c.family), c.path, what);
+    std::snprintf(r, sizeof r, "%s '%s' %s", FamilyName(n.family), n.path, what);
     Rs7Swap_UpdateV6(r);
 }
 
-// ---- revalidation (Batch B review): under the game's list lock, re-check the candidate, then take the
+// ---- revalidation: under the game's list lock, re-check the candidate, then take the
 // reference while the engine cannot free the texture. No C++ objects here (SEH).
 int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
     CRITICAL_SECTION* cs = g_ramp.listLock;
@@ -51,7 +64,7 @@ int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
 
             r = SUCCEEDED(base->QueryInterface(kRs7IID_Texture9, reinterpret_cast<void**>(out))) && *out ? 1 : 2;
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         r = 0;
     }
 
@@ -62,9 +75,11 @@ int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
 
 // ---- terminal states: set the state last, then apply the V6 rule (both after stock/ours are final).
 void Refuse(Rs7Cand& c, const char* why) {
-    LogQuiet("ramp: refuse %s d3d=%p '%s': %s", FamilyName(c.family), c.d3d, c.path, why);
+    const CandName name = NameOf(c);
+
+    LogQuiet("ramp: refuse %s d3d=%p '%s': %s", FamilyName(name.family), c.d3d, name.path, why);
     c.state = Rs7CandState::Refused;
-    UpdateV6For(c, "refused");
+    UpdateV6For(name, "refused");
 }
 
 void RetryLater(Rs7Cand& c, const char* why) {
@@ -76,18 +91,21 @@ void RetryLater(Rs7Cand& c, const char* why) {
         return;
     }
 
-    LogQuiet("ramp: retry %s d3d=%p '%s' in %u ms (%u/%u): %s", FamilyName(c.family), c.d3d, c.path, kRetryMs,
+    const CandName name = NameOf(c);
+
+    LogQuiet("ramp: retry %s d3d=%p '%s' in %u ms (%u/%u): %s", FamilyName(name.family), c.d3d, name.path, kRetryMs,
              c.retries, kMaxRetries, why);
     c.retryAtMs = GetTickCount() + kRetryMs;
     c.state = Rs7CandState::Retry;
-    UpdateV6For(c, "retrying");
+    UpdateV6For(name, "retrying");
 }
 
 // ---- the copy cache: identical stock ramps (same hash and format) share one copy.
 // A new reference on the cached copy, or nullptr.
 IDirect3DTexture9* SharedCopy(uint64_t hash, uint32_t fmt) {
     for (unsigned i = 0; i < g_ramp.copyCount; ++i) {
-        if (g_ramp.copies[i].hash == hash && g_ramp.copies[i].fmt == fmt) {
+        if (g_ramp.copies[i].hash == hash && g_ramp.copies[i].fmt == fmt &&
+            g_ramp.copies[i].colourGeneration == g_ramp.colourGeneration) {
             g_ramp.copies[i].tex->AddRef();
 
             return g_ramp.copies[i].tex;
@@ -117,11 +135,11 @@ Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>&
               IDirect3DTexture9** ours, char* why, size_t whyLen) {
     CheckedBuild cb;
 
-    if (!BuildChecked(stock, g_ramp.cfg.rgb, p.plan.exactPossible, cb, why, whyLen)) {
+    if (!BuildChecked(stock, g_ramp.cfg.rgb, cb, why, whyLen)) {
         return Step::Refuse;
     }
 
-    switch (MakeCopy(dev, p.d, p.levels, D3DFORMAT(p.plan.outFormat), cb.build.levels, ours, why, whyLen)) {
+    switch (MakeCopy(dev, p.d, p.levels, cb.build.levels, ours, why, whyLen)) {
         case CopyResult::CreateFailed:
             return Step::Retry;
         case CopyResult::WriteFailed:
@@ -132,9 +150,9 @@ Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>&
 
     LogQuiet("ramp: built %p (hash %016llX): %ux%u fmt=%u levels=%u, custom colour on levels 0-%u, "
              "self-check exact=%d v6-pure=%d changed-lines=%u",
-             static_cast<void*>(*ours), static_cast<unsigned long long>(hash), p.d.Width, p.d.Height, p.plan.outFormat,
-             p.levels, cb.build.customLevels ? cb.build.customLevels - 1 : 0, int(cb.chk.exact), int(cb.chk.v6Pure),
-             cb.chk.changedLines);
+             static_cast<void*>(*ours), static_cast<unsigned long long>(hash), p.d.Width, p.d.Height,
+             unsigned(p.d.Format), p.levels, cb.build.customLevels ? cb.build.customLevels - 1 : 0, int(cb.chk.exact),
+             int(cb.chk.v6Pure), cb.chk.changedLines);
     if (p.levels > cb.build.customLevels) {
         LogQuiet("ramp: note: levels %u-%u show string 6 as a row 6/7 blend (distance)", cb.build.customLevels,
                  p.levels - 1);
@@ -142,7 +160,7 @@ Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>&
 
     if (g_ramp.copyCount < kRs7MaxCands) {
         (*ours)->AddRef();  // the copies table keeps its own reference (sharing after a retire)
-        g_ramp.copies[g_ramp.copyCount++] = {hash, p.plan.outFormat, *ours};
+        g_ramp.copies[g_ramp.copyCount++] = {hash, uint32_t(p.d.Format), *ours, g_ramp.colourGeneration};
     }
 
     return Step::Ok;
@@ -160,8 +178,7 @@ Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, 
     const D3DSURFACE_DESC& d = p.d;
 
     p.levels = t->GetLevelCount();
-    p.plan = Rs7Ramp_Plan({uint32_t(d.Format), d.Width, d.Height, p.levels, uint32_t(d.Pool), d.Usage},
-                          g_ramp.cfg.allowInexact);
+    p.plan = Rs7Ramp_Plan({uint32_t(d.Format), d.Width, d.Height, p.levels, uint32_t(d.Pool), d.Usage});
 
     if (p.plan.verdict == Rs7RampVerdict::Refuse) {
         std::snprintf(why, whyLen, "%s (fmt=%u %ux%u levels=%u pool=%u usage=%08lX)", p.plan.why, unsigned(d.Format),
@@ -171,19 +188,25 @@ Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, 
 
     std::vector<Rs7Image> stock(p.levels);
 
-    if (!ReadLevels(t, uint32_t(d.Format), stock, why, whyLen)) {
+    if (!ReadLevels(t, stock, why, whyLen)) {
         return Step::Refuse;
     }
 
     *hash = Rs7Ramp_Hash(stock);
     const Rs7RowStats rs = Rs7Ramp_RowStats(stock[0]);
 
+    if (c.family == Rs7Family::Embedded && (rs.nonUniformRows || !rs.grey7 || !rs.grey15)) {
+        std::snprintf(why, whyLen, "not a colour ramp (non-uniform-rows=%u grey7=%d grey15=%d)", rs.nonUniformRows,
+                      int(rs.grey7), int(rs.grey15));
+        return Step::Refuse;
+    }
+
     LogQuiet("ramp: process %s d3d=%p '%s': fmt=%u %ux%u levels=%u pool=%u usage=%08lX hash=%016llX "
              "non-uniform-rows=%u grey7=%d grey15=%d",
              FamilyName(c.family), c.d3d, c.path, unsigned(d.Format), d.Width, d.Height, p.levels, unsigned(d.Pool),
              d.Usage, static_cast<unsigned long long>(*hash), rs.nonUniformRows, int(rs.grey7), int(rs.grey15));
 
-    *ours = SharedCopy(*hash, p.plan.outFormat);
+    *ours = SharedCopy(*hash, uint32_t(d.Format));
 
     if (*ours) {
         LogQuiet("ramp: shared copy %p (hash %016llX) for %s d3d=%p", static_cast<void*>(*ours),
@@ -197,9 +220,10 @@ Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, 
 // Render thread; c is Busy (claimed). Ends in Active, Refused, Retry, Retired or back in `prev`.
 void Process(IDirect3DDevice9* dev, Rs7Cand& c, Rs7CandState prev) {
     if (g_ramp.injectFault) {
-        RaiseException(0xE0000001, 0, 0, nullptr);
+        RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);  // a simulated fault (tests)
     }
     IDirect3DTexture9* t = nullptr;
+
     const int v = g_ramp.validator ? g_ramp.validator(c, &t) : EngineAcquire(c, &t);
 
     if (v < 0) {  // the list lock is busy: try again at the next bind, pass-through meanwhile
@@ -238,10 +262,15 @@ void Process(IDirect3DDevice9* dev, Rs7Cand& c, Rs7CandState prev) {
     c.stock = t;  // our reference: the address cannot be reused while we bind a copy for it
     c.ours = ours;
     c.hash = hash;
+    c.colourGeneration = g_ramp.colourGeneration;
     c.retries = 0;
+    const CandName name = NameOf(c);
+    void* const d3d = c.d3d;
+
     c.state = Rs7CandState::Active;  // last: stock/ours are complete
-    LogQuiet("ramp: active %s d3d=%p '%s' -> copy %p", FamilyName(c.family), c.d3d, c.path, static_cast<void*>(ours));
-    UpdateV6For(c, "active");
+    LogQuiet("ramp: active %s d3d=%p '%s' -> copy %p", FamilyName(name.family), d3d, name.path,
+             static_cast<void*>(ours));
+    UpdateV6For(name, "active");
 }
 
 // Render thread: release Active entries the worker flagged gone (the engine dropped their texture).
@@ -289,32 +318,70 @@ bool Repaint(IDirect3DTexture9* stock, IDirect3DTexture9* ours, const uint32_t r
 
     std::vector<Rs7Image> lv(stock->GetLevelCount());
 
-    if (!ReadLevels(stock, uint32_t(d.Format), lv, why, whyLen)) {
+    if (!ReadLevels(stock, lv, why, whyLen)) {
         return false;
     }
 
-    const Rs7RampPlan plan =
-        Rs7Ramp_Plan({uint32_t(d.Format), d.Width, d.Height, unsigned(lv.size()), uint32_t(d.Pool), d.Usage},
-                     g_ramp.cfg.allowInexact);
     CheckedBuild cb;
 
-    return BuildChecked(lv, rgb, plan.exactPossible, cb, why, whyLen) &&
-           WriteAndCheck(ours, cb.build.levels, why, whyLen);
+    return BuildChecked(lv, rgb, cb, why, whyLen) && WriteAndCheck(ours, cb.build.levels, why, whyLen);
+}
+
+// Publish a generation only after every level was written and checked. Shared candidates and the cache
+// must agree: a failed copy cannot be handed to another candidate as if it had the requested colours.
+bool RecolourCopy(Rs7Cand& c, const uint32_t rgb[2]) {
+    if (c.colourGeneration == g_ramp.colourGeneration) {
+        return true;
+    }
+
+    auto* ours = static_cast<IDirect3DTexture9*>(c.ours);
+    char why[160] = {};
+
+    if (!Repaint(static_cast<IDirect3DTexture9*>(c.stock), ours, rgb, why, sizeof why)) {
+        LogQuiet("ramp: recolour of copy %p ('%s') failed: %s", static_cast<void*>(ours), c.path, why);
+        return false;
+    }
+
+    for (int i = 0; i < Rs7Cand_Count(); ++i) {
+        Rs7Cand* shared = Rs7Cand_At(i);
+
+        if (shared && shared->state == Rs7CandState::Active && shared->ours == ours) {
+            shared->colourGeneration = g_ramp.colourGeneration;
+        }
+    }
+
+    for (unsigned i = 0; i < g_ramp.copyCount; ++i) {
+        if (g_ramp.copies[i].tex == ours) {
+            g_ramp.copies[i].colourGeneration = g_ramp.colourGeneration;
+        }
+    }
+
+    return true;
 }
 
 // Render thread: repaint string 6's lines of every live copy with the requested colours (overlay,
 // [color] string6_color / _cb live). Each Active candidate's copy is rebuilt from its stock texture
 // exactly as Process built it (same Build + self-check); cached copies no candidate uses are dropped
-// (they hold the old colour). A copy that fails is logged and keeps what it had.
+// (they hold the old colour). Failed copies keep their old generation and are retried.
 void Recolour() {
     InterlockedExchange(&g_ramp.recolourReq, 0);
     const uint32_t rgb[2] = {uint32_t(g_ramp.recolourRgb[0]) & 0xFFFFFF, uint32_t(g_ramp.recolourRgb[1]) & 0xFFFFFF};
-    if (rgb[0] == g_ramp.cfg.rgb[0] && rgb[1] == g_ramp.cfg.rgb[1]) {
+    const uint32_t rgb8[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};  // BuildChecked paints the V7 band
+    const bool changed = rgb[0] != g_ramp.cfg.rgb[0] || rgb[1] != g_ramp.cfg.rgb[1] || rgb8[0] != g_ramp.rgb8[0] ||
+                         rgb8[1] != g_ramp.rgb8[1];
+    if (!changed && !g_ramp.recolourFailed) {
         return;
     }
 
-    g_ramp.cfg.rgb[0] = rgb[0];
-    g_ramp.cfg.rgb[1] = rgb[1];
+    if (changed) {
+        g_ramp.cfg.rgb[0] = rgb[0];
+        g_ramp.cfg.rgb[1] = rgb[1];
+        g_ramp.rgb8[0] = rgb8[0];
+        g_ramp.rgb8[1] = rgb8[1];
+        ++g_ramp.colourGeneration;
+        ResetForeign();  // RSMods ramps rebuild with the new colours at their next bind
+    }
+
     IDirect3DTexture9* done[kRs7MaxCands] = {};
     unsigned nDone = 0, failed = 0;
 
@@ -324,7 +391,6 @@ void Recolour() {
             continue;
         }
 
-        auto* stock = static_cast<IDirect3DTexture9*>(c->stock);
         auto* ours = static_cast<IDirect3DTexture9*>(c->ours);
         bool seen = false;
 
@@ -336,11 +402,8 @@ void Recolour() {
             continue;
         }
 
-        char why[160] = {};
-
-        if (!Repaint(stock, ours, rgb, why, sizeof why)) {
+        if (!RecolourCopy(*c, rgb)) {
             ++failed;
-            LogQuiet("ramp: recolour of copy %p ('%s') failed: %s", static_cast<void*>(ours), c->path, why);
         }
 
         if (nDone < kRs7MaxCands) {
@@ -367,8 +430,8 @@ void Recolour() {
         ++dropped;
     }
 
-    // RSMods ramps: rebuilt with the new colours at their next bind.
-    ResetForeign();
+    g_ramp.recolourFailed = failed != 0;
+    g_ramp.recolourRetryAtMs = GetTickCount() + kRetryMs;
     LogQuiet("ramp: recoloured %u copies to %06X / %06X (%u failed, %u unused cached copies dropped)", nDone - failed,
              unsigned(rgb[0]), unsigned(rgb[1]), failed, dropped);
 }
@@ -376,17 +439,23 @@ void Recolour() {
 
 namespace rs7swap {
 IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex) {
-    if (stage < kStages) {
+    if (dev == g_hook.dev && g_hook.overlayDrawing) {
+        return tex;
+    }
+
+    if (stage < kStages && dev == g_hook.dev) {
         g_hook.bound[stage] = {};
     }
     if (g_ramp.retireReq) {
         RetireGone();
     }
-    if (g_ramp.recolourReq && dev == g_hook.dev) {
+    if (dev == g_hook.dev &&
+        (g_ramp.recolourReq || (g_ramp.recolourFailed && int32_t(GetTickCount() - g_ramp.recolourRetryAtMs) >= 0))) {
         Recolour();
     }
-    rs7colour::DrainPending();  // review #5: publishes only if this is the manager's (CMBUILD) thread
-    if (!tex || !Rs7Cand_Count()) {
+    rs7colour::DrainPending();  // publishes only if this is the manager's (CMBUILD) thread
+    // Stages >= kStages (the vertex samplers) are not tracked in bound[]: never swapped there.
+    if (!tex || stage >= kStages || !Rs7Cand_Count()) {
         return tex;
     }
 
@@ -421,7 +490,7 @@ IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTe
 
     auto* ours = static_cast<IDirect3DBaseTexture9*>(c->ours);
 
-    if (stage < kStages) {
+    if (stage < kStages) {  // always true here; kept for /analyze
         g_hook.bound[stage] = {tex, ours};
     }
     Rs7Ramp_CountSwap();
@@ -457,6 +526,9 @@ void ResetRamp() {
     }
 
     g_ramp.copyCount = 0;
+    g_ramp.colourGeneration = 0;
+    g_ramp.recolourFailed = false;
+    g_ramp.rgb8[0] = g_ramp.rgb8[1] = 0xFFFFFFFF;
     ResetForeign();
     g_ramp.injectFault = false;
     g_ramp.retireReq = 0;

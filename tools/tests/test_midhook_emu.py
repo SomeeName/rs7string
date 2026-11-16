@@ -3,6 +3,7 @@
 import struct
 import pytest
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EFLAGS, UC_X86_REG_ESP
+from emu_harness import needs_emu
 from emu_harness import (
     ALL_REGS,
     CODE,
@@ -21,9 +22,7 @@ from emu_harness import (
     site_va,
 )
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 
 BUILDERS = ["Rs7Mid_Build", "Rs7Mid_BuildLight", "Rs7Mid_BuildSse"]
@@ -163,7 +162,7 @@ def test_relocated_call_from_real_game_bytes(sid):
 @pytest.mark.parametrize("taken", [False, True])
 def test_relocated_jcc_from_real_game_bytes(taken):
     emu = Emu(False)
-    va = site_va("S2")
+    va = 0x873E9F  # the former S2 site in 0x873E90: real game bytes `cmp edx,5; ja rel8`
     raw = game_text()[va - TEXT_VA : va - TEXT_VA + 5]  # cmp edx,5; ja rel8
     assert raw[:4] == bytes.fromhex("83 FA 05 77")
     out, _ = build(emu, raw, source=va)

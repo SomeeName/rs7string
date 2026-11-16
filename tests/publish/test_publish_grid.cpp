@@ -1,6 +1,8 @@
 #include "features/fretgrid/fretgrid.h"
 #include "features/publish/hooks.h"
+#include "features/string7/string7.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 #include <vector>
 
@@ -45,7 +47,7 @@ TEST(publish_grid_native_query_guards_and_actual_cells) {
 
 TEST(publish_edge_copy_follows_publish_ports_on_the_active_count) {
     // The TU8A copy of StringAction carries PUBEDGE (7E72D0): same stock expression off, physical edge on.
-    const uintptr_t saved = g_rs7_publish_ports;
+    rs7test::Restore restore_g_rs7_publish_ports(g_rs7_publish_ports);
 
     for (unsigned n = 4; n <= 8; ++n) {
         uint8_t info[0x80] = {};
@@ -58,8 +60,45 @@ TEST(publish_edge_copy_follows_publish_ports_on_the_active_count) {
         CHECK_EQ(Rs7Publish_EdgeCopy(info, 1), rs7pubgrid::PhysicalEdge(n, true));
         CHECK_EQ(Rs7Publish_EdgeCopy(info, 0), rs7pubgrid::PhysicalEdge(n, false));
     }
+}
 
-    g_rs7_publish_ports = saved;
+TEST(publish_bass_edges_follow_the_low_b_and_high_c_in_both_wrappers) {
+    rs7test::Restore restore_g_rs7_publish_ports(g_rs7_publish_ports);
+    uint8_t info[0x80] = {};
+
+    info[0] = 2;
+    g_rs7_publish_ports = 1;
+
+    for (unsigned n = 4; n <= 6; ++n) {
+        info[0xB] = info[0x40] = uint8_t(n);
+        const unsigned low = n > 4 ? 4u : 0u, high = n == 6 ? 5u : 3u;
+
+        CHECK_EQ(Rs7Publish_Edge(info, 1), low);
+        CHECK_EQ(Rs7Publish_Edge(info, 0), high);
+        CHECK_EQ(Rs7Publish_EdgeCopy(info, 1), low);
+        CHECK_EQ(Rs7Publish_EdgeCopy(info, 0), high);
+    }
+
+    g_rs7_publish_ports = 0;
+    CHECK_EQ(Rs7Publish_EdgeCopy(info, 1), 0u);
+    CHECK_EQ(Rs7Publish_EdgeCopy(info, 0), 5u);
+}
+
+TEST(publish_guitar_cleanup_keeps_the_other_players_failure_and_deadline) {
+    uint8_t guitar[0x50] = {}, other[0x50] = {}, waiting[0x50] = {};
+    uint8_t grids[3] = {};
+
+    Rs7Publish_GridForgetAll();
+    CHECK(!rs7pubgrid::WaitStep(g_rs7_publish_wait, 8, &grids[0], 1, 1000, 5000, guitar));
+    CHECK(!rs7pubgrid::WaitStep(g_rs7_publish_wait, 8, &grids[1], 1, 1000, 5000, other));
+    CHECK(!rs7pubgrid::WaitStep(g_rs7_publish_wait, 8, &grids[2], 1, 1000, 5000, waiting));
+    rs7pubgrid::MarkFailed(g_rs7_publish_wait, 8, &grids[0]);
+    rs7pubgrid::MarkFailed(g_rs7_publish_wait, 8, &grids[1]);
+    Rs7_GuitarGone(guitar);
+    CHECK(!Rs7Publish_NeckFailed(guitar));
+    CHECK(Rs7Publish_NeckFailed(other));
+    CHECK(rs7pubgrid::WaitStep(g_rs7_publish_wait, 8, &grids[2], 1, 6000, 5000, waiting));
+    Rs7Publish_GridForgetAll();
 }
 
 // Rnd_FretGrid_Load (0x58F260) is polled until BuildCells returns 2: a not-ready that never clears held the song

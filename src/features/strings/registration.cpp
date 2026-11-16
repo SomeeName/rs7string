@@ -2,13 +2,14 @@
 // group Strings; written by the main batch only with the native strings (Rs7_ShouldPatch reads the rows' strs).
 // X_ATTACH is a data reference and stays in the Core group, like every ref.
 #include "features/strings/hooks.h"
+#include "model/gates.h"
 #include "model/groups.h"
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"X_ATTACH", nullptr, nullptr, &g_rs7_fn_attach, false, true},
+    Rs7_Ref("X_ATTACH", &g_rs7_fn_attach),
 // Mid-hook rows (hooks_entries.cpp): the 16 copied-function entries.
-#define RS7_GSE(id) {#id, nullptr, nullptr, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_##id}
+#define RS7_GSE(id) Rs7_Mid(#id, &Rs7_Mid_##id).Gate(kRs7GateStrings)
     RS7_GSE(GSFR),
     RS7_GSE(GSBD),
     RS7_GSE(GSUL),
@@ -25,19 +26,18 @@ const Rs7Hook kHooks[] = {
     RS7_GSE(GSDM),
     RS7_GSE(GSGL),
     RS7_GSE(GSHC),
-    {"GSA1", nullptr, nullptr, &g_rs7_target_GSA1, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GSA1},
-    Rs7_WrapRow({"GSC1", nullptr, nullptr, nullptr, false, false, false, 0, kRs7StrNative}, kRs7WrapGSC1, nullptr,
-                &Rs7_Mid_GSC1),
-    Rs7_WrapRow({"GIA1", nullptr, nullptr, nullptr, false, false, false, 0, kRs7StrNative}, kRs7WrapGIA1,
-                &Rs7_Mid_GIA1Before, &Rs7_Mid_GIA1),
-    {"GRM1", nullptr, &g_rs7_resume_GRM1, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GRM1},
-    {"GRM2", nullptr, &g_rs7_resume_GRM2, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GRM2},
-    {"GRM3", nullptr, &g_rs7_resume_GRM3, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GRM3},
+    Rs7_Mid("GSA1", &Rs7_Mid_GSA1, nullptr, &g_rs7_target_GSA1).Gate(kRs7GateStrings),
+    Rs7_WrapRow(Rs7_Site("GSC1").Gate(kRs7GateStrings), kRs7WrapGSC1, nullptr, &Rs7_Mid_GSC1),
+    Rs7_WrapRow(Rs7_Site("GIA1").Gate(kRs7GateStrings), kRs7WrapGIA1, &Rs7_Mid_GIA1Before, &Rs7_Mid_GIA1),
+    Rs7_Mid("GIP1", &Rs7_Mid_GIP1, nullptr, &g_rs7_target_GIP1).Gate(kRs7GateStrings).After(),
+    Rs7_Mid("GRM1", &Rs7_Mid_GRM1, &g_rs7_resume_GRM1).Gate(kRs7GateStrings),
+    Rs7_Mid("GRM2", &Rs7_Mid_GRM2, &g_rs7_resume_GRM2).Gate(kRs7GateStrings),
+    Rs7_Mid("GRM3", &Rs7_Mid_GRM3, &g_rs7_resume_GRM3).Gate(kRs7GateStrings),
 #undef RS7_GSE
-    {"GSSS", nullptr, &g_rs7_resume_GSSS, &g_rs7_target_GSSS, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GSSS},
-    {"GSSE", nullptr, nullptr, &g_rs7_target_GSSE, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GSSE},
-    {"GSZ1", nullptr, &g_rs7_resume_GSZ1, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GSZ1},
-    {"GIZ1", nullptr, &g_rs7_resume_GIZ1, nullptr, false, false, false, 0, kRs7StrNative, &Rs7_Mid_GIZ1},
+    Rs7_Mid("GSSS", &Rs7_Mid_GSSS, &g_rs7_resume_GSSS, &g_rs7_target_GSSS).Gate(kRs7GateStrings),
+    Rs7_Mid("GSSE", &Rs7_Mid_GSSE, nullptr, &g_rs7_target_GSSE).Gate(kRs7GateStrings),
+    Rs7_Mid("GSZ1", &Rs7_Mid_GSZ1, &g_rs7_resume_GSZ1).Gate(kRs7GateStrings),
+    Rs7_Mid("GIZ1", &Rs7_Mid_GIZ1, &g_rs7_resume_GIZ1).Gate(kRs7GateStrings),
 };
 }  // namespace
 

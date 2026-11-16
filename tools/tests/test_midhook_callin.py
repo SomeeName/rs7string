@@ -20,11 +20,10 @@ from unicorn.x86_const import (
 )
 
 from callin_oracle import Case, Spec, check, flags_dead, matrix
+from emu_harness import needs_emu
 from emu_harness import CALLINS, DATA, DLL, SNAPSHOT, Emu
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 PATTERN = bytes((i * 13 + 5) & 255 for i in range(0x1400))
@@ -47,9 +46,14 @@ def ns(*entries) -> bytes:
 register(
     Spec("TP2", "Rs7_Call_TP2", 0x4608AC, 6, flags="dead", frozen=("Rs7_NsTplAt",)),
     [
-        Case("unregistered", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3}, data={"g_rs7_ns": ns()}),
-        Case("other-vector", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3}, data={"g_rs7_ns": ns((D + 8, 9, T8))}),
-        Case("past-count", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 9}, data={"g_rs7_ns": ns((D, 9, T8))}),
+        Case("unregistered", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3}, data={"g_rs7_ns": ns()}, stock=False),
+        Case(
+            "other-vector",
+            regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3},
+            data={"g_rs7_ns": ns((D + 8, 9, T8))},
+            stock=False,
+        ),
+        Case("past-count", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 9}, data={"g_rs7_ns": ns((D, 9, T8))}, stock=False),
         Case("t8", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 4}, data={"g_rs7_ns": ns((D, 9, T8))}, stock=False),
         Case(
             "t8-second",
@@ -230,7 +234,7 @@ register(
 MACHINES: dict = {}
 
 
-@pytest.mark.parametrize("name,case_id", matrix(SPECS, "old"))
+@pytest.mark.parametrize("name,case_id", [(n, c) for n, c in matrix(SPECS, "old") if n != "TP2" or c.startswith("t8")])
 def test_callin_matches_the_frozen_helper(name, case_id):
     check(MACHINES, SPECS, name, case_id, "old")
 
@@ -238,6 +242,23 @@ def test_callin_matches_the_frozen_helper(name, case_id):
 @pytest.mark.parametrize("name,case_id", matrix(SPECS, "stock"))
 def test_callin_matches_the_stock_bytes_on_six_strings(name, case_id):
     check(MACHINES, SPECS, name, case_id, "stock")
+
+
+@pytest.mark.parametrize("case_id", ["unregistered", "other-vector", "past-count"])
+def test_tp2_callin_failure_returns_an_empty_widened_template(case_id):
+    from callin_oracle import FLAG_PATTERNS, Machine, diff
+
+    spec, cases = SPECS["TP2"]
+    case = next(c for c in cases if c.id == case_id)
+    machine = MACHINES.setdefault("TP2", Machine(spec))
+    got = machine.run("new", case, FLAG_PATTERNS[0], 0)
+    pointer = got["regs"]["edi"]
+    raw = machine.emu.read(pointer, 0x80)
+    assert raw[0x48:0x78] == b"\xff" * 0x30
+    assert raw[0x78:] == b"\x06" + bytes(7)
+    want = machine.run("stock", case, FLAG_PATTERNS[0], 0)
+    want["regs"]["edi"] = pointer
+    assert not diff(spec, want, got, FLAG_PATTERNS[0])
 
 
 @pytest.mark.parametrize("name", [n for n, (s, _) in SPECS.items() if s.flags != "exact"])
@@ -249,6 +270,7 @@ def test_every_native_case_differs_from_stock():
     """The cases marked not-stock exercise the native path: the new run differs from the stock bytes."""
     from callin_oracle import FLAG_PATTERNS, Machine, diff
 
+    compared = 0
     for name, (spec, cases) in SPECS.items():
         if spec.name == "GlowSetup":
             continue  # no stock reference (its neighbour edits are NOPs)
@@ -260,6 +282,8 @@ def test_every_native_case_differs_from_stock():
             except UcError:
                 continue  # the stock bytes fault on the added string (HsSeg: no seventh segment pointer)
             assert diff(spec, want, got, FLAG_PATTERNS[0]), (name, case.id)
+            compared += 1
+    assert compared, "no not-stock case was compared with the stock bytes"
 
 
 @pytest.mark.parametrize("name", [n for n, (_, mode, _) in CALLINS.items() if mode])
@@ -282,7 +306,7 @@ def test_callins_are_read_from_every_definition():
         len(re.findall(r"^Rs7Mid::CallIn g_rs7_callin_\w+\{", p.read_text(encoding="utf-8"), re.M))
         for p in (REPO / "src").rglob("*.cpp")
     )
-    assert defs == len(CALLINS)
+    assert defs > 0 and defs == len(CALLINS)
 
 
 def test_every_strings_callin_has_a_spec():

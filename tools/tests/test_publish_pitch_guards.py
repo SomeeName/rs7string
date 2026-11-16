@@ -18,8 +18,8 @@ def p(*x):
 @pytest.fixture(scope="module")
 def machine():
     e = Emu(False)
-    if "Rs7PublishPitch_Target" not in e.exports:
-        pytest.skip("needs publish-pitch build")
+    # Exported unconditionally (src/features/publish/hooks.h): a DLL without it is stale, not a reason to skip.
+    assert "Rs7PublishPitch_Target" in e.exports, "the built DLL lacks Rs7PublishPitch_Target (stale build?)"
     e.uc.mem_write(e.exports["g_rs7_native_pitch"], p(1))
     e.uc.mem_write(e.exports["g_rs7_publish_ports"], p(1))
     # cdecl _msize returns a programmable allocation size, with no external CRT calls.
@@ -109,7 +109,7 @@ def test_zero_table_call_and_tail_return(machine, sid, native, instrument, s):
     assert e.uc.reg_read(UC_X86_REG_ESP) == sp + 4
 
 
-@pytest.mark.parametrize("kind,name", enumerate(("PUBNL", "PUBAN", "PUBAC")))
+@pytest.mark.parametrize("kind,name", list(enumerate(("PUBNL", "PUBAN", "PUBAC"))))
 @pytest.mark.parametrize("native", [0, 1])
 def test_entry_tail_transfer_preserves_original_stack(machine, kind, name, native):
     e = machine

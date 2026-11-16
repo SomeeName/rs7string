@@ -7,9 +7,14 @@
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"X_SETSCALE", nullptr, nullptr, &g_rs7_fn_setscale, false, true},
-    Rs7_WrapRow({"F1", nullptr, nullptr, nullptr, false, false}, kRs7WrapF1, nullptr, &Rs7_Mid_F1),
-    Rs7_WrapRow({"IN1", nullptr, nullptr, nullptr, false, false}, kRs7WrapIN1, nullptr, &Rs7_Mid_IN1),
+    Rs7_Ref("X_SETSCALE", &g_rs7_fn_setscale),
+    Rs7_WrapRow(Rs7_Site("F1"), kRs7WrapF1, nullptr, &Rs7_Mid_F1),
+    Rs7_WrapRow(Rs7_Site("IN1"), kRs7WrapIN1, nullptr, &Rs7_Mid_IN1),
+    Rs7_Mid("SC1", &Rs7_Mid_SC1),
+    Rs7_Mid("FRG1", &Rs7_Mid_FRG1),
+    Rs7_Mid("FRG2", &Rs7_Mid_FRG2),
+    Rs7_Mid("FRG2B", &Rs7_Mid_FRG2),
+    Rs7_Mid("FRG3", &Rs7_Mid_FRG3),
 };
 }  // namespace
 

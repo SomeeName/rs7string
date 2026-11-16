@@ -77,8 +77,32 @@ TEST(extblock_rules_against_the_song) {
     e[4] = 2;  // version 2
     CHECK(P(e, &b) == Status::Unsupported);
     e = Ex();
-    e[28] = 1;  // instrument 1 (bass: a later version)
+    e[28] = 1;  // instrument 1 (bass) with 7 strings
+    CHECK(P(e, &b) == Status::Invalid);
+    e[28] = 2;  // an unknown instrument
     CHECK(P(e, &b) == Status::Unsupported);
+}
+
+// Extended bass (spec 2.3): STRS only, instrument 1, 5 or 6 strings, no columns, six tuning entries.
+TEST(extblock_bass_marks_the_arrangement) {
+    const std::vector<uint8_t> bass = {'R', 'S', '7', 'X', 1, 0, 16, 0, 32, 0, 0, 0, 1, 0, 0, 0,
+                                       'S', 'T', 'R', 'S', 1, 0, 1,  0, 4,  0, 0, 0, 1, 5, 0, 0};
+    Block b;
+
+    CHECK(P(bass, &b, 0, 0, 6) == Status::Ok);
+    CHECK(b.instrument == kInstrumentBass && b.stringCount == 5 && b.Columns() == 0 && !b.hasTemplates);
+    auto e = bass;
+
+    e[29] = 6;
+    CHECK(P(e, &b, 0, 0, 6) == Status::Ok && b.stringCount == 6);
+    e[29] = 4;  // a stock 4-string bass carries no block
+    CHECK(P(e, &b, 0, 0, 6) == Status::Invalid);
+    e[29] = 7;
+    CHECK(P(e, &b, 0, 0, 6) == Status::Invalid);
+    CHECK(P(bass, &b, 0, 0, 7) == Status::Invalid);  // seven tuning entries
+    e = bass;
+    e[30] = 1;  // a column
+    CHECK(P(e, &b, 0, 0, 6) == Status::Invalid);
 }
 
 TEST(extblock_unknown_sections) {

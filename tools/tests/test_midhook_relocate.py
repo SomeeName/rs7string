@@ -16,13 +16,14 @@ from unicorn.x86_const import UC_X86_REG_EFLAGS, UC_X86_REG_EIP, UC_X86_REG_ESP
 import midhook_survey
 import sitecheck
 from emu_common import DLL, EXE, SITES, needs_exe_and_dll
-from emu_harness import ALL_REGS
+from emu_harness import ALL_REGS, install_teb
 from sitetable import load
 
 pytestmark = needs_exe_and_dll
 
 # Sites the encodings above made relocatable (survey: rejected before), one or more per new form.
 SITES_NEW = {
+    "SC1": "mov esi,[esi+24h]; mov bl,[esi+9]",
     "TF1": "dec bl",
     "BT1": "pop edi; pop esi; pop ebx; pop ebp; ret 14h",
     "PUBEDGE": "dec al after internal branches",
@@ -69,6 +70,7 @@ def run(game, code_va, code, regs, flags):
     """(GPRs, EFLAGS, exit address, writes) of executing `code` at `code_va` until control leaves it."""
     text, text_va, _ = game
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     page = code_va & ~0xFFF
     uc.mem_map(page, 0x2000, UC_PROT_ALL)
     uc.mem_write(code_va, code)

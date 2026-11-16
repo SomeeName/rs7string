@@ -2,6 +2,7 @@
 #include "features/publish/publish.h"
 #include "features/strings/strings.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstdint>
 
 // fix/colours2: the game builds its ColourManager ~12 s after launch; a manager that exists when
@@ -47,7 +48,7 @@ TEST(colours2_six_column_table_read_eight_wide_is_the_reported_rotation) {
 // [neck] clite: with the native ports a guitar shows the count it was built with (info +0Bh), whatever
 // song or tuner is up; capacity (loaded) is 8 strings, 4 for bass.
 TEST(colours2_active_count_is_the_build_count_with_the_ports) {
-    const uintptr_t saved = g_rs7_publish_ports;
+    rs7test::Restore restore_g_rs7_publish_ports(g_rs7_publish_ports);
 
     g_rs7_publish_ports = 1;
 
@@ -78,5 +79,19 @@ TEST(colours2_active_count_is_the_build_count_with_the_ports) {
     bass[0x20] = 2;
     rs7gs::RefreshCounts(bass, false);
     CHECK_EQ(int(bass[0x38]), 0);
-    g_rs7_publish_ports = saved;
+
+    // Extended bass: the low B takes the E's bend direction, the high C the G's; a four-string bass is unchanged.
+    for (const uint8_t n : {uint8_t(4), uint8_t(5), uint8_t(6)}) {
+        uint8_t ext[0x48] = {};
+
+        ext[0] = 2;
+        ext[0x0B] = n;
+        ext[0x20] = 1;          // E
+        ext[0x20 + 4 * 3] = 0;  // G
+        ext[0x20 + 4 * 4] = 7;  // stale
+        ext[0x20 + 4 * 5] = 7;
+        rs7gs::RefreshCounts(ext, false);
+        CHECK_EQ(int(ext[0x20 + 4 * 4]), n >= 5 ? 1 : 7);
+        CHECK_EQ(int(ext[0x20 + 4 * 5]), n == 6 ? 0 : 7);
+    }
 }

@@ -24,7 +24,7 @@ struct Shape {
 };
 
 using Put = void (*)(void*, const char*, int);
-// Emits only changes/additions to the already completed stock object. 4/6 are no-ops.
+// Adds or overwrites keys on the already completed stock object; shapes with fewer than 7 strings emit nothing.
 void Emit(const Shape& s, Put put, void* ctx);
 bool FromT8(const uint8_t* t8, Shape* out);
 bool MergeManifestT8(const uint8_t* t8, Shape* shape);

@@ -6,10 +6,10 @@
 //   TU8INIT         session constructor tail: the capacity-8 storage of a new session
 //   TU8FREE         sized deleting destructor: the session's real size (380h for a native one)
 //   AT              UI_PlayerTuner_IsStringTuned entry: "tuned" N seconds after the selection (test driving only)
-// An entry dispatch leaves every register and the entry stack as the game left them and continues in the copy or in the
-// trampoline Rs7Tuner8_Target / Rs7Tuner8_SessTarget answers (the trampoline is the stock entry bytes + a jump back).
-// Entry flags are dead (a call boundary); the old stubs left the helper's, the hooks leave the incoming ones (contract
-// "dead"), except AT, whose stock path replays a compare the function reads.
+// An entry dispatch keeps the entry stack and normally every register, continuing in the selected copy or trampoline
+// (the stock entry bytes + a jump back). SelectString recovery replaces a stale stock string argument with the new
+// first. Entry flags are dead (a call boundary); the old stubs left the helper's, the hooks leave the incoming ones
+// (contract "dead"), except AT, whose stock path replays a compare the function reads.
 #include "features/tuner/hooks.h"
 #include "features/tuner/tuner.h"
 #include "features/tuner/tuner8s_ids.generated.h"
@@ -30,10 +30,19 @@ void ReaderEntry(Context& c, uint32_t kind, uint32_t object) {
 // The register frame Rs7Tuner8_SessTarget reads, laid out as the old stub's PUSHAD frame below a reserved slot:
 // EDI ESI EBP ESP EBX EDX ECX EAX, the slot, the return address, the entry's [esp+4].
 void SessionEntry(Context& c, uint32_t index) {
+    const Rs7Mid::GameFcw fcw(c);  // deferred conversion can re-enter the game's tuner mode
+    const uint8_t* selection = index == 0 && Rs7Tuner8_HasSession(Ptr(c.esi)) ? Ptr(c.esi) : nullptr;
+    const bool wasNative = selection && Rs7Tuner8_IsNative(selection);
+    const int previous = selection ? rs7tuner::UncheckedRead<int>(selection, rs7tu::kCur) : 0;
     const uint32_t regs[11] = {c.edi, c.esi, c.ebp, c.esp - 4,    c.ebx,           c.edx,
                                c.ecx, c.eax, 0,     Dword(c.esp), Dword(c.esp + 4)};
 
     c.jump = static_cast<uint32_t>(Rs7Tuner8_SessTarget(index, regs));
+    if (selection && !wasNative && Rs7Tuner8_IsNative(selection) &&
+        rs7tuner::UncheckedRead<int>(selection, rs7tu::kCur) != previous) {
+        // Recovery selected the new first string; do not immediately reselect the stale stock argument.
+        c.edi = uint32_t(rs7tuner::UncheckedRead<int>(selection, rs7tu::kCur));
+    }
 }
 }  // namespace
 

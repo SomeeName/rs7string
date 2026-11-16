@@ -7,8 +7,10 @@ which runtime boundaries require ports. Classifications are source observations,
 not claims about unexamined executable consumers.
 """
 
-from pathlib import Path
 import re
+from pathlib import Path
+
+import private_features
 
 ROOT = Path(__file__).resolve().parents[1]
 RX = re.compile(r"\b7\b|\bkSlots\b|\bkNative\b|\[6\]|(?:==|!=|<=|>=|<|>)\s*6\b|\b0x7[Ff]\b")
@@ -32,9 +34,9 @@ def classify(path, line):
     code = line.split("//", 1)[0].strip()
     if not code or code.startswith("#include"):
         return "OK for 8", "comment/documented seven-mode contract, not a runtime bound"
-    if "Rs7Log(" in code or "Log(" in code or "snprintf" in code:
+    if "Log(" in code or "snprintf" in code:
         return "OK for 8", "diagnostic text/index; runtime limits covered separately"
-    if path.name in ("hsbuild.cpp", "dxt.cpp", "rgb.cpp", "ramp.cpp", "rampstate.cpp"):
+    if path.name in ("hsbuild.cpp", "rgb.cpp", "ramp.cpp", "rampstate.cpp"):
         return "OK for 8", "hash/compression/RGB/palette-state constant, not string capacity"
     if "d3d" in path.parts or "overlay" in path.parts or path.name in ("songend.cpp", "songend.h"):
         return "OK for 8", "graphics/API/stack offset or diagnostics, not an instrument maximum"
@@ -42,10 +44,9 @@ def classify(path, line):
         if "t[7]" in code or "ReadSeven" in code or "Name7" in code or "SevenFor" in code:
             return "NEEDS CHANGE", "seven-only API intentionally retained; TN awaits native eight-array provenance"
         return "OK for 8", "Name8 / manifest hook reads Rs7String7 behind [tuner] names"
-    if "vguit" in path.parts:
-        if any(s in code for s in ("midi[7]", "count == 7", "voices < 7")):
-            return "NEEDS CHANGE", "seven-voice chord scheduler/report; single-note helpers are eight-ready"
-        return "OK for 8", "eight-gated single-note helpers/counters or explicit six-slot stock projection"
+    private = private_features.get("audit_eight", None)  # the private extras' own rule (tools/private_features.py)
+    if private and (verdict := private(path, code)):
+        return verdict
     key = path.name if path.name in NEEDS else f"{path.parent.name}/{path.name}"
     if key in NEEDS:
         return "NEEDS CHANGE", NEEDS[key]

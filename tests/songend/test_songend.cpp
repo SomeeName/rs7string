@@ -1,5 +1,41 @@
+#include "features/allocstats/allocstats.h"
 #include "features/songend/songend.h"
+#include "platform/log.h"
 #include "test.h"
+#include <cstring>
+#include <string>
+
+extern "C" void __cdecl Rs7_Mid_SE2(Rs7Mid::Context&);
+
+namespace {
+std::string g_snapshot;
+
+void Capture(const char* line) {
+    g_snapshot += line;
+    g_snapshot += '\n';
+}
+}  // namespace
+
+TEST(songend_allocation_snapshot_is_independent_of_the_end_log_switch) {
+    const uintptr_t saved = g_rs7_endlog;
+    const uint32_t stack[2] = {0, 3};
+    Rs7Mid::Context context{};
+
+    context.esp = uint32_t(uintptr_t(stack));
+    g_rs7_endlog = 0;
+    Rs7Alloc_SetEnabledForTests(true);
+    Rs7Log_SetSink(Capture);
+    g_snapshot.clear();
+    Rs7_Mid_SE2(context);
+    CHECK(g_snapshot.find("allocstats song end #") != std::string::npos);
+    CHECK(g_snapshot.find("song end [SE2") == std::string::npos);
+    Rs7Alloc_SetEnabledForTests(false);
+    g_snapshot.clear();
+    Rs7_Mid_SE2(context);
+    CHECK(g_snapshot.empty());
+    Rs7Log_SetSink(nullptr);
+    g_rs7_endlog = saved;
+}
 
 TEST(songend_end_event_is_type_3_to_all_or_this_session) {
     CHECK(rs7end::IsEndEvent(2, 3, 7));

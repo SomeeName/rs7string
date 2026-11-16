@@ -115,6 +115,27 @@ bool Contains(const std::string& s, const char* part) {
 }
 }  // namespace
 
+TEST(texlist_unnamed_256x128_nif_textures_are_embedded_candidates) {
+    std::vector<NodeSpec> n(5);
+
+    n[1].w = 512;                    // another size
+    n[2].vt = rs7tex::kVtSource54;   // a file texture without a name
+    n[3].file = "data/x/other.dds";  // named, not a ramp
+    n[4].plat = "";                  // empty platform name: still unnamed
+    FakeMem m = Build(n);
+    const Rs7TexWalk w = Rs7Tex_Walk(m, kHead, kD3d9Lo, kD3d9Hi);
+
+    CHECK_EQ(w.nameMatches, 0u);
+    CHECK_EQ(w.found.size(), size_t(2));
+    CHECK(w.found[0].obj == Obj(0) && w.found[0].family == Rs7Family::Embedded);
+    CHECK(w.found[1].obj == Obj(4) && w.found[1].family == Rs7Family::Embedded);
+    CHECK(Contains(w.found[0].path, "NIF texture"));
+    CHECK(w.rejects.empty());
+    CHECK(Rs7Tex_Revalidate(m, Obj(0), Obj(0) + 0x600, Rs7Family::Embedded, kD3d9Lo, kD3d9Hi));
+    CHECK(!Rs7Tex_Revalidate(m, Obj(3), Obj(3) + 0x600, Rs7Family::Embedded, kD3d9Lo, kD3d9Hi));
+    CHECK(!Rs7Tex_Revalidate(m, Obj(0), Obj(0) + 0x600, Rs7Family::Note, kD3d9Lo, kD3d9Hi));
+}
+
 TEST(texlist_finds_both_families_in_a_fake_list) {
     std::vector<NodeSpec> n(6);
 
@@ -230,7 +251,9 @@ TEST(texlist_stops_on_a_cycle_and_on_unreadable_memory) {
     badName.U32(Obj(0) + rs7tex::kFile, 0x00BAD000);
     const Rs7TexWalk e = Rs7Tex_Walk(badName, kHead, kD3d9Lo, kD3d9Hi);
 
-    CHECK(!e.readFault && e.nameMatches == 1 && e.found.size() == 1);
+    // Node 0 now has no readable name: a 256x128 NIF texture, an embedded candidate.
+    CHECK(!e.readFault && e.nameMatches == 1 && e.found.size() == 2);
+    CHECK(e.found[0].family == Rs7Family::Embedded);
 
     FakeMem longName = Build(n);  // no NUL within 120 bytes: no match
 

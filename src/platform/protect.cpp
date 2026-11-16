@@ -15,6 +15,9 @@ bool g_useSyscall = false;
 std::vector<uint8_t> ReadSystemNtdll() {
     wchar_t path[MAX_PATH];
     const UINT n = GetSystemDirectoryW(path, MAX_PATH);  // SysWOW64 for a 32-bit process
+    if (n == 0 || n >= MAX_PATH - 11) {
+        return {};
+    }
 
     lstrcpyW(path + n, L"\\ntdll.dll");
     const HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -110,11 +113,13 @@ BOOL CALLBACK Init(PINIT_ONCE, PVOID, PVOID*) {
 }
 }  // namespace
 
-static volatile uintptr_t g_failLo = 0, g_failHi = 0;  // tests: injected failures (review #8)
+static volatile uintptr_t g_failLo = 0, g_failHi = 0;  // tests: injected failures
+static DWORD g_failProtection = 0;
 
-void Rs7_ProtectInjectFailure(uintptr_t lo, uintptr_t hi) {
+void Rs7_ProtectInjectFailure(uintptr_t lo, uintptr_t hi, DWORD protection) {
     g_failLo = lo;
     g_failHi = hi;
+    g_failProtection = protection;
 }
 
 bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
@@ -122,7 +127,7 @@ bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
 
     if (g_failHi) {
         const uintptr_t a = reinterpret_cast<uintptr_t>(addr);
-        if (a < g_failHi && a + len > g_failLo) {
+        if (a < g_failHi && a + len > g_failLo && (!g_failProtection || newProt == g_failProtection)) {
             return false;
         }
     }

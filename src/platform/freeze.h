@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// Review #9: code patches under a thread freeze, the way Detours does it.
+// Code patches under a thread freeze, the way Detours does it.
 //
 // Rs7_RunFrozen suspends every other thread of the process, checks that none of them stands inside one of
 // the byte ranges about to be written (strict interior lo < EIP < hi: a thread exactly at lo has not fetched
@@ -14,14 +14,14 @@
 // ramp / asset-dump workers, the game's main/render thread, its loader threads (Res_WorkerLoopA/B,
 // AssetLoaderThread), audio (RS_ASIO / Wwise: a startup patch costs at most one audio buffer) and thread-pool
 // workers. Only the calling thread runs (the reader is parked in a wait).
-// Threads that cannot be opened or suspended (exiting) are counted in `skipped` and cannot run user code.
+// Failed thread-control calls are skipped only after termination is confirmed; otherwise the freeze fails.
 //
 // Deadlock rules for fn (a suspended thread may hold the process heap lock, the loader lock, the CRT/stdio
 // locks or our log's lock): NO heap allocation (no new / std::string / std::vector growth / std::function
 // construction), NO logging, NO LoadLibrary / GetProcAddress, NO waits on locks. Prepare everything before;
 // log the result after. Rs7_Protect (direct syscall, or VirtualProtect under Wine), FlushInstructionCache,
 // Interlocked* and memcpy are safe. The thread list buffer is VirtualAlloc'ed before any thread is
-// suspended; listing uses NtQuerySystemInformation (no heap).
+// suspended; listing uses NtGetNextThread (no heap; fallback NtQuerySystemInformation).
 //
 // Trampolines (Rs7Mid stubs, fncopy copies) are never freed or rewritten after preparation (process lifetime),
 // so a thread inside one is harmless for both a write and a rollback: it continues at site + length, which no
@@ -40,7 +40,11 @@
 // for it to reach a safe point - in 360 ms slices, with no deadline. A target (or a lock owner) that we hold suspended
 // can never get there, so the call can block for good. Therefore every SuspendThread / GetThreadContext of a freeze
 // runs on a dedicated reader thread (never suspended, idle in a wait while fn runs) and the calling thread watches its
-// progress. No progress for stallMs: every thread suspended so far is resumed (that lets the target and any lock owner
+// progress. No progress for stallMs inside GetThreadContext: only that target is resumed (it can now reach its safe
+// point; the reader then suspends it again and reads it again, at most 8 times per attempt, and nothing is written
+// unless every listed thread is held again and enumeration/context validation have converged). No progress for
+// another stallMs, or inside SuspendThread / the
+// listing: every thread suspended so far is resumed (that lets the target and any lock owner
 // run, which is what the WoW64 wait needs), nothing is written, the reader is given graceMs to come back, then the
 // attempt is retried after a short back-off until deadlineMs. A reader that does not come back within
 // graceMs is "wedged": the call fails (nothing written), and later calls fail at once until it returns.
@@ -55,11 +59,12 @@ inline bool Rs7_FreezeRangeBusy(const Rs7Range& range, uintptr_t eip) {
 }
 
 struct Rs7FreezeStats {
-    unsigned threads = 0;  // suspended in the successful (or last) attempt
-    unsigned skipped = 0;  // could not be opened / suspended (exiting threads)
-    unsigned retries = 0;  // attempts that found a thread inside a range
-    double frozenMs = 0;   // first SuspendThread .. last ResumeThread of the attempt that ran fn
-    double totalMs = 0;    // including the retries
+    static constexpr unsigned kMaxThreads = 1024;  // the fixed thread table
+    unsigned threads = 0;                          // suspended in the successful (or last) attempt
+    unsigned skipped = 0;                          // could not be opened / suspended (exiting threads)
+    unsigned retries = 0;                          // attempts that found a thread inside a range
+    double frozenMs = 0;  // first SuspendThread .. last ResumeThread of the attempt that ran fn
+    double totalMs = 0;   // including the retries
     bool timedOut = false;
     bool tooMany = false;  // more threads than the fixed table holds (fn not called)
     unsigned long busyTid = 0;
@@ -67,12 +72,14 @@ struct Rs7FreezeStats {
     size_t busyRange = 0;  // index into ranges of the last conflict
     // Bounded thread control (see above).
     unsigned stalls = 0;        // attempts abandoned because SuspendThread / GetThreadContext made no progress
+    unsigned released = 0;      // GetThreadContext targets let run alone to their WoW64 safe point (no abandon)
     bool lastWasStall = false;  // the last failed attempt was a stall (not a thread inside a range)
     bool wedged = false;        // the reader did not come back within graceMs after resuming everything
     bool readerBusy = false;    // refused at once: the reader is still blocked from an earlier freeze
+    unsigned graceMs = 0;       // the grace the reader had (for the WEDGED line)
 
     struct Event {
-        char op;            // 'S' SuspendThread, 'C' GetThreadContext, 'O' OpenThread, 'L' listing, 0 pickup
+        char op;            // 'S' SuspendThread, 'C' GetThreadContext, 'L' listing, 0 pickup
         unsigned long tid;  // the thread the reader was working on
         float waitMs;       // no progress for this long before everything was resumed
         float releaseMs;    // resume-all .. reader back (-1: not back within graceMs)
@@ -90,10 +97,44 @@ using Rs7FrozenFn = void (*)(void* ctx);
 bool Rs7_RunFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, Rs7FreezeStats* st,
                    unsigned deadlineMs = 2000);
 
+// Only from fn inside a successful Rs7_RunFrozen: inspects the already validated, held thread contexts.
+// Includes lo (unlike patch-byte conflicts): a constructor at its entry is already in flight.
+// Checks EIP and possible return addresses from ESP to the thread's real StackBase.
+// Unknown bounds, invalid ESPs and unreadable stacks return true; callers must refuse writes on true.
+// No allocation, thread-control calls or locks.
+enum class Rs7FrozenReason {
+    None,
+    NoFs,
+    SelectorFailure,
+    TibMismatch,
+    EspOutside,
+    Unaligned,
+    Unreadable,
+    GuardPage,
+    AllocationBoundary,
+    ShortRegion,
+    CopyFailed,
+    Eip,
+    ReturnAddress
+};
+
+// Plain storage only: capture inside the freeze, describe/log after every held thread is resumed.
+// address/value identify the failed read, selector, TIB.Self, allocation, EIP or stack word.
+struct Rs7FrozenRefusal {
+    Rs7FrozenReason reason = Rs7FrozenReason::None;
+    unsigned long tid = 0, fs = 0, error = 0, state = 0, protect = 0;
+    uintptr_t eip = 0, esp = 0, stackLimit = 0, stackBase = 0, teb = 0;
+    uintptr_t address = 0, value = 0;
+    Rs7Range range{};
+};
+
+bool Rs7_FrozenThreadCallsRange(const Rs7Range& range, Rs7FrozenRefusal* refusal = nullptr);
+const char* Rs7_FrozenReasonName(Rs7FrozenReason reason);
+
 // One line for the log, e.g. "freeze: 63 threads suspended for 0.41 ms, 0 retries (0 skipped)".
 void Rs7_FreezeDescribe(const Rs7FreezeStats& st, char* out, size_t cap);
 
-// Tests: thread ids of this process (own id included), straight from NtQuerySystemInformation.
+// Tests: thread ids of this process (own id included), from NtGetNextThread (NtQuerySystemInformation without it).
 size_t Rs7_FreezeListThreads(unsigned long* out, size_t cap);
 
 // Tests: replace the thread-control calls the reader makes (nullptr = the real SuspendThread /
@@ -105,3 +146,7 @@ void Rs7_FreezeSetTestHooks(Rs7FreezeSuspendFn suspend, Rs7FreezeContextFn conte
 void Rs7_FreezeSetTiming(unsigned stallMs, unsigned graceMs);
 // Tests: true while the reader is still inside a job (a wedged call has not returned yet).
 bool Rs7_FreezeReaderBusy();
+// Tests: true once the coordinator has abandoned the running attempt (resumed every thread it held).
+bool Rs7_FreezeAbortedForTests();
+// Tests: pause completion publication (nullptr = no hook). Set only while the reader is idle.
+void Rs7_FreezeSetCompletionHookForTests(void (*hook)());

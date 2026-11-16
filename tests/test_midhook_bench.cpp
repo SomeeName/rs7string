@@ -1,4 +1,4 @@
-// Mid-hook cost breakdown (ARCHITECTURE.md section 15, "Cost"): the production thunks against ablated copies of the
+// Mid-hook cost breakdown (ARCHITECTURE.md section 14, "Cost"): the production thunks against ablated copies of the
 // full thunk, a direct call and the stock code, on a dummy `mov eax,7; ret` site. Prints numbers, checks only results.
 #include "platform/midhook.h"
 #include "test.h"

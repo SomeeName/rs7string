@@ -1,10 +1,11 @@
 // The calls written into the publication preparation copies (tools/gen_publish.py, publish_specs.generated.h): call-in
-// entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 15 "Call-in entries") that run these callbacks with the copy's
+// entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 14 "Call-in entries") that run these callbacks with the copy's
 // registers (EBP = the copy's game frame) in place of one stock instruction. They replaced the naked Rs7_Call_PubBaseG,
 // _PubBaseB, _PubClassify and _PubWireCount (frozen at 304b9d3, tools/tests/test_midhook_callin2.py). Light: integer
 // only; the classification (once per analysed note, a C helper) full.
 #include "features/pitch/pitch.h"
 #include "features/publish/hooks.h"
+#include "model/instrument.h"
 #include "platform/midhook.h"
 
 using Rs7Mid::Byte;
@@ -45,7 +46,7 @@ __declspec(dllexport) void __cdecl Rs7_CallIn_PubClassify(Rs7Mid::Context& c) {
 // PUBWU 0x58E7A2 `mov [ebp+8],6`: EDI still holds the caller's grid; the string count the copy works with,
 // [[grid]+24h]+0Bh, stored to [ebp+8]. Registers and flags kept.
 __declspec(dllexport) void __cdecl Rs7_CallIn_PubWireCount(Rs7Mid::Context& c) {
-    *Ptr<uint32_t>(c.ebp + 8) = Byte(Dword(Dword(c.edi) + 0x24) + 0x0B);
+    *Ptr<uint32_t>(c.ebp + 8) = Byte(Dword(Dword(c.edi) + rs7::kGuitarInfo) + rs7::kInfoStrings);
 }
 }
 

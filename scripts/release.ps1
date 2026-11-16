@@ -58,14 +58,18 @@ try {
     $notes = $section.Value.TrimEnd() + $tail.TrimEnd() + "`n"
 
     Write-Host "Preparing $tag from $commit (static gates)"
-    # build.ps1 pins v145 and disables post-build events; package.ps1 uses it too.
+    # build.ps1 pins v145 and disables post-build events; package.ps1 builds with it too (-Public).
     Invoke-Checked (Join-Path $root 'build.ps1') @()
+    # Unicorn's first-chance exceptions make the faulthandler dump stacks into the log (AGENTS.md "Build and gates").
+    if (-not $env:PYTEST_ADDOPTS) { $env:PYTEST_ADDOPTS = '-p no:faulthandler' }
     Invoke-Checked 'uv' @('run', 'pytest', 'tools\tests', '-q')
     Invoke-Checked 'uv' @('run', 'python', 'tools\sitecheck.py')
     Invoke-Checked 'uv' @('run', 'python', 'tools\check_exports.py', 'bin\Release\dinput8.dll')
     Assert-Clean
     Invoke-Checked (Join-Path $PSScriptRoot 'package.ps1') @()
     Assert-Clean
+    # package.ps1 rebuilds with -Public: check the exports of the DLL that ships, not only the full build's.
+    Invoke-Checked 'uv' @('run', 'python', 'tools\check_exports.py', 'bin\Release\dinput8.dll')
 
     $zip = Join-Path $root "dist\rs7string-$short.zip"
     $dll = Join-Path $root 'bin\Release\dinput8.dll'
@@ -98,7 +102,13 @@ try {
         Invoke-Checked 'gh' @('auth', 'status')
         Assert-Clean
         Invoke-Checked 'git' $tagArgs
-        Invoke-Checked 'gh' $releaseArgs
+        try {
+            Invoke-Checked 'gh' $releaseArgs
+        } catch {
+            # No release was created: do not leave the local tag behind (a retry would stop at "tag already exists").
+            git tag -d $tag | Out-Host
+            throw
+        }
     } else {
         Write-Host 'Dry run complete: no tag created and no release published.'
     }

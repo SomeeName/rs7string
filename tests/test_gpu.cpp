@@ -252,7 +252,7 @@ TEST(gpu_v6_samples_the_custom_band_on_levels_0_and_1) {
             // The line V6 lands on at level k (both taps hold the same recoloured line), alone in a
             // W_k x 1 helper sampled at V = 0.5: only the U filter remains.
             const Rs7Image& lv = p.build.levels[k];
-            const unsigned line = Rs7Ramp_Taps(kRs7V6Num[m], kRs7V6Den, lv.h, false)[0].line;
+            const unsigned line = Rs7Ramp_Taps(kRs7V6Num[m], kRs7BandDen, lv.h, false)[0].line;
             Rs7Image h;
 
             h.w = lv.w;

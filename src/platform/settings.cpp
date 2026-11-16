@@ -184,6 +184,10 @@ bool Parse(const Rs7SetDef& d, const char* text, Rs7SetValue* out) {
                 }
             }
 
+            if (n >= 2 && (b[0] == '"' || b[0] == '\'') && b[n - 1] == b[0]) {
+                return false;  // the ini read strips surrounding quotes: such a value would not read back
+            }
+
             std::memcpy(v.text, b, n);
             v.text[n] = 0;
             break;
@@ -237,27 +241,63 @@ Rs7SetValue Default(const Rs7SetDef& d) {
     return v;
 }
 
+// Every character outside printable ASCII becomes 0x01, which no type accepts (Text allows 0x20..0x7E only), so a
+// value with such a character is rejected instead of read with a stand-in character.
 std::string Narrow(const std::wstring& w) {
     std::string s;
 
     for (wchar_t c : w) {
-        s.push_back(c >= 0x20 && c < 0x7F ? char(c) : '?');
+        s.push_back(c >= 0x20 && c < 0x7F ? char(c) : '\x01');
     }
 
     return s;
 }
 
-// The ini's text of a key ("" = missing), and whether it was there.
-bool ReadIni(const Rs7SetDef& d, const wchar_t* ini, std::string* out) {
-    wchar_t buf[kRs7SetTextMax + 8] = {};
-    const DWORD n = GetPrivateProfileStringW(d.section, d.key, L"\x01", buf, DWORD(sizeof buf / sizeof buf[0]), ini);
-    if (n == 1 && buf[0] == 1) {
+// The ini's text of a key ("" = missing), and whether it was there. *cut: longer than kRs7IniValueMax, so its text is
+// only a prefix and must not pass as the value (Rs7Config_ReadInt rejects it the same way).
+bool ReadIni(const Rs7SetDef& d, const wchar_t* ini, std::string* out, bool* cut) {
+    std::wstring w;
+    if (!Rs7Config_ReadPresent(d.section, d.key, ini, &w, cut)) {
         return false;
     }
 
-    *out = Narrow(std::wstring(buf, n));
+    *out = Narrow(w);
 
     return true;
+}
+
+// The shortest text that reads back as the same float (0.4f -> "0.4", not "0.400000006").
+void FormatFloat(char* b, size_t n, float f) {
+    for (int digits = 4; digits <= 9; ++digits) {
+        std::snprintf(b, n, "%.*g", digits, double(f));
+
+        if (std::strtof(b, nullptr) == f) {
+            return;
+        }
+    }
+}
+
+// Why an ini value of a Bool / Int row did not parse, for the log.
+const char* IntReason(const char* text, bool cut) {
+    long n = 0;
+    if (cut || !ParseInt(text, &n)) {
+        return "is not a whole number";
+    }
+
+    return "is out of range";
+}
+
+// Windows' text for an error code, without the trailing line break.
+std::wstring ErrorText(DWORD e) {
+    wchar_t buf[256] = {};
+    const DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+    DWORD n = FormatMessageW(flags, nullptr, e, 0, buf, 256, nullptr);
+
+    while (n > 0 && (buf[n - 1] == L'\r' || buf[n - 1] == L'\n' || buf[n - 1] == L' ')) {
+        buf[--n] = 0;
+    }
+
+    return buf;
 }
 }  // namespace
 
@@ -341,32 +381,83 @@ bool Rs7Set_ReadIni(const wchar_t* iniPath) {
     return found;
 }
 
-void Rs7Set_InitFromIni(const wchar_t* iniPath) {
+int Rs7Set_ReadTableInt(const Rs7SetTable& t, const char* id, const wchar_t* iniPath) {
+    for (int i = 0; i < t.count; ++i) {
+        const Rs7SetDef& d = t.defs[i];
+        if (std::strcmp(d.id, id) == 0) {
+            return Rs7Config_ReadInt(d.section, d.key, std::atoi(d.def), iniPath, int(d.hi));
+        }
+    }
+
+    Rs7Log("config: %s has no settings row; disabled", id);
+
+    return 0;
+}
+
+bool Rs7Set_ParseTableFloat(const Rs7SetTable& t, const char* id, const wchar_t* text, float* out) {
+    *out = 0.0f;
+
+    for (int i = 0; i < t.count; ++i) {
+        const Rs7SetDef& d = t.defs[i];
+        if (std::strcmp(d.id, id) != 0 || d.type != T::Float) {
+            continue;
+        }
+
+        double def = 0, v = 0;
+        char narrow[64] = {};
+        size_t n = 0;
+
+        ParseFloat(d.def, &def);
+        *out = float(def);
+
+        for (; text && text[n] && n + 1 < sizeof narrow; ++n) {
+            if (text[n] > 0x7F) {
+                return false;
+            }
+
+            narrow[n] = char(text[n]);
+        }
+
+        if ((text && text[n]) || !ParseFloat(narrow, &v) || !InRange(d, v)) {
+            return false;
+        }
+
+        *out = float(v);
+        return true;
+    }
+
+    return false;
+}
+
+bool Rs7Set_InitFromIni(const wchar_t* iniPath) {
     Rs7Set_ResetForTests();
+    // Every feature's own startup read: the same validation and the same defaults as the game uses
+    // (Rs7SetDef::startup). It logs an invalid path and hands every table its defaults.
+    const bool found = Rs7Set_ReadIni(iniPath);
     const std::wstring path = Rs7Config_ResolveIniPath(iniPath);
 
     if (path.empty()) {
-        Rs7Log("config: invalid/overlong settings ini path; defaults used");
-        return;
+        return false;
     }
 
     iniPath = path.c_str();
-    // Every feature's own startup read: the same validation and the same defaults as the game uses
-    // (Rs7SetDef::startup).
-    Rs7Set_ReadIni(iniPath);
 
     for (int i = 0; i < Count(); ++i) {
         const Rs7SetDef& d = Def(i);
         Rs7SetState& s = State(i);
         std::string text;
+        bool cut = false;
 
-        s.fromIni = ReadIni(d, iniPath, &text);
+        s.fromIni = ReadIni(d, iniPath, &text, &cut);
         Rs7SetValue v = Default(d);
 
-        if (s.fromIni && !Parse(d, text.c_str(), &v)) {
+        if (s.fromIni && (cut || !Parse(d, text.c_str(), &v))) {
             if (d.type == T::Bool || d.type == T::Int) {
-                v.i = 0;
-                Rs7Log("config: [%ls] %ls invalid integer; disabled", d.section, d.key);
+                // 0 (off) until fixed, as the feature's own read (Rs7Config_ReadInt); the default if 0 is not allowed
+                v = InRange(d, 0.0) ? Rs7SetValue{} : Default(d);
+                Rs7Log("config: [%ls] %ls in rs7string.ini %s (a whole number from %g to %g); using %d until fixed "
+                       "(invalid integer)",
+                       d.section, d.key, IntReason(text.c_str(), cut), double(d.lo), double(d.hi), v.i);
             } else {
                 v = Default(d);
             }
@@ -377,6 +468,8 @@ void Rs7Set_InitFromIni(const wchar_t* iniPath) {
         }
         s.value = s.running = s.saved = v;
     }
+
+    return found;
 }
 
 const char* Rs7Set_ResultName(Rs7SetResult r) {
@@ -449,7 +542,7 @@ std::string Rs7Set_Format(int i, const Rs7SetValue& v) {
             std::snprintf(b, sizeof b, "%d", v.i);
             break;
         case T::Float:
-            std::snprintf(b, sizeof b, "%.4g", double(v.f[0]));
+            FormatFloat(b, sizeof b, v.f[0]);
             break;
         case T::Rgb:
             std::snprintf(b, sizeof b, "%06X", unsigned(v.rgb));
@@ -481,6 +574,14 @@ bool Rs7Set_NeedsRestart(int i) {
 }
 
 int Rs7Set_Save(const wchar_t* iniPath) {
+    const std::wstring path = Rs7Config_ResolveIniPath(iniPath);
+
+    if (path.empty()) {
+        Rs7Log("overlay: invalid/overlong ini path; settings not saved");
+        return -1;
+    }
+
+    iniPath = path.c_str();
     int written = 0;
 
     for (int i = 0; i < Count(); ++i) {
@@ -492,7 +593,9 @@ int Rs7Set_Save(const wchar_t* iniPath) {
         const std::wstring w(text.begin(), text.end());
 
         if (!WritePrivateProfileStringW(Def(i).section, Def(i).key, w.c_str(), iniPath)) {
-            Rs7Log("overlay: saving [%ls] %ls failed (%lu)", Def(i).section, Def(i).key, GetLastError());
+            const DWORD e = GetLastError();
+
+            Rs7Log("overlay: saving [%ls] %ls failed: %ls (%lu)", Def(i).section, Def(i).key, ErrorText(e).c_str(), e);
             return -1;
         }
 

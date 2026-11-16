@@ -52,23 +52,56 @@ unsigned SourceLine(unsigned mode, unsigned h) {
     return Rs7Ramp_Taps(2 * kRs7Row6[mode] + 1, 2 * kRs7RampRows, h, false)[0].line;
 }
 
-// stamp[y] = 0 (not stamped), 1 + mode. Returns false if a V6 tap is protected or the modes overlap.
-bool V6Lines(unsigned h, const std::vector<bool>& prot, std::vector<uint8_t>& stamp) {
-    stamp.assign(h, 0);
+// Stamps band `band` (0 = V6, 1 = V7) into stamp as 1 + 2 * band + mode; false (stamp unchanged) if one of its taps is
+// protected or already stamped by another band.
+bool StampBand(unsigned h, const std::vector<bool>& prot, unsigned band, std::vector<uint8_t>& stamp) {
+    std::vector<uint8_t> next = stamp;
+    const unsigned* num = band ? kRs7V7Num : kRs7V6Num;
 
     for (unsigned m = 0; m < 2; ++m) {
+        const uint8_t mark = uint8_t(1 + 2 * band + m);
+
         for (bool bil : {true, false}) {
-            for (const auto& t : Rs7Ramp_Taps(kRs7V6Num[m], kRs7V6Den, h, bil)) {
-                if (prot[t.line] || (stamp[t.line] && stamp[t.line] != m + 1)) {
+            for (const auto& t : Rs7Ramp_Taps(num[m], kRs7BandDen, h, bil)) {
+                if (prot[t.line] || (next[t.line] && next[t.line] != mark)) {
                     return false;
                 }
 
-                stamp[t.line] = uint8_t(m + 1);
+                next[t.line] = mark;
             }
         }
     }
 
+    stamp.swap(next);
+
     return true;
+}
+
+// stamp[y] = 0 (not stamped), 1 + mode (V6) or 3 + mode (V7). False if the V6 taps do not fit (the level gets no
+// custom band); with `eight` the V7 taps are added only where they fit too (a smaller level may lack them).
+bool BandLines(unsigned h, const std::vector<bool>& prot, bool eight, std::vector<uint8_t>& stamp) {
+    stamp.assign(h, 0);
+    if (!StampBand(h, prot, 0, stamp)) {
+        return false;
+    }
+
+    if (eight) {
+        StampBand(h, prot, 1, stamp);
+    }
+
+    return true;
+}
+
+// The mode of a stamped line (stamp = 1 + 2 * band + mode, StampBand).
+unsigned StampMode(uint8_t stamp) {
+    return (stamp - 1u) & 1u;
+}
+
+// The band colour of a stamped line (BandLines).
+uint32_t StampRgb(uint8_t stamp, const uint32_t rgb[2], const uint32_t* rgb8) {
+    const unsigned m = StampMode(stamp);
+
+    return stamp > 2 ? rgb8[m] : rgb[m];
 }
 
 bool SameSize(const Rs7Image& a, const Rs7Image& b) {
@@ -89,7 +122,7 @@ struct LineCheck {
 };
 
 LineCheck CheckLine(const Rs7Image& s, const Rs7Image& d, unsigned y, uint8_t stamp, const unsigned src[2],
-                    const uint32_t rgb[2]) {
+                    const uint32_t rgb[2], const uint32_t* rgb8) {
     const uint32_t* a = &s.px[size_t(y) * s.w];
     const uint32_t* c = &d.px[size_t(y) * s.w];
     LineCheck r{false, true};
@@ -100,9 +133,9 @@ LineCheck CheckLine(const Rs7Image& s, const Rs7Image& d, unsigned y, uint8_t st
         }
 
         if (stamp) {
-            const unsigned m = stamp - 1u;
+            const unsigned m = StampMode(stamp);
 
-            if (c[x] != RecolorPixel(s.px[size_t(src[m]) * s.w + x], m, rgb[m])) {
+            if (c[x] != RecolorPixel(s.px[size_t(src[m]) * s.w + x], m, StampRgb(stamp, rgb, rgb8))) {
                 r.pure = false;
             }
         }
@@ -168,7 +201,7 @@ std::vector<bool> Rs7Ramp_Protected(unsigned h) {
     return p;
 }
 
-Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rgb[2]) {
+Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], const uint32_t* rgb8) {
     Rs7RampBuild b;
 
     b.levels = stock;
@@ -180,7 +213,7 @@ Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rg
         }
 
         std::vector<uint8_t> stamp;
-        if (!V6Lines(s.h, Rs7Ramp_Protected(s.h), stamp)) {
+        if (!BandLines(s.h, Rs7Ramp_Protected(s.h), rgb8 != nullptr, stamp)) {
             break;
         }
 
@@ -192,10 +225,11 @@ Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rg
                 continue;
             }
 
-            const unsigned m = stamp[y] - 1u;
+            const unsigned m = StampMode(stamp[y]);
+            const uint32_t colour = StampRgb(stamp[y], rgb, rgb8);
 
             for (unsigned x = 0; x < s.w; ++x) {
-                d.px[size_t(y) * s.w + x] = RecolorPixel(s.px[size_t(src[m]) * s.w + x], m, rgb[m]);
+                d.px[size_t(y) * s.w + x] = RecolorPixel(s.px[size_t(src[m]) * s.w + x], m, colour);
             }
         }
 
@@ -205,7 +239,8 @@ Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rg
     return b;
 }
 
-Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBuild& b, const uint32_t rgb[2]) {
+Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBuild& b, const uint32_t rgb[2],
+                            const uint32_t* rgb8) {
     Rs7RampCheck r{true, true, 0, std::string()};
     auto fail = [&r](bool& flag, std::string why) {
         flag = false;
@@ -239,7 +274,7 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
         const auto prot = Rs7Ramp_Protected(s.h);
         std::vector<uint8_t> stamp(s.h, 0);
 
-        if (k < b.customLevels && !V6Lines(s.h, prot, stamp)) {
+        if (k < b.customLevels && !BandLines(s.h, prot, rgb8 != nullptr, stamp)) {
             fail(r.exact, Fmt("level %u: V6 taps collide with stock taps (%u)", unsigned(k), s.h));
             r.v6Pure = false;
             stamp.assign(s.h, 0);
@@ -248,7 +283,7 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
         const unsigned src[2] = {SourceLine(0, s.h), SourceLine(1, s.h)};
 
         for (unsigned y = 0; y < s.h; ++y) {
-            const LineCheck line = CheckLine(s, d, y, stamp[y], src, rgb);
+            const LineCheck line = CheckLine(s, d, y, stamp[y], src, rgb, rgb8);
             const bool differs = line.differs, pure = line.pure;
 
             if (differs) {
@@ -270,32 +305,28 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
     return r;
 }
 
-Rs7RampPlan Rs7Ramp_Plan(const Rs7RampDesc& d, bool allowInexact) {
+Rs7RampPlan Rs7Ramp_Plan(const Rs7RampDesc& d) {
     if (d.w != 256 || d.h != 128) {
-        return {Rs7RampVerdict::Refuse, false, 0, "level 0 is not 256x128"};
+        return {Rs7RampVerdict::Refuse, "level 0 is not 256x128"};
     }
     if (d.levels == 0) {
-        return {Rs7RampVerdict::Refuse, false, 0, "no levels"};
+        return {Rs7RampVerdict::Refuse, "no levels"};
     }
     if (d.pool != kRs7PoolManaged) {
-        return {Rs7RampVerdict::Refuse, false, 0, "pool is not MANAGED"};
+        return {Rs7RampVerdict::Refuse, "pool is not MANAGED"};
     }
     if (d.usage != 0) {
-        return {Rs7RampVerdict::Refuse, false, 0, "usage flags set"};
+        return {Rs7RampVerdict::Refuse, "usage flags set"};
     }
     if (d.format == kRs7FmtA8R8G8B8 || d.format == kRs7FmtX8R8G8B8) {
-        return {Rs7RampVerdict::Swap, true, d.format, "exact copy, same format"};
+        return {Rs7RampVerdict::Swap, "exact copy, same format"};
     }
 
     if (d.format == kRs7FmtDxt1 || d.format == kRs7FmtDxt5) {
-        if (!allowInexact) {
-            return {Rs7RampVerdict::Refuse, false, 0, "DXT needs allow_inexact=1"};
-        }
-
-        return {Rs7RampVerdict::Swap, false, kRs7FmtA8R8G8B8, "DXT decoded to A8R8G8B8 (inexact)"};
+        return {Rs7RampVerdict::Refuse, "DXT ramps are not copied"};
     }
 
-    return {Rs7RampVerdict::Refuse, false, 0, "unsupported format"};
+    return {Rs7RampVerdict::Refuse, "unsupported format"};
 }
 
 uint64_t Rs7Ramp_Hash(const std::vector<Rs7Image>& levels) {

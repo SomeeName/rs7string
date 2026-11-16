@@ -11,6 +11,7 @@
 #include "platform/isolate.h"
 #include "platform/resolve.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 
 namespace {
@@ -64,7 +65,8 @@ struct Fixture {
 
 TEST(isolation_failing_colour_site_is_a_unit_failure_and_aborts) {
     // 1.0: native colours have no legacy fallback; a colour site failing leaves the game stock (nothing written).
-    const auto saved = g_rs7_native_colours, savedDg = g_rs7_diagrams;
+    rs7test::Restore restoreColours(g_rs7_native_colours);
+    rs7test::Restore restoreDiagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = 1;
@@ -92,17 +94,16 @@ TEST(isolation_failing_colour_site_is_a_unit_failure_and_aborts) {
     bool named = false;
 
     for (auto& l : f.log) {
-        named |= l.find("CMBUILD") != std::string::npos && l.find("native 7-string unit") != std::string::npos;
+        named |= l.find("CMBUILD") != std::string::npos && l.find("unit without fallback") != std::string::npos;
     }
 
     CHECK(named);
     Rs7_ResetFeatureFailures();
-    g_rs7_native_colours = saved;
-    g_rs7_diagrams = savedDg;
 }
 
 TEST(isolation_failing_diagram_site_disables_only_diagrams) {
-    const auto saved = g_rs7_native_colours, savedDg = g_rs7_diagrams;
+    rs7test::Restore restoreColours(g_rs7_native_colours);
+    rs7test::Restore restoreDiagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = 1;
@@ -123,12 +124,10 @@ TEST(isolation_failing_diagram_site_disables_only_diagrams) {
     CHECK(Rs7_FeatureDisabled(Rs7Feature::Diagrams) && g_rs7_diagrams == 0);
     CHECK(!Rs7_FeatureDisabled(Rs7Feature::Colours) && g_rs7_native_colours == 1);
     Rs7_ResetFeatureFailures();
-    g_rs7_native_colours = saved;
-    g_rs7_diagrams = savedDg;
 }
 
 TEST(isolation_core_failure_still_aborts_and_restores) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restoreColours(g_rs7_native_colours);
 
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = 1;
@@ -147,11 +146,11 @@ TEST(isolation_core_failure_still_aborts_and_restores) {
     CHECK(Rs7_PatchIsolated(kRs7Groups, f.Ops(hooks), written) == Rs7PatchResult::CoreFailed);
     CHECK(!f.written[0] && !f.written[1] && !f.written[2] && !f.written[3]);
     Rs7_ResetFeatureFailures();
-    g_rs7_native_colours = saved;
 }
 
 TEST(isolation_resolve_failure_of_a_colour_site_aborts) {
-    const auto saved = g_rs7_native_colours, savedDg = g_rs7_diagrams;
+    rs7test::Restore restoreColours(g_rs7_native_colours);
+    rs7test::Restore restoreDiagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     g_rs7_native_colours = 1;
@@ -193,8 +192,6 @@ TEST(isolation_resolve_failure_of_a_colour_site_aborts) {
 
     CHECK(!Rs7_IsolateResolveFailures(bad, kRs7Groups, [](const std::string&) {}));
     Rs7_ResetFeatureFailures();
-    g_rs7_native_colours = saved;
-    g_rs7_diagrams = savedDg;
 }
 
 TEST(publish_and_chordloops_sites_have_their_own_groups) {
@@ -226,9 +223,9 @@ TEST(publish_and_chordloops_sites_have_their_own_groups) {
     }
 
     CHECK_EQ(pub, 25u);
-    CHECK_EQ(cl, 19u);
+    CHECK_EQ(cl, 20u);  // + CLVE
 
-    for (const char* id : {"PA1", "PA2", "PM0", "PR0", "PT1", "PM1", "PE0", "PC1", "PC2", "PC3", "PC4"}) {
+    for (const char* id : {"PA1", "PA2", "PM0", "PR0", "PT1", "PM1", "PE0", "PC1", "PC2", "PC3", "PC4", "PBH"}) {
         const Rs7Hook* h = Rs7_FindHook(id);
 
         CHECK(h != nullptr);
@@ -260,7 +257,8 @@ TEST(tuner8_sites_have_their_own_group) {
 
     CHECK_EQ(n, 37u);
     Rs7_ResetFeatureFailures();
-    const uintptr_t savedT = g_rs7_native_tuner, savedC = g_rs7_native_colours;
+    rs7test::Restore restoreTuner(g_rs7_native_tuner);
+    rs7test::Restore restoreColours(g_rs7_native_colours);
 
     g_rs7_native_tuner = 1;
     g_rs7_native_colours = 1;
@@ -271,8 +269,6 @@ TEST(tuner8_sites_have_their_own_group) {
     CHECK(Rs7_DisableFeature(Rs7Feature::Colours));  // a prerequisite of the tuner copies goes: so does the tuner
     CHECK(g_rs7_native_tuner == 0);
     Rs7_ResetFeatureFailures();
-    g_rs7_native_tuner = savedT;
-    g_rs7_native_colours = savedC;
 }
 
 TEST(fretgrid_failure_takes_native_publish_and_native_tuner_with_it) {

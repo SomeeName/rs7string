@@ -5,11 +5,9 @@
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"X_WORLD", nullptr, nullptr, &g_rs7_fn_world, false, true},
-    {"X_ROOT", nullptr, nullptr, &g_rs7_fn_root, false, true},
-    {"X_FADEMGR", nullptr, nullptr, &g_rs7_fade_mgr, false, true},
-    {"X_FADEIN", nullptr, nullptr, &g_rs7_fn_fadein, false, true},
-    {"X_FADEOUT", nullptr, nullptr, &g_rs7_fn_fadeout, false, true},
+    Rs7_Ref("X_WORLD", &g_rs7_fn_world),     Rs7_Ref("X_ROOT", &g_rs7_fn_root),
+    Rs7_Ref("X_FADEMGR", &g_rs7_fade_mgr),   Rs7_Ref("X_FADEIN", &g_rs7_fn_fadein),
+    Rs7_Ref("X_FADEOUT", &g_rs7_fn_fadeout),
 };
 }  // namespace
 

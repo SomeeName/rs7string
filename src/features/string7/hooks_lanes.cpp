@@ -12,7 +12,7 @@
 //
 // The old stubs computed 2 * a - b on the x87 stack and stored a float; Rs7S7_ExtrapolateLane (string7.cpp) gives the
 // same float for finite results. The sticky x87 exception flags (precision) the old arithmetic raised are not
-// reproduced (tools/tests/test_midhook_x87.py, docs/ARCHITECTURE.md section 15 "x87 ST0").
+// reproduced (tools/tests/test_midhook_x87.py, docs/ARCHITECTURE.md section 14 "x87 ST0").
 #include "features/diag/diag.h"
 #include "features/string7/string7.h"
 #include "platform/log.h"

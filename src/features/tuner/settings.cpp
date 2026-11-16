@@ -42,12 +42,16 @@ const Rs7SetDef kDefs[] = {
     {"tuner.lowrange", L"tuner", L"lowrange", T::Bool, W::Live, "1", 0, 1, "Low-range tuner",
      "7-string tuner: the wrong-instrument warning and the detector's lowest open follow the lowest string.",
      ApplyLowRange},
-    {"tuner.names", L"tuner", L"names", T::Bool, W::Restart, "1", 0, 1, "7-string tuning names",
-     "Song list, song pages and tuner name 7-string arrangements (Rs7String6) as B Standard, Drop A, ...", nullptr},
+    {"tuner.names", L"tuner", L"names", T::Bool, W::Restart, "1", 0, 1, "Extended tuning names",
+     "The song list, song pages and tuner name extended tunings, e.g. B Standard, Drop A. Applies after a restart.",
+     nullptr},
     {"tuner.name_prefix", L"tuner", L"name_prefix", T::Text, W::Restart, "", 0, 31, "Name prefix",
-     "Text before a 7-string tuning name (e.g. 7Str -> 7Str B Standard). Empty: none.", nullptr},
+     "Text before an extended tuning name (e.g. 7Str -> 7Str B Standard). Empty: none. Applies after a restart.",
+     nullptr},
     {"tuner.name_suffix", L"tuner", L"name_suffix", T::Text, W::Restart, "7Str", 0, 31, "Name suffix",
-     "Text after a 7-string tuning name (default 7Str -> B Standard 7Str). Empty: none.", nullptr},
+     "Text after an extended tuning name (default 7Str -> B Standard 7Str; 8Str, 5Str, 6Str on the other "
+     "instruments). Empty: none. Applies after a restart.",
+     nullptr},
 };
 }  // namespace
 
@@ -79,15 +83,14 @@ const Rs7UiItem kUi[] = {
     Rs7UiPlayerSection("Tuner and tuning names", "Tuner"),
     Rs7UiPlayer("tuner.lowrange", "Tuner for very low tunings",
                 "Stops the wrong-instrument warning in Drop A, A Standard and G Standard."),
-    Rs7UiPlayer("tuner.names", "Seven-string tuning names",
-                "Song list, song pages and tuner show names such as B Standard."),
+    Rs7UiPlayer("tuner.names", "Extended tuning names",
+                "Song list, song pages and tuner show names such as B Standard. Applies after a restart."),
     Rs7UiPlayer("tuner.name_prefix", "Text before the tuning name",
-                "For example 7Str gives 7Str B Standard. Can be empty."),
+                "For example 7Str gives 7Str B Standard. Can be empty. Applies after a restart."),
     Rs7UiPlayer("tuner.name_suffix", "Text after the tuning name",
-                "For example 7Str gives B Standard 7Str. Can be empty."),
+                "For example 7Str gives B Standard 7Str. Can be empty. Applies after a restart."),
     {U::Status, K::OnOff, "7-string tuner", LiveTuner},
     {U::Tuner, K::Section, "7-string tuner"},
-    {U::Tuner, K::Setting, "debug.tuner_autotune"},
     {U::Tuner, K::Row, "sessions", LiveSessions},
 };
 }  // namespace
@@ -104,12 +107,10 @@ Rs7TunerConfig Rs7Tuner_ReadIni(const wchar_t* iniPath) {
         return c;
     }
 
-    c.tunerLowRangeRaw = Rs7Config_ReadInt(L"tuner", L"lowrange", 1, iniPath);
+    c.tunerLowRangeRaw = Rs7Set_ReadTableInt(kRs7TunerSettings, "tuner.lowrange", iniPath);
     c.tunerLowRange = c.tunerLowRangeRaw != 0;
-    const int at = Rs7Config_ReadInt(L"debug", L"tuner_autotune", 0, iniPath, 30);
-
-    c.tunerAutotune = at < 0 ? 0 : at > 30 ? 30 : at;
-    c.tunerNamesRaw = Rs7Config_ReadInt(L"tuner", L"names", 1, iniPath);
+    c.tunerAutotune = Rs7Set_ReadTableInt(kRs7TunerSettings, "debug.tuner_autotune", iniPath);
+    c.tunerNamesRaw = Rs7Set_ReadTableInt(kRs7TunerSettings, "tuner.names", iniPath);
     c.tunerNames = c.tunerNamesRaw != 0;
 
     // A present but empty value is a choice (no prefix / no suffix), so missing != empty here.

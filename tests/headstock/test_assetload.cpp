@@ -1,9 +1,11 @@
 #include "features/headstock/assetload.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
 #include <intrin.h>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -13,7 +15,7 @@ TEST(assetload_timed_out_builder_does_not_publish_its_path) {
 
     CHECK(Rs7Asset_PublishedPath(path, &state).empty());
     path = L"C:\\headstock\\finished.nif";
-    _InterlockedExchange(&state, 2);
+    state = 2;
     CHECK(Rs7Asset_PublishedPath(path, &state) == path);
     path.clear();  // a completed but failed builder must keep the stock fallback
     CHECK(Rs7Asset_PublishedPath(path, &state).empty());
@@ -49,6 +51,30 @@ TEST(assetload_7string_model_applies_to_the_inline_right_hand_folder) {
     CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/sub/x.nif"));
     CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/wilshire.dds"));
     CHECK(!Rs7Asset_IsRhCandidate(nullptr));
+}
+
+TEST(assetload_bass_frames_get_the_extended_bass_model) {
+    const std::wstring dir = L"C:\\rs\\head";
+
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", dir, 5) ==
+          L"C:\\rs\\head\\rs7_bass5.nif");
+    CHECK(Rs7Asset_BassPath("DATA/Assets/Gameplay/Guitar_Bass_Inline/Bass_Thunder_LH.NIF", dir, 5) ==
+          L"C:\\rs\\head\\rs7_bass5_lh.nif");
+    // A 2x2 frame gets the in-line model too (there is no 2+2 model).
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 5) ==
+          L"C:\\rs\\head\\rs7_bass5.nif");
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady_lh.nif", dir, 5) ==
+          L"C:\\rs\\head\\rs7_bass5_lh.nif");
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_peg.nif", dir, 5) ==
+          L"C:\\rs\\head\\rs7_bass5.nif");  // the frame check in the handler rejects non-frames
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/thunder_peg.nif", dir, 5).empty());
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_standard_inline/bass_x.nif", dir, 5).empty());
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", L"", 5).empty());
+    CHECK(Rs7Asset_BassPath(nullptr, dir, 5).empty());
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif", dir, 6) ==
+          L"C:\\rs\\head\\rs7_bass6_lh.nif");
+    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 6) ==
+          L"C:\\rs\\head\\rs7_bass6.nif");
 }
 
 TEST(assetload_lefty_model_applies_to_the_inline_left_hand_frame) {
@@ -200,6 +226,30 @@ TEST(assetload_dds_names_of_a_nif) {
     CHECK_EQ(int(n.size()), 3);
     CHECK(n.size() == 3 && n[0] == "rs7hs_wood.dds" && n[1] == "cubemap_tail.DDS" && n[2] == "rs7hs_env.dds");
     CHECK(Rs7Asset_DdsNames(nullptr, 10).empty());
+}
+
+TEST(assetload_dds_names_deduplicate_case_and_reject_excessive_references) {
+    const char names[] = "WOOD.dds\0wood.DDS\0other.dds\0";
+    const auto unique = Rs7Asset_DdsNames(reinterpret_cast<const uint8_t*>(names), sizeof names);
+
+    CHECK_EQ(unique.size(), 2u);
+    CHECK(unique.size() == 2 && unique[0] == "WOOD.dds" && unique[1] == "other.dds");
+    std::string raw;
+
+    for (unsigned i = 0; i < 257; ++i) {
+        raw += "texture_" + std::to_string(i) + ".dds";
+        raw.push_back('\0');
+    }
+
+    bool refused = false;
+
+    try {
+        Rs7Asset_DdsNames(reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
+    } catch (const std::length_error&) {
+        refused = true;
+    }
+
+    CHECK(refused);
 }
 
 TEST(assetload_folder_of_a_resource_name) {
@@ -359,12 +409,34 @@ TEST(assetload_draw_layer_copy_needs_both_layer_properties) {
 namespace {
 volatile long g_builds = 0, g_inside = 0, g_overlap = 0;
 
-bool SlowBuild(void*) {
+// Shared counters are only touched through these, so every access stays interlocked.
+long Load(volatile long* p) {
+    return _InterlockedCompareExchange(p, 0, 0);
+}
+
+void Store(volatile long* p, long v) {
+    _InterlockedExchange(p, v);
+}
+
+struct BuildEvents {
+    HANDLE entered, release;
+};
+
+bool SlowBuild(void* context) {
     if (_InterlockedIncrement(&g_inside) > 1) {
         _InterlockedIncrement(&g_overlap);
     }
     _InterlockedIncrement(&g_builds);
-    Sleep(300);
+
+    if (context) {
+        const auto& events = *static_cast<BuildEvents*>(context);
+
+        SetEvent(events.entered);
+        if (WaitForSingleObject(events.release, 10000) != WAIT_OBJECT_0) {
+            std::abort();
+        }
+    }
+
     _InterlockedDecrement(&g_inside);
 
     return true;
@@ -384,12 +456,13 @@ struct Caller {
     volatile long* state;
     bool (*build)(void*);
     bool result;
+    void* context = nullptr;
 };
 
 DWORD WINAPI CallOnce(LPVOID p) {
     auto* c = static_cast<Caller*>(p);
 
-    c->result = Rs7Asset_RunOnce(c->state, c->build, nullptr, 5000);
+    c->result = Rs7Asset_RunOnce(c->state, c->build, c->context, 5000);
 
     return 0;
 }
@@ -398,19 +471,33 @@ DWORD WINAPI CallOnce(LPVOID p) {
 TEST(assetload_shared_build_runs_once_for_concurrent_left_and_right_jobs) {
     volatile long state = 0;
 
-    g_builds = g_inside = g_overlap = 0;
-    Caller a{&state, SlowBuild, false}, b{&state, SlowBuild, false};
-    HANDLE t[2] = {CreateThread(nullptr, 0, CallOnce, &a, 0, nullptr),
-                   CreateThread(nullptr, 0, CallOnce, &b, 0, nullptr)};
+    Store(&g_builds, 0);
+    Store(&g_inside, 0);
+    Store(&g_overlap, 0);
+    BuildEvents events{rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW"),
+                       rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW")};
+    Caller a{&state, SlowBuild, false, &events};
+    const HANDLE owner = rs7test::Must(CreateThread(nullptr, 0, CallOnce, &a, 0, nullptr), "CreateThread");
+    const DWORD entered = WaitForSingleObject(events.entered, 5000);
 
-    WaitForMultipleObjects(2, t, TRUE, 10000);
-    CloseHandle(t[0]);
-    CloseHandle(t[1]);
-    CHECK_EQ(g_builds, 1L);  // one owner wrote the files
-    CHECK_EQ(g_overlap, 0L);
-    CHECK(a.result && b.result);                             // the waiter reuses the owner's result
+    CHECK_EQ(entered, WAIT_OBJECT_0);
+
+    if (entered == WAIT_OBJECT_0) {
+        CHECK_EQ(Load(&state), 1L);
+        // The owner cannot complete until released: this caller must observe the pending build.
+        CHECK(!Rs7Asset_RunOnce(&state, SlowBuild, nullptr, 0));
+        CHECK_EQ(Load(&g_builds), 1L);
+    }
+
+    SetEvent(events.release);
+    rs7test::Join(owner, 10000);
+    CloseHandle(events.entered);
+    CloseHandle(events.release);
+    CHECK_EQ(Load(&g_builds), 1L);  // one owner wrote the files
+    CHECK_EQ(Load(&g_overlap), 0L);
+    CHECK(a.result);
     CHECK(Rs7Asset_RunOnce(&state, SlowBuild, nullptr, 0));  // later callers reuse it too, no rebuild
-    CHECK_EQ(g_builds, 1L);
+    CHECK_EQ(Load(&g_builds), 1L);
 }
 
 TEST(assetload_shared_build_failure_is_shared_and_contained) {

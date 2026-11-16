@@ -1,8 +1,10 @@
 #include "platform/midhook.h"
 #include "platform/midhook_emit.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <array>
 #include <cstring>
+#include <intrin.h>
 
 namespace {
 struct Instruction {
@@ -352,7 +354,7 @@ extern "C" size_t __cdecl Rs7Mid_BuildSse(uint8_t* out, size_t capacity, const u
     return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &Rs7Mid_ThunkSse);
 }
 
-// Call site entry (ARCHITECTURE.md section 15, "Call sites"). Before: the game's `call` lands on the entry, the
+// Call site entry (ARCHITECTURE.md section 14, "Call sites"). Before: the game's `call` lands on the entry, the
 // continuation is the callee. After: the entry calls the callee itself and continues at the site's return address.
 extern "C" size_t __cdecl Rs7Mid_BuildCall(uint8_t* out, size_t capacity, uintptr_t sourceVa, uintptr_t callee,
                                            uintptr_t destVa, uintptr_t callback, int mode, int after) {
@@ -380,7 +382,7 @@ extern "C" size_t __cdecl Rs7Mid_BuildCall(uint8_t* out, size_t capacity, uintpt
     return call + 15;
 }
 
-// Call-in entry (ARCHITECTURE.md section 15, "Call-in entries"): the call entry with no callee, its continuation the
+// Call-in entry (ARCHITECTURE.md section 14, "Call-in entries"): the call entry with no callee, its continuation the
 // `ret` / `ret N` right after it.
 extern "C" size_t __cdecl Rs7Mid_BuildCallIn(uint8_t* out, size_t capacity, uintptr_t destVa, uintptr_t callback,
                                              int mode, uint32_t argBytes) {
@@ -401,7 +403,78 @@ extern "C" size_t __cdecl Rs7Mid_BuildCallIn(uint8_t* out, size_t capacity, uint
 }
 
 // Rs7Mid_Thunk, Rs7Mid_ThunkLight and Rs7Mid_ThunkSse, the shared thunks every entry above jumps to, are in
-// midhook_thunks.asm.
+// midhook_thunks.asm. They call the callback through Rs7Mid_Guard.
+
+namespace {
+volatile long g_faults = 0;
+Rs7MidFaultLog g_faultLog = nullptr;
+
+// The fault logger formats and writes a file line, which may use x87 and XMM registers. The light and SSE thunks save
+// neither (a full-mode thunk restores its FXSAVE image after the guard), so for them the logger runs between an
+// FXSAVE and FXRSTOR of its own. Only on a fault: the normal path never gets here.
+__declspec(noinline) void ReportFault(uintptr_t callback, unsigned long code, long n, bool keepFpu) {
+    const Rs7MidFaultLog log = g_faultLog;
+    alignas(16) unsigned char state[512];
+
+    if (!log) {
+        return;
+    }
+
+    if (keepFpu) {
+        _fxsave(state);
+    }
+
+    log(callback, code, n);
+
+    if (keepFpu) {
+        _fxrstor(state);
+    }
+}
+}  // namespace
+
+// No FPU or SSE code on this path: the light and SSE thunks run callbacks without saving the x87 state (the copies
+// are REP MOVSD, the logger is called through a pointer). A skipped callback leaves nothing behind: the Context comes
+// back (so `jump` replays the displaced instructions again), an SSE-mode load is dropped (else the thunk's `fld` would
+// come on top of the replayed one) and a full-mode FXSAVE image gets back its control words and x87 registers (the
+// St0 edits, midhook.h).
+extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context* c) {
+    constexpr size_t kDwords = sizeof(Rs7Mid::Context) / 4;
+    constexpr size_t kFpuDwords = 160 / 4;  // FXSAVE: FCW/FSW/FTW/... (32 bytes) and ST0-ST7 (8 x 16 bytes)
+    unsigned long saved[kDwords];
+    unsigned long savedFpu[kFpuDwords];
+    unsigned long code = 0;
+    unsigned long* const image = c->fpu && !(c->fpu & 1) ? reinterpret_cast<unsigned long*>(c->fpu) : nullptr;
+
+    __movsd(saved, reinterpret_cast<const unsigned long*>(c), kDwords);
+
+    if (image) {
+        __movsd(savedFpu, image, kFpuDwords);
+    }
+
+    __try {
+        callback(*c);
+    } __except (Rs7_FaultFilter(code = GetExceptionCode())) {
+        __movsd(reinterpret_cast<unsigned long*>(c), saved, kDwords);
+
+        if (image) {
+            __movsd(image, savedFpu, kFpuDwords);
+        } else if (c->fpu & 1) {
+            reinterpret_cast<Rs7Mid::SseResult*>(c->fpu & ~uint32_t(1))->load = 0;
+        }
+
+        const long n = InterlockedIncrement(&g_faults);
+
+        ReportFault(reinterpret_cast<uintptr_t>(callback), code, n, !image);
+    }
+}
+
+void Rs7Mid_SetFaultLog(Rs7MidFaultLog log) {
+    g_faultLog = log;
+}
+
+long Rs7Mid_FaultCount() {
+    return g_faults;
+}
 
 Rs7Mid::Hook::~Hook() {
     if (code_) {
