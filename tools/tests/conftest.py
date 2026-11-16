@@ -32,6 +32,18 @@ def pytest_terminal_summary(terminalreporter):
         terminalreporter.write_line(line)
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """An empty parametrize list (a generated table or a glob that found nothing) fails instead of pytest's silent skip,
+    unless a skipif of the test already applies (its inputs are absent, so an empty list is expected)."""
+    if any(m.args and m.args[0] is True for m in item.iter_markers("skipif")):
+        return
+    for mark in item.iter_markers("skip"):
+        reason = mark.kwargs.get("reason") or (mark.args[0] if mark.args else "")
+        if reason.startswith("got empty parameter set"):
+            pytest.fail(reason, pytrace=False)
+
+
 @pytest.fixture(scope="module")
 def emus():
     """(stock, patched) emulators of the game snapshot; module scope, each module builds its own pair."""

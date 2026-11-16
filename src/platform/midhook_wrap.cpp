@@ -1,4 +1,4 @@
-// The Wrap placement's entry (ARCHITECTURE.md section 15 "Wrap placement"): the callee runs as a subroutine on copies
+// The Wrap placement's entry (ARCHITECTURE.md section 14 "Wrap placement"): the callee runs as a subroutine on copies
 // of its stack arguments between an optional before and an after callback, so both see the caller's own arguments.
 #include "platform/midhook.h"
 #include "platform/midhook_emit.h"

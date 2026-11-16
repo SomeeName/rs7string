@@ -1,5 +1,5 @@
 // Naked stubs of the native N-slot chord tracking (nslot.h, tracker.h): the release and aggregation of the child evals
-// of strings 6/7. Exported for tools/tests/test_emu.py; conventions in docs/ARCHITECTURE.md section 15 "Remaining
+// of strings 6/7. Exported for tools/tests/test_emu.py; conventions in docs/ARCHITECTURE.md section 14 "Remaining
 // stubs". CC3, CH3, AG1-AG3 (hooks_eval.cpp) and the technique-check latches UP1-UP3, PD2-PD5 (hooks_latches.cpp) are
 // C++ mid-hooks. What stays asm, and why:
 //   RL1 RL2       call the game's eval release (g_rs7_fn_evrel, ECX = tracker, stdcall slot) from the tracker's live

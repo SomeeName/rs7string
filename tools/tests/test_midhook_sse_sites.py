@@ -17,13 +17,12 @@ import struct
 import pytest
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDI, UC_X86_REG_EDX
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT
 from midhook_oracle import Case, Helper, Spec, oracle_tests
 from midhook_stock import RET_AT, Ref, W, ruled, stock_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 ROW = D + 0x100  # a lane cell row: string s's cell at ROW + s * 4Ch

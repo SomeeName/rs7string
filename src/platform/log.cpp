@@ -14,8 +14,8 @@ INIT_ONCE g_once = INIT_ONCE_STATIC_INIT;
 FILE* g_file = nullptr;
 DWORD g_start = 0;
 Rs7LogSink g_sink = nullptr;
-// The last kTail lines (no timestamp) for the overlay's log panel.
-constexpr unsigned kTail = 200, kTailLen = 240;
+// The last kTail lines as written (timestamp and newline included) for the overlay's log panel.
+constexpr unsigned kTail = 200, kTailLen = kRs7LogTailLen;
 char g_tail[kTail][kTailLen];
 unsigned long g_tailSeq = 0;  // lines ever added
 
@@ -229,8 +229,14 @@ void Rs7Log(const char* fmt, ...) {
     EnterCriticalSection(&g_cs);
     std::snprintf(g_tail[g_tailSeq % kTail], kTailLen, "%s", line.c_str());
     ++g_tailSeq;
+
     if (g_sink) {
-        g_sink(text);
+        try {
+            g_sink(text);
+        } catch (...) {
+            LeaveCriticalSection(&g_cs);
+            throw;
+        }
     }
 
     if (g_file) {
@@ -248,7 +254,7 @@ void Rs7Log_SetSink(Rs7LogSink sink) {
     LeaveCriticalSection(&g_cs);
 }
 
-unsigned long Rs7Log_Tail(char (*out)[240], unsigned max, unsigned* got) {
+unsigned long Rs7Log_Tail(char (*out)[kRs7LogTailLen], unsigned max, unsigned* got) {
     InitOnceExecuteOnce(&g_once, InitCs, nullptr, nullptr);
     EnterCriticalSection(&g_cs);
     const unsigned long seq = g_tailSeq;

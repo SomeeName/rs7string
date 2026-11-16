@@ -5,236 +5,146 @@
 #include "features/nslot/hooks.h"
 #include "features/nslot/match.h"
 #include "features/nslot/nslot.h"
+#include "model/gates.h"
 #include "model/groups.h"
-
-extern "C" {
-void Rs7_Mid_XB1(Rs7Mid::Context&);
-// hooks_records.cpp, hooks_eval.cpp, hooks_latches.cpp
-void Rs7_Mid_TP1(Rs7Mid::Context&);
-void Rs7_Mid_TP2(Rs7Mid::Context&);
-void Rs7_Mid_TP3(Rs7Mid::Context&);
-void Rs7_Mid_TP4(Rs7Mid::Context&);
-void Rs7_Mid_TP5(Rs7Mid::Context&);
-void Rs7_Mid_TP6(Rs7Mid::Context&);
-void Rs7_Mid_TP7(Rs7Mid::Context&);
-void Rs7_Mid_TP8(Rs7Mid::Context&);
-void Rs7_Mid_TP12(Rs7Mid::Context&);
-void Rs7_Mid_CP1(Rs7Mid::Context&);
-void Rs7_Mid_CP2(Rs7Mid::Context&);
-void Rs7_Mid_LU3(Rs7Mid::Context&);
-void Rs7_Mid_WC2(Rs7Mid::Context&);
-void Rs7_Mid_CS1(Rs7Mid::Context&);
-void Rs7_Mid_CC3(Rs7Mid::Context&);
-void Rs7_Mid_CH3(Rs7Mid::Context&);
-void Rs7_Mid_UP1(Rs7Mid::Context&);
-void Rs7_Mid_UP2(Rs7Mid::Context&);
-void Rs7_Mid_UP3(Rs7Mid::Context&);
-void Rs7_Mid_PD2(Rs7Mid::Context&);
-void Rs7_Mid_PD3(Rs7Mid::Context&);
-void Rs7_Mid_PD4(Rs7Mid::Context&);
-void Rs7_Mid_PD5(Rs7Mid::Context&);
-void Rs7_Mid_TP11(Rs7Mid::Context&);
-void Rs7_Mid_DS1(Rs7Mid::Context&);
-void Rs7_Mid_PL1(Rs7Mid::Context&);
-void Rs7_Mid_SF1(Rs7Mid::Context&);  // hooks_free.cpp
-void Rs7_Mid_TM(Rs7Mid::Context&);   // hooks_calls.cpp: TM1-TM6
-void Rs7_Mid_EV(Rs7Mid::Context&);   // EV1-EV5
-extern uintptr_t g_rs7_target_TM1, g_rs7_target_TM2, g_rs7_target_TM3, g_rs7_target_TM4, g_rs7_target_TM5,
-    g_rs7_target_TM6, g_rs7_target_EV1, g_rs7_target_EV2, g_rs7_target_EV3, g_rs7_target_EV4, g_rs7_target_EV5;
-extern uintptr_t g_rs7_resume_DS1;
-extern uintptr_t g_rs7_resume_CC3;
-extern uintptr_t g_rs7_resume_CH3;
-extern uintptr_t g_rs7_fn_evrel;
-void Rs7_Stub_RL1();
-extern uintptr_t g_rs7_resume_RL1;
-void Rs7_Stub_RL2();
-extern uintptr_t g_rs7_resume_RL2;
-void Rs7_Mid_AG1(Rs7Mid::Context&);  // hooks_eval.cpp: AG1-AG3
-void Rs7_Mid_AG2(Rs7Mid::Context&);
-void Rs7_Mid_AG3(Rs7Mid::Context&);
-extern uintptr_t g_rs7_resume_UP1, g_rs7_target_UP1;
-extern uintptr_t g_rs7_resume_UP2, g_rs7_target_UP2;
-extern uintptr_t g_rs7_resume_UP3, g_rs7_target_UP3;
-extern uintptr_t g_rs7_resume_PD2, g_rs7_target_PD2;
-extern uintptr_t g_rs7_resume_PD3, g_rs7_target_PD3;
-extern uintptr_t g_rs7_resume_PD4, g_rs7_target_PD4;
-extern uintptr_t g_rs7_resume_PD5, g_rs7_target_PD5;
-extern uintptr_t g_rs7_resume_TP12;
-extern uintptr_t g_rs7_resume_PL1;
-extern uintptr_t g_rs7_resume_LU3;
-extern uintptr_t g_rs7_resume_WC2;
-void Rs7_Mid_BT1(Rs7Mid::Context&);  // hooks_eval.cpp
-extern uintptr_t g_rs7_resume_CS1;
-extern uintptr_t g_rs7_resume_TP1, g_rs7_resume_TP2, g_rs7_resume_TP3, g_rs7_resume_TP4, g_rs7_resume_TP5,
-    g_rs7_resume_TP6, g_rs7_resume_TP7, g_rs7_resume_TP8, g_rs7_resume_TP11, g_rs7_resume_CP1, g_rs7_resume_CP2,
-    g_rs7_target_SF1;
-}
 
 namespace {
 constexpr Rs7Mid::Mode kLight = Rs7Mid::Mode::Light;  // integer-only callbacks of hot sites (LIGHT_CALLBACKS)
 
 const Rs7Hook kHooks[] = {
-    {"XB1", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_XB1},
-    {"TP1", nullptr, &g_rs7_resume_TP1, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP1, 0, 0, 0, false, kLight},
-    {"TP2", nullptr, &g_rs7_resume_TP2, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP2, 0, 0, 0, false, kLight},
-    {"TP3", nullptr, &g_rs7_resume_TP3, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP3, 0, 0, 0, false, kLight},
-    {"TP4", nullptr, &g_rs7_resume_TP4, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP4, 0, 0, 0, false, kLight},
-    {"TP5", nullptr, &g_rs7_resume_TP5, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP5, 0, 0, 0, false, kLight},
-    {"TP6", nullptr, &g_rs7_resume_TP6, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP6, 0, 0, 0, false, kLight},
-    {"TP7", nullptr, &g_rs7_resume_TP7, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP7, 0, 0, 0, false, kLight},
-    {"TP8", nullptr, &g_rs7_resume_TP8, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP8, 0, 0, 0, false, kLight},
-    {"TP11", nullptr, &g_rs7_resume_TP11, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP11},
-    {"CP1", nullptr, &g_rs7_resume_CP1, nullptr, false, false, false, 0, 0, &Rs7_Mid_CP1, 0, 0, 0, false, kLight},
-    {"CP2", nullptr, &g_rs7_resume_CP2, nullptr, false, false, false, 0, 0, &Rs7_Mid_CP2, 0, 0, 0, false, kLight},
-    Rs7_WrapRow({"PP1", nullptr, nullptr, nullptr, false, false}, kRs7WrapPP1, nullptr, &Rs7_Mid_PP1),
-    {"SF1", nullptr, nullptr, &g_rs7_target_SF1, false, false, false, 0, 0, &Rs7_Mid_SF1},
-    {"NR1", nullptr, nullptr, nullptr, false, false},
-    {"NR2", nullptr, nullptr, nullptr, false, false},
-    {"NR3", nullptr, nullptr, nullptr, false, false},
-    {"NR4", nullptr, nullptr, nullptr, false, false},
-    {"NR5", nullptr, nullptr, nullptr, false, false},
-    {"NR6", nullptr, nullptr, nullptr, false, false},
-    {"NB1", nullptr, nullptr, nullptr, false, false},
-    {"NB2", nullptr, nullptr, nullptr, false, false},
-    {"NS1", nullptr, nullptr, nullptr, false, false},
-    {"NS2", nullptr, nullptr, nullptr, false, false},
-    {"NS3", nullptr, nullptr, nullptr, false, false},
-    {"NS4", nullptr, nullptr, nullptr, false, false},
-    {"NS5", nullptr, nullptr, nullptr, false, false},
-    {"NS6", nullptr, nullptr, nullptr, false, false},
-    {"NS7", nullptr, nullptr, nullptr, false, false},
-    {"NS8", nullptr, nullptr, nullptr, false, false},
-    {"NS9", nullptr, nullptr, nullptr, false, false},
-    {"NS10", nullptr, nullptr, nullptr, false, false},
-    {"NS11", nullptr, nullptr, nullptr, false, false},
-    {"NS12", nullptr, nullptr, nullptr, false, false},
-    {"CT1", nullptr, nullptr, nullptr, false, false},
-    {"CT2", nullptr, nullptr, nullptr, false, false},
-    {"CT3", nullptr, nullptr, nullptr, false, false},
-    {"CT4", nullptr, nullptr, nullptr, false, false},
-    {"CT5", nullptr, nullptr, nullptr, false, false},
-    {"CT6", nullptr, nullptr, nullptr, false, false},
-    {"CT7", nullptr, nullptr, nullptr, false, false},
-    {"CT8", nullptr, nullptr, nullptr, false, false},
-    {"CT9", nullptr, nullptr, nullptr, false, false},
-    {"CT10", nullptr, nullptr, nullptr, false, false},
-    {"CT11", nullptr, nullptr, nullptr, false, false},
-    {"SH1", nullptr, nullptr, nullptr, false, false},
-    {"SH2", nullptr, nullptr, nullptr, false, false},
-    {"SH3", nullptr, nullptr, nullptr, false, false},
-    {"SH4", nullptr, nullptr, nullptr, false, false},
-    {"BH1", nullptr, nullptr, nullptr, false, false},
-    {"HS1", nullptr, nullptr, nullptr, false, false},
-    {"HS2", nullptr, nullptr, nullptr, false, false},
-    {"NN1", nullptr, nullptr, nullptr, false, false},
-    {"NN2", nullptr, nullptr, nullptr, false, false},
-    {"NN3", nullptr, nullptr, nullptr, false, false},
-    {"NN4", nullptr, nullptr, nullptr, false, false},
-    {"NN5", nullptr, nullptr, nullptr, false, false},
-    {"NN6", nullptr, nullptr, nullptr, false, false},
-    {"NK1", nullptr, nullptr, nullptr, false, false},
-    {"TM1", nullptr, nullptr, &g_rs7_target_TM1, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"TM2", nullptr, nullptr, &g_rs7_target_TM2, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"TM3", nullptr, nullptr, &g_rs7_target_TM3, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"TM4", nullptr, nullptr, &g_rs7_target_TM4, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"TM5", nullptr, nullptr, &g_rs7_target_TM5, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"TM6", nullptr, nullptr, &g_rs7_target_TM6, false, false, false, 0, 0, &Rs7_Mid_TM, 0, 0, 0, false, kLight},
-    {"NM1", nullptr, nullptr, nullptr, false, false},
-    {"NM2", nullptr, nullptr, nullptr, false, false},
-    {"NM3", nullptr, nullptr, nullptr, false, false},
-    {"NM4", nullptr, nullptr, nullptr, false, false},
-    {"NM5", nullptr, nullptr, nullptr, false, false},
-    {"NM6", nullptr, nullptr, nullptr, false, false},
-    {"NM7", nullptr, nullptr, nullptr, false, false},
-    {"NM8", nullptr, nullptr, nullptr, false, false},
-    {"NM9", nullptr, nullptr, nullptr, false, false},
-    {"NM10", nullptr, nullptr, nullptr, false, false},
-    {"FG1", nullptr, nullptr, nullptr, false, false},
-    {"FG2", nullptr, nullptr, nullptr, false, false},
-    {"FG3", nullptr, nullptr, nullptr, false, false},
-    {"FG4", nullptr, nullptr, nullptr, false, false},
-    {"FG6", nullptr, nullptr, nullptr, false, false},
-    {"FG7", nullptr, nullptr, nullptr, false, false},
-    {"FG8", nullptr, nullptr, nullptr, false, false},
-    {"FG9", nullptr, nullptr, nullptr, false, false},
-    {"DS1", nullptr, &g_rs7_resume_DS1, nullptr, false, false, false, 0, 0, &Rs7_Mid_DS1},
-    {"SMa", nullptr, nullptr, nullptr, false, false},
-    {"SMb", nullptr, nullptr, nullptr, false, false},
-    {"SMc", nullptr, nullptr, nullptr, false, false},
-    {"DM1", nullptr, nullptr, nullptr, false, false},
-    Rs7_WrapRow({"MD1", nullptr, nullptr, nullptr, false, false}, kRs7WrapMD1, &Rs7_Mid_MD1Before, nullptr),
-    {"X_MSORT", nullptr, nullptr, &g_rs7_fn_msort, false, true},
-    {"X_MINS1", nullptr, nullptr, &g_rs7_fn_mins1, false, true},
-    {"X_MINS2", nullptr, nullptr, &g_rs7_fn_mins2, false, true},
-    {"X_MCMP", nullptr, nullptr, &g_rs7_fn_mcmp, false, true},
-    {"X_MTAB", nullptr, nullptr, &g_rs7_matcher_table, false, true},
-    {"RQ1", nullptr, nullptr, nullptr, false, false},
-    {"RQ2", nullptr, nullptr, nullptr, false, false},
-    {"RQ3", nullptr, nullptr, nullptr, false, false},
-    {"RQ4", nullptr, nullptr, nullptr, false, false},
-    {"RQ5", nullptr, nullptr, nullptr, false, false},
-    {"RQ6", nullptr, nullptr, nullptr, false, false},
-    {"PR1", nullptr, nullptr, nullptr, false, false},
-    {"PR2", nullptr, nullptr, nullptr, false, false},
-    {"PR3", nullptr, nullptr, nullptr, false, false},
-    {"MS1", nullptr, nullptr, nullptr, false, false},
-    {"MS2", nullptr, nullptr, nullptr, false, false},
-    {"LU1", nullptr, nullptr, nullptr, false, false},
-    {"LU2", nullptr, nullptr, nullptr, false, false},
-    {"LU3", nullptr, &g_rs7_resume_LU3, nullptr, false, false, false, 0, 0, &Rs7_Mid_LU3, 0, 0, 0, false, kLight},
-    Rs7_WrapRow({"AM1", nullptr, nullptr, nullptr, false, false}, kRs7WrapAM1, &Rs7_Mid_AM1Before, nullptr),
-    {"WC1", nullptr, nullptr, nullptr, false, false},
-    {"WC2", nullptr, &g_rs7_resume_WC2, nullptr, false, false, false, 0, 0, &Rs7_Mid_WC2, 0, 0, 0, false, kLight},
-    {"WC3", nullptr, nullptr, nullptr, false, false},
-    {"WC4", nullptr, nullptr, nullptr, false, false},
-    {"WC5", nullptr, nullptr, nullptr, false, false},
-    {"WC6", nullptr, nullptr, nullptr, false, false},
-    {"WC7", nullptr, nullptr, nullptr, false, false},
-    {"EV1", nullptr, nullptr, &g_rs7_target_EV1, false, false, false, 0, 0, &Rs7_Mid_EV, 0, 0, 0, false, kLight},
-    {"EV2", nullptr, nullptr, &g_rs7_target_EV2, false, false, false, 0, 0, &Rs7_Mid_EV, 0, 0, 0, false, kLight},
-    {"EV3", nullptr, nullptr, &g_rs7_target_EV3, false, false, false, 0, 0, &Rs7_Mid_EV, 0, 0, 0, false, kLight},
-    {"EV4", nullptr, nullptr, &g_rs7_target_EV4, false, false, false, 0, 0, &Rs7_Mid_EV, 0, 0, 0, false, kLight},
-    {"EV5", nullptr, nullptr, &g_rs7_target_EV5, false, false, false, 0, 0, &Rs7_Mid_EV, 0, 0, 0, false, kLight},
-    {"BT1", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_BT1},
-    {"CS1", nullptr, &g_rs7_resume_CS1, nullptr, false, false, false, 0, 0, &Rs7_Mid_CS1, 0, 0, 0, false, kLight},
-    {"TP12", nullptr, &g_rs7_resume_TP12, nullptr, false, false, false, 0, 0, &Rs7_Mid_TP12, 0, 0, 0, false, kLight},
-    {"PL1", nullptr, &g_rs7_resume_PL1, nullptr, false, false, false, 0, 0, &Rs7_Mid_PL1},
-    {"CN1", nullptr, nullptr, nullptr, false, false},
-    {"CN2", nullptr, nullptr, nullptr, false, false},
-    {"CN3", nullptr, nullptr, nullptr, false, false},
-    {"CC1", nullptr, nullptr, nullptr, false, false},
-    {"CC2", nullptr, nullptr, nullptr, false, false},
-    {"CC3", nullptr, &g_rs7_resume_CC3, nullptr, false, false, false, 0, 0, &Rs7_Mid_CC3, 0, 0, 0, false, kLight},
-    {"BF1", nullptr, nullptr, nullptr, false, false},
-    {"CH1", nullptr, nullptr, nullptr, false, false},
-    {"CH2", nullptr, nullptr, nullptr, false, false},
-    {"CH3", nullptr, &g_rs7_resume_CH3, nullptr, false, false, false, 0, 0, &Rs7_Mid_CH3, 0, 0, 0, false, kLight},
-    {"X_EVREL", nullptr, nullptr, &g_rs7_fn_evrel, false, true},
-    {"RL1", reinterpret_cast<void*>(&Rs7_Stub_RL1), &g_rs7_resume_RL1, nullptr, false, false},
-    {"RL2", reinterpret_cast<void*>(&Rs7_Stub_RL2), &g_rs7_resume_RL2, nullptr, false, false},
-    {"AG1", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_AG1, 0, 0, 0, false, kLight},
-    {"AG2", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_AG2, 0, 0, 0, false, kLight},
-    {"AG3", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_AG3, 0, 0, 0, false, kLight},
-    {"UP1", nullptr, &g_rs7_resume_UP1, &g_rs7_target_UP1, false, false, false, 0, 0, &Rs7_Mid_UP1, 0, 0, 0, false,
-     kLight},
-    {"UP2", nullptr, &g_rs7_resume_UP2, &g_rs7_target_UP2, false, false, false, 0, 0, &Rs7_Mid_UP2, 0, 0, 0, false,
-     kLight},
-    {"UP3", nullptr, &g_rs7_resume_UP3, &g_rs7_target_UP3, false, false, false, 0, 0, &Rs7_Mid_UP3, 0, 0, 0, false,
-     kLight},
-    {"PD1", nullptr, nullptr, nullptr, false, false},
-    {"PD2", nullptr, &g_rs7_resume_PD2, &g_rs7_target_PD2, false, false, false, 0, 0, &Rs7_Mid_PD2, 0, 0, 0, false,
-     kLight},
-    {"PD3", nullptr, &g_rs7_resume_PD3, &g_rs7_target_PD3, false, false, false, 0, 0, &Rs7_Mid_PD3, 0, 0, 0, false,
-     kLight},
-    {"PD4", nullptr, &g_rs7_resume_PD4, &g_rs7_target_PD4, false, false, false, 0, 0, &Rs7_Mid_PD4, 0, 0, 0, false,
-     kLight},
-    {"PD5", nullptr, &g_rs7_resume_PD5, &g_rs7_target_PD5, false, false, false, 0, 0, &Rs7_Mid_PD5, 0, 0, 0, false,
-     kLight},
-    {"NF1", nullptr, nullptr, nullptr, false, false},
-    {"NF2", nullptr, nullptr, nullptr, false, false},
-    {"NF3", nullptr, nullptr, nullptr, false, false},
-    {"NF4", nullptr, nullptr, nullptr, false, false},
+    Rs7_Mid("XB1", &Rs7_Mid_XB1),
+    Rs7_Mid("TP1", &Rs7_Mid_TP1, &g_rs7_resume_TP1).Light(),
+    Rs7_Mid("TP2", &Rs7_Mid_TP2, &g_rs7_resume_TP2).Light(),
+    Rs7_Mid("TP3", &Rs7_Mid_TP3, &g_rs7_resume_TP3).Light(),
+    Rs7_Mid("TP4", &Rs7_Mid_TP4, &g_rs7_resume_TP4).Light(),
+    Rs7_Mid("TP5", &Rs7_Mid_TP5, &g_rs7_resume_TP5).Light(),
+    Rs7_Mid("TP6", &Rs7_Mid_TP6, &g_rs7_resume_TP6).Light(),
+    Rs7_Mid("TP7", &Rs7_Mid_TP7, &g_rs7_resume_TP7).Light(),
+    Rs7_Mid("TP8", &Rs7_Mid_TP8, &g_rs7_resume_TP8).Light(),
+    Rs7_Mid("TP11", &Rs7_Mid_TP11, &g_rs7_resume_TP11),
+    Rs7_Mid("CP1", &Rs7_Mid_CP1, &g_rs7_resume_CP1).Light(),
+    Rs7_Mid("CP2", &Rs7_Mid_CP2, &g_rs7_resume_CP2).Light(),
+    Rs7_WrapRow(Rs7_Site("PP1"), kRs7WrapPP1, nullptr, &Rs7_Mid_PP1),
+    Rs7_Mid("SF1", &Rs7_Mid_SF1, nullptr, &g_rs7_target_SF1),
+    Rs7_Site("NR1"),
+    Rs7_Site("NR3"),
+    Rs7_Site("NR5"),
+    Rs7_Site("NB1"),
+    Rs7_Site("NS1"),
+    Rs7_Site("NS2"),
+    Rs7_Site("NS6"),
+    Rs7_Site("NS7"),
+    Rs7_Site("NS9"),
+    Rs7_Site("NS10"),
+    Rs7_Site("NS11"),
+    Rs7_Site("NS12"),
+    Rs7_Site("CT1"),
+    Rs7_Site("CT2"),
+    Rs7_Site("CT3"),
+    Rs7_Site("SH1"),
+    Rs7_Site("SH3"),
+    Rs7_Site("HS1"),
+    Rs7_Site("NN1").Gate(kRs7GateNoPublish),
+    Rs7_Site("NN2"),
+    Rs7_Site("NN3").Gate(kRs7GateNoPublish),
+    Rs7_Site("NN4").Gate(kRs7GateNoPublish),
+    Rs7_Site("NN5"),
+    Rs7_Site("NN6"),
+    Rs7_Site("NK1"),
+    Rs7_Mid("TM1", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM1).Light(),
+    Rs7_Mid("TM2", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM2).Light(),
+    Rs7_Mid("TM3", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM3).Light(),
+    Rs7_Mid("TM4", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM4).Light(),
+    Rs7_Mid("TM5", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM5).Light(),
+    Rs7_Mid("TM6", &Rs7_Mid_TM, nullptr, &g_rs7_target_TM6).Light(),
+    Rs7_Site("NM2"),
+    Rs7_Site("NM3"),
+    Rs7_Site("NM4"),
+    Rs7_Site("NM7"),
+    Rs7_Site("NM8"),
+    Rs7_Site("NM9"),
+    Rs7_Site("NM10"),
+    Rs7_Site("FG1"),
+    Rs7_Site("FG2"),
+    Rs7_Site("FG4"),
+    Rs7_Site("FG6"),
+    Rs7_Site("FG7"),
+    Rs7_Site("FG9"),
+    Rs7_Mid("DS1", &Rs7_Mid_DS1, &g_rs7_resume_DS1),
+    Rs7_Site("SMa"),
+    Rs7_Site("DM1"),
+    Rs7_WrapRow(Rs7_Site("MD1"), kRs7WrapMD1, &Rs7_Mid_MD1Before, nullptr),
+    Rs7_Ref("X_MSORT", &g_rs7_fn_msort),
+    Rs7_Ref("X_MINS1", &g_rs7_fn_mins1),
+    Rs7_Ref("X_MINS2", &g_rs7_fn_mins2),
+    Rs7_Ref("X_MCMP", &g_rs7_fn_mcmp),
+    Rs7_Ref("X_MTAB", &g_rs7_matcher_table),
+    Rs7_Site("RQ1"),
+    Rs7_Site("RQ2"),
+    Rs7_Site("RQ3"),
+    Rs7_Site("RQ4"),
+    Rs7_Site("RQ5"),
+    Rs7_Site("RQ6"),
+    Rs7_Site("PR1"),
+    Rs7_Site("PR2"),
+    Rs7_Site("PR3"),
+    Rs7_Site("MS1"),
+    Rs7_Site("MS2"),
+    Rs7_Site("LU1"),
+    Rs7_Site("LU2"),
+    Rs7_Mid("LU3", &Rs7_Mid_LU3, &g_rs7_resume_LU3).Light(),
+    Rs7_WrapRow(Rs7_Site("AM1"), kRs7WrapAM1, &Rs7_Mid_AM1Before, nullptr),
+    Rs7_Site("WC1"),
+    Rs7_Mid("WC2", &Rs7_Mid_WC2, &g_rs7_resume_WC2).Light(),
+    Rs7_Site("WC3"),
+    Rs7_Site("WC4"),
+    Rs7_Site("WC5"),
+    Rs7_Site("WC6"),
+    Rs7_Site("WC7"),
+    Rs7_Mid("EV1", &Rs7_Mid_EV, nullptr, &g_rs7_target_EV1).Light(),
+    Rs7_Mid("EV2", &Rs7_Mid_EV, nullptr, &g_rs7_target_EV2).Light(),
+    Rs7_Mid("EV3", &Rs7_Mid_EV, nullptr, &g_rs7_target_EV3).Light(),
+    Rs7_Mid("EV4", &Rs7_Mid_EV, nullptr, &g_rs7_target_EV4).Light(),
+    Rs7_Mid("EV5", &Rs7_Mid_EV, nullptr, &g_rs7_target_EV5).Light(),
+    Rs7_Mid("BT1", &Rs7_Mid_BT1),
+    Rs7_Mid("CS1", &Rs7_Mid_CS1, &g_rs7_resume_CS1).Light(),
+    Rs7_Mid("TP12", &Rs7_Mid_TP12, &g_rs7_resume_TP12).Light(),
+    Rs7_Mid("PL1", &Rs7_Mid_PL1, &g_rs7_resume_PL1),
+    Rs7_Site("CN1"),
+    Rs7_Site("CC1"),
+    Rs7_Mid("CC3", &Rs7_Mid_CC3, &g_rs7_resume_CC3).Light(),
+    Rs7_Site("CH1"),
+    Rs7_Mid("CH3", &Rs7_Mid_CH3, &g_rs7_resume_CH3).Light(),
+    Rs7_Ref("X_EVREL", &g_rs7_fn_evrel),
+    Rs7_Stub("RL1", reinterpret_cast<void*>(&Rs7_Stub_RL1), &g_rs7_resume_RL1),
+    Rs7_Stub("RL2", reinterpret_cast<void*>(&Rs7_Stub_RL2), &g_rs7_resume_RL2),
+    Rs7_Mid("AG1", &Rs7_Mid_AG1).Light(),
+    Rs7_Mid("AG2", &Rs7_Mid_AG2).Light(),
+    Rs7_Mid("AG3", &Rs7_Mid_AG3).Light(),
+    Rs7_Mid("UP1", &Rs7_Mid_UP1, &g_rs7_resume_UP1, &g_rs7_target_UP1).Light(),
+    Rs7_Mid("UP2", &Rs7_Mid_UP2, &g_rs7_resume_UP2, &g_rs7_target_UP2).Light(),
+    Rs7_Mid("UP3", &Rs7_Mid_UP3, &g_rs7_resume_UP3, &g_rs7_target_UP3).Light(),
+    Rs7_Site("PD1"),
+    Rs7_Mid("PD2", &Rs7_Mid_PD2, &g_rs7_resume_PD2, &g_rs7_target_PD2).Light(),
+    Rs7_Mid("PD3", &Rs7_Mid_PD3, &g_rs7_resume_PD3, &g_rs7_target_PD3).Light(),
+    Rs7_Mid("PD4", &Rs7_Mid_PD4, &g_rs7_resume_PD4, &g_rs7_target_PD4).Light(),
+    Rs7_Mid("PD5", &Rs7_Mid_PD5, &g_rs7_resume_PD5, &g_rs7_target_PD5).Light(),
+    Rs7_Site("NF1"),
+    Rs7_Site("NF4"),
 };
 }  // namespace
 
 extern const Rs7HookTable kRs7NslotHooks = {Rs7_Group(Rs7Feature::Core), kHooks, sizeof kHooks / sizeof kHooks[0]};
+
+namespace {
+// Eight strings (nslot.h): in-place byte patches, the bytes come from sites.json.
+#define E8(id) Rs7_Site("E8" #id)
+const Rs7Hook kEightHooks[] = {
+    E8(NR2), E8(NR4), E8(NR6), E8(NB2), E8(NS3), E8(NS4), E8(NS5), E8(NS8), E8(SH2), E8(SH4), E8(BH1), E8(HS2),
+    E8(NM1), E8(NM5), E8(NM6), E8(FG3), E8(FG8), E8(SMb), E8(SMc), E8(CN2), E8(CN3), E8(CC2), E8(BF1), E8(CH2),
+};
+#undef E8
+}  // namespace
+
+extern const Rs7HookTable kRs7NslotEightHooks = {Rs7_Group(Rs7Feature::Core), kEightHooks,
+                                                 sizeof kEightHooks / sizeof kEightHooks[0]};

@@ -1,6 +1,7 @@
 #include "platform/log.h"
 #include "test.h"
 #include <windows.h>
+#include <cstring>
 #include <string>
 
 TEST(log_line_has_seconds_millis_and_newline) {
@@ -9,8 +10,15 @@ TEST(log_line_has_seconds_millis_and_newline) {
 }
 
 TEST(log_before_open_is_a_noop) {
+    // Without Rs7Log_Open there is no file, but the line still reaches the tail (overlay panel) intact.
+    char tail[1][240] = {};
+    unsigned got = 0;
+    const unsigned long before = Rs7Log_Tail(tail, 1, &got);
+
     Rs7Log("nothing happens %d", 1);  // must not crash without Rs7Log_Open
-    CHECK(true);
+    CHECK_EQ(Rs7Log_Tail(tail, 1, &got), before + 1);
+    CHECK_EQ(got, 1u);
+    CHECK(std::strstr(tail[0], "] nothing happens 1\n") != nullptr);
 }
 
 namespace {

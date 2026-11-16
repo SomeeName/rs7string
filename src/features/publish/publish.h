@@ -30,9 +30,10 @@ __declspec(dllexport) extern uintptr_t g_rs7_publish_ports;
 __declspec(dllexport) extern uintptr_t g_rs7_native_publish;
 // [debug] publish_trace=1: GridBuild logs its not-ready reason (rate limited 1/s, 100 lines); the LS* probes.
 __declspec(dllexport) extern uintptr_t g_rs7_publish_trace;
-// Review F3: 1 while the guitar's GridBuild timed out (a 7/8-built guitar whose neck has no cells 6/7): the song's
-// detector is not widened. Cleared when its grid builds, and for every guitar by a clite rebuild.
+// 1 while the guitar's GridBuild timed out (a 7/8-built guitar whose neck has no cells 6/7): the song's
+// detector is not widened. Cleared when its grid builds or that guitar is destroyed.
 __declspec(dllexport) int __cdecl Rs7Publish_NeckFailed(const void* guitar);
+void __cdecl Rs7Publish_GridForget(const void* guitar);
 __declspec(dllexport) void __cdecl Rs7Publish_GridForgetAll();
 // The TU8A copy of StringAction (features/tuner) contains the PUBEDGE site: its edge string over the native count.
 __declspec(dllexport) unsigned __cdecl Rs7Publish_EdgeCopy(uint8_t* info, unsigned first);
@@ -68,12 +69,12 @@ int Classify(uint8_t* record, const int16_t* tuning, unsigned count, int midi, i
 // ---- logic (grid.cpp), for the tests
 namespace rs7pubgrid {
 unsigned PhysicalRank(unsigned string, unsigned count);
-unsigned PhysicalEdge(unsigned count, bool first);
+unsigned PhysicalEdge(unsigned count, bool first, bool bass = false);
 // Exact stock scan for stock templates; native T8 scans physical ranks.
 int FingerSpan(const uint8_t* fingers, unsigned count, unsigned finger, int* span);
 // GridBuild's bounded wait (pure, tests): one entry per grid that reported "not ready". WaitStep returns true
 // (give up) once `grid` has been not ready for limitMs; WaitDone clears its entry.
-// Review F3: an entry belongs to one build. A poll that finds the entry's owner (the guitar) changed, or that comes
+// An entry belongs to one build. A poll that finds the entry's owner (the guitar) changed, or that comes
 // more than staleMs after the previous poll (the abandoned grid's address was reused), starts a fresh entry instead
 // of inheriting the old deadline. `failed`: the wait timed out on a guitar built with 7/8 strings (the neck has no
 // cells 6/7): Failed(owner) is what song setup asks before it widens a detector.

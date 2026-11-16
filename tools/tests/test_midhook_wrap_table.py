@@ -12,9 +12,7 @@ from emu_harness import CALL_WRAP, MID_CALLBACKS
 
 REPO = Path(__file__).resolve().parents[2]
 FEATURES = REPO / "src" / "features"
-ROW = re.compile(
-    r'Rs7_WrapRow\(\s*(?:RS7_\w+\()?\{?\s*"(\w+)".*?(kRs7Wrap\w+),\s*(&\w+|nullptr),\s*(&\w+|nullptr)', re.S
-)
+ROW = re.compile(r'Rs7_WrapRow\(\s*Rs7_Site\(\s*"(\w+)"\).*?(kRs7Wrap\w+),\s*(&\w+|nullptr),\s*(&\w+|nullptr)', re.S)
 FRAME = re.compile(r"inline constexpr Rs7Mid::Wrap (kRs7Wrap\w+)\{(\d+), Rs7Mid::Conv::(\w+)(?:, (\d+))?\}")
 
 
@@ -45,5 +43,6 @@ def test_every_wrap_row_matches_call_wrap():
 
 
 def test_mid_callbacks_name_the_after_or_the_only_callback():
+    assert CALL_WRAP
     for sid, (_, _, _, before, after) in CALL_WRAP.items():
         assert MID_CALLBACKS[sid] == (after or before), sid

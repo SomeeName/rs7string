@@ -1,9 +1,11 @@
 // The RS7X block per loaded song (nslot.h): XB1 hands the SNG body's trailing bytes to the parser (model/extblock.h)
 // and keeps the result for the song's T8 / C8 build (hooks.cpp), the chord diagrams and the leak audit.
 #include "features/chords/chords.h"
+#include "features/nslot/hooks.h"
 #include "features/nslot/nslot.h"
 #include "platform/log.h"
 #include "platform/midhook.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -12,32 +14,13 @@
 namespace {
 
 constexpr size_t kMaxTrailing = 16u << 20;
-constexpr uint32_t kSongTemplates = 0x94, kSongChordNotes = 0xAC, kSongTuning = 0x110;
-constexpr uint32_t kChordNotesSize = 0x948;
-
-bool SafeCopy(void* dst, const void* src, size_t n) {
-    if (!dst || !src) {
-        return false;
-    }
-
-    __try {
-        std::memcpy(dst, src, n);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-struct Vec {
-    uintptr_t begin = 0, end = 0;
-};
-
-bool ReadVec(const void* song, uint32_t off, Vec* v) {
-    return SafeCopy(v, static_cast<const uint8_t*>(song) + off, sizeof *v) && v->end >= v->begin;
-}
+using rs7nslot::kSongChordNotes;
+using rs7nslot::kSongTemplates;
+using rs7nslot::kSongTuning;
+using rs7nslot::ReadVec;
+using rs7nslot::Vec;
 
 SRWLOCK g_lock = SRWLOCK_INIT;
-constexpr size_t kKeep = kRs7ExtKeep;
 std::vector<std::pair<const void*, std::shared_ptr<const rs7ext::Block>>> g_store;  // newest last
 volatile LONG g_logged = 0;
 
@@ -52,7 +35,7 @@ void Store(const void* song, std::shared_ptr<const rs7ext::Block> b) {
     }
 
     if (b) {
-        if (g_store.size() >= kKeep) {
+        if (g_store.size() >= static_cast<size_t>(kRs7ExtKeep)) {
             g_store.erase(g_store.begin());
         }
 
@@ -83,7 +66,7 @@ void OnLoaded(void* song, const void* stream) {
     uint32_t pos = 0, size = 0;
 
     Store(song, nullptr);  // a recycled song address never keeps the previous song's block
-    if (!SafeCopy(&buf, s + 0x10, 4) || !SafeCopy(&pos, s + 0x14, 4) || !SafeCopy(&size, s + 0x18, 4)) {
+    if (!Rs7_SafeCopy(&buf, s + 0x10, 4) || !Rs7_SafeCopy(&pos, s + 0x14, 4) || !Rs7_SafeCopy(&size, s + 0x18, 4)) {
         return;
     }
 
@@ -94,26 +77,25 @@ void OnLoaded(void* song, const void* stream) {
     }
 
     const uint32_t templates = static_cast<uint32_t>((tv.end - tv.begin) / rs7chord::kTplSize);
-    const uint32_t chordNotes = static_cast<uint32_t>((cv.end - cv.begin) / kChordNotesSize);
+    const uint32_t chordNotes = static_cast<uint32_t>((cv.end - cv.begin) / rs7ns::kCnSize);
     const uint32_t tuning = static_cast<uint32_t>((uv.end - uv.begin) / 2);
     std::vector<uint8_t> tpls(static_cast<size_t>(templates) * rs7chord::kTplSize);
-    if (!tpls.empty() && !SafeCopy(tpls.data(), reinterpret_cast<const void*>(tv.begin), tpls.size())) {
+    if (!tpls.empty() && !Rs7_SafeCopy(tpls.data(), reinterpret_cast<const void*>(tv.begin), tpls.size())) {
         return;
     }
 
-    const bool log = InterlockedIncrement(&g_logged) <= 200;
+    const bool log = Rs7Log_Upto(&g_logged, 200);
 
     if (pos > size || size - pos > kMaxTrailing) {
         if (log) {
             Rs7Log("extblock: SNG %p: stream position %u, size %u: not checked", song, pos, size);
         }
-        Store(song, nullptr);
         return;
     }
 
     const size_t n = size - pos;
     std::vector<uint8_t> tail(n);
-    if (n && !SafeCopy(tail.data(), reinterpret_cast<const void*>(buf + pos), n)) {
+    if (n && !Rs7_SafeCopy(tail.data(), reinterpret_cast<const void*>(buf + pos), n)) {
         return;
     }
 
@@ -123,7 +105,6 @@ void OnLoaded(void* song, const void* stream) {
         rs7ext::Parse(tail.data(), n, templates, chordNotes, tuning, block.get(), why, sizeof why);
 
     if (st != rs7ext::Status::Ok) {
-        Store(song, nullptr);
         char what[220];
 
         if (st == rs7ext::Status::None) {
@@ -159,13 +140,12 @@ void OnLoaded(void* song, const void* stream) {
     }
 
     if (log) {
-        Rs7Log(
-            "extblock: SNG %p: body %u bytes, stock sections end at %u, RS7X v%u block %zu bytes: guitar, %d strings, "
-            "%d extended column(s), CHDT %s (%u templates, %d with a string-6 column), CHNT %s (%u records, %d "
-            "extended technique entries), %d unknown section(s) skipped -> the N-slot chord data reads the block",
-            song, size, pos, rs7ext::kVersion, n, block->stringCount, block->Columns(),
-            block->hasTemplates ? "yes" : "no", templates, ext6, block->hasChordNotes ? "yes" : "no", chordNotes, techs,
-            block->skipped);
+        Rs7Log("extblock: SNG %p: body %u bytes, stock sections end at %u, RS7X v%u block %zu bytes: %s, %d strings, "
+               "%d extended column(s), CHDT %s (%u templates, %d with a string-6 column), CHNT %s (%u records, %d "
+               "extended technique entries), %d unknown section(s) skipped -> the N-slot chord data reads the block",
+               song, size, pos, rs7ext::kVersion, n, block->instrument ? "bass" : "guitar", block->stringCount,
+               block->Columns(), block->hasTemplates ? "yes" : "no", templates, ext6,
+               block->hasChordNotes ? "yes" : "no", chordNotes, techs, block->skipped);
     }
 
     Store(song, std::move(block));

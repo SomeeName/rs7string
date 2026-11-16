@@ -5,7 +5,7 @@
 // DLL owns, enlarges or keeps alive carries a live/total counter (Interlocked, always counted: a few
 // nanoseconds), and Rs7Alloc_Snapshot logs one line per call with every live count next to the
 // process's private bytes, the free address space (the game is 32-bit) and its handle count. The
-// snapshots are taken at song setup (mode.cpp, Rs7_OnSongTuning) and when the song session leaves
+// snapshots are taken at song setup (pitch/hooks_mode.cpp, Rs7_OnSongTuning) and when the song session leaves
 // state 3 (songend.cpp); a run of several songs shows which "live" value grows per song.
 enum Rs7AllocKind : int {
     kAkGuitarStrings,  // native GuitarStrings (kGsSize) - GSC1 .. GSFR / GSZ1
@@ -22,7 +22,6 @@ enum Rs7AllocKind : int {
 };
 
 void Rs7Alloc_Configure(const wchar_t* iniPath);  // [debug] alloc_stats
-bool Rs7Alloc_Enabled();
 void Rs7Alloc_SetEnabledForTests(bool on);
 void Rs7Alloc_Inc(Rs7AllocKind kind);
 void Rs7Alloc_Dec(Rs7AllocKind kind);

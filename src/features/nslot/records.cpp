@@ -4,13 +4,15 @@
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "features/publish/publish.h"
-#include "model/eight.h"
+#include "model/tuning.h"
 #include <cstring>
 
 namespace rs7ns {
 
+// Same decoding as rs7chord::FromTemplateBytes (features/chords/chords.cpp); kept here so nslot does not depend on
+// the chords feature. Change both together.
 bool DecodeName31(const uint8_t* tpl, Col* out) {
-    const uint8_t* name = tpl + 0x28;
+    const uint8_t* name = tpl + kTplName;
     if (!std::memchr(name, 0, 31)) {
         return false;  // a 31-character name: name[31] is text
     }
@@ -41,24 +43,22 @@ void BuildT8(const uint8_t* tpl, const Col ext[2], const int16_t* tuning, int n,
     }
 
     for (int s = 0; s < 6; ++s) {
-        frets[s] = static_cast<int8_t>(tpl[4 + s]);
-        fingers[s] = static_cast<int8_t>(tpl[0xA + s]);
-        std::memcpy(&midi[s], tpl + 0x10 + 4 * s, 4);
+        frets[s] = static_cast<int8_t>(tpl[kTplFrets + s]);
+        fingers[s] = static_cast<int8_t>(tpl[kTplFingers + s]);
+        std::memcpy(&midi[s], tpl + kTplMidi + 4 * s, 4);
     }
 
     for (int i = 0; i < 2; ++i) {
         const int s = 6 + i;
         int f = ext[i].fret;
-        // Gameplay is still seven-wide; diagrams also need the authored eighth
-        // column. Populate it with diagrams or the offline eight preparation switch.
-        if (f < 0 || f > 30 || s >= n ||
-            (n > kNative && !((g_rs7_diagrams || g_rs7_publish_ports || g_rs7_eight) && n == kSlots))) {
+        // Gameplay is still seven-wide; the authored eighth column is always populated.
+        if (f < 0 || f > 30 || s >= n || (n > kNative && n != kSlots)) {
             continue;
         }
 
         // MIDI from the authored fret (stock template midi[] keeps it too); the fret then follows
         // PostProcessNotes 0x55B4A2, which turns a fret equal to the capo into 0 (frets only).
-        midi[s] = kOpenMidi[s] + (tuning && s < n ? tuning[s] : 0) + f;
+        midi[s] = rs7::kGuitarOpenMidi[s] + (tuning ? tuning[s] : 0) + f;
         if (static_cast<uint8_t>(f) == capo) {
             f = 0;
         }
@@ -93,11 +93,11 @@ void BuildC8(const uint8_t* cn, const Tech* tech6, const Tech* tech7, uint8_t* o
     }
 
     for (int s = 0; s < 6; ++s) {
-        std::memcpy(&mask[s], cn + 4 * s, 4);
-        slide[s] = static_cast<int8_t>(cn[0x930 + s]);
-        unp[s] = static_cast<int8_t>(cn[0x936 + s]);
-        std::memcpy(&vib[s], cn + 0x93C + 2 * s, 2);
-        std::memcpy(out + kC8Bends + s * kBendSize, cn + 0x18 + s * kBendSize, kBendSize);
+        std::memcpy(&mask[s], cn + kCnMask + 4 * s, 4);
+        slide[s] = static_cast<int8_t>(cn[kCnSlideTo + s]);
+        unp[s] = static_cast<int8_t>(cn[kCnSlideUnp + s]);
+        std::memcpy(&vib[s], cn + kCnVib + 2 * s, 2);
+        std::memcpy(out + kC8Bends + s * kBendSize, cn + kCnBends + s * kBendSize, kBendSize);
     }
 
     const Tech* tech[2] = {tech6, tech7};
@@ -125,14 +125,16 @@ void BuildC8(const uint8_t* cn, const Tech* tech6, const Tech* tech7, uint8_t* o
         unp[s] = un;
         vib[s] = t->vibrato;
         uint8_t* b = out + kC8Bends + s * kBendSize;
-        const int count = t->bendCount < 0 ? 0 : t->bendCount > 32 ? 32 : t->bendCount;
+        const int count = !t->bends || t->bendCount < 0 ? 0
+                          : t->bendCount > 32           ? 32
+                                                        : t->bendCount;  // no data: no bends
 
-        if (count && t->bends) {
+        if (count) {
             std::memcpy(b, t->bends, static_cast<size_t>(count) * 12);
         }
         const uint32_t used = static_cast<uint32_t>(count);
 
-        std::memcpy(b + 0x180, &used, 4);
+        std::memcpy(b + kBendUsed, &used, 4);
     }
 }
 
@@ -148,10 +150,10 @@ bool StringMask8(const uint8_t* c8, uint32_t string, uint32_t flag, uint32_t* bi
 
 FretSpan DoubleStopSpan(uint32_t begin, uint32_t id, uint32_t record) {
     if (record == begin + id * kTplSize) {
-        return {record + 4, 6};
+        return {record + kTplFrets, 6};
     }
 
-    return {record + kT8Frets, kNative};
+    return {record + kT8Frets, kSlots};
 }
 
 uint32_t SynthMask(uint32_t noteMask, int fret, uint8_t capo) {
@@ -176,10 +178,6 @@ uint32_t SynthMask(uint32_t noteMask, int fret, uint8_t capo) {
 
     return m;
 }
-
-}  // namespace rs7ns
-
-namespace rs7ns {
 
 void ClearEvalTails(uint8_t* ev) {
     const int32_t none[2] = {-1, -1};

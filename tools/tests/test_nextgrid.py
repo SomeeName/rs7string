@@ -24,8 +24,7 @@ def test_generated_sites_are_current():
     have = {s["id"]: s for s in doc["sites"] if s["id"].startswith("NG")}
     want = {s["id"]: s for s in ng.build_sites() + ng.build_stub_sites()}
     assert have == want
-    inc = ng.INC.read_text(encoding="utf-8")
-    assert inc.count("RS7_NGB(") == len(ng.build_sites())
+    assert ng.INC.read_bytes().decode("utf-8") == ng.render_inc(ng.build_sites())
 
 
 def test_frame_displacements_of_update_are_all_accounted_for():

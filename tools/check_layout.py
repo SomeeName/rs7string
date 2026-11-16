@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Check the source layout rules of AGENTS.md "Code structure": file size, function size, inline assembly and
+"""Check the source layout rules of docs/agents/code-structure.md: file size, function size, inline assembly and
 the include direction between src/platform, src/model and src/features/<name>.
 
   uv run python tools/check_layout.py                   check (build.ps1 runs this)
   uv run python tools/check_layout.py --write-baseline  record the current violations in tools/layout_baseline.json
+  uv run python tools/check_layout.py --strict          also fail when a value is below its baseline (slack)
+  uv run python tools/check_layout.py --update          shrink the baseline to the current values (never grows)
 
 The baseline lists the violations that existed when a rule was introduced. A listed file or function may shrink but
 not grow, a new violation fails, and an entry that no longer violates fails until the baseline is rewritten. The
@@ -14,6 +16,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -132,7 +135,7 @@ def layer(include: str) -> tuple[str, str]:
     return "unknown", ""
 
 
-# What each layer may include (AGENTS.md "Code structure"). Other features are checked separately: public header only.
+# What each layer may include (docs/agents/code-structure.md). Other features are checked separately: public header only.
 # "generated" tables come from tools/gen_*.py.
 ALLOWED = {
     "platform": {"platform"},
@@ -158,6 +161,9 @@ def include_errors(files: list[Path]) -> list[str]:
             continue
 
         for inc in _INCLUDE.findall(p.read_text(encoding="utf-8", errors="replace")):
+            if inc.startswith("."):  # "../features/x/y.h" would otherwise land in no layer and pass unchecked
+                inc = posixpath.normpath(posixpath.join(posixpath.dirname(src), inc))
+
             to, feature = layer(inc)
             public = to == "feature" and inc == f"features/{feature}/{feature}.h"
 
@@ -197,23 +203,67 @@ def compare(current: dict[str, dict[str, int]], baseline: dict[str, dict[str, in
     return errors
 
 
+def slack(current: dict[str, dict[str, int]], baseline: dict[str, dict[str, int]]) -> list[str]:
+    """Notes for entries whose current value is below the baseline (a later regression would still pass)."""
+    return [
+        f"baseline can shrink: {key} {old} -> {found[key]}"
+        for rule, found in current.items()
+        for key, old in sorted(baseline.get(rule, {}).items())
+        if key in found and found[key] < old
+    ]
+
+
+def shrunk(current: dict[str, dict[str, int]], baseline: dict[str, dict[str, int]]) -> dict[str, dict[str, int]] | None:
+    """The baseline lowered to the current values with fixed entries dropped, or None if it would need to grow."""
+    out = {}
+
+    for rule, found in current.items():
+        known = baseline.get(rule, {})
+        if any(key not in known or value > known[key] for key, value in found.items()):
+            return None
+
+        out[rule] = dict(sorted(found.items()))
+
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--write-baseline", action="store_true", help="record the current violations")
+    ap.add_argument("--strict", action="store_true", help="fail when a value is below its baseline entry")
+    ap.add_argument("--update", action="store_true", help="shrink the baseline to the current values, never grow")
     args = ap.parse_args()
 
     current = measure()
+    if args.update:
+        new = shrunk(current, json.loads(BASELINE.read_text(encoding="utf-8")))
+        if new is None:
+            print("check_layout: a value grew or is new; fix it (--update only shrinks)")
+            return 1
+
+        BASELINE.write_text(json.dumps(new, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        print(f"{BASELINE.name}: shrunk")
+        return 0
+
     if args.write_baseline:
         BASELINE.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         print(f"{BASELINE.name}: " + ", ".join(f"{len(v)} {k}" for k, v in current.items()))
         return 0
 
-    errors = include_errors(cpp_files()) + compare(current, json.loads(BASELINE.read_text(encoding="utf-8")))
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    errors = include_errors(cpp_files()) + compare(current, baseline)
+    notes = slack(current, baseline)
     for e in errors:
         print(e)
 
+    for n in notes:
+        print(n)
+
+    if args.strict and notes:
+        errors.append("slack in the baseline (--strict)")
+
     if errors:
-        print(f"check_layout: {len(errors)} problem(s), see AGENTS.md 'Code structure'")
+        print(f"check_layout: {len(errors)} problem(s), see docs/agents/code-structure.md")
         return 1
 
     print("check_layout: ok")

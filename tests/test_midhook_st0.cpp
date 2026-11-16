@@ -1,4 +1,4 @@
-// Context::St0 / SetSt0 / PushSt0 / FpuDepth: the saved x87 stack of a full-mode mid-hook (ARCHITECTURE.md section 15,
+// Context::St0 / SetSt0 / PushSt0 / FpuDepth: the saved x87 stack of a full-mode mid-hook (ARCHITECTURE.md section 14,
 // "x87 ST0"). Each test runs a real entry (Rs7Mid_Build / Rs7Mid_BuildLight) over a `nop x5; ret` site, called from a
 // small machine-code driver that sets up the x87 stack and records it around the call.
 #include "platform/midhook.h"

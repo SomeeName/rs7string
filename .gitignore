@@ -43,3 +43,6 @@ rs7string/
 *.psarc
 *.gfx
 *.swf
+site/
+site-src/*
+!site-src/.gitkeep

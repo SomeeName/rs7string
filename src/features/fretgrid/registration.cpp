@@ -3,6 +3,7 @@
 // (null stub; the bytes come from sites.json) that startup defers to the first FGHK call on the game thread; FGCT /
 // FGHK / FGRB are mid-hooks (hooks.cpp, hooks_build.cpp; FGRB is not written with the native publication ports).
 #include "features/fretgrid/fretgrid.h"
+#include "model/gates.h"
 #include "model/groups.h"
 
 extern "C" {
@@ -12,18 +13,17 @@ extern uintptr_t g_rs7_resume_V2;
 
 namespace {
 const Rs7Hook kHooks[] = {
-#define RS7_FGR(id) {#id, nullptr, nullptr, nullptr, false, false, false, 0, 0, nullptr, kRs7FgNative}
+#define RS7_FGR(id) Rs7_Site(#id).Gate(kRs7GateFretgrid)
 #include "features/fretgrid/sites.generated.inc"
 #undef RS7_FGR
-    {"FGCT", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_FGCT, kRs7FgNative},
-    {"FGHK", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_FGHK, kRs7FgNative},
-    {"FGRB", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_FGRB, kRs7FgNative},
+    Rs7_Mid("FGCT", &Rs7_Mid_FGCT).Gate(kRs7GateFretgrid),
+    Rs7_Mid("FGHK", &Rs7_Mid_FGHK).Gate(kRs7GateFretgrid),
+    Rs7_Mid("FGRB", &Rs7_Mid_FGRB).Gate(kRs7GateNoPublish).Gate(kRs7GateFretgrid),
 };
 
 // V2, the slide end cell stride (group Core, as before the move: written with the stock and the native FretGrid).
 const Rs7Hook kCoreHooks[] = {
-    {"V2", nullptr, &g_rs7_resume_V2, nullptr, false, false, false, 0, 0, &Rs7_Mid_V2, 0, 0, 0, false,
-     Rs7Mid::Mode::Light},
+    Rs7_Mid("V2", &Rs7_Mid_V2, &g_rs7_resume_V2).Light(),
 };
 }  // namespace
 

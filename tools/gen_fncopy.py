@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native N-slot GuitarStrings (issue #18 stage 4): the relocated function copies.
+"""Native N-slot GuitarStrings: the relocated function copies.
 
 The stock GuitarStrings loops (docs/ARCHITECTURE.md) iterate the instrument's string
 count InstrumentInfo +0Bh over GuitarStrings main[6] (+4) / ghost[6] (+1Ch). A native GuitarStrings
@@ -138,6 +138,13 @@ def load_text():
     sec = next(s for s in pe.sections if s.Name.rstrip(b"\0") == b".text")
     base = pe.OPTIONAL_HEADER.ImageBase + sec.VirtualAddress
     return sec.get_data()[: sec.Misc_VirtualSize], base
+
+
+def occurs_once(text: bytes, win: bytes) -> bool:
+    """`win` occurs exactly once in `text`, overlapping matches included (bytes.count skips those; the
+    runtime scanner, sitecheck.find_all, does not)."""
+    first = text.find(win)
+    return first >= 0 and text.find(win, first + 1) < 0
 
 
 def fnv1a(data: bytes) -> int:
@@ -280,6 +287,10 @@ def build(fn: Fn, text: bytes, base: int):
             continue
         if not branch_fixup(fn, i, off, starts, edits, rel32):
             operand_edits(fn, i, off, edits)
+    bound = {e.sym for e in edits if e.kind == "call"}
+    for tgt, sym in fn.calls.items():
+        if sym not in bound:
+            raise SystemExit(f"{fn.id}: no rel32 call to {tgt:08X} ({sym}) in the function")
     pro = entry_length(fn, insns)
     edits.sort(key=lambda e: e.off)
     return code, edits, rel32, pro, insns

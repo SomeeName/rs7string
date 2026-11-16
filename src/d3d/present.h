@@ -19,6 +19,7 @@ struct Rs7PresentCallbacks {
     void (*onPresent)(IDirect3DDevice9* dev);               // before the original Present
     void (*beforeReset)(IDirect3DDevice9* dev);             // before the original Reset
     void (*afterReset)(IDirect3DDevice9* dev, HRESULT hr);  // after it
+    void (*onFault)() = nullptr;  // release input without calling ImGui; first callback fault only
 };
 
 // Patches slots 16 and 17 of `device`'s vtable (Reset first: once Present can draw, Reset already
@@ -27,6 +28,7 @@ bool Rs7Present_InstallOn(void* device, const Rs7PresentCallbacks& cb);
 // Worker, every round once hooked: re-hook if d3d9 restored its entry points; leave foreign hooks
 // alone (logged once).
 void Rs7Present_Recheck();
+// True once Present/Reset are hooked (worker: retry the overlay install while false).
 bool Rs7Present_Installed();
 // Calls of the hooked Present / faults in the callbacks so far.
 unsigned long Rs7Present_Frames();

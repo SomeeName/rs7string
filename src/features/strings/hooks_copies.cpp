@@ -6,9 +6,11 @@
 #include "features/strings/fncopy_specs.generated.h"
 #include "features/strings/hooks.h"
 #include "model/groups.h"
+#include "model/instrument.h"
 #include "model/stringcolour.h"
 #include "platform/fncopy.h"
 #include "platform/log.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstring>
 
@@ -43,31 +45,20 @@ struct FnVar {
 };
 
 #define RS7_FNV(id) {#id, &g_rs7_fncopy_##id, &g_rs7_fntramp_##id}
+// Indexed by Rs7GsKind.
 const FnVar kFnVars[] = {RS7_FNV(GSFR), RS7_FNV(GSBD), RS7_FNV(GSUL), RS7_FNV(GSLD), RS7_FNV(GSFO), RS7_FNV(GSFI),
                          RS7_FNV(GSXF), RS7_FNV(GSWD), RS7_FNV(GSUP), RS7_FNV(GSRS), RS7_FNV(GSPK), RS7_FNV(GSVB),
                          RS7_FNV(GSIC), RS7_FNV(GSDM), RS7_FNV(GSGL), RS7_FNV(GSHC)};
 #undef RS7_FNV
+static_assert(sizeof kFnVars / sizeof kFnVars[0] == kGsKinds, "kFnVars: one entry per Rs7GsKind, in its order");
 
-struct Pair {
-    uintptr_t* copy;
-    uintptr_t* tramp;
-};
-
-#define RS7_P(id) {&g_rs7_fncopy_##id, &g_rs7_fntramp_##id}
-// Indexed by Rs7GsKind.
-const Pair kByKind[kGsKinds] = {RS7_P(GSFR), RS7_P(GSBD), RS7_P(GSUL), RS7_P(GSLD), RS7_P(GSFO), RS7_P(GSFI),
-                                RS7_P(GSXF), RS7_P(GSWD), RS7_P(GSUP), RS7_P(GSRS), RS7_P(GSPK), RS7_P(GSVB),
-                                RS7_P(GSIC), RS7_P(GSDM), RS7_P(GSGL), RS7_P(GSHC)};
-#undef RS7_P
-
-// [mode][string - 6][state][rgb]
 float* Rgb(int mode, int s, int state) {
-    return g_rs7_ns_rgb + ((mode * 2 + (s - 6)) * 3 + state) * 3;
+    return Rs7Gs_NsRgb(uint32_t(mode), uint32_t(s), uint32_t(state));
 }
 
 void FillPalette() {
     if (g_rs7_native_colours) {
-        g_rs7_ns_v[0] = g_rs7_ns_v[1] = g_rs7_s7_v;
+        g_rs7_ns_v[0] = g_rs7_ns_v[1] = rs7s7::kDefaultAtlasRow;
         return;  // RGB lookups use the native matrix; no per-query extra palette.
     }
 
@@ -102,23 +93,23 @@ void FillPalette() {
         }
     }
 
-    g_rs7_ns_v[0] = g_rs7_ns_v[1] = g_rs7_s7_v;
+    g_rs7_ns_v[0] = g_rs7_ns_v[1] = rs7s7::kDefaultAtlasRow;
 }
 
 // The GuitarStrings a kind's entry is about: its register, or found through the stack argument the kind names.
 uint8_t* StringsOf(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2) {
     if (kind == kGsDim) {  // [esp+4] = session context: +0Ch -> +37Ch guitar -> +0Ch strings
-        uint8_t* p = a1 ? Rd<uint8_t*>(reinterpret_cast<uint8_t*>(a1), 0x0C) : nullptr;
-        uint8_t* g = p ? Rd<uint8_t*>(p, 0x37C) : nullptr;
+        uint8_t* p = a1 ? UncheckedRead<uint8_t*>(reinterpret_cast<uint8_t*>(a1), 0x0C) : nullptr;
+        uint8_t* g = p ? UncheckedRead<uint8_t*>(p, rs7::kSessionGuitar) : nullptr;
 
-        return g ? Rd<uint8_t*>(g, 0x0C) : nullptr;
+        return g ? UncheckedRead<uint8_t*>(g, rs7::kGuitarStrings) : nullptr;
     }
 
     if (kind == kGsGlow) {  // [esp+4] = StringRenderer: +4 strings
-        return a1 ? Rd<uint8_t*>(reinterpret_cast<uint8_t*>(a1), 0x04) : nullptr;
+        return a1 ? UncheckedRead<uint8_t*>(reinterpret_cast<uint8_t*>(a1), 0x04) : nullptr;
     }
     if (kind == kGsHeadCol) {  // (headstock, guitar)
-        return a2 ? Rd<uint8_t*>(reinterpret_cast<uint8_t*>(a2), 0x0C) : nullptr;
+        return a2 ? UncheckedRead<uint8_t*>(reinterpret_cast<uint8_t*>(a2), rs7::kGuitarStrings) : nullptr;
     }
 
     return reg;
@@ -131,10 +122,10 @@ int CountRelease(uint8_t* gs) {
     // The copy frees every non-null slot of the 8 pairs; the sized free follows (GSZ1) and clears
     // the marker, so count it here, where the marker is still set.
     for (int s = kStock; s < kCapacity; ++s) {
-        if (Rd<uint8_t*>(gs, kMain + 4 * s)) {
+        if (UncheckedRead<uint8_t*>(gs, kMain + 4 * s)) {
             Rs7Alloc_Dec(kAkStringObjs);
         }
-        if (Rd<uint8_t*>(gs, kGhost + 4 * s)) {
+        if (UncheckedRead<uint8_t*>(gs, kGhost + 4 * s)) {
             Rs7Alloc_Dec(kAkStringObjs);
         }
     }
@@ -149,19 +140,19 @@ const char* Refusal(uint32_t kind, uint8_t* gs, uint8_t* info, uint32_t a2) {
     if (!Rs7Gs_InfoNative(info)) {
         return "its InstrumentInfo is not native";
     }
-    if (!Rd<uint8_t>(gs, kTail + 3)) {
+    if (!UncheckedRead<uint8_t>(gs, kTail + 3)) {
         return "its strings 6/7 could not be allocated";
     }
 
-    uint8_t* owner = Rd<uint8_t*>(gs, 0);
-    if (owner && Rd<uint8_t*>(owner, 0x24) != info) {
+    uint8_t* owner = UncheckedRead<uint8_t*>(gs, 0);
+    if (owner && UncheckedRead<uint8_t*>(owner, rs7::kGuitarInfo) != info) {
         return "owner +24h is not its InstrumentInfo";
     }
 
     if (kind == kGsLoad) {  // the load reads the info from (context +4) +24h
         uint8_t* ctx = reinterpret_cast<uint8_t*>(a2);
-        uint8_t* g = ctx ? Rd<uint8_t*>(ctx, 0x04) : nullptr;
-        if (!g || Rd<uint8_t*>(g, 0x24) != info) {
+        uint8_t* g = ctx ? UncheckedRead<uint8_t*>(ctx, 0x04) : nullptr;
+        if (!g || UncheckedRead<uint8_t*>(g, rs7::kGuitarInfo) != info) {
             return "load context's info differs";
         }
     } else if (kind == kGsInitCol) {
@@ -169,7 +160,7 @@ const char* Refusal(uint32_t kind, uint8_t* gs, uint8_t* info, uint32_t a2) {
             return "InitColors info differs";
         }
     } else if (kind == kGsHeadCol) {
-        if (Rd<uint8_t*>(reinterpret_cast<uint8_t*>(a2), 0x24) != info) {
+        if (UncheckedRead<uint8_t*>(reinterpret_cast<uint8_t*>(a2), rs7::kGuitarInfo) != info) {
             return "headstock guitar's info differs";
         }
     }
@@ -192,10 +183,10 @@ extern "C" int __cdecl Rs7Gs_Use(uint32_t kind, uint8_t* reg, uint32_t a1, uint3
             return CountRelease(gs);
         }
 
-        uint8_t* info = Rd<uint8_t*>(gs, kInfo);
+        uint8_t* info = UncheckedRead<uint8_t*>(gs, kInfo);
 
         if (const char* why = Refusal(kind, gs, info, a2)) {
-            if (Upto(&g_strings.logReject[kind], 1)) {
+            if (Rs7Log_Upto(&g_strings.logReject[kind], 1)) {
                 Rs7Log("gsnative: kind %u on strings %p runs stock: %s", kind, gs, why);
             }
 
@@ -203,24 +194,24 @@ extern "C" int __cdecl Rs7Gs_Use(uint32_t kind, uint8_t* reg, uint32_t a1, uint3
         }
 
         if (kind == kGsLoad) {
-            At<uint8_t>(gs, kTail + 1) += 1;
+            UncheckedField<uint8_t>(gs, kTail + 1) += 1;
         } else if (kind == kGsInitCol) {
             FillPalette();
         }
 
         RefreshCounts(info, g_rs7_s7_on != 0);
-        if (Upto(&g_strings.logUse[kind], 1)) {
+        if (Rs7Log_Upto(&g_strings.logUse[kind], 1)) {
             Rs7Log("gsnative: first native call kind %u (strings %p, loaded %u, active %u)", kind, gs,
-                   Rd<uint8_t>(info, kInfoLoaded), Rd<uint8_t>(info, kInfoActive));
+                   UncheckedRead<uint8_t>(info, kInfoLoaded), UncheckedRead<uint8_t>(info, kInfoActive));
         }
         return 1;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 
 extern "C" uintptr_t __cdecl Rs7Gs_Target(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2) {
-    const Pair& p = kByKind[kind];
+    const FnVar& p = kFnVars[kind];
 
     return (*p.copy && Rs7Gs_Use(kind, reg, a1, a2)) ? *p.copy : *p.tramp;
 }

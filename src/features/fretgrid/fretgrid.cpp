@@ -1,24 +1,19 @@
 // The native FretGrid's logic (fretgrid.h): the native-grid registry, the stock -> native grid migration and the
 // extra cells 6/7. Values in, values out; the game glue is hooks.cpp.
 #include "features/fretgrid/fretgrid.h"
+#include "model/instrument.h"
 #include <cstring>
 
 namespace rs7fg {
 namespace {
-// Native-layout grids (game thread only). A fixed array: registration cannot allocate, so it cannot throw into
-// the FGCT hook (review #7), and it cannot grow without bound (review #17). The game has no FretGrid
-// destruction hook of ours (the free happens inside the guitar release, 0x592770 -> sized free), and dropping a
-// LIVE grid from the registry would make it look stock-size and get "migrated" (copy + sized free of a block
-// 0xA9E0 bytes large as 0x72A0): so entries are only ever evicted oldest-first, by generation, when more than
-// kRegistryCapacity grids were created since. Live guitars number a handful; the capacity is far beyond that, so
-// only long-dead grids are evicted. A re-created grid at a recycled address just refreshes its entry.
+// Native-layout grids (game thread only). Registration cannot allocate or throw into FGCT. Creation age cannot
+// prove a grid dead: never evict an entry. Exhaustion disables migration, just like any other failed registration,
+// so a native block can never be copied or sized-freed as stock. Recycled addresses reuse their existing entry.
 struct RegEntry {
     uintptr_t addr;
-    uint32_t gen;
 };
 
 RegEntry g_reg[kRegistryCapacity] = {};
-uint32_t g_regGen = 0;
 bool g_regFault = false, g_regInject = false;
 }  // namespace
 
@@ -27,7 +22,6 @@ void ResetRegistry() noexcept {
         e = RegEntry{};
     }
 
-    g_regGen = 0;
     g_regFault = g_regInject = false;
 }
 
@@ -55,35 +49,35 @@ bool MarkNative(const uint8_t* grid) noexcept {
         }
     }
 
-    if (!slot) {  // full: evict the oldest generation
-        slot = &g_reg[0];
-
-        for (auto& e : g_reg) {
-            if (e.gen < slot->gen) {
-                slot = &e;
-            }
-        }
+    if (!slot) {
+        g_regFault = true;
+        return false;
     }
 
-    *slot = RegEntry{a, ++g_regGen};
+    *slot = RegEntry{a};
 
     return true;
 }
 
-bool NeedsMigration(const uint8_t* grid) noexcept {
-    if (!grid || g_regFault) {
-        return false;  // after a failed registration no grid may be taken for stock-size
+bool IsNative(const uint8_t* grid) noexcept {
+    if (!grid) {
+        return false;
     }
 
     const uintptr_t a = reinterpret_cast<uintptr_t>(grid);
 
     for (const auto& e : g_reg) {
         if (e.addr == a) {
-            return false;
+            return true;
         }
     }
 
-    return true;
+    return false;
+}
+
+bool NeedsMigration(const uint8_t* grid) noexcept {
+    // After a failed registration an unknown grid may be native or stock: neither migrate nor update it.
+    return grid && !g_regFault && !IsNative(grid);
 }
 
 unsigned RegistrySize() noexcept {
@@ -119,7 +113,8 @@ void MigrateGrid(const uint8_t* old, uint8_t* fresh) {
     }
 
     // the tail (fret bars, spans, flags) sits at the same offsets in both layouts
-    const uint32_t tail = kWireBaseStock + kFrets * kWireRowStock;  // 5C40h
+    constexpr uint32_t tail = rs7::kGridTail;
+    static_assert(tail == kWireBaseStock + kFrets * kWireRowStock, "the tail follows the stock wire rows");
 
     std::memcpy(fresh + tail, old + tail, kSizeStock - tail);
 }

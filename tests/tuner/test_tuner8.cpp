@@ -1,14 +1,20 @@
 #include "config_fixture.h"
+#include "features/clite/clite.h"
 #include "features/colours/colours.h"
 #include "features/fretgrid/fretgrid.h"
+#include "features/publish/publish.h"
 #include "features/strings/strings.h"
 #include "features/tuner/hooks.h"
+#include "features/tuner/state.h"
 #include "features/tuner/tuner.h"
 #include "hook_rules.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
+
+extern "C" void __cdecl Rs7_Mid_TS8SEL(Rs7Mid::Context& c);
 
 namespace {
 template <class T>
@@ -57,17 +63,17 @@ struct Switches {
 };
 }  // namespace
 
-TEST(tuner8_copy_dispatch_requires_switch_native_owner_and_valid_count) {
+TEST(tuner8_copy_dispatch_follows_native_owner_and_valid_count) {
     Switches save;
     Objects o;
 
     g_rs7_native_fretgrid = 1;
     g_rs7_native_tuner = 0;
     g_rs7_native_strings = 1;
-    CHECK(!Rs7Tuner8_Use(0, o.session));
+    CHECK(Rs7Tuner8_Use(0, o.session));
     g_rs7_native_tuner = 1;
     g_rs7_native_strings = 0;
-    CHECK(!Rs7Tuner8_Use(0, o.session));
+    CHECK(Rs7Tuner8_Use(0, o.session));
     g_rs7_native_strings = 1;
     CHECK(Rs7Tuner8_Use(0, o.session));
     CHECK(Rs7Tuner8_Use(1, o.session));
@@ -185,21 +191,40 @@ TEST(tuner8_session_tail_keeps_stock_prefix_and_starts_unused) {
     CHECK_EQ(Rs7Tuner8_FreeSessionSize(session), rs7tu::kStockSize);
 }
 
-TEST(tuner8_session_storage_switch_off_does_not_write_or_register) {
+TEST(tuner8_session_storage_survives_runtime_isolation) {
     Switches save;
+    rs7test::Restore restoreClite(g_rs7_clite);
+    rs7test::Restore restorePorts(g_rs7_publish_ports);
+    rs7test::Restore restorePublish(g_rs7_native_publish);
 
-    g_rs7_native_tuner = 0;
+    Rs7_ResetFeatureFailures();
+    g_rs7_native_tuner = g_rs7_native_strings = g_rs7_native_fretgrid = g_rs7_native_colours = 1;
     uint8_t session[rs7tu::kSessionSize]{};
+    const int offs[6] = {}, extra[2] = {};
 
-    std::memset(session, 0xA5, sizeof session);
+    Put(session, rs7tu::kStockLetters, uint32_t(0x1000));
+    Put(session, rs7tu::kStockPicks, uint32_t(0x2000));
     Rs7Tuner8_InitSession(session);
-    CHECK(!Rs7Tuner8_HasSession(session));
+    CHECK(Rs7Tuner8_Apply(session, offs, 7, extra));
+    CHECK_EQ(*reinterpret_cast<uint32_t*>(session + rs7tu::kStockLetters), 0u);
+    CHECK(Rs7_DisableFeature(Rs7Feature::Fretgrid));
+    CHECK_EQ(g_rs7_native_tuner, uintptr_t(0));
+    CHECK(Rs7Tuner8_IsNative(session));
+    CHECK(Rs7Tuner8_EnsureNative(session, "test"));
+    CHECK(Rs7Tuner8_Apply(session, offs, 6, extra));
+    Rs7Mid::Context c{};
 
-    for (uint8_t b : session) {
-        CHECK_EQ(b, 0xA5);
-    }
-
-    CHECK_EQ(Rs7Tuner8_FreeSessionSize(session), rs7tu::kStockSize);
+    c.ecx = uint32_t(uintptr_t(session));
+    Rs7_Mid_TS8DT(c);
+    CHECK(!Rs7Tuner8_IsNative(session));
+    CHECK_EQ(*reinterpret_cast<uint32_t*>(session + rs7tu::kStockLetters), 0x1000u);
+    CHECK_EQ(*reinterpret_cast<uint32_t*>(session + rs7tu::kStockPicks), 0x2000u);
+    CHECK_EQ(Rs7Tuner8_FreeSessionSize(session), rs7tu::kSessionSize);
+    Rs7Tuner8_InitSession(session);  // TU8ALLOC remains installed after isolation.
+    CHECK(Rs7Tuner8_HasSession(session));
+    CHECK(!Rs7Tuner8_Apply(session, offs, 7, extra));
+    CHECK_EQ(Rs7Tuner8_FreeSessionSize(session), rs7tu::kSessionSize);
+    Rs7_ResetFeatureFailures();
 }
 
 TEST(tuner8_order_is_lowest_string_first) {
@@ -293,6 +318,20 @@ struct Session {
         return *reinterpret_cast<T*>(b + off);
     }
 };
+
+int g_restarts = 0, g_selected = -1;
+
+void __fastcall EnterCheck(uintptr_t submode, uintptr_t, uint8_t* session) {
+    CHECK_EQ(submode, uintptr_t(0));
+    ++g_restarts;
+    Put(session, rs7tu::kMode, 0);  // the game enters check mode before selecting its first string
+    Rs7Mid::Context c{};
+
+    c.ebx = uint32_t(uintptr_t(session));
+    Rs7_Mid_TS8F1(c);
+    g_selected = rs7tuner::UncheckedRead<int>(session, rs7tu::kCur);
+    Rs7Tu8_OnSelect(session, uint32_t(g_selected));
+}
 }  // namespace
 
 TEST(tuner8_apply_makes_a_native_session_and_moves_the_entities) {
@@ -332,8 +371,8 @@ TEST(tuner8_apply_makes_a_native_session_and_moves_the_entities) {
     CHECK_EQ(s.at<uint8_t>(rs7tu::kOrder), 0);
     CHECK(Rs7Tuner8_IsNative(s.b));
     g_rs7_native_tuner = 0;
-    CHECK(!Rs7Tuner8_IsNative(s.b));
-    CHECK(!Rs7Tuner8_Apply(s.b, offs, 7, extra));
+    CHECK(Rs7Tuner8_IsNative(s.b));
+    CHECK(Rs7Tuner8_Apply(s.b, offs, 7, extra));
     g_rs7_native_tuner = 1;
 }
 
@@ -346,6 +385,39 @@ TEST(tuner8_goes_native_for_a_seven_built_guitar_whatever_the_target) {
     CHECK(rs7tu::GoesNative(6, false, 8));
     CHECK(rs7tu::GoesNative(7, false, 6));
     CHECK(rs7tu::GoesNative(6, true, 6));
+}
+
+TEST(tuner8_extended_bass_starts_on_the_low_b) {
+    // A 5/6-string bass goes native, its order starts on the low B (string 4) and ends on the G / high C.
+    CHECK(rs7tu::GoesNative(6, false, 5, true));
+    CHECK(rs7tu::GoesNative(6, false, 6, true));
+    CHECK(!rs7tu::GoesNative(4, false, 4, true));  // a four-string bass keeps the stock tuner
+
+    uint8_t o[8];
+
+    rs7tu::Order(5, o, true);
+    const uint8_t five[] = {4, 0, 1, 2, 3};
+
+    for (int i = 0; i < 5; ++i) {
+        CHECK_EQ(o[i], five[i]);
+    }
+
+    CHECK_EQ(rs7tu::Step(o, 5, 4, 1), 0);
+    CHECK_EQ(rs7tu::Step(o, 5, 3, 1), -1);
+    rs7tu::Order(6, o, true);
+    const uint8_t six[] = {4, 0, 1, 2, 3, 5};
+
+    for (int i = 0; i < 6; ++i) {
+        CHECK_EQ(o[i], six[i]);
+    }
+
+    CHECK_EQ(rs7tu::Step(o, 6, 3, 1), 5);
+    CHECK_EQ(rs7tu::Step(o, 6, 0, -1), 4);
+    rs7tu::Order(4, o, true);  // four strings: the stock order
+
+    for (int i = 0; i < 4; ++i) {
+        CHECK_EQ(o[i], i);
+    }
 }
 
 TEST(tuner8_six_string_target_on_a_seven_built_guitar_is_a_native_session) {
@@ -451,6 +523,154 @@ TEST(tuner8_apply_needs_a_registered_grown_session) {
 
     CHECK(!Rs7Tuner8_Apply(stock, offs, 7, extra));
     CHECK_EQ(stock[rs7tu::kNative], 0);
+}
+
+TEST(tuner8_deferred_conversion_keeps_each_sessions_full_target) {
+    Switches save;
+    rs7test::Restore restore_keys(rs7tuner::g_state.keys);
+    rs7test::Restore restore_entry(rs7tuner::g_state.enterCheck);
+
+    rs7tuner::g_state.enterCheck = uintptr_t(&EnterCheck);
+
+    for (int count : {7, 8}) {
+        Objects guitar, bass;
+        Session a, b;
+        int offs[6] = {-1, -2, -3, -4, -5, -6};
+        int bassOffs[6] = {1, 2, 3, 4, -2, -1};
+        rs7tuner::Key key{true, -3, -3.0};
+
+        key.found7 = count == 8;
+        key.t7 = -4;
+        rs7tuner::g_state.keys.Put(offs, key);
+        rs7tuner::Key bassKey{false, 0, 0.0};
+
+        bassKey.bass = count - 2;
+        rs7tuner::g_state.keys.Put(bassOffs, bassKey);
+        guitar.info[0xB] = uint8_t(count);
+        bass.info[0] = 2;
+        bass.info[0xB] = uint8_t(count - 2);
+        Put(a.b, 0x2C, guitar.guitar);
+        Put(b.b, 0x2C, bass.guitar);
+        g_rs7_native_strings = 1;
+        g_rs7_fg_row = rs7fg::kRowStock;
+        Rs7_TunerApply(a.b, offs);
+        Rs7_TunerApply(b.b, bassOffs);
+        CHECK(!Rs7Tuner8_IsNative(a.b));
+        CHECK(!Rs7Tuner8_IsNative(b.b));
+        std::memset(offs, 0, sizeof offs);
+        std::memset(bassOffs, 0, sizeof bassOffs);
+        CHECK(!Rs7Tuner8_EnsureNative(a.b, "test pending"));
+        g_rs7_fg_row = rs7fg::kRowNative;
+        CHECK(Rs7Tuner8_EnsureNative(a.b, "test ready"));
+        CHECK(Rs7Tuner8_EnsureNative(b.b, "test ready"));
+        CHECK_EQ(a.at<uint8_t>(rs7tu::kCount), count);
+        CHECK_EQ(b.at<uint8_t>(rs7tu::kCount), count - 2);
+        CHECK_EQ(a.at<int>(rs7tu::kOffsets), -1);
+        CHECK_EQ(a.at<int>(rs7tu::kOffsets + 24), -3);
+        CHECK_EQ(a.at<int>(rs7tu::kOffsets + 28), count == 8 ? -4 : 0);
+        CHECK_EQ(b.at<int>(rs7tu::kOffsets), 1);
+        CHECK_EQ(b.at<int>(rs7tu::kOffsets + 16), -2);
+        CHECK_EQ(b.at<int>(rs7tu::kOpen + 16), 21);
+        CHECK_EQ(b.at<uint8_t>(rs7tu::kOrder), 4);
+    }
+}
+
+TEST(tuner8_deferred_conversion_restarts_selection_and_visits_every_target_string) {
+    Switches save;
+    rs7test::Restore restore_entry(rs7tuner::g_state.enterCheck);
+    rs7test::Restore restore_copy(rs7tuner::g_state.sessCopy[0]);
+
+    rs7tuner::g_state.enterCheck = uintptr_t(&EnterCheck);
+    rs7tuner::g_state.sessCopy[0] = 0x1234;
+
+    for (int count : {5, 6, 7, 8}) {
+        for (int mode : {0, 1, 2, 3}) {
+            Session s;
+            const int offs[6] = {}, extra[2] = {};
+            const bool bass = count <= 6;
+
+            g_rs7_fg_row = rs7fg::kRowStock;
+            CHECK(!Rs7Tuner8_Apply(s.b, offs, count, extra, bass ? count : 0));
+            s.at<int>(rs7tu::kMode) = mode;  // the stock tuner starts before the deferred layout is ready
+            s.at<int>(rs7tu::kCur) = 0;
+            g_restarts = 0;
+            g_selected = -1;
+            CHECK(!Rs7Tuner8_EnsureNative(s.b, "test pending"));
+            CHECK_EQ(g_restarts, 0);
+            g_rs7_fg_row = rs7fg::kRowNative;
+            Rs7Mid::Context c{};
+            uint32_t stack[2] = {};
+
+            c.esp = uint32_t(uintptr_t(stack));
+            c.esi = uint32_t(uintptr_t(s.b));
+            Rs7_Mid_TS8SEL(c);
+            CHECK(Rs7Tuner8_IsNative(s.b));
+            CHECK_EQ(c.edi, uint32_t(bass ? 4 : count - 1));
+            CHECK_EQ(g_restarts, 1);
+            CHECK_EQ(s.at<int>(rs7tu::kMode), 0);
+            CHECK_EQ(g_selected, bass ? 4 : count - 1);
+            const int guitar7[] = {6, 0, 1, 2, 3, 4, 5};
+            const int guitar8[] = {7, 6, 0, 1, 2, 3, 4, 5};
+            const int bassOrder[] = {4, 0, 1, 2, 3, 5};
+            const int* want = bass ? bassOrder : count == 7 ? guitar7 : guitar8;
+
+            for (int i = 0; i < count; ++i) {
+                CHECK_EQ(s.at<int>(rs7tu::kCur), want[i]);
+                CHECK_EQ(Rs7Tu8_AdvanceC(s.b, 1), i + 1 < count ? 1 : 0);
+            }
+
+            CHECK(Rs7Tuner8_EnsureNative(s.b, "test already native"));
+            CHECK_EQ(g_restarts, 1);
+        }
+    }
+}
+
+TEST(tuner8_known_target_count_is_independent_of_the_built_guitar_count) {
+    Switches save;
+    rs7test::Restore restore_keys(rs7tuner::g_state.keys);
+    Objects o;
+    const int offs[6] = {};
+
+    g_rs7_native_strings = 1;
+    o.info[0xB] = 8;
+
+    for (int target : {6, 7, 8, 0}) {
+        Session s;
+
+        Put(s.b, 0x2C, o.guitar);
+        rs7tuner::g_state.keys.Clear();
+
+        if (target) {
+            rs7tuner::Key key{target > 6, -2, -2.0};
+
+            key.found7 = target == 8;
+            rs7tuner::g_state.keys.Put(offs, key);
+        }
+
+        Rs7_TunerApply(s.b, offs);
+        CHECK(Rs7Tuner8_IsNative(s.b));
+        CHECK_EQ(s.at<uint8_t>(rs7tu::kCount), target ? target : 8);
+        CHECK_EQ(s.at<int>(rs7tu::kOffsets + 24), target > 6 ? -2 : 0);
+    }
+}
+
+TEST(tuner8_freed_session_does_not_reuse_a_deferred_target) {
+    Switches save;
+    Session s;
+    Objects o;
+    const int offs[6] = {}, extra[2] = {-2, -3};
+
+    g_rs7_native_strings = 1;
+    o.info[0xB] = 8;
+    Put(s.b, 0x2C, o.guitar);
+    g_rs7_fg_row = rs7fg::kRowStock;
+    CHECK(!Rs7Tuner8_Apply(s.b, offs, 8, extra));
+    CHECK_EQ(Rs7Tuner8_FreeSessionSize(s.b), rs7tu::kSessionSize);
+    Rs7Tuner8_InitSession(s.b);
+    g_rs7_fg_row = rs7fg::kRowNative;
+    CHECK(Rs7Tuner8_EnsureNative(s.b, "test reused"));
+    CHECK_EQ(s.at<uint8_t>(rs7tu::kCount), 6);
+    CHECK_EQ(s.at<int>(rs7tu::kOffsets + 24), 0);
 }
 
 TEST(tuner8_mid_hooks_follow_the_order_and_leave_stock_sessions_alone) {

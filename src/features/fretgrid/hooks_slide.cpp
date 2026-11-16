@@ -5,7 +5,7 @@
 // Strings 0-7 are real cells now ([neck] native_publish); there is no string-6 extrapolation.
 //
 // Light mid-hook (per slide gem, integer only; LIGHT_CALLBACKS in tools/tests/emu_harness.py), converted from a naked
-// stub (refactor step 7, frozen at b8c0ed7, tools/tests/test_midhook_cold.py). The old stub left the flags of its
+// stub (frozen at b8c0ed7, tools/tests/test_midhook_cold.py). The old stub left the flags of its
 // `add eax,ecx`; no continuation reads them (contract "free").
 #include "features/fretgrid/fretgrid.h"
 #include "platform/midhook.h"

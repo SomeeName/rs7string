@@ -1,4 +1,5 @@
 #include "features/nslot/match.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstring>
 
@@ -92,6 +93,29 @@ bool OctaveDyad(const int32_t* in, int n) {
     }
 
     return octave && count == 2;
+}
+
+bool LowChord(const int32_t* in, int n) {
+    int count = 0, low = 0x80;
+
+    for (int i = 0; i < n; ++i) {
+        bool repeat = false;
+
+        for (int j = 0; j < i; ++j) {
+            repeat = repeat || in[j] == in[i];
+        }
+
+        if (in[i] < 0 || repeat) {
+            continue;
+        }
+
+        ++count;
+        if (in[i] > 0 && in[i] < low) {
+            low = in[i];
+        }
+    }
+
+    return count >= 2 && count <= 3 && low < kLowOctave;
 }
 
 bool Compact6(const int32_t* in, int n, int32_t* out6) {
@@ -218,7 +242,7 @@ struct Score {
 
 // Walks the sorted candidates (strongest first) until the strength runs out or every target is found;
 // cnt[i] counts the candidates on target i's row.
-Score ScoreCandidates(const Cand* v, const int32_t* const* row, const int32_t* loc, int n, int active, int32_t* cnt) {
+Score ScoreCandidates(const Cand* v, const int32_t* const* row, int n, int active, int32_t* cnt) {
     Score r;
 
     for (int e = 0; e < 128; ++e) {
@@ -230,7 +254,7 @@ Score ScoreCandidates(const Cand* v, const int32_t* const* row, const int32_t* l
         bool hit = false;
 
         for (int i = 0; i < n; ++i) {
-            if (!row[i] && !(loc[i] > -1)) {
+            if (!row[i]) {  // no row when loc[i] is -1 or outside the table (MatchN)
                 continue;
             }
 
@@ -258,16 +282,17 @@ Score ScoreCandidates(const Cand* v, const int32_t* const* row, const int32_t* l
     return r;
 }
 
+// The float 0.2f widened to double: some targets missing pass when unmatched < 0.2 x matched strength.
+constexpr double kMissingRatio = 0.20000000298023224;
+
 // The stock acceptance rule per target count over the found targets and the matched / unmatched strength.
 int Verdict(int active, int found, const Score& r, int tol, int misses) {
     const bool less = r.unmatched < r.matched;
     if (active == 6) {
-        return (found >= 6 - tol && less) ||
-               (found == 5 - tol && ScaledGreater(r.matched, 0.20000000298023224, r.unmatched));
+        return (found >= 6 - tol && less) || (found == 5 - tol && ScaledGreater(r.matched, kMissingRatio, r.unmatched));
     }
     if (active == 5) {
-        return (found >= 5 - tol && less) ||
-               (found == 4 - tol && ScaledGreater(r.matched, 0.20000000298023224, r.unmatched));
+        return (found >= 5 - tol && less) || (found == 4 - tol && ScaledGreater(r.matched, kMissingRatio, r.unmatched));
     }
     // Seven or eight targets (only the port sees them): stock has no case for them; its branch below
     // would require every target. [chords] wide_misses (g.misses, default 2) lets up to that many
@@ -275,13 +300,21 @@ int Verdict(int active, int found, const Score& r, int tol, int misses) {
     // strength, or some missing (at most g.misses) and unmatched < 0.2 x matched.
     if (active >= 7 && misses > 0) {
         return (found >= active - tol && less) || (found < active - tol && found >= active - misses - tol &&
-                                                   ScaledGreater(r.matched, 0.20000000298023224, r.unmatched));
+                                                   ScaledGreater(r.matched, kMissingRatio, r.unmatched));
     }
 
     return r.fund == active || (found >= active - tol && less);
 }
 
 }  // namespace
+
+const int32_t* TableRow(uintptr_t table, int32_t midi) {
+    if (!table || midi < kTableFirst || midi >= kTableFirst + kTableRows) {
+        return nullptr;
+    }
+
+    return reinterpret_cast<const int32_t*>(table + 24 * static_cast<uintptr_t>(midi - kTableFirst));
+}
 
 int MatchN(const uint8_t* m, const int32_t* in, int n, int tol, int hist, const Game& g) {
     if (n > kMaxTargets) {
@@ -295,6 +328,9 @@ int MatchN(const uint8_t* m, const int32_t* in, int n, int tol, int hist, const 
 
     if (low > 0 && low < 0x41) {
         special[0] = low;
+        if (low < g.lowOctave) {
+            special[1] = low + 12;
+        }
     }
 
     const int32_t* row[kMaxTargets] = {};
@@ -304,10 +340,8 @@ int MatchN(const uint8_t* m, const int32_t* in, int n, int tol, int hist, const 
         cnt[i] = -1;
 
         if (loc[i] > -1) {
-            row[i] = loc[i] == low
-                         ? special
-                         : reinterpret_cast<const int32_t*>(g.table + 24 * static_cast<intptr_t>(loc[i] - 22));
-            cnt[i] = 0;
+            row[i] = loc[i] == low ? special : TableRow(g.table, loc[i]);
+            cnt[i] = row[i] ? 0 : -1;
         }
     }
 
@@ -321,7 +355,7 @@ int MatchN(const uint8_t* m, const int32_t* in, int n, int tol, int hist, const 
     }
 
     GameSort(v, g);
-    const Score r = ScoreCandidates(v, row, loc, n, active, cnt);
+    const Score r = ScoreCandidates(v, row, n, active, cnt);
     const int found = CountFound(cnt, n);
     const uint8_t* det = *reinterpret_cast<uint8_t* const*>(m + 4);
     if (det && *reinterpret_cast<const int32_t*>(det + 0x11EC) == 2 && OctaveDyad(in, n) && m[0x54] && found >= 1 &&
@@ -356,24 +390,30 @@ extern "C" int __cdecl Rs7Ns_MatchPort(const uint8_t* matcher, const int32_t* in
 namespace {
 // The port behind an SEH guard (a fault reads as "not matched"); kept out of Rs7Ns_DetectChord so the
 // compaction path has no SEH frame (the emulator tests run it).
-__declspec(noinline) int PortGuarded(const uint8_t* matcher, const int32_t* in8, int tol, int hist) {
-    const rs7match::Game g = Bound();
+__declspec(noinline) int PortGuarded(const uint8_t* matcher, const int32_t* in8, int tol, int hist, bool low) {
+    rs7match::Game g = Bound();
+
+    if (low) {
+        g.lowOctave = rs7match::kLowOctave;
+    }
 
     __try {
         return rs7match::MatchN(matcher, in8, rs7match::kMaxTargets, tol, hist, g);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 }  // namespace
 
 extern "C" int __cdecl Rs7Ns_DetectChord(const uint8_t* matcher, const int32_t* in8, int tol, int hist, int32_t* out6) {
-    if (rs7match::Compact6(in8, rs7match::kMaxTargets, out6)) {
+    const bool low = rs7match::LowChord(in8, rs7match::kMaxTargets);
+
+    if (!low && rs7match::Compact6(in8, rs7match::kMaxTargets, out6)) {
         InterlockedIncrement(&g_stock6);
         return -1;
     }
 
-    const int r = PortGuarded(matcher, in8, tol, hist);
+    const int r = PortGuarded(matcher, in8, tol, hist, low);
 
     InterlockedIncrement(&g_portN);
     if (r) {
@@ -386,9 +426,9 @@ extern "C" int __cdecl Rs7Ns_DetectChord(const uint8_t* matcher, const int32_t* 
 Rs7MatchStats Rs7Ns_MatchStats(bool reset) {
     Rs7MatchStats s;
 
-    s.stock6 = reset ? InterlockedExchange(&g_stock6, 0) : g_stock6;
-    s.portN = reset ? InterlockedExchange(&g_portN, 0) : g_portN;
-    s.portHits = reset ? InterlockedExchange(&g_portHits, 0) : g_portHits;
+    s.stock6 = reset ? InterlockedExchange(&g_stock6, 0) : InterlockedCompareExchange(&g_stock6, 0, 0);
+    s.portN = reset ? InterlockedExchange(&g_portN, 0) : InterlockedCompareExchange(&g_portN, 0, 0);
+    s.portHits = reset ? InterlockedExchange(&g_portHits, 0) : InterlockedCompareExchange(&g_portHits, 0, 0);
 
     return s;
 }

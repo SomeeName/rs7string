@@ -92,6 +92,26 @@ TEST(extblock_edges_empty_song_and_missing_optional_sections) {
     CHECK(out.hasTemplates && out.hasChordNotes && out.fret.empty() && out.tech.empty());
 }
 
+TEST(extblock_many_optional_sections_and_late_duplicate) {
+    auto b = Strings();
+    constexpr uint32_t count = 20000;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t id = 0x80000000u + i;
+
+        Section(b, reinterpret_cast<const char*>(&id), {});
+    }
+
+    Block out;
+
+    CHECK(Parse(b, &out) == Status::Ok);
+    CHECK_EQ(out.skipped, count);
+    const uint32_t duplicate = 0x80000000u + count - 2;
+
+    Section(b, reinterpret_cast<const char*>(&duplicate), {});
+    CHECK(Parse(b, &out) == Status::Invalid);
+}
+
 TEST(extblock_edges_eight_string_columns_are_independent) {
     auto b = Strings(8);
 

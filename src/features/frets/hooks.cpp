@@ -2,12 +2,21 @@
 // highway floor, the IN1 inlays and the chord-frame geometry B2 reads. The logic it calls is frets.cpp, its log
 // lines are hooks_log.cpp.
 #include "features/frets/hooks.h"
+#include "features/frets/state.h"
 #include "features/scene/scene.h"
+#include "features/spacing/spacing.h"
 #include "features/string7/string7.h"
+#include "model/instrument.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
+#include "platform/spinlock.h"
 #include <windows.h>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <intrin.h>
+#include <iterator>
 
 // No Win32 calls, no C++ exception frames on the path a stock song takes (no guitar wants 7
 // strings): the emulator test runs F1 that way. Game functions are never called while the table
@@ -20,6 +29,8 @@ __declspec(dllexport) float g_rs7_fret_halflen = rs7frets::kDefaultHalfLen;
 }
 
 namespace rs7fretglue {
+State g_state;
+
 using namespace rs7frets;
 
 uint8_t* Bar(uint8_t* grid, int f) {
@@ -27,20 +38,20 @@ uint8_t* Bar(uint8_t* grid, int f) {
 }
 
 int BarCount(uint8_t* guitar) {
-    uint8_t* info = At<uint8_t*>(guitar, kGuitarInfo);
+    const uint8_t* info = rs7::GuitarInfo(guitar);
     if (!info) {
         return 0;
     }
 
-    const int n = info[0xD];
+    const int n = info[rs7::kInfoFretBars];
 
     return n > kMaxBars ? kMaxBars : n;
 }
 
 bool Attach(uint8_t* guitar, const float** a0, const float** a1, const float** w0, const float** w1) {
-    uint8_t* gs = At<uint8_t*>(guitar, kGuitarStrings);
-    uint8_t* o0 = gs ? At<uint8_t*>(gs, 4) : nullptr;
-    uint8_t* o1 = gs ? At<uint8_t*>(gs, 8) : nullptr;
+    uint8_t* gs = UncheckedField<uint8_t*>(guitar, kGuitarStrings);
+    uint8_t* o0 = gs ? UncheckedField<uint8_t*>(gs, 4) : nullptr;
+    uint8_t* o1 = gs ? UncheckedField<uint8_t*>(gs, 8) : nullptr;
     if (!o0 || !o1) {
         return false;
     }
@@ -56,85 +67,67 @@ bool Attach(uint8_t* guitar, const float** a0, const float** a1, const float** w
 
     return true;
 }
-}  // namespace rs7fretglue
 
-namespace {
-using namespace rs7frets;
-using namespace rs7fretglue;
+// The bars are laid out for the string count the guitar was built with (InstrumentInfo +0Bh), which never changes
+// during the guitar's life. The lanes below the stock low string: 1 on a 7-string, 2 on an 8-string guitar, 1 on a
+// bass built with 5 / 6 strings (the low B), else 0. A 6-string bass's high C lies beyond the G at the other end
+// (FarLanes).
+int ExtraLanes(const uint8_t* guitar) {
+    const uint8_t* info = rs7::GuitarInfo(guitar);
 
-struct State {
-    uint8_t* guitar;  // Rnd_Guitar* (key; nullptr = free slot)
-    uint8_t* grid;    // its FretGrid at the last N5 frame
-    bool applied;     // bars re-placed and scaled (by F1 or F2) and not restored since
-    float halfLen;    // the fret_halflen of that apply (overlay: a change re-applies)
-    int verify;       // N5 frames until the node read-back (0 = none pending)
-};
-
-State g_st[kMaxGuitars];
-volatile long g_spin = 0;
-volatile long g_logApply = 0, g_logF1 = 0, g_logRestore = 0, g_logVerify = 0, g_logFail = 0;
-
-void Lock() {
-    while (_InterlockedCompareExchange(&g_spin, 1, 0) != 0) {
-        _mm_pause();
+    if (!info) {
+        return 0;
     }
+
+    const unsigned count = info[rs7::kInfoStrings];
+    if (rs7::IsBassKind(info[rs7::kInfoKind])) {
+        return rs7::IsExtendedBass(count) ? 1 : 0;
+    }
+
+    return rs7::IsExtendedGuitar(count) ? int(count) - 6 : 0;
 }
 
-void Unlock() {
-    _InterlockedExchange(&g_spin, 0);
+// A bass's stock far string is the G (3), a guitar's string 5; a 6-string bass has its high C one lane beyond it.
+int StockFar(const uint8_t* guitar) {
+    const uint8_t* info = rs7::GuitarInfo(guitar);
+
+    return info && rs7::IsBassKind(info[rs7::kInfoKind]) ? 3 : 5;
 }
 
-bool Once(volatile long* flag) {
-    return _InterlockedExchange(flag, 1) == 0;
+int FarLanes(const uint8_t* guitar) {
+    const uint8_t* info = rs7::GuitarInfo(guitar);
+
+    return info && rs7::IsBassKind(info[rs7::kInfoKind]) && info[rs7::kInfoStrings] == 6 ? 1 : 0;
 }
 
-State* FindGuitar(const void* guitar) {  // caller holds the lock
-    for (State& s : g_st) {
-        if (s.guitar == guitar) {
-            return &s;
+int FloorOffset(uint8_t* guitar, uint8_t* grid, float out[3]) {
+    if (!g_rs7_frets_on || !guitar) {
+        return 0;
+    }
+
+    __try {
+        const int lanes = ExtraLanes(guitar);
+        if (!lanes) {
+            return 0;
         }
-    }
 
-    return nullptr;
-}
-
-State* FindOrAdd(uint8_t* guitar, uint8_t* grid) {  // caller holds the lock
-    State* s = FindGuitar(guitar);
-    if (s) {
-        return s;
-    }
-
-    for (State& x : g_st) {
-        if (!s && !x.guitar) {
-            s = &x;
+        const float *a0, *a1;
+        if (!grid || !Attach(guitar, &a0, &a1, nullptr, nullptr)) {
+            return -1;
         }
+
+        uint8_t* bar0 = Bar(grid, 0);
+        uint8_t live = 0;
+        float p0[3], p1[3], floor[3];
+        if (!Rs7_SafeCopyZero(&live, bar0, sizeof live) || !live || !Rs7_SafeCopyZero(p0, a0, sizeof p0) ||
+            !Rs7_SafeCopyZero(p1, a1, sizeof p1) || !Rs7_SafeCopyZero(floor, bar0 + kBarBLocal, sizeof floor)) {
+            return -1;
+        }
+
+        return FloorMove(p0, p1, floor, lanes, StockFar(guitar), FarLanes(guitar), out);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return -1;
     }
-
-    if (!s) {
-        s = &g_st[0];
-    }
-    *s = State{guitar, grid, false, 0.0f, 0};
-
-    return s;
-}
-
-// C-lite: the bars are laid out for the string count the guitar was BUILT with (InstrumentInfo +0Bh):
-// 7 or 8 strings = extended, 4 / 6 = stock. The count never changes during the guitar's life.
-bool WantsSeven(const uint8_t* guitar) {
-    if (!guitar) {
-        return false;
-    }
-
-    const uint8_t* info = *reinterpret_cast<uint8_t* const*>(guitar + kGuitarInfo);
-
-    return info && (info[0x0B] == 7 || info[0x0B] == 8);
-}
-
-// ---- game calls ----
-void GameSetPos(uint8_t* entity, const float* v) {  // Entity_SetTranslation 0x7ADF70 cdecl(entity, &vec3)
-    using Fn = void(__cdecl*)(uint8_t*, const float*);
-
-    reinterpret_cast<Fn>(g_rs7_fn_setpos)(entity, v);
 }
 
 void GameSetScale(uint8_t* entity, float k) {  // Entity_SetScale 0x7AE2C0: EAX = entity, cdecl(float)
@@ -151,6 +144,42 @@ void GameSetScale(uint8_t* entity, float k) {  // Entity_SetScale 0x7AE2C0: EAX 
         pop ebx                    // ebx / esi / edi are kept across the game's setter
     }
 }
+}  // namespace rs7fretglue
+
+namespace {
+using namespace rs7frets;
+using namespace rs7fretglue;
+
+void Lock() {
+    Rs7Spin_Lock(&g_state.spin);
+}
+
+void Unlock() {
+    Rs7Spin_Unlock(&g_state.spin);
+}
+
+GuitarState* FindGuitar(const void* guitar) {  // caller holds the lock
+    return g_state.guitars.Find(guitar);
+}
+
+GuitarState* FindOrAdd(uint8_t* guitar) {  // caller holds the lock
+    if (GuitarState* s = FindGuitar(guitar)) {
+        return s;
+    }
+
+    return &g_state.guitars.Put(guitar, GuitarState{false, -1, 0.0f, 0});
+}
+
+bool WantsSeven(const uint8_t* guitar) {
+    return ExtraLanes(guitar) > 0;
+}
+
+// ---- game calls ----
+void GameSetPos(uint8_t* entity, const float* v) {  // Entity_SetTranslation 0x7ADF70 cdecl(entity, &vec3)
+    using Fn = void(__cdecl*)(uint8_t*, const float*);
+
+    reinterpret_cast<Fn>(g_rs7_fn_setpos)(entity, v);
+}
 
 void Midpoint(uint8_t* bar, float out[3]) {  // the stock translation of 0x58FB20 (0x58FBE0..0x58FC3F)
     const float* a = reinterpret_cast<const float*>(bar + kBarAWorld);
@@ -161,9 +190,43 @@ void Midpoint(uint8_t* bar, float out[3]) {  // the stock translation of 0x58FB2
     }
 }
 
+// Each of the first `bars` bars that has an entity: its stock midpoint + `shift`, uniform `scale`. The first bar's
+// stock and new midpoint go to mid0 / new0 when given. Returns the bars set.
+int PlaceBars(uint8_t* grid, int bars, const float shift[3], float scale, float* mid0, float* new0) {
+    int set = 0;
+
+    for (int f = 0; f < bars; ++f) {
+        uint8_t* bar = Bar(grid, f);
+        uint8_t* entity = UncheckedField<uint8_t*>(bar, kBarEntity);
+        if (!entity) {
+            continue;
+        }
+
+        float p[3];
+
+        Midpoint(bar, p);
+        if (f == 0 && mid0) {
+            std::memcpy(mid0, p, sizeof p);
+        }
+
+        for (int i = 0; i < 3; ++i) {
+            p[i] += shift[i];
+        }
+
+        if (f == 0 && new0) {
+            std::memcpy(new0, p, sizeof p);
+        }
+        GameSetPos(entity, p);
+        GameSetScale(entity, scale);
+        ++set;
+    }
+
+    return set;
+}
+
 // Re-place and scale every bar of `guitar` (F1 right after the stock body, F2 on a change). Returns
 // the number of bars set; 0 = nothing to do yet (no bars / strings loaded).
-int Apply(uint8_t* guitar, uint8_t* grid, const char* by) {
+int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
     if (!g_rs7_fn_setpos || !g_rs7_fn_setscale || !grid) {
         return 0;
     }
@@ -172,7 +235,7 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by) {
     Extend x;
 
     if (!Attach(guitar, &a0, &a1, nullptr, nullptr)) {
-        if (Once(&g_logFail)) {
+        if (Rs7Log_Once(&g_state.logFail)) {
             LogFail("guitar strings not loaded (no attach points)", guitar);
         }
         return 0;
@@ -186,44 +249,35 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by) {
                         reinterpret_cast<const float*>(bar0 + kBarBLocal)[i]);
     }
 
-    if (!Compute(a0, a1, m0, g_rs7_fret_halflen, &x)) {
-        if (Once(&g_logFail)) {
+    // [neck] spacing_*: the strings were scaled by k about the string-axis origin (features/spacing); the stock bar
+    // mesh was not. Scale its midpoint and half length the same way first, so its margin beyond the outer strings
+    // stays the stock one, and fold k into the result.
+    const float k = Rs7Spacing_Factor(rs7::GuitarInfo(guitar));
+    const float halfLen = g_rs7_fret_halflen * k;
+    float shift0[3] = {};
+
+    if (k != 1.0f) {
+        rs7frets::ScaleBarMid(a0, a1, k, m0, shift0);
+    }
+
+    if (!Compute(a0, a1, m0, halfLen, ExtraLanes(guitar), &x, StockFar(guitar), FarLanes(guitar))) {
+        if (Rs7Log_Once(&g_state.logFail)) {
             LogFail("degenerate string spacing", guitar);
         }
         return 0;
     }
 
-    const int bars = BarCount(guitar);
-    int set = 0;
-    float mid0[3] = {}, new0[3] = {};
+    x.scale *= k;
 
-    for (int f = 0; f < bars; ++f) {
-        uint8_t* bar = Bar(grid, f);
-        uint8_t* entity = At<uint8_t*>(bar, kBarEntity);
-        if (!entity) {
-            continue;
-        }
-
-        float p[3];
-
-        Midpoint(bar, p);
-        if (f == 0) {
-            std::memcpy(mid0, p, sizeof p);
-        }
-
-        for (int i = 0; i < 3; ++i) {
-            p[i] += x.shift[i];
-        }
-
-        if (f == 0) {
-            std::memcpy(new0, p, sizeof p);
-        }
-        GameSetPos(entity, p);
-        GameSetScale(entity, x.scale);
-        ++set;
+    for (int i = 0; i < 3; ++i) {
+        x.shift[i] += shift0[i];
     }
 
-    if (set && Once(by[0] == 'F' && by[1] == '1' ? &g_logF1 : &g_logApply)) {
+    const int bars = BarCount(guitar);
+    float mid0[3] = {}, new0[3] = {};
+    const int set = PlaceBars(grid, bars, x.shift, x.scale, mid0, new0);
+
+    if (set && Rs7Log_Once(f1 ? &g_state.logF1 : &g_state.logApply)) {
         LogApply(by, guitar, grid, bars, set, x, mid0, new0);
     }
 
@@ -235,41 +289,36 @@ int Restore(uint8_t* guitar, uint8_t* grid) {
         return 0;
     }
 
-    const int bars = BarCount(guitar);
-    int set = 0;
+    constexpr float kNoShift[3] = {};
 
-    for (int f = 0; f < bars; ++f) {
-        uint8_t* bar = Bar(grid, f);
-        uint8_t* entity = At<uint8_t*>(bar, kBarEntity);
-        if (!entity) {
-            continue;
-        }
-
-        float p[3];
-
-        Midpoint(bar, p);
-        GameSetPos(entity, p);
-        GameSetScale(entity, 1.0f);
-        ++set;
-    }
-
-    return set;
+    return PlaceBars(grid, BarCount(guitar), kNoShift, 1.0f, nullptr, nullptr);
 }
 
-volatile long g_logFloor = 0, g_logInlay = 0;
+// Apply / Restore for the per-frame driver (N5), SEH-guarded like FRG1 / FRG2: the guitar's grid, bars and attach
+// points are game memory; a fault counts as no bar set.
+int GuardedApply(uint8_t* guitar, uint8_t* grid, const char* by) {
+    __try {
+        return Apply(guitar, grid, by, false);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return 0;
+    }
+}
+
+int GuardedRestore(uint8_t* guitar, uint8_t* grid) {
+    __try {
+        return Restore(guitar, grid);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return 0;
+    }
+}
 
 // The floor (frets.h): 0x58FB20 has just written every bar's world ends from the locators (+the guitar offset);
 // they stay as set here until its next run, so every reader this frame sees one floor.
-void ShiftFloor(uint8_t* guitar, uint8_t* grid) {
-    const float *a0, *a1;
-    if (!Attach(guitar, &a0, &a1, nullptr, nullptr)) {
-        return;
-    }
-
-    uint8_t* bar0 = Bar(grid, 0);
+int ShiftFloor(uint8_t* guitar, uint8_t* grid) {
     float shift[3];
-    if (!*bar0 || !FloorShift(a0, a1, reinterpret_cast<const float*>(bar0 + kBarBLocal), shift)) {
-        return;
+    const int moved = FloorOffset(guitar, grid, shift);
+    if (moved <= 0) {
+        return moved;
     }
 
     int n = BarCount(guitar) + 1;  // the time axis / fret numbers read records 0..count
@@ -278,6 +327,7 @@ void ShiftFloor(uint8_t* guitar, uint8_t* grid) {
         n = kMaxBars;
     }
     float first[3];
+    uint8_t* bar0 = Bar(grid, 0);
 
     std::memcpy(first, bar0 + kBarBWorld, sizeof first);
 
@@ -289,9 +339,26 @@ void ShiftFloor(uint8_t* guitar, uint8_t* grid) {
         }
     }
 
-    if (Once(&g_logFloor)) {
+    if (Rs7Log_Once(&g_state.logFloor)) {
         LogFloor(guitar, first, shift, n);
     }
+
+    return moved;
+}
+
+void RecoverFloor(uint8_t* guitar, uint8_t* grid) {
+    int moved = -1;
+
+    __try {
+        moved = ShiftFloor(guitar, grid);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    }
+
+    Lock();
+    if (GuitarState* s = FindGuitar(guitar)) {
+        s->floorMoved = moved;
+    }
+    Unlock();
 }
 }  // namespace
 
@@ -300,9 +367,9 @@ extern "C" void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
         return;
     }
 
-    uint8_t* entity = At<uint8_t*>(inlays, 4);
-    uint8_t* head = At<uint8_t*>(guitar, 0x18);
-    uint8_t* frame = head ? At<uint8_t*>(head, 4) : nullptr;
+    uint8_t* entity = UncheckedField<uint8_t*>(inlays, 4);
+    uint8_t* head = UncheckedField<uint8_t*>(guitar, rs7::kGuitarHead);
+    uint8_t* frame = head ? UncheckedField<uint8_t*>(head, 4) : nullptr;
     uint8_t* froot = frame ? rs7s7d::EntityRoot(frame) : nullptr;
     const float *a0, *a1;
     if (!entity || !froot || !Attach(guitar, &a0, &a1, nullptr, nullptr)) {
@@ -312,43 +379,72 @@ extern "C" void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
     float p[3];
     // The frame's placement, which 0x59BA80 gives the inlay entity (its root's world translation: (1,1,1) in a song,
     // (0,0,-1000) in the tuner, the frame root has no parent transform).
-    if (!rs7s7d::SafeCopy(p, froot + 0xA4, sizeof p)) {
+    if (!Rs7_SafeCopyZero(p, froot + 0xA4, sizeof p)) {
         return;
     }
 
+    // The centre moves half a spacing per added low lane and back half a spacing per added far lane (a 6-string
+    // bass: low B and high C, centre unchanged; an 8-string: one full spacing).
+    const int net = ExtraLanes(guitar) - FarLanes(guitar);
+    const float k = 0.5f * float(net);
+
     for (int i = 0; i < 3; ++i) {
-        p[i] += 0.5f * (a0[i] - a1[i]);
+        p[i] += k * (a0[i] - a1[i]);
     }
 
     GameSetPos(entity, p);
-    if (Once(&g_logInlay)) {
-        LogInlay(guitar, p, 0.5f * (a0[2] - a1[2]));
+    if (Rs7Log_Once(&g_state.logInlay)) {
+        LogInlay(guitar, p, k * (a0[2] - a1[2]), net);
     }
 }
 
+namespace {
+// F1's Apply + ShiftFloor, SEH-guarded like GuardedApply (game memory; a fault counts as no bar set).
+int GuardedF1(uint8_t* guitar, uint8_t* grid) {
+    __try {
+        const int set = Apply(guitar, grid, "F1 (after Rnd_FretBars_ApplyTransforms 0x58FB20)", true);
+
+        RecoverFloor(guitar, grid);
+        return set;
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return 0;
+    }
+}
+}  // namespace
+
 extern "C" void __cdecl Rs7_FretsAfterApply(uint8_t* grid) {
-    if (!g_rs7_frets_on || !grid) {
+    if (!grid) {
         return;
     }
 
-    uint8_t* guitar = At<uint8_t*>(grid, 0);  // 0x58FB2B: [grid] = the Rnd_Guitar (+24h info)
+    uint8_t* guitar = UncheckedField<uint8_t*>(grid, 0);  // 0x58FB2B: [grid] = the Rnd_Guitar (+24h info)
     if (!WantsSeven(guitar)) {
         return;  // every guitar built with 6 strings / bass
     }
 
-    const int set = Apply(guitar, grid, "F1 (after Rnd_FretBars_ApplyTransforms 0x58FB20)");
+    // The stock transform just replaced the world ends, even if the earlier apply had succeeded.
+    Lock();
+    GuitarState* reset = FindOrAdd(guitar);
 
-    ShiftFloor(guitar, grid);
+    if (g_rs7_frets_on) {
+        reset->applied = false;
+    }
+    reset->floorMoved = -1;
+    Unlock();
+    if (!g_rs7_frets_on) {
+        return;
+    }
+
+    const int set = GuardedF1(guitar, grid);
     if (!set) {
         return;
     }
 
     Lock();
-    State* s = FindOrAdd(guitar, grid);
+    GuitarState* s = FindOrAdd(guitar);
 
     s->applied = true;
     s->halfLen = g_rs7_fret_halflen;
-    s->grid = grid;
     if (!s->verify) {
         s->verify = kVerifyFrames;
     }
@@ -361,14 +457,14 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
     }
 
     // fret_extend is live (overlay): switched off, an applied guitar is restored below and nothing
-    // else is touched; a guitar without a State returns here as before.
+    // else is touched; a guitar without a GuitarState returns here as before.
     const bool on = g_rs7_frets_on != 0;
 
     want = want && on;
-    uint8_t* grid = At<uint8_t*>(guitar, kGuitarGrid);
+    uint8_t* grid = UncheckedField<uint8_t*>(guitar, kGuitarGrid);
 
     Lock();
-    State* s = FindGuitar(guitar);
+    GuitarState* s = FindGuitar(guitar);
 
     if (!on && !(s && s->applied)) {
         Unlock();
@@ -376,7 +472,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
     }
 
     if (!s && want) {
-        s = FindOrAdd(guitar, grid);
+        s = FindOrAdd(guitar);
     }
 
     if (!s) {
@@ -387,8 +483,8 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
     // fret_halflen changed while applied (overlay): apply again (Apply starts from the stock midpoints).
     const bool reapply = s->applied && want && s->halfLen != g_rs7_fret_halflen;
     const bool applied = s->applied && !reapply;
+    const bool recoverFloor = want && s->floorMoved < 0;
 
-    s->grid = grid;
     int verify = 0;
 
     if (s->verify > 0) {
@@ -399,7 +495,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
     if (want && !applied) {
         // F1 did not (or could not yet: no attach points) place the bars after the guitar's last ApplyTransforms.
         const int set =
-            Apply(guitar, grid, reapply ? "F2 (fret_halflen changed)" : "F2 (N5: guitar built with 7 strings)");
+            GuardedApply(guitar, grid, reapply ? "F2 (fret_halflen changed)" : "F2 (N5: guitar built with 7 strings)");
 
         if (reapply) {
             Rs7Log("frets: %d bars re-applied with fret_halflen=%.3f (overlay)", set, double(g_rs7_fret_halflen));
@@ -408,7 +504,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
         if (set) {
             Lock();
 
-            if (State* f = FindGuitar(guitar)) {
+            if (GuitarState* f = FindGuitar(guitar)) {
                 f->applied = true;
                 f->halfLen = g_rs7_fret_halflen;
                 f->verify = kVerifyFrames;
@@ -417,11 +513,11 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
             Unlock();
         }
     } else if (!want && applied) {
-        const int set = Restore(guitar, grid);
+        const int set = GuardedRestore(guitar, grid);
 
         Lock();
 
-        if (State* f = FindGuitar(guitar)) {
+        if (GuitarState* f = FindGuitar(guitar)) {
             f->applied = false;
             f->verify = 0;
         }
@@ -430,7 +526,11 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
         LogRestore(guitar, set);
     }
 
-    if (verify && Once(&g_logVerify)) {
+    if (recoverFloor) {
+        RecoverFloor(guitar, grid);
+    }
+
+    if (verify && Rs7Log_Once(&g_state.logVerify)) {
         LogReadBack("read-back (7-string)", guitar, grid);
     }
 }
@@ -441,20 +541,8 @@ void Rs7Frets_Forget(const uint8_t* guitar) {
     }
 
     Lock();
-    if (State* s = FindGuitar(guitar)) {
-        *s = State{};
-    }
+    g_state.guitars.Erase(guitar);
     Unlock();
-}
-
-void Rs7Frets_ResetLog() {
-    _InterlockedExchange(&g_logApply, 0);
-    _InterlockedExchange(&g_logF1, 0);
-    _InterlockedExchange(&g_logRestore, 0);
-    _InterlockedExchange(&g_logVerify, 0);
-    _InterlockedExchange(&g_logFail, 0);
-    _InterlockedExchange(&g_logFloor, 0);
-    _InterlockedExchange(&g_logInlay, 0);
 }
 
 void Rs7Frets_Stats(Rs7FretsStats* out) {
@@ -462,13 +550,13 @@ void Rs7Frets_Stats(Rs7FretsStats* out) {
 
     Lock();
 
-    for (const State& s : g_st) {
-        if (!s.guitar) {
+    for (const auto& s : g_state.guitars) {
+        if (!s.key) {
             continue;
         }
 
         ++st.guitars;
-        if (s.applied) {
+        if (s.value.applied) {
             ++st.applied;
         }
     }
@@ -481,15 +569,14 @@ namespace {
 bool ChordFrameRaw(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
     uint8_t* g = const_cast<uint8_t*>(guitar);
     const float *a0, *a1;
-    uint8_t* grid = At<uint8_t*>(g, kGuitarGrid);
+    uint8_t* grid = UncheckedField<uint8_t*>(g, kGuitarGrid);
     if (!grid || !Attach(g, &a0, &a1, nullptr, nullptr)) {
         return false;
     }
 
     const float* b = reinterpret_cast<const float*>(Bar(grid, 0) + kBarBLocal);
-    float shift[3];
-    const bool moved = g_rs7_frets_on && WantsSeven(g) && *Bar(grid, 0) && FloorShift(a0, a1, b, shift);
-    const bool ok = rs7frets::ChordFrame(a0, a1, b, moved, top, out);
+    const int moved = rs7fretglue::FloorMoved(guitar);
+    const bool ok = rs7frets::ChordFrame(a0, a1, b, moved, top, out, StockFar(g), FarLanes(g));
 
     for (int i = 0; i < 3; ++i) {
         out->bLocal[i] = b[i];
@@ -501,6 +588,16 @@ bool ChordFrameRaw(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
 }
 }  // namespace
 
+int rs7fretglue::FloorMoved(const uint8_t* guitar) {
+    Lock();
+    const GuitarState* s = FindGuitar(guitar);
+    const int moved = s && s->floorMoved > 0 ? s->floorMoved : 0;
+
+    Unlock();
+
+    return moved;
+}
+
 bool Rs7Frets_ChordFrame(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
     if (!guitar) {
         return false;
@@ -508,7 +605,18 @@ bool Rs7Frets_ChordFrame(const uint8_t* guitar, int top, rs7frets::FrameFit* out
 
     __try {
         return ChordFrameRaw(guitar, top, out);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
+}
+
+// Per song: the logs, and the glow bars FRG2 has not scaled yet (hooks_glow.cpp).
+void Rs7Frets_ResetLog() {
+    rs7fretglue::ResetGlow();
+    _InterlockedExchange(&g_state.logApply, 0);
+    _InterlockedExchange(&g_state.logF1, 0);
+    _InterlockedExchange(&g_state.logVerify, 0);
+    _InterlockedExchange(&g_state.logFail, 0);
+    _InterlockedExchange(&g_state.logFloor, 0);
+    _InterlockedExchange(&g_state.logInlay, 0);
 }

@@ -1,4 +1,4 @@
-"""Pitch and detector stubs: expected MIDI (S2), SetTuning exit (S3), wrong-instrument threshold (W) and the inverse pitch (I1)."""
+"""Pitch and detector stubs: SetTuning exit (S3), wrong-instrument threshold (W) and the inverse pitch (I1)."""
 
 from __future__ import annotations
 
@@ -23,48 +23,13 @@ from emu_harness import ALL_REGS, CODE, DATA, Emu, RET_MAGIC, STACK, needs_emu, 
 pytestmark = needs_emu
 
 
-# ---- S2: plain single-note expected MIDI (0x873E90) ----------------------------------------
-
-
-def call_twin(emu: Emu, string: int, fret: int, tuning: list[int]) -> int:
-    vec_data = DATA + 0x100
-    emu.uc.mem_write(vec_data, struct.pack(f"<{len(tuning)}h", *tuning))
-    emu.uc.mem_write(DATA, struct.pack("<II", vec_data, vec_data + 2 * len(tuning)))
-    esp = STACK + 0x80000
-    emu.uc.mem_write(esp, struct.pack("<III", RET_MAGIC, fret, DATA))
-    emu.run(
-        0x873E90,
-        RET_MAGIC,
-        {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: 1, UC_X86_REG_EDX: string, UC_X86_REG_EBP: STACK + 0x90000},
-    )
-    return emu.uc.reg_read(UC_X86_REG_EAX)
-
-
-@pytest.mark.parametrize("string", range(6))
-@pytest.mark.parametrize("tuning", [[0] * 6, [0] * 7, [-2, 0, 0, 0, 0, 0, -1]])
-def test_s2_strings_0_to_5_are_stock(emus, string, tuning):
-    stock, patched = emus
-    assert call_twin(patched, string, 3, tuning) == call_twin(stock, string, 3, tuning)
-
-
-@pytest.mark.parametrize("fret,expected", [(0, 35), (3, 38), (5, 40), (7, 42)])
-def test_s2_string_6_in_a_7_entry_song_is_low_b(emus, fret, expected):
-    _, patched = emus
-    assert call_twin(patched, 6, fret, [0] * 7) == expected
-
-
-def test_s2_string_6_uses_its_tuning_offset(emus):
-    _, patched = emus
-    assert call_twin(patched, 6, 3, [0, 0, 0, 0, 0, 0, -1]) == 37
-
-
-# ---- S3: exit of Play_Detector_SetTuning (0x4E2590), whole function -------------------------
+# Rs7_OnDetectorTuned is pure C calling only the DLL's own integer code (no CRT), so it runs in the emulator as built.
 # Rs7_OnDetectorTuned is pure C without calls, so it runs in the emulator as built.
 
 SET_TUNING = 0x4E2590
 DET = DATA + 0x7000
 DET_SIZE = 0x1360
-DET_INSTRUMENT, DET_LOWEST = 0x11EC, 0x11F8
+DET_INSTRUMENT, DET_FLOOR, DET_LOWEST = 0x11EC, 0x11F4, 0x11F8
 
 
 def run_set_tuning(emu: Emu, tuning: list[int], instrument: int):
@@ -73,6 +38,9 @@ def run_set_tuning(emu: Emu, tuning: list[int], instrument: int):
     emu.uc.mem_write(DATA, struct.pack("<II", vec_data, vec_data + 2 * len(tuning)))
     det = bytearray((i * 5 + 1) & 0xFF for i in range(DET_SIZE))
     det[DET_INSTRUMENT : DET_INSTRUMENT + 4] = struct.pack("<I", instrument)
+    # The candidate floor as Play_Detector_Reset leaves it (24): the game always resets a detector before setting its
+    # tuning, and the DLL never takes an unrecorded floor below the stock one (pitch/hooks.cpp ResetFloorOf).
+    det[DET_FLOOR : DET_FLOOR + 4] = struct.pack("<i", 24)
     emu.uc.mem_write(DET, bytes(det))
     esp = STACK + 0x80000
     emu.uc.mem_write(esp, struct.pack("<I", RET_MAGIC))

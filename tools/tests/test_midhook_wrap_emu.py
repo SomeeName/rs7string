@@ -1,4 +1,4 @@
-"""Wrap placement (Rs7Mid_BuildWrap, ARCHITECTURE.md section 15 "Wrap placement") executed in Unicorn against both
+"""Wrap placement (Rs7Mid_BuildWrap, ARCHITECTURE.md section 14 "Wrap placement") executed in Unicorn against both
 thunks and both cleanups: a caller `push A1; push A0; call site; [add esp,8]` runs stock and hooked on identical
 machine state. The callee counts its runs, returns A0 + A1 + ECX (flags from the ADD), scribbles over its first
 argument slot and cleans up with `ret 8` (stdcall) or `ret` (cdecl). A function-entry wrap replays the prologue of a

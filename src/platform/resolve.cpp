@@ -1,5 +1,6 @@
 #include "platform/resolve.h"
 #include "platform/pattern.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -37,6 +38,13 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
             continue;
         }
 
+        // `expect` doubles as the rollback bytes: a wildcard there would restore 0x00
+        if (std::find(exp.wild.begin(), exp.wild.end(), true) != exp.wild.end()) {
+            r.errors.push_back(Err(s, "expect has a wildcard"));
+            r.failed.push_back(&s);
+            continue;
+        }
+
         const auto hits = Rs7_FindAll(text, size, pat, 2, hist);
 
         if (hits.size() != 1) {
@@ -48,9 +56,18 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
             continue;
         }
 
-        const size_t off = hits[0] + static_cast<size_t>(s.offset);
+        // signed: a negative offset before the start of .text must fail, not wrap
+        const int64_t soff = static_cast<int64_t>(hits[0]) + s.offset;
 
-        if (off + exp.bytes.size() > size || std::memcmp(text + off, exp.bytes.data(), exp.bytes.size()) != 0) {
+        if (soff < 0 || static_cast<uint64_t>(soff) + exp.bytes.size() > size) {
+            r.errors.push_back(Err(s, "site runs outside .text"));
+            r.failed.push_back(&s);
+            continue;
+        }
+
+        const size_t off = static_cast<size_t>(soff);
+
+        if (std::memcmp(text + off, exp.bytes.data(), exp.bytes.size()) != 0) {
             r.errors.push_back(Err(s, "bytes at the site differ from expect (other build or already patched)"));
             r.failed.push_back(&s);
             continue;
@@ -59,6 +76,14 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
         Rs7Resolved res{&s, textVa + off, 0, exp.bytes};
 
         if (s.targetRelAt >= 0) {
+            const size_t relSize = s.targetRelSize == 1 ? 1u : 4u;  // ReadRel reads 4 bytes for anything but 1
+
+            if (off + static_cast<size_t>(s.targetRelAt) + relSize > size) {
+                r.errors.push_back(Err(s, "branch target field runs past .text"));
+                r.failed.push_back(&s);
+                continue;
+            }
+
             res.target = textVa + off + s.targetInsnEnd + ReadRel(text + off + s.targetRelAt, s.targetRelSize);
         }
 
@@ -85,4 +110,8 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
     }
 
     return r;
+}
+
+bool Rs7_ResolveSettled(const Rs7ResolveResult& res, const std::vector<const Rs7Site*>& previous, int count) {
+    return res.ok || (!res.failed.empty() && res.failed.size() * 20 <= size_t(count) && res.failed == previous);
 }

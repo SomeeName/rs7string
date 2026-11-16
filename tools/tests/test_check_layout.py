@@ -158,3 +158,37 @@ def test_mask_asm_blocks_keeps_line_numbers():
 
     assert len(masked) == len(source) and masked.count(b"\n") == source.count(b"\n")
     assert b"__asm" not in masked and b"ret" not in masked
+
+
+def test_relative_includes_are_resolved_before_the_layer_check(tmp_path, monkeypatch):
+    errors = _errors(
+        tmp_path,
+        monkeypatch,
+        {
+            "platform/a.cpp": '#include "../features/tuner/tuner.h"\n#include "./b.h"\n',
+            "features/tuner/c.cpp": '#include "../pegs/logic.h"\n#include "./logic.h"\n',
+        },
+    )
+
+    assert len(errors) == 2
+    assert "features/tuner/c.cpp: includes features/pegs/logic.h, an internal of feature pegs" in errors[0]
+    assert "platform/a.cpp: platform includes features/tuner/tuner.h" in errors[1]
+
+
+def test_slack_notes_values_below_the_baseline():
+    base = {"file_lines": {"a.cpp": 900, "b.cpp": 850}, "function_lines": {}, "asm": {}}
+    now = {"file_lines": {"a.cpp": 820, "b.cpp": 850}, "function_lines": {}, "asm": {}}
+
+    assert check_layout.slack(now, base) == ["baseline can shrink: a.cpp 900 -> 820"]
+    assert check_layout.compare(now, base) == []
+
+
+def test_shrunk_lowers_and_drops_but_never_grows():
+    base = {"file_lines": {"a.cpp": 900, "b.cpp": 850}, "asm": {}}
+
+    assert check_layout.shrunk({"file_lines": {"a.cpp": 820}, "asm": {}}, base) == {
+        "file_lines": {"a.cpp": 820},
+        "asm": {},
+    }
+    assert check_layout.shrunk({"file_lines": {"a.cpp": 901}, "asm": {}}, base) is None
+    assert check_layout.shrunk({"file_lines": {"c.cpp": 801}, "asm": {}}, base) is None

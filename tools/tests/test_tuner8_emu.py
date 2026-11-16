@@ -10,6 +10,7 @@ import struct
 from pathlib import Path
 
 import pytest
+from emu_common import run_checked
 from unicorn import UC_ARCH_X86, UC_MODE_32, Uc
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -22,6 +23,7 @@ from unicorn.x86_const import (
 )
 
 import gen_fncopy
+from emu_harness import install_teb
 
 pytestmark = pytest.mark.skipif(not gen_fncopy.EXE.exists(), reason="needs unpacked exe")
 SESSION, GUITAR, GS, OWNER, INFO = 0x10000, 0x11000, 0x12000, 0x13000, 0x14000
@@ -58,6 +60,7 @@ def copy_bytes(fid):
 
 def machine(fid, native, count):
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     for a, n in ((SESSION, 0x5000), (KIDS, 0x4000), (STACK - 0x8000, 0x10000), (RET, 0x1000), (COPY, 0x1000)):
         uc.mem_map(a, n)
     text, base = gen_fncopy.load_text()
@@ -164,7 +167,7 @@ def test_stringaction_reads_native_child_array(site, reg, slot):
     uc.mem_write(STACK + 0x14, struct.pack("<I", slot))
     start = COPY + site - fn.start
     end = start + 9
-    uc.emu_start(start, end, count=20)
+    run_checked(uc, start, end, count=20)
     assert uc.reg_read(UC_X86_REG_EAX) == KIDS + 0x200 * slot
 
 

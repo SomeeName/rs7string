@@ -8,6 +8,7 @@
 #include "features/pitch/pitch.h"
 #include "features/publish/publish_specs.generated.h"
 #include "features/strings/strings.h"
+#include "model/instrument.h"
 #include "platform/fncopy.h"
 #include "platform/log.h"
 #include <windows.h>
@@ -26,28 +27,17 @@ PUB_VAR(PUBWU)
 }
 
 namespace {
-template <class T>
-T Rd(const uint8_t* p, unsigned off) {
-    T v;
-
-    std::memcpy(&v, p + off, sizeof v);
-
-    return v;
-}
-
-struct Pair {
-    uintptr_t* copy;
-    uintptr_t* tramp;
-};
+using rs7pubhooks::Pair;
+using rs7pubhooks::UncheckedRead;
 
 const Pair pairs[] = {{&g_rs7_pubcopy_PUBCL, &g_rs7_pubtramp_PUBCL},
                       {&g_rs7_pubcopy_PUBTO, &g_rs7_pubtramp_PUBTO},
                       {&g_rs7_pubcopy_PUBWU, &g_rs7_pubtramp_PUBWU}};
 
 uint8_t* Matcher(uint8_t* tracker) {
-    uint8_t* input = tracker ? Rd<uint8_t*>(tracker, 0x4C19C) : nullptr;
+    uint8_t* input = tracker ? UncheckedRead<uint8_t*>(tracker, rs7pubhooks::kTrackerInput) : nullptr;
 
-    return input ? Rd<uint8_t*>(input, 8) : nullptr;
+    return input ? UncheckedRead<uint8_t*>(input, rs7::kInputMatcher) : nullptr;
 }
 
 bool Tails(uint8_t* mat) {
@@ -55,14 +45,14 @@ bool Tails(uint8_t* mat) {
         return false;
     }
 
-    uint8_t* det = Rd<uint8_t*>(mat, 4);
+    uint8_t* det = UncheckedRead<uint8_t*>(mat, rs7::kMatcherDetector);
     if (!Rs7Pitch_Tailed(det, 1)) {
         return false;
     }
 
-    const unsigned n = Rd<unsigned>(det, rs7p::kDetCount);
+    const unsigned n = UncheckedRead<unsigned>(det, rs7p::kDetCount);
 
-    return n >= 6 && n <= 8 && Rd<int>(det, rs7::kDetInstrument) != 2;
+    return n >= 6 && n <= 8 && !rs7::IsBassKind(UncheckedRead<int>(det, rs7::kDetInstrument));
 }
 }  // namespace
 
@@ -119,11 +109,11 @@ extern "C" uintptr_t __cdecl Rs7Publish_Target(unsigned kind, uint8_t* reg) {
         } else if (kind == 1) {
             use = Tails(reg);
         } else if (reg) {
-            uint8_t* guitar = Rd<uint8_t*>(reg, 0);
-            uint8_t* info = guitar ? Rd<uint8_t*>(guitar, 0x24) : nullptr;
-            const unsigned n = info ? info[0xB] : 0;
+            uint8_t* guitar = UncheckedRead<uint8_t*>(reg, 0);
+            uint8_t* info = rs7::GuitarInfo(guitar);
+            const unsigned n = info ? info[rs7::kInfoStrings] : 0;
 
-            use = n == 4 || n == 6 || n == 7 || n == 8;
+            use = n >= 4 && n <= 8;  // every built count: stock bass and guitar, extended bass 5 / 6, guitar 7 / 8
         }
     }
 
@@ -132,10 +122,10 @@ extern "C" uintptr_t __cdecl Rs7Publish_Target(unsigned kind, uint8_t* reg) {
 
 extern "C" int __cdecl Rs7Publish_Classify(uint8_t* tracker, uint8_t* r, int midi, int initial) {
     uint8_t* mat = Matcher(tracker);
-    uint8_t* det = Rd<uint8_t*>(mat, 4);  // entry guard verified both tails
+    uint8_t* det = UncheckedRead<uint8_t*>(mat, rs7::kMatcherDetector);  // entry guard verified both tails
 
     return rs7pub::Classify(r, reinterpret_cast<const int16_t*>(mat + rs7p::kMatTuning8),
-                            Rd<unsigned>(det, rs7p::kDetCount), midi, initial);
+                            UncheckedRead<unsigned>(det, rs7p::kDetCount), midi, initial);
 }
 
 bool Rs7Publish_BuildCopies() {

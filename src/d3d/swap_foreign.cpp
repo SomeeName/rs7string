@@ -19,7 +19,10 @@
 namespace {
 using namespace rs7swap;
 using rs7d3d::LogQuiet;
+// More than kForeignMax distinct RSMods ramps within kForeignWindowMs (rainbow notes) switch the copies off. A window,
+// not a session count: RSMods builds new ramps on every colour change, which over many songs passed any fixed count.
 constexpr unsigned kForeignSlots = 8, kForeignMax = 32;
+constexpr DWORD kForeignWindowMs = 10000;
 
 struct Foreign {
     IDirect3DTexture9* src;   // RSMods' texture (our reference)
@@ -29,8 +32,9 @@ struct Foreign {
 
 struct ForeignState {
     Foreign slots[kForeignSlots];
-    unsigned seen;  // distinct textures processed since the last recolour
-    bool off;       // too many distinct textures (e.g. RSMods rainbow notes): pass-through from then on
+    unsigned seen;      // distinct textures processed since windowStart
+    DWORD windowStart;  // GetTickCount of the first of them
+    bool off;           // too many distinct textures (e.g. RSMods rainbow notes): pass-through from then on
 } g_foreign;
 
 void ForgetBound(IDirect3DBaseTexture9* ours) {
@@ -66,7 +70,7 @@ IDirect3DTexture9* BuildForeign(IDirect3DDevice9* dev, IDirect3DTexture9* t, con
     const unsigned levels = t->GetLevelCount();
     std::vector<Rs7Image> src(levels);
 
-    if (!ReadLevels(t, uint32_t(d.Format), src, why, whyLen)) {
+    if (!ReadLevels(t, src, why, whyLen)) {
         return nullptr;
     }
 
@@ -80,19 +84,18 @@ IDirect3DTexture9* BuildForeign(IDirect3DDevice9* dev, IDirect3DTexture9* t, con
 
     CheckedBuild cb;
 
-    if (!BuildChecked(src, g_ramp.cfg.rgb, true, cb, why, whyLen)) {
+    if (!BuildChecked(src, g_ramp.cfg.rgb, cb, why, whyLen)) {
         return nullptr;
     }
 
     IDirect3DTexture9* ours = nullptr;
 
-    if (MakeCopy(dev, d, levels, d.Format, cb.build.levels, &ours, why, whyLen) != CopyResult::Ok) {
+    if (MakeCopy(dev, d, levels, cb.build.levels, &ours, why, whyLen) != CopyResult::Ok) {
         return nullptr;
     }
 
     return ours;
 }
-
 }  // namespace
 
 namespace rs7swap {
@@ -128,12 +131,21 @@ IDirect3DBaseTexture9* OnForeign(IDirect3DDevice9* dev, DWORD stage, IDirect3DBa
             return tex;
         }
 
+        const DWORD now = GetTickCount();
+
+        if (!g_foreign.seen || now - g_foreign.windowStart > kForeignWindowMs) {
+            g_foreign.seen = 0;
+            g_foreign.windowStart = now;
+        }
+
         if (++g_foreign.seen > kForeignMax) {
             t->Release();
             ReleaseAllForeign();
             g_foreign.off = true;
-            LogQuiet("ramp: more than %u RSMods note ramps (rainbow notes?): string 6 keeps RSMods' row from now on",
-                     kForeignMax);
+            LogQuiet(
+                "ramp: more than %u RSMods note ramps in %u s (rainbow notes?): string 6 keeps RSMods' row from now "
+                "on",
+                kForeignMax, unsigned(kForeignWindowMs / 1000));
             return tex;
         }
 

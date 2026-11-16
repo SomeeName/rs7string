@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native capacity-8 next-note / target grid (issue #18 stage 5, area 2): the in-place patches.
+"""Native capacity-8 next-note / target grid: the in-place patches.
 
 . Stock Rnd_NextNoteGrid (the owner lives on the stack of
 Rnd_NeckTargets_Update 0x7E4870, G = ebp-0D20h): pointer[26][26] at +0 (row 68h), time[6][26] at +0A90h,
@@ -22,12 +22,13 @@ the tree release hold sites that must stay hooked, and a copy built from stock b
     uv run python tools/gen_nextgrid.py --list     # print every edit (review)
     uv run python tools/gen_nextgrid.py --write    # append the missing sites to sites.json, write
                                                    # src/features/nextgrid/sites.generated.inc
+
+--write only appends sites whose id is missing; a row already in sites.json is never rewritten. The test
+test_generated_sites_are_current flags a row that differs from the generator: delete it and run --write again.
 """
 
 from __future__ import annotations
 
-import json
-import re
 import struct
 import sys
 from pathlib import Path
@@ -36,6 +37,7 @@ import capstone
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_fncopy  # noqa: E402
+from sitetable import append_missing  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 SITES = REPO / "sites.json"
@@ -47,7 +49,9 @@ GRID_STOCK, GRID_NATIVE = 0xD1C, 0xD1C + ROWS_N * 0x68  # owner size: D1Ch -> 10
 SHIFT = 0x340  # frame growth: 8 * 68h
 FRAME_STOCK, FRAME_NATIVE = 0xD34, 0xD34 + SHIFT
 UPDATE = (0x7E4870, 0x7E49F9)  # Rnd_NeckTargets_Update
-NGP_VA, NG9_VA, NG9_LEN = 0x7E4873, 0x7E49D6, 15
+# NGP sits after the prologue `push ebp / mov ebp,esp / sub esp,0D34h` (9 bytes) that RSMods' xinput1_3 detours:
+# a jmp inside those bytes was overwritten or copied unrelocated into RSMods' trampoline (crash 2026-10-29).
+NGP_VA, NGP_LEN, NG9_VA, NG9_LEN = 0x7E4879, 5, 0x7E49D6, 15
 OLD_LOW, OLD_HIGH = 0xD34, 0xD20  # ebp-0D34h .. ebp-0D20h: the locals and the grid base
 
 # the 14 bytes at 7AA21E: movzx ebx,bx / add ebx,1Ah / imul ebx,ebx,1Ah / add ebx,eax / fld [edi+ebx*4]
@@ -87,7 +91,7 @@ def frame_edits(text: bytes, base: int):
     md.detail = True
     out = []
     va = UPDATE[0]
-    skip = ((NGP_VA, NGP_VA + 6), (NG9_VA, NG9_VA + NG9_LEN))
+    skip = ((NGP_VA, NGP_VA + NGP_LEN), (NG9_VA, NG9_VA + NG9_LEN))
     for i in md.disasm(text[UPDATE[0] - base : UPDATE[1] - base + 16], UPDATE[0]):
         if i.address > UPDATE[1]:
             break
@@ -120,13 +124,13 @@ def all_edits(text: bytes, base: int):
     return out
 
 
-def unique_pattern(text: bytes, base: int, va: int, n: int):
-    """Shortest context window around [va, va+n) that occurs once in .text (exact bytes)."""
-    for pre in (4, 6, 8, 10, 12, 16, 24):
+def unique_pattern(text: bytes, base: int, va: int, n: int, pres=(4, 6, 8, 10, 12, 16, 24)):
+    """Shortest context window around [va, va+n) that occurs once in .text (exact bytes); `pres`: bytes before."""
+    for pre in pres:
         for post in (4, 6, 8, 10, 12, 16, 24):
             a = va - base - pre
             b = va - base + n + post
-            if text.count(text[a:b]) == 1:
+            if gen_fncopy.occurs_once(text, text[a:b]):
                 return a + base, text[a:b]
     raise SystemExit(f"{va:08X}: no unique pattern")
 
@@ -148,17 +152,17 @@ def build_sites():
                 "offset": f"0x{va - start:X}",
                 "expect": exp.hex(" ").upper(),
                 "write": wr.hex().upper(),
-                "note": f"0x{va:06X} in {fn}: native next-note grid (issue #18 stage 5), {role}",
+                "note": f"0x{va:06X} in {fn}: native next-note grid, {role}",
                 "nextgrid": "native",
             }
         )
     return sites
 
 
-def stub_site(sid, va, length, note, target=None):
+def stub_site(sid, va, length, note, target=None, pres=(4, 6, 8, 10, 12, 16, 24)):
     text, base = gen_fncopy.load_text()
     exp = text[va - base : va - base + length]
-    start, win = unique_pattern(text, base, va, length)
+    start, win = unique_pattern(text, base, va, length, pres)
     s = {
         "id": sid,
         "kind": "jmp",
@@ -180,21 +184,23 @@ def build_stub_sites():
             "NG1",
             0x7AA166,
             16,
-            "0x7AA166 in Rnd_NextNoteGrid_Set 0x7AA140 (same bytes as R7b): native next-note grid (issue #18 stage 5), "
+            "0x7AA166 in Rnd_NextNoteGrid_Set 0x7AA140 (same bytes as R7b): native next-note grid, "
             "EAX = (s*26+f) + 347h so stock `lea edi,[esi+eax*4]` = G+0D1Ch+(s*26+f)*4; s >= 8 or f >= 26: the stock reject exit",
         ),
         stub_site(
             "NGP",
             NGP_VA,
-            6,
-            "0x7E4873 in Rnd_NeckTargets_Update 0x7E4870, `sub esp,0D34h`: native next-note grid (issue #18 stage 5), "
-            "frame 1074h (> one page: probe it first)",
+            NGP_LEN,
+            "0x7E4879 in Rnd_NeckTargets_Update 0x7E4870, `mov eax,[__security_cookie]` after the stock prologue (which "
+            "RSMods may detour): native next-note grid, frame 0D34h + 340h = 1074h (> one page: "
+            "probe it)",
+            pres=(0,),  # forward only: the bytes before are the prologue other mods detour
         ),
         stub_site(
             "NG9",
             NG9_VA,
             NG9_LEN,
-            "0x7E49D6 in Rnd_NeckTargets_Update 0x7E4870 (replaces N9): native next-note grid (issue #18 stage 5), "
+            "0x7E49D6 in Rnd_NeckTargets_Update 0x7E4870 (replaces N9): native next-note grid, "
             "string-6 targets (Rs7_NeckRow6N, only while the active count is 6) and the tree release `cmp [size],0; pop edi; "
             "pop esi; je; mov edx,[root]; push edx; lea ecx,[tree]` with the moved displacements; the `call 0x7D06C0` follows",
             target={"rel_at": 7, "rel_size": 1, "insn_end": 8},
@@ -202,8 +208,12 @@ def build_stub_sites():
     ]
 
 
-def fmt_site(s: dict) -> str:
-    return "    " + json.dumps(s, separators=(", ", ": "))
+def render_inc(sites) -> str:
+    return (
+        "// Generated by tools/gen_nextgrid.py - do not edit. Native next-note grid in-place patches\n"
+        "// ([neck] native_nextgrid=1, features/nextgrid/nextgrid.h): bytes sites, no stub.\n"
+        + "".join(f"    RS7_NGB({s['id']}),\n" for s in sites)
+    )
 
 
 def main(argv):
@@ -215,22 +225,9 @@ def main(argv):
         print(len(sites), "bytes sites +", len(extra), "stub sites")
         return 0
     if "--write" in argv:
-        raw = SITES.read_text(encoding="utf-8")
-        have = set(re.findall(r'"id": "(NGB[0-9A-F]{6})"', raw)) | set(re.findall(r'"id": "(NG[1P9])"', raw))
-        new = [s for s in sites + extra if s["id"] not in have]
-        if new:
-            end = raw.rstrip().rfind("]")  # the sites array ends the file: `  ]\n}`
-            body = raw[:end].rstrip()
-            raw = body + ",\n" + ",\n".join(fmt_site(s) for s in new) + "\n  " + raw[end:]
-            SITES.write_text(raw, encoding="utf-8", newline="\n")
-        INC.write_text(
-            "// Generated by tools/gen_nextgrid.py - do not edit. Native next-note grid in-place patches\n"
-            "// ([neck] native_nextgrid=1, features/nextgrid/nextgrid.h): bytes sites, no stub.\n"
-            + "".join(f"    RS7_NGB({s['id']}),\n" for s in sites),
-            encoding="utf-8",
-            newline="\n",
-        )
-        print(f"{len(new)} sites appended ({len(sites)} + {len(extra)} total), {INC}")
+        added = append_missing(SITES, sites + extra)
+        INC.write_text(render_inc(sites), encoding="utf-8", newline="\n")
+        print(f"{added} sites appended ({len(sites)} + {len(extra)} total), {INC}")
         return 0
     print(__doc__)
     return 0

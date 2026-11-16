@@ -1,5 +1,5 @@
-"""Old-vs-new equivalence of the native N-slot chord sites converted from naked stubs to C++ mid-hooks (refactor
-step 7, batch 3; stubs frozen at b8c0ed7, tools/tests/fixtures/midhook_b8c0ed7.json): the template / ChordNotes
+"""Old-vs-new equivalence of the native N-slot chord sites converted from naked stubs to C++ mid-hooks
+(stubs frozen at b8c0ed7, tools/tests/fixtures/midhook_b8c0ed7.json): the template / ChordNotes
 redirects (features/nslot/hooks_records.cpp), the eval sites (hooks_eval.cpp) and the technique-check latches
 (hooks_latches.cpp); and the first call site, SF1 (hooks_free.cpp, frozen at 44135a2, midhook_44135a2.json). What is
 compared: midhook_oracle.py. Every case runs under 3 incoming EFLAGS patterns and 2 stack alignments.
@@ -20,12 +20,11 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI,
 )
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT, site_va
 from midhook_oracle import Case, Helper, Spec, Sym, oracle_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects (page-aligned, zeroed per run)
 JUNK = 0x5A5A5A00
@@ -66,6 +65,8 @@ def lookup_cases(begin_reg, id_reg, base):
             f"{name}-begin{b - base:x}-id{i:x}",
             regs={begin_reg: b, id_reg: i},
             mem={Sym("g_rs7_ns"): registry(*REGISTRIES[name])},
+            # Failed lookups now return empty widened records; the stock reference and native failure tests cover them.
+            frozen=name != "empty" and b != 0 and i < (10 if b == base else 50),
         )
         for name, b, i in itertools.product(REGISTRIES, (base, base + 0x100, 0), IDS)
         if not (name == "empty" and b == base + 0x100)
@@ -83,45 +84,16 @@ TP_SITES = {  # sid -> (displaced bytes, begin register, id register)
     "TP8": (6, UC_X86_REG_EBX, UC_X86_REG_EDI),
     "TP11": (6, UC_X86_REG_ESI, UC_X86_REG_ECX),
     "TP12": (7, UC_X86_REG_EDI, UC_X86_REG_EBX),
-    "DS1": (12, UC_X86_REG_ESI, UC_X86_REG_ECX),
 }
-
-
-def registered(case: Case, begin_reg, id_reg) -> bool:
-    """The lookup finds a T8 record: the case's begin/id pair is in the registry (entry 2: TPL + 100h, 50 templates)."""
-    begin, id_ = case.regs[begin_reg], case.regs[id_reg]
-    return (begin == TPL and id_ < 10 and not case.id.startswith("empty")) or (begin == TPL + 0x100 and id_ < 50)
-
-
-# The DS1 cases the old-stub comparison drops (case ids of lookup_cases): every begin/id pair the registry does not
-# hold. Spelled out so a change of the registry layout or the case ids cannot shrink the coverage silently.
-DS1_UNREGISTERED = frozenset(
-    [f"empty-begin{b}-id{i}" for b in ("-11110000", "0") for i in ("0", "9", "a", "ffffffff")]
-    + [
-        f"{name}-begin{b}-id{i}"
-        for name in ("first", "last")
-        for b, i in (("0", "a"), ("0", "ffffffff"), ("100", "ffffffff"))
-        + tuple(("-11110000", i) for i in ("0", "9", "a", "ffffffff"))
-    ]
-)
-
-
-def test_ds1_drops_exactly_the_unregistered_cases():
-    _, begin_reg, id_reg = TP_SITES["DS1"]
-    cases = lookup_cases(begin_reg, id_reg, TPL)
-    dropped = {c.id for c in cases if not registered(c, begin_reg, id_reg)}
-    assert dropped == DS1_UNREGISTERED, sorted(dropped ^ DS1_UNREGISTERED)
-    assert {c.id for c in SPECS["DS1"][1]} == {c.id for c in cases} - DS1_UNREGISTERED
+# DS1 has no frozen-stub comparison any more: since 1.0.0-beta.4 it counts all 8 T8 frets (the stub 7, so the loop
+# bound it leaves in ECX differs by design), and unregistered chords use empty T8 records. Its references
+# are the stock code (test_midhook_stock_features.py) and the 8-slot count (test_emu_nslot_chords.py).
 
 
 for sid, (length, begin_reg, id_reg) in TP_SITES.items():
     cases = lookup_cases(begin_reg, id_reg, TPL)
-    if sid == "DS1":
-        # Behaviour fix (not the frozen stub): an unregistered vector or an out-of-range id now counts the stock +4
-        # over 6 strings; the old stub read +48h over 7 (the stock-reference finding of test_midhook_stock_features.py,
-        # which now covers those cases). The frozen stub stays the reference for the registered ones.
-        cases = [c for c in cases if registered(c, begin_reg, id_reg)]
     register(Spec(sid, length, flags="free"), cases)
+register(Spec("DS1", 12, flags="free"), [])  # the spec only, for test_midhook_stock_features.py
 register(Spec("CP1", 8, flags="free"), lookup_cases(UC_X86_REG_ESI, UC_X86_REG_EAX, CN))
 register(Spec("CP2", 8, flags="free"), lookup_cases(UC_X86_REG_EBX, UC_X86_REG_ESI, CN))
 
@@ -200,6 +172,7 @@ T8REC, SESSION, GUITAR = D + 0x5000, D + 0x5400, D + 0x5800
 def pluck_objects(fret: int) -> dict:
     raw = bytearray(blob(0x80, 51))
     raw[0x0A + 0x44] = fret
+    raw[0x0A + 0x45] = 0xFF  # no string 7 (the frozen stub plucked string 6 only)
     session = bytearray(blob(0x380, 52))
     session[0x37C:0x380] = dwords(GUITAR)
     guitar = bytearray(blob(0x10, 53))

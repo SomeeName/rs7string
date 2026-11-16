@@ -1,7 +1,6 @@
-// Fuzz targets: the RS7X extension block (model/extblock.h) and the DXT1/DXT5 decoder (platform/dxt.h).
+// Fuzz target: the RS7X extension block (model/extblock.h).
 #include "fuzz.h"
 #include "model/extblock.h"
-#include "platform/dxt.h"
 #include <cstring>
 
 namespace rs7fuzz {
@@ -60,36 +59,5 @@ Seeds Rs7xSeeds() {
     out.push_back({0, 0, 7, 'R', 'S', '7', 'X'});
 
     return out;
-}
-
-// [w][h][flags: 1 dxt5, 2 huge sizes][pitch delta][short output][blocks...]
-int Dxt(const uint8_t* d, size_t n) {
-    if (n < 5) {
-        return 0;
-    }
-
-    const bool dxt5 = d[2] & 1, huge = (d[2] & 2) != 0;
-    const unsigned w = huge ? 0x40000000u + d[0] : d[0] % 33 + 1u, h = huge ? 0x10000u + d[1] : d[1] % 33 + 1u;
-    const size_t nominal = size_t((w + 3) / 4) * (dxt5 ? 16 : 8);
-    const size_t pitch = nominal + size_t(int8_t(d[3]));
-    const size_t pixels = huge ? 64 : size_t(w) * h;
-    const size_t shortBy = d[4] % 4u;
-    std::vector<uint32_t> out(pixels > shortBy ? pixels - shortBy : 0);
-    // An exact-size copy: a read past the source is a heap overflow for ASan.
-    std::vector<uint8_t> src(d + 5, d + n);
-
-    Rs7_DecodeDxt(src.empty() ? nullptr : src.data(), src.size(), pitch, w, h, dxt5, out.empty() ? nullptr : out.data(),
-                  out.size());
-
-    return 0;
-}
-
-Seeds DxtSeeds() {
-    std::vector<uint8_t> dxt1 = {7, 7, 0, 0, 0}, dxt5 = {3, 3, 1, 0, 0};
-
-    dxt1.resize(5 + 2 * 2 * 8, 0x5A);
-    dxt5.resize(5 + 16, 0xA5);
-
-    return {dxt1, dxt5, {1, 1, 2, 0, 0, 0, 0}};
 }
 }  // namespace rs7fuzz

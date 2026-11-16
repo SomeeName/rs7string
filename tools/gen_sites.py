@@ -61,10 +61,13 @@ def render(checksum: int, sites: list[Site]) -> str:
 
 
 def main(argv: list[str]) -> int:
-    src, dst = Path(argv[0]), Path(argv[1])
-    checksum, sites = load(src)
+    # --without NAME: leave out that feature's own sites (src/features/NAME/sites.json; build.ps1 -Public: the private extras)
+    without = tuple(argv[i + 1] for i, a in enumerate(argv) if a == "--without")
+    args = [a for i, a in enumerate(argv) if a != "--without" and (i == 0 or argv[i - 1] != "--without")]
+    src, dst = Path(args[0]), Path(args[1])
+    checksum, sites = load(src, without)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(render(checksum, sites), encoding="utf-8")
+    dst.write_text(render(checksum, sites), encoding="utf-8", newline="\n")
     print(f"{dst}: {len(sites)} sites")
     return 0
 

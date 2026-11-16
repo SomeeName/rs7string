@@ -1,5 +1,6 @@
 #pragma once
 #include "features/colours/colours.h"
+#include "test.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -81,13 +82,13 @@ struct Device {
     explicit operator bool() const { return dev != nullptr; }
 };
 
-// true: go on; false: printed "skip: no D3D9 device" (the test passes without checks).
+// true: go on; false: the test is skipped (counted as skipped, not as a pass).
 inline bool Have(const Device& d) {
     if (d) {
         return true;
     }
 
-    std::printf("  skip: no D3D9 device\n");
+    rs7test::Skip("no D3D9 device");
 
     return false;
 }
@@ -109,9 +110,10 @@ inline IDirect3DTexture9* MakeTex(IDirect3DDevice9* dev, const std::vector<Rs7Im
             continue;
         }
 
+        auto* dst = static_cast<uint8_t*>(rs7test::Must(lr.pBits, "LockRect bits"));
+
         for (unsigned y = 0; y < lv[k].h; ++y) {
-            std::memcpy(static_cast<uint8_t*>(lr.pBits) + size_t(y) * lr.Pitch, &lv[k].px[size_t(y) * lv[k].w],
-                        size_t(lv[k].w) * 4);
+            std::memcpy(dst + size_t(y) * lr.Pitch, &lv[k].px[size_t(y) * lv[k].w], size_t(lv[k].w) * 4);
         }
 
         t->UnlockRect(k);

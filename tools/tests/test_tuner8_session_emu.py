@@ -18,7 +18,8 @@ from unicorn.x86_const import (
     UC_X86_REG_ESP,
 )
 
-from emu_harness import TEXT_VA, game_text, needs_emu, site_mid_entry, site_va
+from emu_common import run_checked
+from emu_harness import TEXT_VA, game_text, needs_emu, site_mid_entry, site_va, install_teb
 
 DLL = Path(__file__).resolve().parents[2] / "bin/Release/dinput8.dll"
 SESSION, STACK, RET, ENTRIES = 0x10000000, 0x11000000, 0x12000000, 0x13000000
@@ -29,6 +30,7 @@ def machine():
     pe = pefile.PE(str(DLL))
     base = pe.OPTIONAL_HEADER.ImageBase
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     pages = set()
     uc.mem_map(base, (pe.OPTIONAL_HEADER.SizeOfImage + 0xFFF) & ~0xFFF)
     uc.mem_write(base, pe.header)
@@ -63,7 +65,7 @@ def initialise(uc, exports):
     uc.reg_write(UC_X86_REG_ESP, frame - 4)
     uc.reg_write(UC_X86_REG_ESI, SESSION)
     uc.reg_write(UC_X86_REG_EDI, 0xD1D1D1D1)
-    uc.emu_start(exports["entry_TU8INIT"], RET, count=100000)
+    run_checked(uc, exports["entry_TU8INIT"], RET, count=100000)
     assert uc.reg_read(UC_X86_REG_EIP) == RET
     assert uc.reg_read(UC_X86_REG_EAX) == SESSION
     assert uc.reg_read(UC_X86_REG_EBX) == 0xBABA1234
@@ -92,16 +94,19 @@ def free_size(uc, exports):
     }
     for reg, value in regs.items():
         uc.reg_write(reg, value)
-    uc.emu_start(exports["entry_TU8FREE"], RET, count=100000)
+    run_checked(uc, exports["entry_TU8FREE"], RET, count=100000)
     assert uc.reg_read(UC_X86_REG_ESP) == top - 4
     for reg, value in regs.items():
         assert uc.reg_read(reg) == value
     return struct.unpack("<I", uc.mem_read(top - 4, 4))[0]
 
 
-def test_ctor_return_initializes_tail_and_sized_free_unregisters_it():
+@pytest.mark.parametrize("enabled", [False, True])
+def test_ctor_return_initializes_tail_and_sized_free_unregisters_it(enabled):
     uc, exports = machine()
+    uc.mem_write(exports["g_rs7_native_tuner"], struct.pack("<I", enabled))
     initialise(uc, exports)
+    uc.mem_write(exports["g_rs7_native_tuner"], struct.pack("<I", 0))
     assert free_size(uc, exports) == 0x380
     assert free_size(uc, exports) == 0x278
 

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-// The 7-string headstock model - PROTOTYPE (docs/ARCHITECTURE.md, issue #17). The part of the headstock feature
+// The extended headstock model (docs/ARCHITECTURE.md, issue #17). The part of the headstock feature
 // that headstock.h does not export (g_rs7_asset_on, the per-frame and release entry points are there).
 //
 // The headstock frame of a guitar is one entity whose scene graph is a clone of the NIF the
@@ -68,6 +68,9 @@ constexpr uint32_t kNodeAttach = 0xA0;       // NiNode vtbl+0A0h AttachChild(chi
 constexpr uint32_t kParent = 0x24;           // NiAVObject parent (0x9E22F0)
 constexpr uint32_t kNiFileSize = 0x1C;       // Res_NiFileAdapter (vtable 0x11A3220), +18h IFile*
 constexpr const char* kAltName = "rs7_alt";
+// The second model of a frame, for one string fewer: the 5-string bass model next to the 6-string rs7_alt, and with
+// eight strings: the 7-peg guitar model next to the 8-peg one.
+constexpr const char* kAltName5 = "rs7_alt5";
 constexpr uint32_t kPGH1Skip = 0x54338A;  // PGH1: the pass's own next-mesh path (mov eax,[esi+10h])
 // Built-in defaults. dir is relative to the DLL's folder (the game folder): rs7string\headstock next to it.
 constexpr const wchar_t* kDefaultDir = L"rs7string\\headstock\\";
@@ -76,8 +79,25 @@ constexpr const wchar_t* kDefaultSuffix = L"_7inline";
 // user's own stock model and is not shipped). A name relative to dir: kDefaultDir + rs7_inline7.nif.
 constexpr const wchar_t* kDefaultFile7 = L"rs7_inline7.nif";
 constexpr const wchar_t* kDefaultFile7Lh = L"rs7_inline7_lh.nif";  // [assets] headstock7_file_lh default
+// Eight strings: the 8-peg in-line model (Locator_Peg_1..8, string_size_1..8) replaces the 7-string one.
+constexpr const wchar_t* kDefaultFile8 = L"rs7_inline8.nif";       // [assets] headstock8_file default
+constexpr const wchar_t* kDefaultFile8Lh = L"rs7_inline8_lh.nif";  // [assets] headstock8_file_lh default
+
+// The ini keys and default files of the merged in-line model: the 8-peg one with eight strings on, else the 7-peg one.
+struct ModelFiles {
+    const wchar_t* key;
+    const wchar_t* keyLh;
+    const wchar_t* file;
+    const wchar_t* fileLh;
+    uint32_t pegs;  // Locator_Peg_1..pegs: the pegs a guitar's PegSet can seat on the model
+};
+
+inline ModelFiles ModelFilesFor(bool eight) {
+    return eight ? ModelFiles{L"headstock8_file", L"headstock8_file_lh", kDefaultFile8, kDefaultFile8Lh, 8}
+                 : ModelFiles{L"headstock7_file", L"headstock7_file_lh", kDefaultFile7, kDefaultFile7Lh, 7};
+}
+
 constexpr float kDefaultWood = 0.6f;  // [assets] headstock7_wood default (owner 2026-10-13: the wood was too bright)
-constexpr int kExtraStrings = 2;      // string_size_7/8, Locator_Peg_7/8 (8-string ready; 7 used)
 
 // Noteway draw layer (issue #23). GRNoteway3DRenderView_Render 0x534B30 draws its list sorted by
 // layer * 100000 + camera depth, highest first; the layer is the u16 at +20h of the object's NiProperty
@@ -103,6 +123,9 @@ void Rs7Asset_Configure(const wchar_t* iniPath);
 // The edited file for a game resource name ("data/assets/gameplay/guitar_x/foo.nif" ->
 // dir + "foo" + suffix + ".nif"); empty when the name is not a guitar .nif or is unsafe. Pure.
 std::wstring Rs7Asset_EditedPath(const char* name, const std::wstring& dir, const std::wstring& suffix);
+// The extended-bass model for a bass headstock frame built with `strings` (rs7_bass5/6[s][_lh].nif in dir), "" for
+// anything else. `leftHanded` (optional): set to whether the frame is the left-handed twin (base name ends in _lh).
+std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsigned strings, bool* leftHanded = nullptr);
 
 // One headstock layout (a value of Optionen > Spieleinstellungen > Gitarrenkopfplatte) whose frame the
 // 7-string in-line model replaces. folder: the package folder of the frames (with slashes); stockRh/stockLh:
@@ -149,7 +172,7 @@ std::wstring Rs7Asset_ResolveFile(const std::wstring& value, const std::wstring&
 // taken relative to dllDir (the folder of rs7string.ini, which is the DLL's folder). Pure.
 std::wstring Rs7Asset_ResolveDir(const std::wstring& value, const std::wstring& dllDir);
 // Every distinct texture file name (".dds", case-insensitive, base name only) named in a NIF's bytes,
-// in the order of first appearance. Pure.
+// in the order of first appearance. Throws std::length_error above 256 distinct names (the loader keeps stock).
 std::vector<std::string> Rs7Asset_DdsNames(const uint8_t* buf, size_t size);
 // "data/assets/x/model.nif" -> "data/assets/x/" (up to and including the last '/' or '\'). Pure.
 std::string Rs7Asset_FolderOf(const char* name);

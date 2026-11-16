@@ -3,7 +3,7 @@
 // site replaced `inc <counter>; add <pointer>,<step>; cmp <counter>,6; jb <loop>`; the flags at both exits are that
 // compare's (exact). At the exit the pointer is eval + <base> + step * 6.
 //
-// Converted from naked stubs (refactor step 7, frozen at b8c0ed7, tools/tests/test_midhook_nslot.py). Light mode
+// Converted from naked stubs (frozen at b8c0ed7, tools/tests/test_midhook_nslot.py). Light mode
 // (every tracker update, integer only, LIGHT_CALLBACKS in tools/tests/emu_harness.py).
 #include "features/nslot/nslot.h"
 #include "features/nslot/tracker.h"

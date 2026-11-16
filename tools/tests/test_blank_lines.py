@@ -1,4 +1,4 @@
-"""tools/blank_lines.py: the blank-line rules of AGENTS.md "Code structure", on small inputs and on the tree."""
+"""tools/blank_lines.py: the blank-line rules of docs/agents/code-structure.md, on small inputs and on the tree."""
 
 from __future__ import annotations
 

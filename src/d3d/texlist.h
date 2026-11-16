@@ -5,10 +5,10 @@
 #include <string>
 #include <vector>
 
-// Gamebryo's global NiTexture list (plan D2): every engine texture is linked into it by the base
+// Gamebryo's global NiTexture list: every engine texture is linked into it by the base
 // constructor under EnterCriticalSection(X_TCS); head at X_THEAD. September 2022 exe only (the PE
 // checksum gate in Rs7_Startup); tools/tests/test_snapshot_texlist.py pins these in the snapshot.
-namespace rs7tex {                            // CONFIRMED in the snapshot (plan "Offline findings")
+namespace rs7tex {                            // CONFIRMED in the snapshot
 constexpr uint32_t kVtSource54 = 0x011EA2A0;  // Gfx_SourceTexture_CreateFromFile objects
 constexpr uint32_t kVtSource50 = 0x011E8C58;  // FUN_009eac60 / NIF source textures
 constexpr uint32_t kVtRendData = 0x0121A688;  // renderer data of a source texture

@@ -88,7 +88,7 @@ using Callback = void(__cdecl*)(Context&);
 
 // Full: the thunk saves and restores x87/MMX/SSE/MXCSR (FXSAVE/FXRSTOR) and runs the callback after FNINIT; any C++
 // works, and Context::St0 / SetSt0 / PushSt0 read and edit the saved x87 stack. Light: no floating-point save (about 25
-// ns instead of 150 ns per hit, ARCHITECTURE.md section 15), for hot sites. A light callback, and everything it calls,
+// ns instead of 150 ns per hit, ARCHITECTURE.md section 14), for hot sites. A light callback, and everything it calls,
 // must execute no x87, MMX or SSE instruction: no float/double, no CRT math, no memcpy/memset or struct copies the
 // compiler may vectorise (/arch:SSE2 emits MOVUPS/MOVQ for those). tools/tests/test_midhook_emu.py checks every
 // callback listed in LIGHT_CALLBACKS for such instructions. Sse: the light thunk plus XMM0-7 and MXCSR (the callback
@@ -178,7 +178,7 @@ struct Wrap {
 
 constexpr unsigned kWrapMaxArgs = 16, kWrapMaxLocals = 256;
 
-// What both Wrap callbacks find at Context::esp + Wrap::locals (ARCHITECTURE.md section 15 "Wrap placement"): `user`
+// What both Wrap callbacks find at Context::esp + Wrap::locals (ARCHITECTURE.md section 14 "Wrap placement"): `user`
 // (0 at the call, free for the before callback to hand a value to the after callback), the registers the game called
 // with, its return address and above it the caller's own argument slots (the callee ran on copies).
 struct WrapFrame {
@@ -325,3 +325,16 @@ extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildWrap(uint8_t* out, s
 extern "C" void Rs7Mid_Thunk();
 extern "C" void Rs7Mid_ThunkLight();
 extern "C" void Rs7Mid_ThunkSse();
+
+// Every thunk calls the callback through this guard. A fault in the callback (access violation, divide by zero,
+// illegal instruction, a C++ exception that escaped) restores the Context as it was before the call, so the site
+// resumes with its own registers and default continuation, as if the callback had not run; memory the callback wrote
+// before the fault stays written. The fault is counted and reported to the fault logger (Rs7Mid_SetFaultLog).
+extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context* c);
+
+// Called on the fault path only, outside the exception filter, with the callback, the exception code and the running
+// fault count. Set once at startup; null = faults are only counted. The guard reaches it through a pointer, so the
+// light and SSE thunks' no-FPU paths stay free of the logger's code.
+using Rs7MidFaultLog = void(__cdecl*)(uintptr_t callback, unsigned long code, long count);
+void Rs7Mid_SetFaultLog(Rs7MidFaultLog log);
+long Rs7Mid_FaultCount();

@@ -1,9 +1,6 @@
 // The per-guitar 7-string look's logic (string7.h): the SNG section-mask back-fill of string 6 (N13) and the
-// visibility rule N5 applies every frame, the [neck] string7_v text. Values in, values out.
+// visibility rule N5 applies every frame. Values in, values out.
 #include "features/string7/string7.h"
-#include <cmath>
-#include <cwchar>
-#include <cwctype>
 
 int Rs7S7_BackfillBit(uint8_t* sections, int count, uint32_t level, uint8_t bit, int* added) {
     int lit = 0;
@@ -54,36 +51,4 @@ rs7s7::Visibility rs7s7::Rs7S7_Visibility(bool seven, bool& armed, bool song, bo
     }
 
     return Visibility{seven && (armed || song), why};
-}
-
-bool Rs7_ParseAtlasRow(const wchar_t* text, float* out) {
-    if (!text) {
-        return false;
-    }
-
-    while (std::iswspace(*text)) {
-        ++text;
-    }
-
-    if (!*text) {
-        return false;
-    }
-
-    wchar_t* end = nullptr;
-    const double v = std::wcstod(text, &end);
-    if (end == text) {
-        return false;
-    }
-
-    while (std::iswspace(*end)) {
-        ++end;
-    }
-
-    if (*end || !std::isfinite(v) || v < 0.0 || v > 0.9 + 1e-6) {
-        return false;
-    }
-
-    *out = static_cast<float>(v);
-
-    return true;
 }

@@ -2,6 +2,7 @@
 #include "features/headstock/hooks.h"
 #include "features/headstock/pegset.h"
 #include "test.h"
+#include "testutil.h"
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -66,6 +67,27 @@ TEST(head_init_tail_gives_slots_6_7_slot_0s_defaults_and_moves_pegcolor) {
     CHECK_EQ(int(m[kTail + 1]), 0);
     CHECK(kColours + kCapacity * kColourStride == kTail);
     CHECK(kSlots + kCapacity * kSlotStride == kColours);
+}
+
+TEST(head_letter_seat_borrows_a_taken_slot_for_an_empty_one) {
+    alignas(4) uint8_t ps[0x200] = {};
+    const auto at = [&](int k) {
+        return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rs7head::Slot(ps, k)));
+    };
+
+    CHECK_EQ(rs7head::LetterSeat(ps, 4), 0u);  // count 0
+    *reinterpret_cast<uint16_t*>(ps + 4) = 6;
+    CHECK_EQ(rs7head::LetterSeat(ps, 4), 0u);  // nothing taken
+
+    for (int k = 0; k < 4; ++k) {
+        rs7head::Slot(ps, k)[0] = 1;  // a stock 4-peg bass: slots 0-3 taken, 4/5 empty
+    }
+
+    CHECK_EQ(rs7head::LetterSeat(ps, 4), at(0));  // low B -> the E's peg
+    CHECK_EQ(rs7head::LetterSeat(ps, 5), at(3));  // high C -> the G's peg
+    rs7head::Slot(ps, 3)[0] = 0;
+    CHECK_EQ(rs7head::LetterSeat(ps, 5), at(0));  // wraps round to the first taken slot
+    CHECK(rs7head::LetterSeat(nullptr, 4) == 0u);
 }
 
 TEST(head_not_native_without_the_tail) {
@@ -187,7 +209,7 @@ TEST(head_loaded_counts_keep_the_load_and_start_with_six) {
 }
 
 TEST(head_named_colour_scales_the_7th_colour_like_string_0s_named_colour) {
-    const auto saved = g_rs7_native_colours;
+    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
 
     for (uintptr_t enabled : {uintptr_t(0), uintptr_t(1)}) {
         g_rs7_native_colours = enabled;
@@ -218,8 +240,6 @@ TEST(head_named_colour_scales_the_7th_colour_like_string_0s_named_colour) {
         *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 2;  // unknown colour mode: stock guard
         CHECK(!NamedColour(mgr.data(), 0, fx, out));
     }
-
-    g_rs7_native_colours = saved;
 }
 
 TEST(head_tuner_nodes_are_the_arrow_and_the_letter) {
@@ -279,4 +299,23 @@ TEST(peg_load_ring_overrun_drops_oldest_and_counts_it) {
     CHECK_EQ(first, uintptr_t(5));
     CHECK_EQ(got, uintptr_t(8));
     CHECK_EQ(q.DroppedCount(), 4L);
+}
+
+TEST(peg_load_ring_delayed_producer_cannot_replace_a_newer_generation) {
+    LoadRing q;
+    LoadRec r{};
+    const long delayed = q.Reserve();
+
+    for (uintptr_t i = 1; i <= 8; ++i) {
+        q.Push({i, 7, 1});
+    }
+
+    for (uintptr_t i = 1; i <= 7; ++i) {
+        CHECK(q.Pop(r) == LoadRing::Got && r.ps == i);
+    }
+
+    q.Publish(delayed, {99, 6, 0});
+    CHECK(q.Pop(r) == LoadRing::Got && r.ps == 8 && r.loaded == 7 && r.slot6 == 1);
+    CHECK(q.Pop(r) == LoadRing::Empty);
+    CHECK_EQ(q.DroppedCount(), 1L);
 }

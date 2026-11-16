@@ -33,7 +33,7 @@ from unicorn.x86_const import (
     UC_X86_REG_XMM7,
 )
 
-from emu_harness import ALL_REGS, CALLINS, CODE, RET_MAGIC, STACK, TEXT_VA, Emu, callin_entry, game_text
+from emu_harness import ALL_REGS, CALLINS, CODE, RET_MAGIC, STACK, TEB, TEXT_VA, Emu, callin_entry, game_text
 from midhook_oracle import (
     DEFAULT_REGS,
     DIRTY_XMM,
@@ -160,6 +160,8 @@ class Machine:
         return hook
 
     def _write(self, uc, access, address, size, value, user):
+        if TEB <= address < TEB + 0x1000:  # SEH bookkeeping of a __try frame (fs:[0]), not a result
+            return
         for i in range(size):
             self.writes[address + i] = (value >> (8 * i)) & 0xFF
 

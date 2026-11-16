@@ -18,17 +18,17 @@ from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDI, UC
 
 import test_midhook_features as feat
 import test_midhook_nslot as ns
+from emu_harness import needs_emu
 from emu_harness import DLL, SNAPSHOT, site_va
 from midhook_oracle import EBP, ESP, Case, Sym
+import private_features
 from midhook_stock import RET_AT, Ref, W, assert_want, returning_elsewhere, ruled, stock_tests
 from test_midhook_stock import EXPORTS, NATIVE_PEGSET, STRING6, dword, h, v, with_mem
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 SPECS = {**feat.SPECS, **ns.SPECS}
-T8_RECORD = "a registered song's template / ChordNotes lookup hands out its T8 / C8 record (native N-slot, every song)"
+T8_RECORD = "template / ChordNotes lookups return T8 / C8 records, with an empty widened fallback on failure"
 T8_SIZE, C8_SIZE = 0x80, 0x15A8
 # lookup_cases: entries 0 / 63 register the base (10 records), entry 2 base + 100h (50 records, at +10000h)
 REGISTERED = re.compile(r"-begin(0|100)-id([0-9a-f]+)$")
@@ -47,6 +47,17 @@ def entry(sid: str, helper: str):
         ),
         real=False,
     )
+
+
+def tuner_init(differences, case, machine):
+    """An installed TU8INIT owns the grown allocation even after runtime isolation."""
+    assert_want(differences, W("writes"), machine)
+    tail = bytearray(0x380 - 0x278)
+    struct.pack_into("<I", tail, 0, 0x38545552)
+    struct.pack_into("<8i", tail, 0x348 - 0x278, *([-2] * 8))
+    session = case.regs[UC_X86_REG_ESI]
+    expected = tuple((session + 0x278 + i, bytes([value])) for i, value in enumerate(tail))
+    assert differences["writes"] == ((), expected)
 
 
 def chord_loop(sid: str):
@@ -76,7 +87,7 @@ def ng1(c: Case):
 
 
 def record(sid: str, base: int, size: int, reg: str, offset: int = 0):
-    """TP* / CP*: a registered (begin, id) gets the T8 / C8 record of its registry entry."""
+    """TP* / CP*: a registered (begin, id) gets its record; all other lookups get an empty widened record."""
 
     def expect(c: Case):
         m = REGISTERED.search(c.id)
@@ -85,7 +96,32 @@ def record(sid: str, base: int, size: int, reg: str, offset: int = 0):
         entry_base = base + (0x10000 if m[1] == "100" else 0)
         return W("regs", regs={reg: entry_base + int(m[2], 16) * size + offset})
 
-    return Ref(**ruled(expect, T8_RECORD))
+    def check(differences, case, machine):
+        want = expect(case)
+        if want is not None:
+            assert_want(differences, want, machine)
+        else:
+            empty_record(differences, machine, reg, size, offset)
+
+    return Ref(six=lambda c: False, why=T8_RECORD, check=check)
+
+
+def empty_record(differences, machine, reg: str, size: int, offset: int = 0):
+    """Only the destination changes, and it points to a complete, unused record (no guessed DLL address)."""
+    assert_want(differences, W("regs"), machine)
+    index = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp").index(reg)
+    old, new = differences["regs"]
+    assert old[:index] + old[index + 1 :] == new[:index] + new[index + 1 :]
+    raw = machine.emu.read(new[index] - offset, size)
+    expected = bytearray(size)
+    if size == T8_SIZE:
+        expected[4:0x28] = b"\xff" * 0x24
+        expected[0x48:0x78] = b"\xff" * 0x30
+        expected[0x78] = 6
+    else:
+        expected[0x930:0x93C] = b"\xff" * 12
+        expected[0x968:0x978] = b"\xff" * 16
+    assert raw == bytes(expected)
 
 
 def slot_bound(sid: str, exit_):
@@ -118,13 +154,13 @@ def ds1_templates() -> bytes:
 def ds1_cases(spec, cases):
     """DS1 counts the frets != -1 of a chord template (2 = double stop). Both layouts carry the same six frets (stock
     template +4, T8 record +48h with slots 6/7 empty); the run goes to the end of the count loop (0x55BA03). Registered:
-    the song's T8 array is in g_rs7_ns; unregistered: Rs7Ns_TplRecord answers the stock record."""
+    the song's T8 array is in g_rs7_ns. Empty fallback counts are covered by the native failure tests."""
     t8 = bytearray(4 * T8_SIZE)
     for i, frets in enumerate(DS1_FRETS):
         t8[i * T8_SIZE + 0x48 : i * T8_SIZE + 0x50] = bytes(frets) + bytes([0xFF, 0xFF])
     entry_ = struct.pack("<8I", DS1_BEGIN, 4, DS1_T8, 0, 0, 0, 0x5000, 4)
     out = []
-    for registered, i in ((r, i) for r in (True, False) for i in range(4)):
+    for registered, i in ((True, i) for i in range(4)):
         table = (entry_ if registered else bytes(32)) + bytes(63 * 32)
         out.append(
             Case(
@@ -260,7 +296,12 @@ REFS: dict[str, Ref] = {
     # ---- features/tuner (void / dispatch helpers stubbed: they need the live tuner) ----
     **{sid: entry(sid, "Rs7Tuner8_Target") for sid in ("TU8H", "TU8C", "TU8A")},
     **{sid: entry(sid, "Rs7Tuner8_SessTarget") for sid in feat.TS8_IDS},
-    "TU8INIT": Ref(variant=returning),
+    "TU8INIT": Ref(
+        six=lambda c: c.regs[UC_X86_REG_ESI] == 0,
+        why="the installed allocation stays grown after runtime isolation",
+        check=tuner_init,
+        variant=returning,
+    ),
     "TU8FREE": Ref(),
     "AT": Ref(**ruled(at_autotune, "[tuner] autotune on and the string in tune"), real=False, variant=returning),
     # ---- features/publish ----
@@ -319,11 +360,6 @@ REFS: dict[str, Ref] = {
             "with the asset hook on the load continues in Rs7_NifHandler (the game function's signature, entry stack)",
         )
     ),  # fmt: skip
-    # ---- features/vguit (void helpers stubbed: they need the live session) ----
-    "TICK": Ref(real=False),
-    "JUD1": Ref(real=False),
-    "JUD2": Ref(),
-    "AUD1": Ref(real=False),
     # ---- features/strings ----
     **{sid: entry(sid, "Rs7Gs_Target") for sid in feat.GS_ENTRIES},
     "GRM1": Ref(),
@@ -362,7 +398,6 @@ REFS.update(
         "TP12": record("TP12", ns.T8, T8_SIZE, "edi", offset=4),  # the T8's frets
         "CP1": record("CP1", ns.C8, C8_SIZE, "eax"),
         "CP2": record("CP2", ns.C8, C8_SIZE, "ebx"),
-        # Unregistered was a finding until the fix (the T8 offset +48h over 7 strings on the stock 48h record).
         "DS1": Ref(variant=ds1_cases),
         "LU3": Ref(
             **ruled(
@@ -400,6 +435,7 @@ REFS.update(
 )  # fmt: skip
 
 # Stubbed helpers (void, or the entry dispatch answering the stock entry): the reference covers the hook's glue only.
+private_features.extend(__name__, globals())
 GLUE_ONLY = sorted(sid for sid, ref in REFS.items() if not ref.real)
 NO_REFERENCE: dict[str, str] = {}
 

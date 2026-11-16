@@ -47,6 +47,31 @@ TEST(ramp_v6_taps_on_level0_and_1) {
     CHECK(kRs7V6[0] == 57.0f / 128.0f && kRs7V6[1] == 121.0f / 128.0f);
 }
 
+// The eighth string's band: V7 = 62/128 and 126/128, lines 61-62 and 125-126 at height 128, clear of every stock
+// tap and of V6; at 64 lines it would hit row 7's taps, so only level 0 carries it and V6 keeps level 1.
+TEST(ramp_v7_band_for_the_eighth_string) {
+    const uint32_t rgb8[2] = {0x00D6B2, 0xFF00FF};
+    const auto stock = Stock(9);
+    const auto b = Rs7Ramp_Build(stock, kRgb, rgb8);
+    const auto chk = Rs7Ramp_Verify(stock, b, kRgb, rgb8);
+
+    CHECK(chk.exact && chk.v6Pure);
+    CHECK_EQ(b.customLevels, 2u);
+    CHECK_EQ(chk.changedLines, 2u + 2u + 2u + 2u + 1u + 1u);  // L0: 56,57,120,121 + 61,62,125,126; L1: 28,60
+    CHECK(kRs7V7[0] == 62.0f / 128.0f && kRs7V7[1] == 126.0f / 128.0f);
+    const auto& s0 = stock[0];
+    const auto& d0 = b.levels[0];
+
+    CHECK(d0.px[61 * s0.w] != s0.px[61 * s0.w] && d0.px[126 * s0.w] != s0.px[126 * s0.w]);
+    CHECK(d0.px[61 * s0.w] != d0.px[57 * s0.w]);  // its own colour, not string 6's
+    // Without rgb8 the V7 lines stay stock (6/7-string build unchanged).
+    const auto plain = Rs7Ramp_Build(stock, kRgb);
+
+    CHECK(plain.levels[0].px[61 * s0.w] == s0.px[61 * s0.w]);
+    // A V7 line painted with the wrong colour fails the purity check.
+    CHECK(!Rs7Ramp_Verify(stock, b, kRgb, kRgb).v6Pure);
+}
+
 TEST(ramp_copy_keeps_every_protected_line_at_every_level) {
     for (unsigned levels = 1; levels <= 9; ++levels) {
         const auto stock = Stock(levels);
@@ -81,7 +106,7 @@ TEST(ramp_custom_band_is_pure_at_v6_on_levels_0_and_1) {
 TEST(ramp_v6_on_a_foreign_16x8_texture_reads_row_7_or_15) {
     for (int m = 0; m < 2; ++m) {
         for (bool bil : {true, false}) {
-            for (const auto& t : Rs7Ramp_Taps(kRs7V6Num[m], kRs7V6Den, 128, bil)) {
+            for (const auto& t : Rs7Ramp_Taps(kRs7V6Num[m], kRs7BandDen, 128, bil)) {
                 CHECK(t.line / 8 == kRs7Row6[m]);
             }
         }
@@ -122,21 +147,17 @@ TEST(ramp_verify_detects_a_changed_protected_texel) {
 }
 
 TEST(ramp_plan_policy) {
-    const auto x8 = Rs7Ramp_Plan({22, 256, 128, 1, 1, 0}, false);
+    // A Swap copy keeps the stock format (MakeCopy uses the stock description; test_d3d_ramp checks it).
+    CHECK(Rs7Ramp_Plan({22, 256, 128, 1, 1, 0}).verdict == Rs7RampVerdict::Swap);
+    CHECK(Rs7Ramp_Plan({21, 256, 128, 9, 1, 0}).verdict == Rs7RampVerdict::Swap);    // levels: no limit
+    CHECK(Rs7Ramp_Plan({22, 256, 128, 1, 0, 0}).verdict == Rs7RampVerdict::Refuse);  // DEFAULT pool
+    CHECK(Rs7Ramp_Plan({22, 256, 256, 1, 1, 0}).verdict == Rs7RampVerdict::Refuse);  // size
+    const uint32_t dxt1 = 0x31545844;                                                // MAKEFOURCC('D','X','T','1')
 
-    CHECK(x8.verdict == Rs7RampVerdict::Swap && x8.exactPossible && x8.outFormat == 22);
-    CHECK(Rs7Ramp_Plan({21, 256, 128, 9, 1, 0}, false).verdict == Rs7RampVerdict::Swap);   // levels: no limit
-    CHECK(Rs7Ramp_Plan({22, 256, 128, 1, 0, 0}, true).verdict == Rs7RampVerdict::Refuse);  // DEFAULT pool
-    CHECK(Rs7Ramp_Plan({22, 256, 256, 1, 1, 0}, true).verdict == Rs7RampVerdict::Refuse);  // size
-    const uint32_t dxt1 = 0x31545844;  // MAKEFOURCC('D','X','T','1')
-
-    CHECK(Rs7Ramp_Plan({dxt1, 256, 128, 1, 1, 0}, false).verdict == Rs7RampVerdict::Refuse);
-    const auto d = Rs7Ramp_Plan({dxt1, 256, 128, 1, 1, 0}, true);
-
-    CHECK(d.verdict == Rs7RampVerdict::Swap && !d.exactPossible && d.outFormat == 21);
-    CHECK(Rs7Ramp_Plan({23 /*R5G6B5*/, 256, 128, 1, 1, 0}, true).verdict == Rs7RampVerdict::Refuse);
-    CHECK(Rs7Ramp_Plan({22, 256, 128, 1, 1, 0x400 /*AUTOGENMIPMAP*/}, true).verdict == Rs7RampVerdict::Refuse);
-    CHECK(Rs7Ramp_Plan({22, 256, 128, 0, 1, 0}, true).verdict == Rs7RampVerdict::Refuse);  // no levels
+    CHECK(Rs7Ramp_Plan({dxt1, 256, 128, 1, 1, 0}).verdict == Rs7RampVerdict::Refuse);
+    CHECK(Rs7Ramp_Plan({23 /*R5G6B5*/, 256, 128, 1, 1, 0}).verdict == Rs7RampVerdict::Refuse);
+    CHECK(Rs7Ramp_Plan({22, 256, 128, 1, 1, 0x400 /*AUTOGENMIPMAP*/}).verdict == Rs7RampVerdict::Refuse);
+    CHECK(Rs7Ramp_Plan({22, 256, 128, 0, 1, 0}).verdict == Rs7RampVerdict::Refuse);  // no levels
 }
 
 TEST(ramp_hash_and_row_stats) {

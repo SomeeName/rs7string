@@ -1,9 +1,6 @@
-// [debug] spin_probe=1 (diagnostic): a watchdog thread that finds busy loops. Every 10 s it reads the CPU time
-// of every thread of the process; a thread that used >= 8 s of CPU in that window is sampled 20 times
-// (SuspendThread / GetThreadContext / ResumeThread, 25 ms apart): EIP and the first return addresses found
-// above ESP are logged as module+offset (game addresses absolute). At most 2 reports per thread, 8 in total.
 #include "platform/spinprobe.h"
 #include "platform/log.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -52,7 +49,7 @@ bool LooksLikeReturn(uint32_t v) {
     __try {
         return p[-5] == 0xE8 || (p[-2] == 0xFF && (p[-1] & 0x38) == 0x10) ||
                (p[-3] == 0xFF && (p[-2] & 0x38) == 0x10) || (p[-6] == 0xFF && (p[-5] & 0x38) == 0x10);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -80,11 +77,12 @@ void Sample(HANDLE h, DWORD tid, int i) {
     n += Fmt(buf + n, sizeof buf - n, c.Eip);
     n += std::snprintf(buf + n, sizeof buf - n, " eax %08lX ecx %08lX esi %08lX edi %08lX | ret", c.Eax, c.Ecx, c.Esi,
                        c.Edi);
+    const auto* sp = reinterpret_cast<const uint32_t*>(uintptr_t(c.Esp));
     int found = 0;
 
     __try {
-        for (int k = 0; k < 512 && found < 6 && n < 560; ++k) {
-            const uint32_t v = reinterpret_cast<const uint32_t*>(uintptr_t(c.Esp))[k];
+        for (int k = 0; sp && k < 512 && found < 6 && n < 560; ++k) {
+            const uint32_t v = sp[k];
             if (!LooksLikeReturn(v)) {
                 continue;
             }
@@ -92,7 +90,7 @@ void Sample(HANDLE h, DWORD tid, int i) {
             n += Fmt(buf + n, sizeof buf - n, v);
             ++found;
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 
     Rs7Log("%s", buf);
@@ -140,8 +138,10 @@ DWORD WINAPI Probe(void*) {
             now[te.th32ThreadID] = cpu;
             auto it = last.find(te.th32ThreadID);
 
-            // >= 8 s of CPU (100 ns units) in the 10 s window: a busy loop
-            if (it != last.end() && cpu - it->second >= 80000000ull && reports[te.th32ThreadID] < 2 && total < 8) {
+            // >= 8 s of CPU (100 ns units) in the 10 s window: a busy loop. cpu can be below the last sample
+            // (thread id reused, or GetThreadTimes failed), where the unsigned difference would wrap
+            if (it != last.end() && cpu > it->second && cpu - it->second >= 80000000ull &&
+                reports[te.th32ThreadID] < 2 && total < 8) {
                 ++reports[te.th32ThreadID];
                 ++total;
                 Rs7Log("spin_probe: thread %lu used %.1f s CPU in the last 10 s - 20 samples:", te.th32ThreadID,

@@ -1,5 +1,6 @@
 #include "features/headstock/pegset.h"
 #include "features/colours/colours.h"
+#include "platform/spinlock.h"
 #include <cctype>
 #include <cstring>
 #include <intrin.h>
@@ -10,7 +11,7 @@
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_pegsets[RS7_PEG_OWNERS] = {};
 
-// ---- ownership (review #1) ----
+// ---- ownership ----
 // The table is the only native identification: IsNative and Disown scan it, nothing reads
 // the PegSet to decide. Claims: compare-exchange 0 -> PegSet (PSC1 on resource-loader jobs, possibly several at
 // once). Clears: PSA2, by the one thread freeing that PegSet, before the free, so a PegSet constructed at the same
@@ -113,6 +114,37 @@ void rs7head::InitTail(uint8_t* ps) {
     *reinterpret_cast<uint32_t*>(ps + kMagicOff) = kMagic;
 }
 
+uint32_t rs7head::LoadCount(uint32_t strings, bool native, bool headOn, uint32_t pegLoad, uint32_t modelPegs,
+                            int kind) {
+    if (!native) {
+        return strings;
+    }
+    if (headOn && !rs7::IsBassKind(kind) && strings == uint32_t(kStockSlots)) {
+        return pegLoad;
+    }
+
+    const uint32_t cap = modelPegs < uint32_t(kCapacity) ? modelPegs : uint32_t(kCapacity);
+
+    return strings > cap ? cap : strings;
+}
+
+unsigned rs7head::ReadyCount(uint8_t* ps) {
+    const unsigned loaded = ps[kTail + 1];
+    unsigned n = kStockSlots;
+
+    while (n < loaded && n < unsigned(kCapacity)) {
+        const uint8_t* slot = Slot(ps, int(n));
+        if (!slot[0] || !*reinterpret_cast<uint8_t* const*>(slot + kSlotEntity) ||
+            !*reinterpret_cast<uint8_t* const*>(slot + kSlotLocator)) {
+            break;
+        }
+
+        ++n;
+    }
+
+    return n;
+}
+
 unsigned rs7head::LoadedCounts(uint8_t* ps) {
     unsigned count = *reinterpret_cast<uint16_t*>(ps + kPegCount);
 
@@ -138,13 +170,18 @@ long rs7head::LoadRing::Reserve() {
 void rs7head::LoadRing::Publish(long n, const LoadRec& r) {
     Entry& e = ring_[n & 7];
 
-    _InterlockedExchange(&e.seq, 0);  // being written: a reader of the previous lap sees a torn entry
-    e.rec = r;
-    _InterlockedExchange(&e.seq, n + 1);  // payload first, publication last
+    Rs7Spin_Lock(&e.spin);
+
+    if (e.seq < n + 1) {
+        e.rec = r;
+        e.seq = n + 1;
+    }
+
+    Rs7Spin_Unlock(&e.spin);
 }
 
 rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
-    const long reserve = reserve_;
+    const long reserve = _InterlockedCompareExchange(&reserve_, 0, 0);
     if (done_ >= reserve) {
         return Empty;
     }
@@ -155,9 +192,13 @@ rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
     }
 
     Entry& e = ring_[done_ & 7];
+
+    Rs7Spin_Lock(&e.spin);
     const long s1 = e.seq;
 
     if (s1 != done_ + 1) {
+        Rs7Spin_Unlock(&e.spin);
+
         if (s1 > done_ + 1) {  // overwritten by a later lap
             ++dropped_;
             ++done_;
@@ -168,15 +209,8 @@ rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
         return Empty;
     }
 
-    const LoadRec copy = e.rec;
-
-    if (e.seq != s1) {
-        ++dropped_;
-        ++done_;
-        return Dropped;
-    }  // torn by a producer of the next lap
-
-    out = copy;
+    out = e.rec;
+    Rs7Spin_Unlock(&e.spin);
     ++done_;
 
     return Got;
@@ -189,7 +223,7 @@ bool rs7head::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRg
         return false;
     }
 
-    const uint32_t mode = *reinterpret_cast<const uint32_t*>(mgr + 0x348 + player * 4);
+    const uint32_t mode = ColourMode(mgr, player);
     if (mode >= 2) {
         return false;
     }

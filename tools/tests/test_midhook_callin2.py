@@ -12,11 +12,10 @@ import pytest
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDI, UC_X86_REG_EDX, UC_X86_REG_ESI
 
 from callin_oracle import FLAG_PATTERNS, Case, Machine, Spec, check, diff, flags_dead, matrix
+from emu_harness import needs_emu
 from emu_harness import CALLINS, DATA, DLL, SNAPSHOT, Emu
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 SPECS: dict[str, tuple[Spec, list[Case]]] = {}
@@ -26,8 +25,8 @@ def register(spec: Spec, cases: list[Case]):
     SPECS[spec.name] = (spec, cases)
 
 
-# ---- PubBaseG / PubBaseB (PUBCL 0x8751FC / 0x875205): `sub eax,[table+ecx*4]`, stock six / four entries -------------
-for name, va, strings, stock in (("PubBaseG", 0x8751FC, 8, 6), ("PubBaseB", 0x875205, 4, 4)):
+# ---- PubBaseG / PubBaseB (PUBCL 0x8751FC / 0x875205): `sub eax,[table+ecx*4]`, stock six / four, native 8 / 6 -------
+for name, va, strings, stock in (("PubBaseG", 0x8751FC, 8, 6), ("PubBaseB", 0x875205, 6, 4)):
     register(
         Spec(name, f"Rs7_Call_{name}", va, 7),
         [
@@ -170,7 +169,9 @@ def test_every_native_case_differs_from_stock(name):
     bytes."""
     spec, cases = SPECS[name]
     machine = MACHINES.setdefault(name, Machine(spec))
-    for case in (c for c in cases if not c.stock):
+    native = [c for c in cases if not c.stock]
+    assert native, f"{name} has no not-stock case"
+    for case in native:
         want, got = machine.run("stock", case, FLAG_PATTERNS[0], 0), machine.run("new", case, FLAG_PATTERNS[0], 0)
         assert diff(spec, want, got, FLAG_PATTERNS[0]), case.id
 

@@ -14,13 +14,39 @@ using W = Rs7SetWhen;
 
 Rs7ColourConfig g_config;
 
-void ApplyColour(const Rs7SetValue&) {
-    uint32_t rgb[2] = {Rs7Set_Rgb("color.string6_color"), Rs7Set_Rgb("color.string6_color_cb")};
-
+// The seventh string's (string 6's) colours as set, with the RSMods Extended Range colour applied.
+void EffectiveString6Rgb(uint32_t (&rgb)[2]) {
+    rgb[0] = Rs7Set_Rgb("color.string6_color");
+    rgb[1] = Rs7Set_Rgb("color.string6_color_cb");
     rs7rsmods::Resolve(rs7rsmods::Cached(), Rs7Set_Bool("color.rsmods_extended_range"), rgb);
+}
+
+void ApplyColour(const Rs7SetValue&) {
+    uint32_t rgb[2];
+
+    EffectiveString6Rgb(rgb);
     rs7colour::SetPalette(rgb);    // native colour matrix, 7th string palette / glow, tuner
     Rs7Swap_RequestRecolour(rgb);  // the gem ramps: repainted by the render thread (swap.h)
     rs7colour::PublishCurrent();
+}
+
+// String 7 (the eighth string): its line, glow, sparks and gems; RSMods has no colour for it.
+void ApplyColour8(const Rs7SetValue&) {
+    const uint32_t rgb8[2] = {Rs7Set_Rgb("color.string7_color"), Rs7Set_Rgb("color.string7_color_cb")};
+    uint32_t rgb[2];
+
+    rs7colour::SetPalette8(rgb8);
+    EffectiveString6Rgb(rgb);
+    Rs7Swap_RequestRecolour(rgb);  // the gem ramps repaint the eighth string's band too (BuildChecked)
+    rs7colour::PublishCurrent();
+}
+
+void StartupColour8(Rs7SetValue& v) {
+    v.rgb = g_config.string7Rgb;
+}
+
+void StartupColour8Cb(Rs7SetValue& v) {
+    v.rgb = g_config.string7RgbCb;
 }
 
 void StartupColour(Rs7SetValue& v) {
@@ -37,32 +63,47 @@ void Read(const wchar_t* iniPath) {
 
 const Rs7SetDef kDefs[] = {
     {"color.rsmods_extended_range", L"color", L"rsmods_extended_range", T::Bool, W::Live, "1", 0, 1,
-     "Follow RSMods Extended Range colour",
+     "Use the RSMods Extended Range colour",
      "When RSMods is installed with ExtendedRange=on, use its low B colour in both colour modes. "
      "RSMods settings are read at startup. Turn off to use the two colours below; their saved values stay intact.",
      ApplyColour},
-    {"color.string6_color", L"color", L"string6_color", T::Rgb, W::Live, "C8C8C8", 0, 0, "String 6 colour",
-     "Gems (ramp copy), sparks, hit/miss text, 7th string line, glow, tuner.", ApplyColour, StartupColour},
+    {"color.string6_color", L"color", L"string6_color", T::Rgb, W::Live, "C8C8C8", 0, 0, "7th string colour",
+     "The 7th string's gems, sparks, hit/miss text, string line, glow and tuner, and a 5/6-string bass's low B.",
+     ApplyColour, StartupColour},
     {"color.string6_color_cb", L"color", L"string6_color_cb", T::Rgb, W::Live, "C8C8C8", 0, 0,
-     "String 6 colour (colourblind)", "The same in colourblind mode (default: string6_color).", ApplyColour,
+     "7th string colour (colourblind)", "The same in colourblind mode (default: string6_color).", ApplyColour,
      StartupColourCb},
-    {"color.ramp_swap", L"color", L"ramp_swap", T::Bool, W::Restart, "1", 0, 1, "Ramp copy (Step 2)",
-     "Copy the stock colour ramps with a string-6 band (D3D SetTexture/GetTexture hooks).", nullptr},
-    {"color.allow_inexact", L"color", L"allow_inexact", T::Bool, W::Restart, "0", 0, 1, "Allow DXT ramps",
-     "Also copy DXT1/DXT5 ramps (CPU-decoded, not bit-exact).", nullptr},
+    {"color.string7_color", L"color", L"string7_color", T::Rgb, W::Live, "FF66CC", 0, 0, "8th string colour",
+     "The 8th string's gems, string line, glow and sparks.", ApplyColour8, StartupColour8},
+    {"color.string7_color_cb", L"color", L"string7_color_cb", T::Rgb, W::Live, "FF66CC", 0, 0,
+     "8th string colour (colourblind)", "The same in colourblind mode.", ApplyColour8, StartupColour8Cb},
 };
 }  // namespace
 
 const Rs7SetTable kRs7ColourSettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), Read};
 
+namespace {
+bool ReadMode(uint32_t* mode) {
+    uint32_t mgr = 0;
+
+    return g_rs7_colormgr && Rs7_SafeCopy(&mgr, reinterpret_cast<const void*>(g_rs7_colormgr), 4) && mgr &&
+           Rs7_SafeCopy(mode, reinterpret_cast<const void*>(mgr + 0x348), 4) && *mode <= 1;
+}
+}  // namespace
+
 const char* Rs7Colour_ModeName() {
-    uint32_t mgr = 0, mode = 0;
-    if (!g_rs7_colormgr || !Rs7_SafeCopy(&mgr, reinterpret_cast<const void*>(g_rs7_colormgr), 4) || !mgr ||
-        !Rs7_SafeCopy(&mode, reinterpret_cast<const void*>(mgr + 0x348), 4)) {
+    uint32_t mode = 0;
+    if (!ReadMode(&mode)) {
         return "unknown";
     }
 
-    return mode == 0 ? "normal" : mode == 1 ? "colourblind" : "unknown";
+    return mode == 0 ? "normal" : "colourblind";
+}
+
+uint32_t Rs7Colour_Mode() {
+    uint32_t mode = 0;
+
+    return ReadMode(&mode) ? mode : 0;
 }
 
 namespace {
@@ -102,14 +143,18 @@ bool ColoursOverridden() {
 }
 
 const Rs7UiItem kUi[] = {
-    Rs7UiPlayerSection("Seventh string"),
-    Rs7UiPlayerLocked("color.string6_color", "Colour", "Notes, string, glow and tuner of the seventh (low B) string.",
-                      ColoursOverridden, "Turn off 'Use the RSMods Extended Range colour' to pick your own."),
-    Rs7UiPlayerLocked("color.string6_color_cb", "Colourblind colour",
+    Rs7UiPlayerSection("Extra strings"),
+    Rs7UiPlayer("color.rsmods_extended_range", "Use the RSMods Extended Range colour",
+                "When RSMods Extended Range is on, its low B colour replaces the two 7th string colours below."),
+    Rs7UiPlayerLocked("color.string6_color", "7th string colour",
+                      "Notes, string, glow and tuner of the 7th (low B) string.", ColoursOverridden,
+                      "Turn off 'Use the RSMods Extended Range colour' to pick your own."),
+    Rs7UiPlayerLocked("color.string6_color_cb", "7th string colour (colourblind)",
                       "Used instead when the game's colourblind mode is on.", ColoursOverridden,
                       "Turn off 'Use the RSMods Extended Range colour' to pick your own."),
-    Rs7UiPlayer("color.rsmods_extended_range", "Use the RSMods Extended Range colour",
-                "When RSMods Extended Range is on, its low B colour replaces the two colours above."),
+    Rs7UiPlayer("color.string7_color", "8th string colour", "String, glow and sparks of the 8th (low F#) string."),
+    Rs7UiPlayer("color.string7_color_cb", "8th string colour (colourblind)",
+                "Used instead when the game's colourblind mode is on."),
     {U::Status, K::OnOff, "ramp copy (V6)", LiveV6},
     {U::Colour, K::Section, "string 6 colour"},
     {U::Colour, K::Row, "ramp copy", LiveRampCopy},
@@ -117,9 +162,6 @@ const Rs7UiItem kUi[] = {
     {U::Colour, K::Note,
      "Colour changes reach sparks, hit/miss text, the 7th string line, its glow and the tuner at once; the gem ramps "
      "are repainted at the next texture bind."},
-    {U::Colour, K::Section, "ramp copy (Step 2)"},
-    {U::Colour, K::Setting, "color.ramp_swap"},
-    {U::Colour, K::Setting, "color.allow_inexact"},
 };
 }  // namespace
 
@@ -129,37 +171,43 @@ const Rs7ColourConfig& Rs7Colour_Config() {
     return g_config;
 }
 
+namespace {
+// One [color] key: `raw` gets the text (GetPrivateProfileString strips blanks; empty = not set). A valid colour goes
+// into `rgb`; an invalid one leaves `rgb` at its default and returns false.
+bool ReadColour(const wchar_t* key, const wchar_t* iniPath, std::wstring& raw, uint32_t& rgb) {
+    bool tooLong = false;
+    uint32_t v = 0;
+
+    raw = Rs7Config_ReadString(L"color", key, iniPath, &tooLong);
+    if (raw.empty()) {
+        return true;
+    }
+    if (tooLong || !Rs7_ParseRgb(raw.c_str(), &v)) {
+        return false;
+    }
+
+    rgb = v;
+
+    return true;
+}
+}  // namespace
+
 Rs7ColourConfig Rs7Colour_ReadIni(const wchar_t* iniPath) {
     Rs7ColourConfig c;
     if (!iniPath) {
         return c;
     }
 
-    // GetPrivateProfileString strips surrounding blanks; empty means "not set".
-    bool tooLong = false;
+    // The eighth string's colours fall back to their own default; string6_color_cb follows string6_color.
+    std::wstring raw7;
 
-    c.string6Raw = Rs7Config_ReadString(L"color", L"string6_color", iniPath, &tooLong);
-    if (!c.string6Raw.empty()) {
-        c.colorValid = !tooLong && Rs7_ParseRgb(c.string6Raw.c_str(), &c.string6Rgb);
-    }
+    c.colorValid = ReadColour(L"string6_color", iniPath, c.string6Raw, c.string6Rgb);
     c.string6RgbCb = c.string6Rgb;
-    c.string6CbRaw = Rs7Config_ReadString(L"color", L"string6_color_cb", iniPath, &tooLong);
+    c.colorCbValid = ReadColour(L"string6_color_cb", iniPath, c.string6CbRaw, c.string6RgbCb);
     c.colorCbSet = !c.string6CbRaw.empty();
-
-    if (c.colorCbSet) {
-        uint32_t cb = 0;
-
-        c.colorCbValid = !tooLong && Rs7_ParseRgb(c.string6CbRaw.c_str(), &cb);
-        if (c.colorCbValid) {
-            c.string6RgbCb = cb;
-        }
-    }
-
-    c.rsmodsExtendedRange = Rs7Config_ReadInt(L"color", L"rsmods_extended_range", 1, iniPath) != 0;
-    c.rampSwapRaw = Rs7Config_ReadInt(L"color", L"ramp_swap", 1, iniPath);
-    c.rampSwap = c.rampSwapRaw != 0;
-    c.allowInexactRaw = Rs7Config_ReadInt(L"color", L"allow_inexact", 0, iniPath);
-    c.allowInexact = c.allowInexactRaw != 0;
+    c.color7Valid = ReadColour(L"string7_color", iniPath, raw7, c.string7Rgb);
+    c.color7CbValid = ReadColour(L"string7_color_cb", iniPath, raw7, c.string7RgbCb);
+    c.rsmodsExtendedRange = Rs7Set_ReadTableInt(kRs7ColourSettings, "color.rsmods_extended_range", iniPath) != 0;
 
     return c;
 }

@@ -6,10 +6,10 @@
     "literal_bytes": 1413904
   },
   "rs7_inline8.nif": {
-    "bytes": 1548479,
-    "sha256": "6ec5fb5b9fcc45ac034c895f0110ab5545dd1f17eab4926b1ab104552075af07",
-    "copies": 1204,
-    "literal_bytes": 1537294
+    "bytes": 1523951,
+    "sha256": "95b065a88118ec367e775cb2100aadbb9aa5586cd73336623a9732832d8f8244",
+    "copies": 1183,
+    "literal_bytes": 1512775
   },
   "rs7_peg.nif": {
     "bytes": 27154,
@@ -48,8 +48,8 @@
     "provenance": "our procedural texture"
   },
   "package": {
-    "bytes": 14873158,
-    "sha256": "8f5ba0cbf69de3f01b63d45e135365dfc586341e6e8e7cabbe82f5d6f56aad69",
+    "bytes": 14823424,
+    "sha256": "0e276f0f69637ffa325d3b9f25da78ab5e5e9249f479a6de1a0e7a3c0f047e98",
     "template_16_byte_runs": 0,
     "nif_literal_template_16_byte_runs": 0
   }

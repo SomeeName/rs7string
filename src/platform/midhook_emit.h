@@ -1,11 +1,8 @@
 #pragma once
 // Byte emitters shared by the mid-hook entry builders (midhook.cpp, midhook_wrap.cpp). Not part of the hook API.
+#include "platform/midhook.h"  // Rs7Mid_Thunk, Rs7Mid_ThunkLight, Rs7Mid_ThunkSse
 #include <cstddef>
 #include <cstdint>
-
-extern "C" void Rs7Mid_Thunk();
-extern "C" void Rs7Mid_ThunkLight();
-extern "C" void Rs7Mid_ThunkSse();
 
 namespace Rs7MidEmit {
 inline void Dword(uint8_t* p, uint32_t v) {

@@ -125,6 +125,18 @@ bool SeenBefore(std::vector<uint32_t>& tab, uint32_t node) {
 
     return false;  // cannot happen: kMaxNodes stops the walk first
 }
+
+void AddEmbedded(Rs7TexWalk* w, uint32_t node, const RdInfo& rd) {
+    Rs7TexFound f{};
+
+    f.obj = node;
+    f.rd = rd.rd;
+    f.d3d = rd.d3d;
+    f.family = Rs7Family::Embedded;
+    f.fmt = rd.fmt;
+    std::snprintf(f.path, sizeof f.path, "(NIF texture obj=%08X)", unsigned(node));
+    w->found.push_back(f);
+}
 }  // namespace
 
 bool Rs7Tex_FamilyOf(const char* name, Rs7Family* f) {
@@ -210,10 +222,23 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
                 w->anyD3d = rd.d3d;
             }
 
+            // A NIF model's own texture has no file name; a 256x128 one may be a ramp (the content check is the
+            // render thread's, Rs7Family::Embedded). Never past the reserved capacity: no allocation under the lock.
+            const bool embedded = !match && vt == kVtSource50 && !(hasFile && file[0]) && !(hasPlat && plat[0]) &&
+                                  valid && rd.w == 256 && rd.h == 128 && w->found.size() < w->found.capacity();
+
+            if (embedded) {
+                AddEmbedded(w, node, rd);
+            }
+
             if (match) {
                 ++w->nameMatches;
                 if (valid && (rd.w != 256 || rd.h != 128)) {
                     std::snprintf(why, sizeof why, "size (%ux%u)", rd.w, rd.h);
+                }
+
+                if (!why[0] && w->found.size() >= w->found.capacity()) {
+                    std::snprintf(why, sizeof why, "candidate capacity (%u) reached", unsigned(w->found.capacity()));
                 }
 
                 if (why[0]) {
@@ -230,7 +255,7 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
                     f.family = fam;
                     f.fmt = rd.fmt;
                     std::memcpy(f.path, path, kPathMax);
-                    w->found.push_back(f);  // within the reserved capacity for <= 64 ramps
+                    w->found.push_back(f);  // capacity checked above: no reallocation under the lock
                 }
             }
         }
@@ -267,15 +292,22 @@ bool Rs7Tex_Revalidate(const Rs7MemReader& m, uintptr_t obj, uintptr_t d3d, Rs7F
     }
 
     char file[kPathMax], plat[kPathMax];
+    RdInfo rd;
+    char why[kWhyMax];
+
+    if (fam == Rs7Family::Embedded) {
+        const bool named = (Str(m, obj + kFile, file) && file[0]) || (Str(m, obj + kPlatFile, plat) && plat[0]);
+
+        return vt == kVtSource50 && !named && CheckRd(m, obj, lo, hi, &rd, why) && rd.d3d == d3d && rd.w == 256 &&
+               rd.h == 128;
+    }
+
     Rs7Family f = Rs7Family::Note;
     const bool fileOk = Str(m, obj + kFile, file) && Rs7Tex_FamilyOf(file, &f) && f == fam;
     const bool platOk = !fileOk && Str(m, obj + kPlatFile, plat) && Rs7Tex_FamilyOf(plat, &f) && f == fam;
     if (!fileOk && !platOk) {
         return false;
     }
-
-    RdInfo rd;
-    char why[kWhyMax];
 
     return CheckRd(m, obj, lo, hi, &rd, why) && rd.d3d == d3d && rd.w == 256 && rd.h == 128;
 }

@@ -1,7 +1,9 @@
 #pragma once
 #include "features/publish/publish.h"
+#include "platform/field.h"
 #include "platform/midhook.h"
 #include <cstdint>
+#include <cstring>
 
 // The publication glue's entry points inside src/features/publish/: what the stubs call, what startup builds.
 
@@ -9,6 +11,20 @@
 // tools/gen_publish_pitch.py). False: that copy cannot be built, the ports go off.
 bool Rs7Publish_BuildCopies();
 bool Rs7PublishPitch_BuildCopies();
+
+namespace rs7pubhooks {
+constexpr uint32_t kTrackerInput =
+    0x4C19C;  // note tracker: the detect-input object (Publish_Classify, the pitch readers)
+
+// An unaligned read of game memory at p + off (callers are on the game thread and have checked p).
+using rs7mem::UncheckedRead;
+
+// The exported addresses of one relocated copy and of its trampoline to the stock function.
+struct Pair {
+    uintptr_t* copy;
+    uintptr_t* tramp;
+};
+}  // namespace rs7pubhooks
 
 extern "C" {
 __declspec(dllexport) void __cdecl Rs7Publish_Configure(int requested);

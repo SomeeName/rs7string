@@ -1,4 +1,4 @@
-"""Stage 5 ColourManager ports vs stock, executed in Unicorn on the unpacked exe.
+"""ColourManager ports vs stock, executed in Unicorn on the unpacked exe.
 
 Stock bytes run on a six-wide manager, the ported bytes (gen_colournative.ports(), the exact instruction
 edits of sites.json) on an eight-wide one filled with the same values: every output must be identical
@@ -25,7 +25,8 @@ from unicorn.x86_const import (
 
 import gen_colournative as cm
 import gen_fncopy
-from emu_common import needs_exe
+from emu_common import needs_exe, run_checked
+from emu_harness import install_teb
 
 pytestmark = needs_exe
 
@@ -63,6 +64,7 @@ def uv_val(m, st, k):
 def machine(native: bool):
     text, base = gen_fncopy.load_text()
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(uc)
     for va, data in image():
         uc.mem_map(va & ~0xFFF, (len(data) + 0xFFF + (va & 0xFFF)) & ~0xFFF, UC_PROT_ALL)
         if va == base:
@@ -106,7 +108,7 @@ def call(uc, entry, regs=None, args=(), esp_extra=0):
     sp = STACK
     uc.mem_write(sp, struct.pack("<I", RET) + b"".join(struct.pack("<I", a & 0xFFFFFFFF) for a in args))
     uc.reg_write(UC_X86_REG_ESP, sp)
-    uc.emu_start(entry, RET, count=20000)
+    run_checked(uc, entry, RET, count=20000)
     return uc
 
 
@@ -283,7 +285,7 @@ def test_every_port_is_inside_the_documented_functions_and_same_length():
 
 
 # ---- fret-number lane colour 4B0E70 (EAX=out RGB, EDX=string, EDI=float out, stack: flag byte, float* out2) ----
-# Regression (fix/fretnumcolour): this reader was missing from READS, so on the native 8-column manager it kept
+# Regression: this reader was missing from READS, so on the native 8-column manager it kept
 # the stock stride/base and read states 9/10 from the wrong state/slot (alternating fret-number colours).
 @pytest.mark.parametrize("mode", [0, 1])
 def test_fret_number_lane_colour_matches_stock(mode):
@@ -325,7 +327,7 @@ def _extra_data_uv(native, mode, player, state, slot):
         (UC_X86_REG_EBP, ebp),
     ):
         uc.reg_write(r, v)
-    uc.emu_start(0x48EBED, 0x48EC24, count=100)
+    run_checked(uc, 0x48EBED, 0x48EC24, count=100)
     return struct.unpack("<f", bytes(uc.mem_read(ebp - 0x24, 4)))[0]
 
 
@@ -358,7 +360,7 @@ def test_extra_data_colour_unported_reads_the_wrong_cell():
     ):
         uc.reg_write(r, v)
     uc.mem_write(MGR + 0x348, struct.pack("<II", 0, 0))
-    uc.emu_start(0x48EBED, 0x48EC24, count=100)
+    run_checked(uc, 0x48EBED, 0x48EC24, count=100)
     got = struct.unpack("<f", bytes(uc.mem_read(OUT + 0x800 - 0x24, 4)))[0]
     assert got != uv_val(0, 3, 1)
 
@@ -379,7 +381,7 @@ def test_constructor_initializes_only_appended_tables_and_preserves_legacy_stora
     uc.emu_start(RET, RET + 2, count=1)
     uc.reg_write(UC_X86_REG_ESI, MGR)
     uc.reg_write(UC_X86_REG_EAX, 0)
-    uc.emu_start(0x5184F6, 0x518521, count=10000)
+    run_checked(uc, 0x5184F6, 0x518521, count=10000)
     assert bytes(uc.mem_read(MGR, 0xDD0)) == before
     assert bytes(uc.mem_read(MGR + PTR_NEW, 448 * 4)) == struct.pack("<I", 0x12F1A84) * 448
     assert bytes(uc.mem_read(MGR + UV_NEW, 448 * 4)) == bytes(448 * 4)

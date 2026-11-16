@@ -101,6 +101,19 @@ TEST(v6_stays_off_while_any_candidate_is_refused_or_retrying) {
     Rs7Cand_ResetForTests();
 }
 
+TEST(v6_ignores_embedded_candidates_whatever_their_state) {
+    Rs7Cand_ResetForTests();
+    Rs7Cand_Add(Tex(1), Rs7Family::Note, "n");
+    Rs7Cand_Add(Tex(2), Rs7Family::Embedded, "(NIF texture)");
+    SetState(Tex(1), Rs7CandState::Active);
+    SetState(Tex(2), Rs7CandState::Refused);  // a 256x128 NIF texture that is no ramp
+    CHECK(Rs7Ramp_V6Rule(true, true));
+    SetState(Tex(1), Rs7CandState::Pending);
+    SetState(Tex(2), Rs7CandState::Active);  // an embedded ramp alone does not turn V6 on
+    CHECK(!Rs7Ramp_V6Rule(true, true));
+    Rs7Cand_ResetForTests();
+}
+
 TEST(v6_turns_off_when_a_candidate_fails_later) {
     Rs7Cand_ResetForTests();
     Capturing cap;
@@ -146,7 +159,7 @@ TEST(cand_add_is_idempotent_and_bounded) {
     }
 
     CHECK_EQ(Rs7Cand_Count(), kRs7MaxCands);
-    CHECK_EQ(Rs7Cand_Add(Tex(100), Rs7Family::Note, "17th"), -1);
+    CHECK_EQ(Rs7Cand_Add(Tex(100), Rs7Family::Note, "one too many"), -1);
     CHECK_EQ(Rs7Cand_Count(), kRs7MaxCands);
     CHECK(Rs7Cand_Find(Tex(1))->state == Rs7CandState::Pending);
     CHECK(Rs7Cand_Find(Tex(1))->family == Rs7Family::Note);
@@ -271,9 +284,15 @@ TEST(song_setup_logs_the_ramp_stats) {
     const Rs7Int16Vec v{tuning.data(), tuning.data() + tuning.size()};
 
     Rs7_OnSongTuning(nullptr, det.data(), &v);
-    CHECK_EQ(Lines().size(), size_t(2));
-    if (Lines().size() == 2) {
-        CHECK_EQ(Lines()[1], std::string("ramp stats: swaps=0 hidden=0 faults=0 candidates 0 (active 0, refused 0, "
-                                         "retry 0, pending 0) v6=OFF"));
+    // The song setup line, then the ramp stats. Before them a pitch floor line may come, only for a detector address
+    // not seen before (the heap may hand out an earlier test's buffer address), so it is not counted.
+    const size_t n = Lines().size();
+
+    CHECK(n == 2 || n == 3);
+
+    if (n >= 2) {
+        CHECK_EQ(Lines()[n - 2].rfind("song setup: ", 0), size_t(0));
+        CHECK_EQ(Lines()[n - 1], std::string("ramp stats: swaps=0 hidden=0 faults=0 candidates 0 (active 0, refused 0, "
+                                             "retry 0, pending 0) v6=OFF"));
     }
 }

@@ -11,15 +11,17 @@ using W = Rs7SetWhen;
 void ApplyNothing(const Rs7SetValue&) {}  // read by the overlay itself every frame
 
 const Rs7SetDef kDefs[] = {
-    {"overlay.enabled", L"overlay", L"enabled", T::Bool, W::Restart, "1", 0, 1, "Overlay enabled",
+    {"overlay.enabled", L"overlay", L"enabled", T::Bool, W::Restart, "1", 0, 1, "Menu enabled",
      "Hooks Present/Reset of the game's device and the window procedure. 1 (default): hidden until the "
-     "hotkey shows it (see Open at start). 0: none of it.",
+     "hotkey shows it (see Open at start). 0: none of it. Applies after a restart.",
      nullptr},
     {"overlay.hotkey", L"overlay", L"hotkey", T::Text, W::Restart, "F9", 0, 0, "Hotkey",
-     "Key that shows/hides the overlay (F1-F24, INSERT, HOME, END, PAUSE, SCROLL, A-Z, 0-9, or 0xNN).", nullptr},
+     "Key that shows/hides the menu (F1-F24, A-Z, 0-9, INSERT, DELETE, HOME, END, PGUP, PGDN, PAUSE, SCROLL, "
+     "NUMLOCK, OEM_3, or a virtual-key code 0xNN). Applies after a restart.",
+     nullptr},
     {"overlay.open", L"overlay", L"open", T::Bool, W::Restart, "0", 0, 1, "Open at start",
-     "1: the overlay is visible from the first frame.", nullptr},
-    {"overlay.scale", L"overlay", L"scale", T::Float, W::Live, "0", 0, 4, "UI scale",
+     "1: the menu is visible from the first frame. Applies after a restart.", nullptr},
+    {"overlay.scale", L"overlay", L"scale", T::Float, W::Live, "0", 0, 4, "Menu size",
      "0 = automatic (window height / 720).", ApplyNothing},
 };
 }  // namespace
@@ -33,7 +35,8 @@ using K = Rs7UiKind;
 const Rs7UiItem kUi[] = {
     Rs7UiPlayerSection("This menu", "Menu"),
     Rs7UiPlayerZero("overlay.scale", "Menu size", "Automatic follows the game window's height.", "Automatic"),
-    Rs7UiPlayer("overlay.hotkey", "Menu key", "The key that opens and closes this menu, for example F9."),
+    Rs7UiPlayer("overlay.hotkey", "Menu key",
+                "The key that opens and closes this menu, for example F9. Applies after a restart."),
     {U::Window, K::Section, "overlay"},
     {U::Window, K::Setting, "overlay.enabled"},
     {U::Window, K::Setting, "overlay.open"},

@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-// Native N-slot chord tracking (issue #18 stage 2): the technique tracker's chord evals over strings
+// Native N-slot chord tracking: the technique tracker's chord evals over strings
 // 0-7. A tracked chord (note mask 2000h) gets a parent eval and, when its strings carry different
 // techniques, one child eval per sounding string (Play_Tracker_AddNoteOrChord 0x874AB0). Children of
 // strings 0-5 live in the parent's subEval[6] (+0C04h); the eval cannot grow (100 inline slots of
@@ -33,6 +33,6 @@ uint8_t FoldTails(const uint8_t* eval, uint32_t bits, bool byteMask, bool none, 
 int32_t ExtremeSlide(const uint8_t* eval, int32_t extreme, int32_t* lastDistance);
 }  // namespace rs7track
 
-// AG1-AG3 (asm stubs): ESI = parent eval, EDI = tracker (+8 = evals[0]), EDX = string pointer or 0.
+// AG1-AG3 (C++ mid-hooks, hooks_eval.cpp): ESI = parent eval, EDI = tracker (+8 = evals[0]), EDX = string pointer or 0.
 extern "C" __declspec(dllexport) uint8_t __cdecl Rs7Ns_Aggregate(const uint8_t* eval, const uint8_t* tracker, int field,
                                                                  int zeroOnEmpty, const uint8_t* stringPtr);

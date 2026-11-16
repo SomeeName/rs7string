@@ -10,7 +10,8 @@ from unicorn import Uc, UC_ARCH_X86, UC_MODE_32
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
 import gen_publish_pitch as gp
-from emu_common import needs_exe
+from emu_common import needs_exe, run_checked
+from emu_harness import install_teb
 
 # Reads the user's game exe (tools/game_files.py): skipped without it (CI).
 pytestmark = needs_exe
@@ -32,6 +33,7 @@ def machine(k, n=6, played=40):
     fn = gp.FNS[k]
     stock, code, rels = gp.assemble(fn)
     u = Uc(UC_ARCH_X86, UC_MODE_32)
+    install_teb(u)
     u.mem_map(0x400000, 0x1000000)
     u.mem_map(CODE, 0x10000)
     u.mem_map(DATA, 0x100000)
@@ -90,7 +92,7 @@ def test_note_list_capacity_open_scan(n):
     # Stop just after duplicate filtering and open-MIDI scan, before candidate vector allocation.
     marker = bytes.fromhex("31c9 31c0 83cfff")
     offset = code.index(marker)
-    u.emu_start(CODE, CODE + offset, count=10000)
+    run_checked(u, CODE, CODE + offset, count=10000)
     bp = u.reg_read(UC_X86_REG_EBP)
     assert list(struct.unpack("<" + str(n) + "i", u.mem_read(bp - 0xAA0, n * 4))) == notes
     assert bytes(u.mem_read(bp - 0x10, n)) == b"\0" * n
@@ -103,7 +105,7 @@ def analyze(k, n, s, f, played, native=True):
     sp = STACK + 0x80000
     u.mem_write(sp, pack(STOP, TRACK, RESULT, NOTE))
     u.reg_write(UC_X86_REG_ESP, sp)
-    u.emu_start(CODE if native else gp.FNS[k][1], STOP, count=10000)
+    run_checked(u, CODE if native else gp.FNS[k][1], STOP, count=10000)
     return bytes(u.mem_read(RESULT, 12)), u.reg_read(UC_X86_REG_ESP), u.reg_read(UC_X86_REG_EAX)
 
 
@@ -193,7 +195,7 @@ def chord(n, native, hit_shift=None):
     u.mem_write(sp, pack(STOP, TRACK, RESULT))
     u.reg_write(UC_X86_REG_ESP, sp)
     u.reg_write(UC_X86_REG_ECX, tpl)
-    u.emu_start(CODE if native else gp.FNS[2][1], STOP, count=10000)
+    run_checked(u, CODE if native else gp.FNS[2][1], STOP, count=10000)
     return bytes(u.mem_read(RESULT, 12)), seen, u.reg_read(UC_X86_REG_ESP)
 
 

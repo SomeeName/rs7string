@@ -4,6 +4,7 @@
 #include "features/publish/publish.h"
 #include "features/string7/string7.h"
 #include "features/strings/hooks.h"
+#include "model/instrument.h"
 #include "platform/log.h"
 
 using namespace rs7gs;
@@ -14,9 +15,9 @@ namespace {
 void ShowLikeStrings(uint8_t* gs, uint8_t* obj) {
     if (uint8_t* e = Entity(obj)) {
         GameShow(e, 1);
-        if (Rd<uint8_t>(gs, 0x39)) {
+        if (UncheckedRead<uint8_t>(gs, 0x39)) {
             GameFade(e, true, rs7head::kRaiseFadeIn);
-        } else if (Rd<uint8_t>(gs, 0x38)) {
+        } else if (UncheckedRead<uint8_t>(gs, 0x38)) {
             GameFade(e, false, 0.05f);
         }
     }
@@ -34,20 +35,21 @@ void Hide(uint8_t* main, uint8_t* ghost) {
     }
 }
 
-// C-lite: the guitar shows the count it was built with (RefreshCounts: 4 bass, 6, 7 or 8); this only shows or
-// hides the added string objects accordingly (the first frame after a load starts from the stock width, so the
-// added strings fade in with the stock ones).
+// C-lite keeps the build count for gameplay; string7_line only changes the added objects' visibility.
+// The first frame after a load starts from the stock width, so the added strings fade in with the stock ones.
 void FrameBuildCount(uint8_t* guitar, uint8_t* gs, uint8_t* info) {
-    const uint8_t now = Rd<uint8_t>(info, kInfoActive);
-    uint8_t& shown = At<uint8_t>(gs, kTail);
-    const uint8_t before = shown ? shown : now == 4 ? 4 : 6;  // first frame: the stock width
-    const bool loaded = Rd<uint8_t>(gs, kTail + 2) != Rd<uint8_t>(gs, kTail + 1);
+    const bool bass = rs7::IsBassKind(UncheckedRead<uint8_t>(info, rs7::kInfoKind));
+    const uint8_t stock = bass ? 4 : 6;
+    const uint8_t now = g_rs7_s7_on ? UncheckedRead<uint8_t>(info, kInfoActive) : stock;
+    uint8_t& shown = UncheckedField<uint8_t>(gs, kTail);
+    const uint8_t before = shown ? shown : stock;  // first frame: the stock width
+    const bool loaded = UncheckedRead<uint8_t>(gs, kTail + 2) != UncheckedRead<uint8_t>(gs, kTail + 1);
 
-    if (now != before && Upto(&g_strings.logRaise, 6)) {
+    if (now != before && Rs7Log_Upto(&g_strings.logRaise, 6)) {
         Rs7Log("gsnative: guitar %p shows %u strings (was %u)", guitar, now, before);
     }
 
-    for (int s = 6; s < 8; ++s) {
+    for (int s = stock; s < (bass ? 6 : 8); ++s) {
         if (s < now) {
             if (s >= before || loaded) {
                 ShowLikeStrings(gs, Child(gs, s, false));
@@ -58,18 +60,18 @@ void FrameBuildCount(uint8_t* guitar, uint8_t* gs, uint8_t* info) {
     }
 
     shown = now;
-    At<uint8_t>(gs, kTail + 2) = Rd<uint8_t>(gs, kTail + 1);
+    UncheckedField<uint8_t>(gs, kTail + 2) = UncheckedRead<uint8_t>(gs, kTail + 1);
 }
 
 // The 7th string line: `want` raises the active count to the loaded one, its absence lowers it to the stock count.
 void FrameSeventh(uint8_t* guitar, uint8_t* gs, uint8_t* info, bool want) {
-    const uint8_t stock = Rd<uint8_t>(info, 0x0B);
-    const uint8_t loaded = Rd<uint8_t>(info, kInfoLoaded);
-    const uint8_t before = Rd<uint8_t>(info, kInfoActive);
+    const uint8_t stock = UncheckedRead<uint8_t>(info, rs7::kInfoStrings);
+    const uint8_t loaded = UncheckedRead<uint8_t>(info, kInfoLoaded);
+    const uint8_t before = UncheckedRead<uint8_t>(info, kInfoActive);
     const uint8_t lo = stock < loaded ? stock : loaded;
     // Lowered only after kLowerFrames frames without the 7th string, as the native PegSet does: a
     // tuner -> song hand-over drops the tuner's mark a few frames before S4 marks the song.
-    uint8_t& unwanted = At<uint8_t>(gs, kTail + 0);
+    uint8_t& unwanted = UncheckedField<uint8_t>(gs, kTail + 0);
 
     if (want) {
         unwanted = 0;
@@ -82,31 +84,31 @@ void FrameSeventh(uint8_t* guitar, uint8_t* gs, uint8_t* info, bool want) {
     uint8_t* m6 = Child(gs, kStock, false);
 
     if (now > before) {
-        At<uint8_t>(info, kInfoActive) = now;
+        UncheckedField<uint8_t>(info, kInfoActive) = now;
         _InterlockedIncrement(&g_strings.raised);
         _InterlockedIncrement(&g_strings.active7);
         ShowLikeStrings(gs, m6);
-        if (Upto(&g_strings.logRaise, 6)) {
+        if (Rs7Log_Upto(&g_strings.logRaise, 6)) {
             Rs7Log("gsnative: guitar %p shows the 7th string (active %u -> %u; strings faded in %u, out %u)", guitar,
-                   before, now, Rd<uint8_t>(gs, 0x39), Rd<uint8_t>(gs, 0x38));
+                   before, now, UncheckedRead<uint8_t>(gs, 0x39), UncheckedRead<uint8_t>(gs, 0x38));
         }
     } else if (now < before) {
-        At<uint8_t>(info, kInfoActive) = now;
+        UncheckedField<uint8_t>(info, kInfoActive) = now;
         _InterlockedIncrement(&g_strings.lowered);
         _InterlockedDecrement(&g_strings.active7);
         Hide(m6, Child(gs, kStock, true));
-        if (Upto(&g_strings.logLower, 6)) {
+        if (Rs7Log_Upto(&g_strings.logLower, 6)) {
             Rs7Log("gsnative: guitar %p hides the 7th string (active %u -> %u)", guitar, before, now);
         }
     }
 
     // Inactive: the load's take un-culled string 6 (0x595B40); cull it after every load.
-    if (now <= kStock && Rd<uint8_t>(gs, kTail + 2) != Rd<uint8_t>(gs, kTail + 1)) {
-        At<uint8_t>(gs, kTail + 2) = Rd<uint8_t>(gs, kTail + 1);
+    if (now <= kStock && UncheckedRead<uint8_t>(gs, kTail + 2) != UncheckedRead<uint8_t>(gs, kTail + 1)) {
+        UncheckedField<uint8_t>(gs, kTail + 2) = UncheckedRead<uint8_t>(gs, kTail + 1);
         if (uint8_t* e = Entity(m6)) {
             GameShow(e, 0);
         }
-        if (Upto(&g_strings.logLoad, 4)) {
+        if (Rs7Log_Upto(&g_strings.logLoad, 4)) {
             Rs7Log("gsnative: guitar %p loaded, 7th string culled (not shown)", guitar);
         }
     }
@@ -118,13 +120,13 @@ uint8_t* Rs7Gs_Active(uint8_t* gs, int s, bool ghost) {
         return nullptr;
     }
 
-    uint8_t* info = Rd<uint8_t*>(gs, kInfo);
-    if (!Rs7Gs_InfoNative(info) || Rd<uint8_t>(info, kInfoActive) <= s) {
+    uint8_t* info = UncheckedRead<uint8_t*>(gs, kInfo);
+    if (!Rs7Gs_InfoNative(info) || UncheckedRead<uint8_t>(info, kInfoActive) <= s) {
         return nullptr;
     }
 
     uint8_t* obj = Child(gs, s, ghost);
-    if (!obj || !Entity(obj) || !Rd<uint8_t>(obj, 0x50)) {
+    if (!obj || !Entity(obj) || !UncheckedRead<uint8_t>(obj, 0x50)) {
         return nullptr;
     }
 
@@ -136,8 +138,8 @@ bool Rs7Gs_Frame(uint8_t* guitar, uint8_t* gs, bool want) {
         return false;
     }
 
-    uint8_t* info = Rd<uint8_t*>(gs, kInfo);
-    if (!Rs7Gs_InfoNative(info) || !Rd<uint8_t>(gs, kTail + 3)) {
+    uint8_t* info = UncheckedRead<uint8_t*>(gs, kInfo);
+    if (!Rs7Gs_InfoNative(info) || !UncheckedRead<uint8_t>(gs, kTail + 3)) {
         return true;
     }
 

@@ -1,0 +1,142 @@
+# Documentation site. Build: uv run --group docs mkdocs build --strict
+# Published to GitHub Pages from the public repository only (.github/workflows/pages.yml).
+site_name: rs7string
+site_description: Seven- and eight-string guitars and five- and six-string basses for Rocksmith 2014 Remastered
+site_url: https://someename.github.io/rs7string/
+repo_url: https://github.com/SomeeName/rs7string
+docs_dir: site-src
+site_dir: site
+hooks:
+  - tools/mkdocs_hooks.py
+
+theme:
+  name: material
+  language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    logo: material/guitar-electric
+    repo: fontawesome/brands/github
+  favicon: docs/assets/favicon.svg
+  palette:
+    # Follows the system setting until the reader picks light or dark with the toggle.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+copyright: rs7string is MIT licensed. Rocksmith is a trademark of Ubisoft; this project is not affiliated with Ubisoft.
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SomeeName/rs7string
+      name: rs7string on GitHub
+
+extra_css:
+  - docs/assets/extra.css
+
+extra_javascript:
+  - docs/assets/tables.js
+
+markdown_extensions:
+  - admonition
+  - github-callouts  # GitHub "> [!NOTE]" boxes, so the same Markdown renders on GitHub and on the site
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: false
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+
+# site-src/ is staged by tools/mkdocs_hooks.py from README.md, CONTRIBUTING.md, AGENTS.md and docs/, without the
+# paths listed in .publicignore (private-only files); tools/tests/test_public_tree.py checks the hook.
+
+nav:
+  - Home: README.md
+  - Players:
+      - Start here: docs/release/README.md
+      - Install: docs/release/INSTALL.md
+      - Settings: docs/release/SETTINGS.md
+      - Changelog: docs/release/CHANGELOG.md
+  - Chart authors:
+      - Charting guide: docs/release/CHARTING.md
+      - Chart tools: docs/release/CHART-TOOLS.md
+      - RS7X specification: docs/release/RS7X-SPEC.md
+  - Developers:
+      - Start here: docs/GETTING-STARTED.md
+      - Development: docs/DEVELOPMENT.md
+      - Architecture:
+          - Overview: docs/ARCHITECTURE.md
+          - docs/architecture/01-what-the-mod-does.md
+          - docs/architecture/02-patch-mechanism.md
+          - docs/architecture/03-the-string-count-model.md
+          - docs/architecture/04-native-capacity-8-layouts.md
+          - docs/architecture/05-rendering-the-extra-strings.md
+          - docs/architecture/06-detection-and-scoring.md
+          - docs/architecture/07-chords-on-the-extra-strings.md
+          - docs/architecture/08-tuner-and-tuning-names.md
+          - docs/architecture/09-chord-diagrams.md
+          - docs/architecture/10-plain-psarc-loading.md
+          - docs/architecture/11-window-input-overlay-logging.md
+          - docs/architecture/12-eight-strings.md
+          - docs/architecture/13-known-limitations-and-open-risks.md
+          - docs/architecture/14-mid-hook-contract-and-cold-site-conversion.md
+          - docs/architecture/15-source-layout.md
+      - Contributing: CONTRIBUTING.md
+      - Releasing: docs/RELEASING.md
+      - Test checklist: docs/TEST-CHECKLIST.md
+      - Agents:
+          - Rules and gates: AGENTS.md
+          - Code structure: docs/agents/code-structure.md
+          - Hook sites: docs/agents/hook-sites.md
+          - Docs and testing: docs/agents/docs-and-testing.md

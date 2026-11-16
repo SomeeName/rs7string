@@ -2,8 +2,7 @@
     Format (default) or check (-Check) the C++ and Python sources.
       .\scripts\format.ps1           rewrite files in place (clang-format, tools\blank_lines.py, ruff format, ruff check --fix)
       .\scripts\format.ps1 -Check    change nothing, list unformatted files, exit 1 if there are any
-    Config: .clang-format (braces, layout), tools\blank_lines.py (blank lines between statements, AGENTS.md
-    "Code structure"), [tool.ruff] in pyproject.toml. Generated files are never formatted: fix the
+    Config: .clang-format (braces, layout), tools\blank_lines.py (blank lines between statements, docs/agents/code-structure.md), [tool.ruff] in pyproject.toml. Generated files are never formatted: fix the
     generator (tools\gen_*.py) instead.
 #>
 param([switch]$Check)
@@ -37,7 +36,9 @@ function Find-ClangFormat {
 
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
-    $tracked = @(git ls-files) | ForEach-Object { $_.Replace('\', '/') }
+    $files = @(git ls-files)
+    if ($LASTEXITCODE) { throw 'git ls-files failed' }
+    $tracked = $files | ForEach-Object { $_.Replace('\', '/') }
     $keep = { param($p) -not (Test-Excluded $p $PermanentExclude) }
     $cpp = @($tracked | Where-Object { $_ -match '^(src|tests|fuzz)/.*\.(cpp|h)$' -and (& $keep $_) })
     $py = @($tracked | Where-Object { $_ -match '^(tools|scripts)/.*\.py$' -and (& $keep $_) })

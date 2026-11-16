@@ -144,3 +144,16 @@ TEST(rsmods_colour_proxy_rejects_missing_or_unidentified_files) {
     CHECK(!rs7rsmods::ReadProxy(file.c_str()).valid);
     CHECK(DeleteFileW(file.c_str()));
 }
+
+TEST(rsmods_colour_proxy_exports_are_read_without_loading_code) {
+    wchar_t kernel[MAX_PATH] = {};
+
+    CHECK(GetModuleFileNameW(GetModuleHandleW(L"kernel32.dll"), kernel, MAX_PATH) != 0);
+    CHECK(rs7rsmods::ProxyExports(kernel, "GetProcAddress"));
+    CHECK(!rs7rsmods::ProxyExports(kernel, "RSMods_BridgeDriverLog"));
+    CHECK(!rs7rsmods::ProxyExports(nullptr, "GetProcAddress"));
+    CHECK(!rs7rsmods::ProxyExports(L"Z:\\missing\\xinput1_3.dll", "GetProcAddress"));
+    // A system DLL with neither RSMods' version resource nor Audio Bridge's export is not RSMods.
+    CHECK(!rs7rsmods::IsAudioBridge(kernel));
+    CHECK(!rs7rsmods::Identify(kernel));
+}

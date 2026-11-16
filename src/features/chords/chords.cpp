@@ -1,4 +1,4 @@
-// Chord logic: the old M4 template codec (name[31]). Values in, values out.
+// Chord logic: the old template codec (name[31]). Values in, values out.
 #include "features/chords/chords.h"
 #include <cstring>
 

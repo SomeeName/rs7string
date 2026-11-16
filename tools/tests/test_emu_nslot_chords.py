@@ -20,7 +20,7 @@ from emu_harness import ALL_REGS, NS_BEGIN, NS_SUPER, S7_ESP, S7_MEM, needs_emu,
 pytestmark = needs_emu
 
 
-# ---- native N-slot chord data (issue #18 stage 2): template / ChordNotes pointer redirects -------
+# ---- native N-slot chord data: template / ChordNotes pointer redirects -------
 
 # site: (id register, stock vector begin register, destination register)
 NS_TP = {
@@ -47,14 +47,32 @@ def run_ns(emus, sid: str, idx: int):
 
 
 @pytest.mark.parametrize("sid", sorted({**NS_TP, **NS_CP}))
-def test_ns_redirect_without_a_registered_song_is_stock(emus, sid):
+def test_ns_redirect_without_a_registered_song_is_empty_and_widened(emus, sid):
     _, patched = emus
     ns_set(patched, [(0x1000, 50, 0x5000, 0x2000, 50, 0x6000, 1, 50)])  # another song only
     try:
         stock, ours = run_ns(emus, sid, 3)
     finally:
         ns_set(patched, [])
-    assert ours == stock
+    dst = ALL_REGS.index({**NS_TP, **NS_CP}[sid][2])
+    want = list(stock[0])
+    want[dst] = ours[0][dst]
+    assert list(ours[0]) == want and ours[2:] == stock[2:]
+    assert ours[0][dst] != stock[0][dst]
+    assert_empty_record(patched, ours[0][dst], sid in NS_TP)
+
+
+def assert_empty_record(emu, pointer, template):
+    if template:
+        raw = emu.read(pointer, 0x80)
+        assert raw[4:0x28] == b"\xff" * 0x24
+        assert raw[0x48:0x78] == b"\xff" * 0x30
+        assert raw[0x78:] == b"\x06" + bytes(7)
+    else:
+        raw = emu.read(pointer, 0x15A8)
+        assert raw[0x948:0x968] == bytes(32)
+        assert raw[0x968:0x978] == b"\xff" * 16
+        assert raw[0x978:] == bytes(0x15A8 - 0x978)
 
 
 @pytest.mark.parametrize("sid", sorted(NS_TP))
@@ -71,6 +89,10 @@ def test_ns_template_redirect_returns_the_t8_record(emus, sid, idx, inside):
     want = list(stock[0])
     if inside:
         want[dst] = NS_SUPER + idx * 0x80
+    else:
+        want[dst] = ours[0][dst]
+        assert want[dst] != stock[0][dst]
+        assert_empty_record(patched, want[dst], True)
     assert list(ours[0]) == want and ours[2:] == stock[2:]
 
 
@@ -88,6 +110,10 @@ def test_ns_chordnotes_redirect_returns_the_c8_record(emus, sid, idx, inside):
     want = list(stock[0])
     if inside:
         want[dst] = NS_SUPER + 0x100000 + idx * 0x15A8
+    else:
+        want[dst] = ours[0][dst]
+        assert want[dst] != stock[0][dst]
+        assert_empty_record(patched, want[dst], False)
     assert list(ours[0]) == want and ours[2:] == stock[2:]
 
 
@@ -133,6 +159,6 @@ def test_ds1_double_stop_count_reads_t8_frets(emus, idx):
     )
     assert (ours[0][r[UC_X86_REG_EAX]], ours[0][r[UC_X86_REG_ECX]], ours[0][r[UC_X86_REG_EDX]]) == (
         NS_SUPER + idx * 0x80 + 0x48,
-        7,
+        8,  # all eight slots: the 8th string counts (an unused slot is -1)
         0,
     )

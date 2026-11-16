@@ -9,13 +9,12 @@ const Rs7Hook* Rs7_FindHook(const char* id);
 // The group of a hook that Rs7_FindHook returned.
 Rs7Feature Rs7_FeatureOf(const Rs7Hook& h);
 // Marks the group failed: Rs7_ShouldPatch is false for all its sites from now on and the group's runtime
-// switch is cleared (native colours -> stock six-column manager with the legacy C1-C5 colour sites).
-// Returns false (and changes nothing) for Core. Idempotent.
+// switches are cleared, with the groups that depend on it. Returns false (and changes nothing) for Core. Idempotent.
 bool Rs7_DisableFeature(Rs7Feature f);
 bool Rs7_FeatureDisabled(Rs7Feature f);
 void Rs7_ResetFeatureFailures();  // tests
 // Whether Rs7_Startup writes the hook's site (every site is resolved either way; ref sites never).
-bool Rs7_ShouldPatch(const Rs7Hook& h, bool diagnostics, bool vguitar = false, bool nativePegs = false,
+bool Rs7_ShouldPatch(const Rs7Hook& h, bool diagnostics, bool privateOn = false, bool nativePegs = false,
                      bool nativeStrings = false);
 // The groups as platform/isolate.h's failure policy (src/registry.cpp).
 struct Rs7GroupPolicy;

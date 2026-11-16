@@ -10,16 +10,21 @@
 // Normalize once so all readers address the same file. Empty means invalid/overlong input.
 std::wstring Rs7Config_ResolveIniPath(const wchar_t* iniPath);
 
-// Missing keys use def; malformed/truncated/out-of-range values return zero and log.
+// The longest ini value any reader accepts, in characters (GetPrivateProfileString strips surrounding blanks). The
+// settings store's Text buffer (kRs7SetTextMax, platform/settings.h) holds this many plus the terminator.
+constexpr int kRs7IniValueMax = 259;
+
+// Missing keys use def; malformed/too long/out-of-range values return zero and log.
 int Rs7Config_ReadInt(const wchar_t* section, const wchar_t* key, int def, const wchar_t* iniPath, int hi = 1);
 
-// The text of a key ("" = missing or empty; GetPrivateProfileString strips surrounding blanks). A value of 255 or
-// more characters is not cut short (a truncated "C8C8C8   junk" would parse): *tooLong is set and the caller treats
-// the value as invalid.
+// The text of a key ("" = missing or empty). A value longer than kRs7IniValueMax is not cut short (a truncated
+// "C8C8C8   junk" would parse): *tooLong is set and the caller treats the value as invalid.
 std::wstring Rs7Config_ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, bool* tooLong);
 
-// For keys where a present but empty value is a choice: false when the key is missing, else *out = its text.
-bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out);
+// For keys where a present but empty value is a choice: false when the key is missing, else *out = its text and, if
+// tooLong is given, whether the value was longer than kRs7IniValueMax (then *out is only a prefix).
+bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out,
+                           bool* tooLong = nullptr);
 
 // "C8C8C8", "#c8c8c8", surrounding blanks/tabs ok; exactly six hex digits. *rgb untouched on failure.
 bool Rs7_ParseRgb(const wchar_t* text, uint32_t* rgb);

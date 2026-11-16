@@ -1,12 +1,15 @@
 // The hook table list (kTables) and the group lookup over it (hook_rules.h), the groups as isolate's policy.
+#include "features/arrangements/arrangements.h"
 #include "features/chords/chords.h"
 #include "features/clite/clite.h"
 #include "features/colours/colours.h"
 #include "features/diag/diag.h"
 #include "features/diagrams/diagrams.h"
+#include "features/extras/extras.h"
 #include "features/fretgrid/fretgrid.h"
 #include "features/frets/frets.h"
 #include "features/headstock/headstock.h"
+#include "features/menuload/menuload.h"
 #include "features/nextgrid/nextgrid.h"
 #include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
@@ -18,7 +21,6 @@
 #include "features/strings/strings.h"
 #include "features/testdrive/testdrive.h"
 #include "features/tuner/tuner.h"
-#include "features/vguit/vguit.h"
 #include "hook_rules.h"
 #include "platform/isolate.h"
 #include <cstring>
@@ -26,12 +28,16 @@
 namespace {
 // One line per feature table (src/features/<name>/registration.cpp).
 const Rs7HookTable* const kTables[] = {
-    &kRs7ColourRefHooks,  &kRs7DiagHooks,         &kRs7SongEndHooks,    &kRs7LoadProbeHooks, &kRs7CliteHooks,
-    &kRs7PsarcHooks,      &kRs7VguitHooks,        &kRs7TunerHooks,      &kRs7TunerCoreHooks, &kRs7ColourHooks,
-    &kRs7GlowHooks,       &kRs7ChordHooks,        &kRs7DiagramHooks,    &kRs7HeadstockHooks, &kRs7HeadstockCoreHooks,
-    &kRs7PublishHooks,    &kRs7FretgridHooks,     &kRs7NextgridHooks,   &kRs7FretHooks,      &kRs7StringsHooks,
-    &kRs7SceneHooks,      &kRs7String7Hooks,      &kRs7PitchHooks,      &kRs7PitchCoreHooks, &kRs7NslotHooks,
-    &kRs7ChordFrameHooks, &kRs7FretgridCoreHooks, &kRs7TestVariantHooks};
+    &kRs7ColourRefHooks,    &kRs7DiagHooks,        &kRs7SongEndHooks,     &kRs7LoadProbeHooks,     &kRs7CliteHooks,
+    &kRs7PsarcHooks,        &kRs7TunerHooks,       &kRs7TunerCoreHooks,   &kRs7ColourHooks,        &kRs7GlowHooks,
+    &kRs7ChordHooks,        &kRs7DiagramHooks,     &kRs7HeadstockHooks,   &kRs7HeadstockCoreHooks, &kRs7PublishHooks,
+    &kRs7FretgridHooks,     &kRs7NextgridHooks,    &kRs7FretHooks,        &kRs7StringsHooks,       &kRs7SceneHooks,
+    &kRs7String7Hooks,      &kRs7PitchHooks,       &kRs7PitchCoreHooks,   &kRs7NslotHooks,         &kRs7ChordFrameHooks,
+    &kRs7FretgridCoreHooks, &kRs7TestVariantHooks, &kRs7ArrangementHooks, &kRs7NslotEightHooks,    &kRs7MenuLoadHooks,
+#if RS7_PRIVATE
+    &kRs7PrivateHooks,  // the private extras (src/features/extras/extras.h)
+#endif
+};
 constexpr size_t kTableCount = sizeof kTables / sizeof kTables[0];
 
 // kRs7Groups: the platform's integer groups to and from Rs7Feature.
@@ -63,8 +69,8 @@ const Rs7Hook* Rs7_FindHook(const char* id) {
 }
 
 Rs7Feature Rs7_FeatureOf(const Rs7Hook& h) {
-    if (h.ref) {
-        return Rs7Feature::Core;  // data references are shared with the core
+    if (h.ref && !h.gates) {
+        return Rs7Feature::Core;  // data references are shared with the core; a gated one serves only its feature
     }
 
     const Rs7HookTable* t = Rs7_TableOf(kTables, kTableCount, h);

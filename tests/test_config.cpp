@@ -5,14 +5,12 @@
 #include <cstdio>
 #include <cwchar>
 #include <string>
+#include <vector>
 
 TEST(config_missing_file_uses_the_native_defaults) {
     const Rs7TestConfig c = Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini");
 
     CHECK(!c.found);
-    CHECK(c.nativeChordloops);
-    CHECK_EQ(c.nativeChordloopsRaw, 1);
-    CHECK(!c.eight);
     CHECK(c.tunerLowRange);
     CHECK_EQ(c.tunerLowRangeRaw, 1);
     CHECK_EQ(c.removedKeys, 0);
@@ -28,6 +26,17 @@ TEST(config_removed_keys_are_ignored_and_counted) {
     CHECK(c.found);
     CHECK_EQ(c.removedKeys, 1);
     CHECK(c.diagnostics);
+    DeleteFileW(p.c_str());
+}
+
+TEST(config_keys_removed_with_the_settings_cleanup_are_counted) {
+    const std::wstring p = rs7test::TempIni(
+        L"config", "[neck]\r\nstring7_v=0.3\r\nfret_extend=0\r\nfret_halflen=4.25\r\nheadstock_peg=0\r\n[color]\r\n"
+                   "ramp_swap=0\r\nallow_inexact=1\r\n[chords]\r\nframe_scale=1.2\r\nframe_axis=0\r\n");
+    const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
+
+    CHECK_EQ(c.removedKeys, 8);
+    CHECK(c.string7Line);
     DeleteFileW(p.c_str());
 }
 
@@ -74,9 +83,7 @@ TEST(config_color_defaults) {
 
     CHECK_EQ(c.string6Rgb, 0xC8C8C8u);
     CHECK_EQ(c.string6RgbCb, 0xC8C8C8u);
-    CHECK(c.rampSwap && !c.allowInexact && c.colorValid && !c.colorCbSet);
-    CHECK_EQ(c.rampSwapRaw, 1);
-    CHECK_EQ(c.allowInexactRaw, 0);
+    CHECK(c.colorValid && !c.colorCbSet);
 }
 
 TEST(config_color_cb_defaults_to_the_normal_colour) {
@@ -86,18 +93,17 @@ TEST(config_color_cb_defaults_to_the_normal_colour) {
     CHECK_EQ(c.string6Rgb, 0xFF00FFu);
     CHECK_EQ(c.string6RgbCb, 0xFF00FFu);
     CHECK(c.colorValid && !c.colorCbSet && c.colorCbValid && c.string6Raw == L"FF00FF");
-    CHECK(c.rampSwap && !c.allowInexact);
     DeleteFileW(p.c_str());
 }
 
-TEST(config_color_cb_and_switches) {
+TEST(config_color_cb_and_the_removed_ramp_switches) {
     const std::wstring p = rs7test::TempIni(
         L"config", "[color]\r\nstring6_color=FF00FF\r\nstring6_color_cb=00FFFF\r\nramp_swap=0\r\nallow_inexact=1\r\n");
     const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
 
     CHECK_EQ(c.string6RgbCb, 0x00FFFFu);
-    CHECK(c.colorCbSet && c.colorCbValid && !c.rampSwap && c.allowInexact);
-    CHECK(c.rampSwapRaw == 0 && c.allowInexactRaw == 1);
+    CHECK(c.colorCbSet && c.colorCbValid);
+    CHECK_EQ(c.removedKeys, 2);  // ramp_swap, allow_inexact: removed before 1.0, ignored
     DeleteFileW(p.c_str());
 }
 
@@ -169,61 +175,12 @@ TEST(config_string7_line_defaults_on_and_can_be_switched_off) {
     DeleteFileW(p.c_str());
 }
 
-TEST(config_string7_v_defaults) {
-    Rs7TestConfig c = Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini");
-
-    CHECK(c.string7VValid);
-    CHECK(c.string7V == 0.4f);
-    const std::wstring p = rs7test::TempIni(L"config", "[neck]\r\nstring7_line=1\r\n");
-
-    c = Rs7Test_LoadConfig(p.c_str());
-    CHECK(c.string7VValid && c.string7V == 0.4f && c.string7VRaw.empty());
-    DeleteFileW(p.c_str());
-}
-
-TEST(config_string7_v_set) {
-    const std::wstring p = rs7test::TempIni(L"config", "[neck]\r\nstring7_v=0.3\r\nstring7_draw_fix=0\r\n");
-    const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
-
-    CHECK(c.string7VValid);
-    CHECK(c.string7V == 0.3f);
-    CHECK_EQ(c.removedKeys, 1);  // string7_draw_fix: removed in 1.0 with the S7 object
-    DeleteFileW(p.c_str());
-}
-
-TEST(config_string7_v_invalid_keeps_the_default_and_the_text) {
-    for (const char* bad :
-         {"[neck]\r\nstring7_v=abc\r\n", "[neck]\r\nstring7_v=0.95\r\n", "[neck]\r\nstring7_v=-0.1\r\n",
-          "[neck]\r\nstring7_v=0.3x\r\n", "[neck]\r\nstring7_v=nan\r\n"}) {
-        const std::wstring p = rs7test::TempIni(L"config", bad);
-        const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
-
-        CHECK(!c.string7VValid);
-        CHECK(c.string7V == 0.4f);
-        CHECK(!c.string7VRaw.empty());
-        DeleteFileW(p.c_str());
-    }
-}
-
 TEST(config_song_end_log_defaults_on_and_can_be_switched_off) {
     CHECK(Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini").songEndLog);
     const std::wstring p = rs7test::TempIni(L"config", "[debug]\r\nsong_end_log=0\r\n");
 
     CHECK(!Rs7Test_LoadConfig(p.c_str()).songEndLog);
     DeleteFileW(p.c_str());
-}
-
-TEST(parse_atlas_row) {
-    float v = -1.0f;
-
-    CHECK(Rs7_ParseAtlasRow(L"0", &v) && v == 0.0f);
-    CHECK(Rs7_ParseAtlasRow(L" 0.9 ", &v) && v == 0.9f);
-    CHECK(Rs7_ParseAtlasRow(L"0.25", &v) && v == 0.25f);
-    CHECK(!Rs7_ParseAtlasRow(L"", &v));
-    CHECK(!Rs7_ParseAtlasRow(L"  ", &v));
-    CHECK(!Rs7_ParseAtlasRow(L"1", &v));
-    CHECK(!Rs7_ParseAtlasRow(L"inf", &v));
-    CHECK(!Rs7_ParseAtlasRow(nullptr, &v));
 }
 
 TEST(config_missing_key_or_section_is_off) {
@@ -237,64 +194,14 @@ TEST(config_missing_key_or_section_is_off) {
     DeleteFileW(p.c_str());
 }
 
-TEST(config_fret_extend_defaults_on_with_the_estimated_half_length) {
-    Rs7TestConfig c = Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini");
-
-    CHECK(c.fretExtend && c.fretHalfLenValid && c.fretHalfLen == 4.61f);
-    const std::wstring p = rs7test::TempIni(L"config", "[neck]\r\nfret_extend=0\r\nfret_halflen=4.25\r\n");
-
-    c = Rs7Test_LoadConfig(p.c_str());
-    CHECK(!c.fretExtend);
-    CHECK_EQ(c.fretExtendRaw, 0);
-    CHECK(c.fretHalfLenValid && c.fretHalfLen == 4.25f);
-    DeleteFileW(p.c_str());
-}
-
-TEST(config_fret_halflen_invalid_keeps_the_default_and_the_text) {
-    for (const char* bad : {"[neck]\r\nfret_halflen=abc\r\n", "[neck]\r\nfret_halflen=0.5\r\n",
-                            "[neck]\r\nfret_halflen=25\r\n", "[neck]\r\nfret_halflen=4.6x\r\n"}) {
-        const std::wstring p = rs7test::TempIni(L"config", bad);
-        const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
-
-        CHECK(!c.fretHalfLenValid);
-        CHECK(c.fretHalfLen == 4.61f);
-        CHECK(!c.fretHalfLenRaw.empty());
-        DeleteFileW(p.c_str());
-    }
-}
-
-TEST(config_headstock_peg_defaults_on_and_can_be_switched_off) {
-    CHECK(Rs7Test_LoadConfig(L"Z:\\does\\not\\exist\\rs7string.ini").headstockPeg);
-    const std::wstring e = rs7test::TempIni(L"config", "[neck]\r\nstring7_line=1\r\n");
-
-    CHECK(Rs7Test_LoadConfig(e.c_str()).headstockPeg);
-    DeleteFileW(e.c_str());
-    const std::wstring p = rs7test::TempIni(L"config", "[neck]\r\nheadstock_peg=0\r\n");
-    const Rs7TestConfig c = Rs7Test_LoadConfig(p.c_str());
-
-    CHECK(!c.headstockPeg);
-    CHECK_EQ(c.headstockPegRaw, 0);
-    DeleteFileW(p.c_str());
-}
-
-TEST(config_eight_default_off_and_optin) {
-    CHECK(!Rs7Test_LoadConfig(L"Z:\\missing.ini").eight);
-    const auto p = rs7test::TempIni(L"config", "[neck]\r\neight=1\r\n");
-
-    CHECK(Rs7Test_LoadConfig(p.c_str()).eight);
-    DeleteFileW(p.c_str());
-}
-
 TEST(config_invalid_switches_fail_closed) {
     for (const std::string bad : std::vector<std::string>{"", "-1", "2", "1junk", "nan", std::string(1000, '9'),
                                                           "1" + std::string(300, ' ') + "junk"}) {
-        const auto p = rs7test::TempIni(L"config", ("[neck]\r\nfret_extend=" + bad + "\r\neight=" + bad +
-                                                    "\r\n[debug]\r\ndiagnostics=" + bad + "\r\n")
-                                                       .c_str());
+        const auto p = rs7test::TempIni(
+            L"config", ("[neck]\r\nstring7_line=" + bad + "\r\n[debug]\r\ndiagnostics=" + bad + "\r\n").c_str());
         const auto c = Rs7Test_LoadConfig(p.c_str());
 
-        CHECK(!c.fretExtend);
-        CHECK(!c.eight);
+        CHECK(!c.string7Line);
         CHECK(!c.diagnostics);
         DeleteFileW(p.c_str());
     }
@@ -310,28 +217,28 @@ TEST(config_malformed_autotune_is_disabled) {
 }
 
 TEST(config_relative_ini_is_read_from_the_current_directory) {
-    const auto p = rs7test::TempIni(L"config", "[neck]\r\nfret_extend=0\r\n");
-    wchar_t cwd[32768]{};
+    const auto p = rs7test::TempIni(L"config", "[neck]\r\nstring7_line=0\r\n");
+    std::vector<wchar_t> cwd(32768);  // 64 KB: on the heap, not the stack
 
-    CHECK(GetCurrentDirectoryW(32768, cwd) != 0);
+    CHECK(GetCurrentDirectoryW(DWORD(cwd.size()), cwd.data()) != 0);
     const auto slash = p.find_last_of(L"\\/");
 
     CHECK(SetCurrentDirectoryW(p.substr(0, slash).c_str()));
     const auto c = Rs7Test_LoadConfig(p.substr(slash + 1).c_str());
 
-    CHECK(SetCurrentDirectoryW(cwd));
+    CHECK(SetCurrentDirectoryW(cwd.data()));
     CHECK(c.found);
-    CHECK(!c.fretExtend);
+    CHECK(!c.string7Line);
     DeleteFileW(p.c_str());
 }
 
 TEST(config_unicode_ini_filename_uses_wide_file_apis) {
-    const auto p = rs7test::TempIni(L"config", "[neck]\r\nfret_extend=0\r\n");
+    const auto p = rs7test::TempIni(L"config", "[neck]\r\nstring7_line=0\r\n");
     const auto unicode = p + L".J\u00f6rg.ini";
 
     CHECK(MoveFileExW(p.c_str(), unicode.c_str(), MOVEFILE_REPLACE_EXISTING));
     const auto c = Rs7Test_LoadConfig(unicode.c_str());
 
-    CHECK(c.found && !c.fretExtend);
+    CHECK(c.found && !c.string7Line);
     DeleteFileW(unicode.c_str());
 }

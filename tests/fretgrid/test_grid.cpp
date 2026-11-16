@@ -1,5 +1,7 @@
 #include "features/fretgrid/fretgrid.h"
+#include "model/instrument.h"
 #include "test.h"
+#include <windows.h>
 #include <cstring>
 #include <vector>
 
@@ -92,24 +94,39 @@ TEST(fretgrid_extra_cells_need_both_source_cells) {
     CHECK_EQ(FillExtraCells(g.data(), 99), 0);  // clamped to 26 rows, still nothing valid
 }
 
-TEST(fretgrid_build_extra_is_off_by_default_and_only_for_six_string_infos) {
+TEST(fretgrid_build_extra_is_off_by_default_and_only_for_six_string_infos_on_native_grids) {
     std::vector<uint8_t> g(kSizeNative, 0);
     uint8_t info[0x40] = {};
 
-    info[0xB] = 6;
-    info[0xC] = 2;
+    info[rs7::kInfoStrings] = 6;
+    info[rs7::kInfoFrets] = 2;
     uint8_t* inf = info;
     uint8_t guitar[0x40] = {};
 
     std::memcpy(guitar + 0x24, &inf, 4);
     Cell(g.data(), 0, 0)[0] = 1;
     Cell(g.data(), 0, 1)[0] = 1;
-    const uintptr_t sw = g_rs7_native_fretgrid;
+    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
 
+    ResetRegistry();
     g_rs7_native_fretgrid = 0;
+    g_rs7_fg_row = kRowNative;
+    MarkNative(g.data());
     Rs7Fg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));  // switch off: nothing
     g_rs7_native_fretgrid = 1;
+    g_rs7_fg_row = kRowStock;  // switch on, layout not written yet (ConfigureDeferred)
+    Rs7Fg_BuildExtra(g.data(), guitar);
+    CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
+    g_rs7_fg_row = kRowNative;
+    ResetRegistry();  // a stock-size grid built before the layout (not registered): migrated later, not filled
+    Rs7Fg_BuildExtra(g.data(), guitar);
+    CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
+    DisableMigration();  // registry failure does not establish this grid's layout
+    Rs7Fg_BuildExtra(g.data(), guitar);
+    CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
+    ResetRegistry();
+    MarkNative(g.data());
     info[0xB] = 4;  // bass
     Rs7Fg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
@@ -117,7 +134,9 @@ TEST(fretgrid_build_extra_is_off_by_default_and_only_for_six_string_infos) {
     Rs7Fg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(1));
     Rs7Fg_BuildExtra(g.data(), nullptr);  // no crash
+    ResetRegistry();
     g_rs7_native_fretgrid = sw;
+    g_rs7_fg_row = row;
 }
 
 TEST(fretgrid_deferred_configure_keeps_the_stock_stride) {
@@ -176,10 +195,20 @@ TEST(fretgrid_registry_migrates_every_preexisting_grid_once) {
 namespace {
 int g_applyCalls = 0;
 
-bool FakeApply() {
+ApplyResult FakeApply(bool) {
     ++g_applyCalls;
 
-    return true;
+    return ApplyResult::Applied;
+}
+
+int g_retriesLeft = 0;
+bool g_sawLast = false;
+
+ApplyResult RetryingApply(bool lastAttempt) {  // the freeze times out g_retriesLeft times, then writes
+    ++g_applyCalls;
+    g_sawLast = g_sawLast || lastAttempt;
+
+    return g_retriesLeft-- > 0 ? ApplyResult::Retry : ApplyResult::Applied;
 }
 }  // namespace
 
@@ -217,8 +246,43 @@ TEST(fretgrid_update_before_the_deferred_handover_waits) {
     g_rs7_fg_row = row;
 }
 
-// Review #17: the registry is bounded (it used to grow with every grid ever created) and keeps recent grids.
-TEST(fretgrid_registry_is_bounded_and_evicts_oldest_first) {
+// 2026-10-30: a startup thread freeze that timed out (DEADLINE) switched the native layout - and with it the
+// native tuner, C-lite, GKT and native publish - off for the whole session. Nothing is written then, so the game
+// thread tries again on a later update; the stock layout stays meanwhile.
+TEST(fretgrid_timed_out_deferred_write_is_retried_on_a_later_update) {
+    using namespace rs7fg;
+    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+
+    ConfigureDeferred(true);
+    uint8_t grid[16] = {};
+    uint8_t guitar[0x40] = {};
+    uint8_t* gp = grid;
+
+    std::memcpy(guitar + 0x10, &gp, 4);
+    SetDeferredApply(&RetryingApply);
+    MarkNative(grid);
+    g_applyCalls = 0;
+    g_retriesLeft = 1;
+    g_sawLast = false;
+    OnGuitarUpdate(guitar);  // times out
+    CHECK_EQ(g_applyCalls, 1);
+    CHECK_EQ(RowStride(), kRowStock);
+    CHECK(LayoutPending());
+    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(1));
+    OnGuitarUpdate(guitar);  // too early for the next try
+    CHECK_EQ(g_applyCalls, 1);
+    Sleep(kApplyRetryMs + 50);
+    OnGuitarUpdate(guitar);
+    CHECK_EQ(g_applyCalls, 2);
+    CHECK(!g_sawLast);
+    CHECK_EQ(RowStride(), kRowNative);
+    CHECK(!LayoutPending());
+    ResetRegistry();
+    g_rs7_native_fretgrid = sw;
+    g_rs7_fg_row = row;
+}
+
+TEST(fretgrid_registry_exhaustion_never_makes_a_live_native_grid_look_stock) {
     using namespace rs7fg;
 
     ResetRegistry();
@@ -229,11 +293,15 @@ TEST(fretgrid_registry_is_bounded_and_evicts_oldest_first) {
         MarkNative(&mem[i]);
     }
 
-    CHECK_EQ(RegistrySize(), kRegistryCapacity);   // bounded
-    CHECK(NeedsMigration(&mem[0]));                // the oldest were evicted
-    CHECK(!NeedsMigration(&mem[mem.size() - 1]));  // the newest are native
-    CHECK(!NeedsMigration(&mem[40 + 1]));          // exactly the last kRegistryCapacity remain
-    MarkNative(&mem[mem.size() - 1]);              // re-marking a recycled address: no growth
+    CHECK_EQ(RegistrySize(), kRegistryCapacity);
+    CHECK(RegistryFailed());
+
+    for (size_t i = 0; i < mem.size(); ++i) {
+        CHECK(!NeedsMigration(&mem[i]));
+    }
+
+    CHECK(MarkNative(&mem[0]));  // existing registrations remain present
+    CHECK(!MarkNative(&mem[mem.size() - 1]));
     CHECK_EQ(RegistrySize(), kRegistryCapacity);
     ResetRegistry();
     CHECK_EQ(RegistrySize(), 0u);

@@ -13,9 +13,9 @@ extern uintptr_t g_rs7_resume_PP_SNGF, g_rs7_target_PP_SNGD;
 
 namespace {
 const Rs7Hook kHooks[] = {
-    {"PP_SNGD", reinterpret_cast<void*>(&Rs7_Stub_PP_SNGD), nullptr, &g_rs7_target_PP_SNGD, false, false},
-    {"PP_SNGF", nullptr, &g_rs7_resume_PP_SNGF, nullptr, false, false, false, 0, 0, &Rs7_Mid_PP_SNGF},
-    {"PP_TOC", nullptr, nullptr, nullptr, false, false, false, 0, 0, &Rs7_Mid_PP_TOC},
+    Rs7_Stub("PP_SNGD", reinterpret_cast<void*>(&Rs7_Stub_PP_SNGD), nullptr, &g_rs7_target_PP_SNGD),
+    Rs7_Mid("PP_SNGF", &Rs7_Mid_PP_SNGF, &g_rs7_resume_PP_SNGF),
+    Rs7_Mid("PP_TOC", &Rs7_Mid_PP_TOC),
 };
 }  // namespace
 

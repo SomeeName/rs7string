@@ -1,5 +1,5 @@
 #include "d3d/swap_texio.h"
-#include "platform/dxt.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -50,7 +50,7 @@ bool FitsLevel(IDirect3DTexture9* t, UINT k, const Rs7Image& im, char* why, size
 }
 }  // namespace
 
-bool ReadLevels(IDirect3DTexture9* t, uint32_t fmt, std::vector<Rs7Image>& out, char* why, size_t whyLen) {
+bool ReadLevels(IDirect3DTexture9* t, std::vector<Rs7Image>& out, char* why, size_t whyLen) {
     for (UINT k = 0; k < out.size(); ++k) {
         D3DSURFACE_DESC d{};
         D3DLOCKED_RECT lr{};
@@ -60,40 +60,35 @@ bool ReadLevels(IDirect3DTexture9* t, uint32_t fmt, std::vector<Rs7Image>& out, 
             return false;
         }
 
+        if (d.Format != D3DFMT_A8R8G8B8 && d.Format != D3DFMT_X8R8G8B8) {  // rows below are read as 32-bit pixels
+            std::snprintf(why, whyLen, "level %u: format %u is not 32-bit RGB", k, unsigned(d.Format));
+            return false;
+        }
+
         Rs7Image& im = out[k];
 
         im.w = d.Width;
         im.h = d.Height;
         im.px.assign(size_t(im.w) * im.h, 0);
-        HRESULT hr = t->LockRect(k, &lr, nullptr, D3DLOCK_READONLY);
 
-        if (FAILED(hr)) {
-            std::snprintf(why, whyLen, "LockRect level %u: %08lX", k, hr);
+        if (!LockLevel(t, k, &lr, D3DLOCK_READONLY)) {
+            std::snprintf(why, whyLen, "LockRect level %u failed", k);
             return false;
         }
 
-        g_locked = {t, k};
-        bool ok = true;
         const auto* src = static_cast<const uint8_t*>(lr.pBits);
 
-        if (fmt == kRs7FmtDxt1 || fmt == kRs7FmtDxt5) {
-            const size_t blockRows = (im.h + 3) / 4;
+        if (!src) {  // never after a successful LockRect; keeps the copy below provably non-null
+            UnlockLevel(t, k);
+            std::snprintf(why, whyLen, "LockRect level %u returned no bits", k);
+            return false;
+        }
 
-            ok = Rs7_DecodeDxt(src, size_t(lr.Pitch) * blockRows, size_t(lr.Pitch), im.w, im.h, fmt == kRs7FmtDxt5,
-                               im.px.data(), im.px.size());
-            if (!ok) {
-                std::snprintf(why, whyLen, "DXT decode level %u failed", k);
-            }
-        } else {
-            for (unsigned y = 0; y < im.h; ++y) {
-                std::memcpy(&im.px[size_t(y) * im.w], src + size_t(y) * lr.Pitch, size_t(im.w) * 4);
-            }
+        for (unsigned y = 0; y < im.h; ++y) {
+            std::memcpy(&im.px[size_t(y) * im.w], src + size_t(y) * lr.Pitch, size_t(im.w) * 4);
         }
 
         UnlockLevel(t, k);
-        if (!ok) {
-            return false;
-        }
     }
 
     return true;
@@ -114,6 +109,12 @@ bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<Rs7Image>& b, char
 
         auto* dst = static_cast<uint8_t*>(lr.pBits);
 
+        if (!dst) {  // never after a successful LockRect; keeps the copy below provably non-null
+            UnlockLevel(ours, k);
+            std::snprintf(why, whyLen, "LockRect (write) level %u returned no bits", k);
+            return false;
+        }
+
         for (unsigned y = 0; y < b[k].h; ++y) {
             std::memcpy(dst + size_t(y) * lr.Pitch, &b[k].px[size_t(y) * b[k].w], size_t(b[k].w) * 4);
         }
@@ -130,6 +131,13 @@ bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<Rs7Image>& b, char
         }
 
         const auto* src = static_cast<const uint8_t*>(lr.pBits);
+
+        if (!src) {  // never after a successful LockRect; keeps the compare below provably non-null
+            UnlockLevel(ours, k);
+            std::snprintf(why, whyLen, "LockRect (read back) level %u returned no bits", k);
+            return false;
+        }
+
         bool same = true;
 
         for (unsigned y = 0; y < b[k].h && same; ++y) {
@@ -147,12 +155,15 @@ bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<Rs7Image>& b, char
     return true;
 }
 
-bool BuildChecked(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], bool exactRequired, CheckedBuild& out,
-                  char* why, size_t whyLen) {
-    out.build = Rs7Ramp_Build(stock, rgb);
-    out.chk = Rs7Ramp_Verify(stock, out.build, rgb);
+bool BuildChecked(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], CheckedBuild& out, char* why,
+                  size_t whyLen) {
+    // The eighth string's band (V7) is painted with every copy: unused lines on 6/7-string guitars.
+    const uint32_t rgb8[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};
 
-    if ((exactRequired && !out.chk.exact) || !out.chk.v6Pure) {
+    out.build = Rs7Ramp_Build(stock, rgb, rgb8);
+    out.chk = Rs7Ramp_Verify(stock, out.build, rgb, rgb8);
+
+    if (!out.chk.exact || !out.chk.v6Pure) {
         std::snprintf(why, whyLen, "self-check failed: exact=%d v6-pure=%d %s", int(out.chk.exact), int(out.chk.v6Pure),
                       out.chk.why.c_str());
         return false;
@@ -161,10 +172,10 @@ bool BuildChecked(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], boo
     return true;
 }
 
-CopyResult MakeCopy(IDirect3DDevice9* dev, const D3DSURFACE_DESC& d, unsigned levels, D3DFORMAT fmt,
-                    const std::vector<Rs7Image>& data, IDirect3DTexture9** out, char* why, size_t whyLen) {
+CopyResult MakeCopy(IDirect3DDevice9* dev, const D3DSURFACE_DESC& d, unsigned levels, const std::vector<Rs7Image>& data,
+                    IDirect3DTexture9** out, char* why, size_t whyLen) {
     IDirect3DTexture9* ours = nullptr;
-    const HRESULT hr = dev->CreateTexture(d.Width, d.Height, levels, 0, fmt, D3DPOOL_MANAGED, &ours, nullptr);
+    const HRESULT hr = dev->CreateTexture(d.Width, d.Height, levels, 0, d.Format, D3DPOOL_MANAGED, &ours, nullptr);
 
     if (FAILED(hr) || !ours) {
         std::snprintf(why, whyLen, "CreateTexture: %08lX", hr);
@@ -185,7 +196,7 @@ void UnlockAfterFault() {
     if (g_locked.tex) {
         __try {
             g_locked.tex->UnlockRect(g_locked.level);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (Rs7_FaultFilter(GetExceptionCode())) {
         }
 
         g_locked = {};

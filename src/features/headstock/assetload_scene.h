@@ -1,6 +1,10 @@
 #pragma once
 #include "features/headstock/assetload.h"
+#include "features/headstock/pegset.h"
 #include "features/scene/scene.h"
+#include "model/instrument.h"
+#include "platform/log.h"
+#include "platform/safecopy.h"
 #include <cstdint>
 #include <intrin.h>
 
@@ -15,36 +19,21 @@ constexpr uint32_t kName = 0x10;        // NiObjectNET name (NiFixedString handl
 constexpr uint32_t kRefCount = 4;       // NiRefObject reference count
 
 // Rnd_Guitar and its InstrumentInfo
-constexpr uint32_t kGuitarStrings = 0x0C;  // the guitar's strings object
-constexpr uint32_t kGuitarHead = 0x18;     // Rnd_Headstock*
-constexpr uint32_t kGuitarInfo = 0x24;     // InstrumentInfo*
-constexpr uint32_t kHeadFrame = 0x04;      // Rnd_Headstock: the frame entity
-constexpr uint32_t kInfoInverted = 8;      // InstrumentInfo: InvertGuitarStrings
+using rs7::kGuitarHead;
+using rs7::kGuitarInfo;
+using rs7::kGuitarStrings;
+using rs7head::kHeadFrame;
+constexpr uint32_t kInfoInverted = 8;  // InstrumentInfo: InvertGuitarStrings
 constexpr uint32_t kInfoLefty = 9;
 constexpr uint32_t kInfoInline = 0x0A;
-
-template <class T>
-T Rd(const void* base, uint32_t off) {
-    T v{};
-
-    if (base) {
-        rs7s7d::SafeCopy(&v, static_cast<const uint8_t*>(base) + off, sizeof v);
-    }
-
-    return v;
-}
-
-// Counts a log line: true for the first `max` calls (the log counters are volatile longs).
-inline bool Upto(volatile long* n, long max) {
-    return _InterlockedIncrement(n) <= max;
-}
+using rs7::kInfoStrings;
 
 inline void SetCulled(uint8_t* node, bool culled) {
-    uint16_t f = Rd<uint16_t>(node, kFlags);
+    uint16_t f = Rs7_SafeRead<uint16_t>(node, kFlags);
     const uint16_t want = uint16_t(culled ? (f | 1u) : (f & ~1u));
 
     if (want != f) {
-        rs7s7d::SafeStore(node + kFlags, &want, sizeof want);
+        Rs7_SafeStore(node + kFlags, &want, sizeof want);
     }
 }
 
@@ -65,11 +54,11 @@ inline bool IsNodeOrMesh(const uint8_t* obj) {
 // Calls fn(child) for every non-null child in the first 32 slots of an NiNode, until fn returns false.
 template <class Fn>
 void EachChild(const uint8_t* node, Fn fn) {
-    const unsigned slots = Rd<uint16_t>(node, kChildSlots);
-    uint8_t** kids = Rd<uint8_t**>(node, kChildren);
+    const unsigned slots = Rs7_SafeRead<uint16_t>(node, kChildSlots);
+    uint8_t** kids = Rs7_SafeRead<uint8_t**>(node, kChildren);
 
     for (unsigned i = 0; kids && i < slots && i < 32; ++i) {
-        uint8_t* c = Rd<uint8_t*>(kids, 4 * i);
+        uint8_t* c = Rs7_SafeRead<uint8_t*>(kids, 4 * i);
 
         if (c && !fn(c)) {
             return;
@@ -82,7 +71,7 @@ uint8_t* TopObject(const void* res);
 // X_FIXSTR 0x91CBF0, SEH-guarded: the NiFixedString handle (+1 ref) for `text`, nullptr on a fault.
 const char* MakeFixedString(const char* text);
 // The rs7_alt node: breadth-first, first 3 levels below `root`.
-uint8_t* FindAlt(uint8_t* root);
+uint8_t* FindAlt(uint8_t* root, const char* altName = kAltName);
 // The node called `want`: depth-first, at most 256 nodes.
 uint8_t* FindByName(uint8_t* root, const char* want);
 // Renames a node to `to` (the old name reference is leaked).

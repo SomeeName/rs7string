@@ -13,7 +13,7 @@ enum class Rs7Feature {
     Pitch,
     Nextgrid,
     Diagrams,
-    Vguitar,
+    Private,  // the private extras (src/features/extras/extras.h)
     Diag,
     Publish,
     Chords,
@@ -21,6 +21,7 @@ enum class Rs7Feature {
     Psarc,
     Clite,
     Glow,
+    MenuLoad,
     Count
 };
 

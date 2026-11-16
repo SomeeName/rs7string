@@ -1,6 +1,7 @@
 #include "features/window/window.h"
 #include "platform/log.h"
 #include "platform/protect.h"
+#include "platform/settings.h"
 #include <cstdint>
 #include <cstring>
 #include <intrin.h>
@@ -150,10 +151,11 @@ LRESULT CALLBACK BackgroundWndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return result;
 }
 
-void Place(int* x, int* y, int w, int h2) {
+// False (x, y unchanged) when the configured screen is unavailable.
+bool Place(int* x, int* y, int w, int h2) {
     RECT work;
     if (!TargetWork(&work)) {
-        return;
+        return false;
     }
 
     const POINT p = Rs7Window_Centre(work, w, h2);
@@ -161,6 +163,8 @@ void Place(int* x, int* y, int w, int h2) {
     LogLimited("window: %d,%d -> %d,%d (screen setting)", *x, *y, int(p.x), int(p.y));
     *x = p.x;
     *y = p.y;
+
+    return true;
 }
 
 HWND WINAPI CreateWindowExAHook(DWORD ex, LPCSTR cls, LPCSTR name, DWORD style, int x, int y, int w, int h, HWND parent,
@@ -219,13 +223,15 @@ BOOL WINAPI SetWindowPosHook(HWND h, HWND after, int x, int y, int cx, int cy, U
         if (Quiet(h)) {
             flags |= SWP_NOACTIVATE;
         }
-        // A resize in place (the game grows the window to its resolution with SWP_NOMOVE) would
-        // keep the old top-left and reach into the neighbouring monitor: re-centre it as well.
-        if (!(flags & SWP_NOSIZE) && (flags & SWP_NOMOVE) && g_screen > 0) {
-            flags &= ~SWP_NOMOVE;
-        }
 
-        if (!(flags & SWP_NOMOVE)) {
+        // A resize in place (the game grows the window to its resolution with SWP_NOMOVE) would
+        // keep the old top-left and reach into the neighbouring monitor: re-centre it as well. Only once the
+        // target screen is known (a missing monitor must not turn the resize into a move to x, y).
+        if (!(flags & SWP_NOSIZE) && (flags & SWP_NOMOVE)) {
+            if (g_screen > 0 && Place(&x, &y, cx, cy)) {
+                flags &= ~SWP_NOMOVE;
+            }
+        } else if (!(flags & SWP_NOMOVE)) {
             int w = cx, ht = cy;
 
             if (flags & SWP_NOSIZE) {
@@ -392,11 +398,8 @@ bool Rs7Window_Background() {
 }
 
 void Rs7Window_Install(const wchar_t* iniPath) {
-    g_background = GetPrivateProfileIntW(L"window", L"background", 0, iniPath) != 0;
-    g_screen = static_cast<int>(GetPrivateProfileIntW(L"window", L"screen", 0, iniPath));
-    if (g_screen < 0) {
-        g_screen = 0;
-    }
+    g_background = Rs7Set_ReadTableInt(kRs7WindowSettings, "window.background", iniPath) != 0;
+    g_screen = Rs7Set_ReadTableInt(kRs7WindowSettings, "window.screen", iniPath);
     Rs7Log("config: [window] background=%d screen=%d%s", g_background ? 1 : 0, g_screen,
            g_background || g_screen ? "" : " -> stock window, no hooks");
     if (!g_background && !g_screen) {

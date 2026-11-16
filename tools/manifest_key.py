@@ -14,6 +14,7 @@ skipped (no `Tuning` with string5 / ArrangementName Bass). Text-level edit: the 
 stays byte for byte.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -22,31 +23,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psarc_plain  # noqa: E402
 
 KEY = "Rs7String6"
-_STRING5 = re.compile(r'("string5"\s*:\s*-?\d+(?:\.\d+)?)(\s*)(\})')
+_STRING5 = re.compile(r'"string5"\s*:\s*-?\d+(?:\.\d+)?')
+_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|[{}]')
+_TUNING = re.compile(r'"Tuning"\s*:\s*(\{[^{}]*\})')
 
 
-def add_key(text: str, t6: int) -> tuple[str, int]:
+def add_key(text: str, t6: int, arr: str | None = None) -> tuple[str, int]:
     """Returns (new text, number of Tuning objects changed). Idempotent: an existing key is kept."""
-    if f'"{KEY}"' in text:
-        return text, 0
-    out, n, pos = [], 0, 0
-    for m in _STRING5.finditer(text):
-        # Only inside a "Tuning" object of a non-bass arrangement block.
-        head = text.rfind('"Tuning"', 0, m.start())
-        block = text.rfind('"ArrangementName"', 0, m.start())
-        if head < 0 or text.rfind("{", head, m.start()) < 0:
+    stack, edits = [], []
+    for token in _TOKEN.finditer(text):
+        if token.group() == "{":
+            stack.append(token.start())
             continue
-        if block >= 0 and re.match(r'"ArrangementName"\s*:\s*"Bass"', text[block : block + 40]):
+        if token.group() != "}":
             continue
+        start = stack.pop()
+        block = json.loads(text[start : token.end()])
+        tuning = block.get("Tuning")
+        arrangement = block.get("ArrangementName", "").lower()
+        if not isinstance(tuning, dict) or KEY in tuning or "string5" not in tuning:
+            continue
+        if arrangement in ("bass", "vocals") or (arr and arrangement != arr.lower()):
+            continue
+        match = _TUNING.search(text, start, token.end())
+        m = _STRING5.search(text, match.start(1), match.end(1))
         line_start = text.rfind("\n", 0, m.start()) + 1
         indent = re.match(r"[ \t]*", text[line_start:]).group(0)
-        nl = "\r\n" if "\r\n" in m.group(2) or text[m.end(1) : m.end(1) + 2] == "\r\n" else "\n"
-        out.append(text[pos : m.end(1)])
-        out.append(f',{nl}{indent}"{KEY}": {t6}')
-        pos = m.end(1)
-        n += 1
-    out.append(text[pos:])
-    return "".join(out), n
+        nl = "\r\n" if "\r\n" in text[match.start(1) : match.end(1)] else "\n"
+        edits.append((m.end(), f',{nl}{indent}"{KEY}": {t6}'))
+    for pos, inserted in sorted(edits, reverse=True):
+        text = text[:pos] + inserted + text[pos:]
+    return text, len(edits)
 
 
 def main(argv):
@@ -64,7 +71,7 @@ def main(argv):
         if low.endswith(".json") and arr and not low.endswith(f"_{arr}.json"):
             continue
         text = files[name].decode("utf-8")
-        new, n = add_key(text, t6)
+        new, n = add_key(text, t6, arr)
         if n:
             files[name] = new.encode("utf-8")
             print(f"{name}: {n} Tuning object(s) +{KEY}={t6}")

@@ -13,7 +13,9 @@ DLL = Path(__file__).resolve().parents[2] / "bin" / "Release" / "dinput8.dll"
 
 @pytest.mark.skipif(not DLL.exists(), reason="needs the built DLL")
 def test_built_dll_passes():
-    assert check_exports.problems(DLL) == []
+    import pefile
+
+    assert check_exports.problems(pefile.PE(str(DLL))) == []
 
 
 @pytest.mark.skipif(not DLL.exists(), reason="needs the built DLL")

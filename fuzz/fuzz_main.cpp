@@ -6,9 +6,11 @@
 
 namespace rs7fuzz {
 const Target kTargets[] = {
-    {"rs7x", Rs7x, Rs7xSeeds}, {"dxt", Dxt, DxtSeeds},    {"settings", Settings, SettingsSeeds},
-    {"ini", Ini, IniSeeds},    {"text", Text, TextSeeds}, {"package", Package, NoSeeds},
-    {"nif", Nif, NoSeeds},     {"dds", Dds, DdsSeeds},    {"recipe", Recipe, RecipeSeeds},
+    {"rs7x", Rs7x, Rs7xSeeds},       {"settings", Settings, SettingsSeeds}, {"ini", Ini, IniSeeds},
+    {"text", Text, TextSeeds},       {"package", Package, NoSeeds},         {"nif", Nif, NoSeeds},
+    {"dds", Dds, DdsSeeds},          {"recipe", Recipe, RecipeSeeds},       {"nslot", Nslot, NslotSeeds},
+    {"plain", Plain, PlainSeeds},    {"pattern", Pattern, PatternSeeds},    {"tuningname", TuningName, TuningNameSeeds},
+    {"redact", Redact, RedactSeeds},
 };
 const size_t kTargetCount = sizeof kTargets / sizeof kTargets[0];
 

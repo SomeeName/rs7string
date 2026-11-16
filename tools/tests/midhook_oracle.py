@@ -42,6 +42,7 @@ from unicorn.x86_const import (
 import capstone
 from capstone import x86_const as X86
 
+import private_features
 from emu_harness import (
     ALL_REGS,
     CALL_AFTER,
@@ -52,6 +53,7 @@ from emu_harness import (
     LIGHT_CALLBACKS,
     MID_CALLBACKS,
     STACK,
+    TEB,
     TEXT_VA,
     Emu,
     game_text,
@@ -78,6 +80,7 @@ FIXTURES = (
     "midhook_fdfddcf.json",
     "midhook_304b9d3.json",  # the call-in helpers (callin_oracle.py)
     "midhook_06733ba.json",  # Rs7_Call_GlowRead (callin_oracle.py)
+    *private_features.get("FIXTURES", ()),  # the private extras (tools/private_features.py)
 )
 FROZEN = {
     name: blob
@@ -191,6 +194,9 @@ class Case:
         default_factory=dict
     )  # helper name -> ((argument index, dword), ...) the helper writes through
     x87: bytes = b""  # extra x87 setup after the default fld1; fldpi (e.g. more loads for a full stack)
+    # False: the hook changed on purpose after its stub was frozen (e.g. string 7 since eight strings are always on);
+    # only test_midhook_stock checks the case, against the stock bytes and its expectations.
+    frozen: bool = True
 
 
 _FLAGS = {"AF": 1 << 0, "CF": 1 << 1, "SF": 1 << 2, "ZF": 1 << 3, "PF": 1 << 4, "OF": 1 << 5}
@@ -423,7 +429,8 @@ class Machine:
         return hook
 
     def _track(self, uc, access, address, size, value, user):
-        if not STACK <= address < STACK + 0x100000:
+        # The fake TEB is SEH bookkeeping (Rs7Mid_Guard's __try frame sets and restores fs:[0]), not a result.
+        if not (STACK <= address < STACK + 0x100000 or TEB <= address < TEB + 0x1000):
             self.writes.update(range(address, address + size))
             for a, old in zip(range(address, address + size), bytes(uc.mem_read(address, size))):
                 self.pristine.setdefault(a, old)  # the hook fires before the write
@@ -570,14 +577,16 @@ def oracle_tests(specs: dict, always_calls: set):
 
     def cases():
         for sid, (_, cs) in specs.items():
-            for case, flags, misalign in itertools.product(cs, FLAG_PATTERNS, MISALIGN):
+            for case, flags, misalign in itertools.product([c for c in cs if c.frozen], FLAG_PATTERNS, MISALIGN):
                 yield pytest.param(sid, case, flags, misalign, id=f"{sid}-{case.id}-f{flags:x}-a{misalign}")
 
     @pytest.mark.parametrize("sid,case,flags,misalign", list(cases()))
     def test_mid_hook_matches_frozen_stub(sid, case, flags, misalign):
         machine(sid).compare(case, flags, misalign)
 
-    @pytest.mark.parametrize("sid", [sid for sid, (spec, _) in specs.items() if spec.flags in ("dead", "free")])
+    dead_sids = [sid for sid, (spec, _) in specs.items() if spec.flags in ("dead", "free")]
+
+    @pytest.mark.parametrize("sid", dead_sids)
     def test_dead_flags_are_rewritten_before_any_read(sid):
         """The flag contracts "dead" (the hook leaves the incoming arithmetic flags, the old stub left helper
         leftovers) and "free" are only valid where no continuation reads them: scan the game code after each exit."""
@@ -585,14 +594,22 @@ def oracle_tests(specs: dict, always_calls: set):
         for exit_address in m.exit_addresses:
             assert flags_dead_at(exit_address), f"{sid}: flags may be live at {exit_address:#x}"
 
+    def no_dead_flags():
+        pytest.skip("no site of this module has dead or free flags")
+
+    # A module whose sites all keep their flags has nothing to scan (an empty parameter set fails the run).
+    dead_flags_test = test_dead_flags_are_rewritten_before_any_read if dead_sids else no_dead_flags
+
     def test_every_registered_site_calls_its_helper_at_least_once():
         """The matrix is not vacuous: for every site some case reaches each helper (and some case skips it), and
         every exit is taken."""
         for sid, (spec, cs) in specs.items():
+            if not any(c.frozen for c in cs):
+                continue  # a spec kept only for another module's reference (e.g. DS1 for the stock comparison)
             reached = {name: False for name in spec.helpers}
             skipped = {name: False for name in spec.helpers}
             exits = set()
-            for case in cs:
+            for case in (c for c in cs if c.frozen):
                 state = machine(sid).compare(case, FLAG_PATTERNS[0], 0)
                 exits.add(state["eip"])
                 calls = {c[0] for c in state["calls"]}
@@ -604,6 +621,6 @@ def oracle_tests(specs: dict, always_calls: set):
 
     return (
         test_mid_hook_matches_frozen_stub,
-        test_dead_flags_are_rewritten_before_any_read,
+        dead_flags_test,
         test_every_registered_site_calls_its_helper_at_least_once,
     )

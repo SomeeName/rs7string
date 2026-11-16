@@ -1,24 +1,11 @@
 #include "features/diag/diag.h"
 #include "features/fretgrid/fretgrid.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <windows.h>
-#include <cstring>
 
 namespace {
 volatile LONG g_hits[kRs7DiagPointCount][2] = {};  // [point][0 = string 0, 1 = string 6]
-
-// Copies n bytes of game memory; false (instead of an access violation) if unreadable. Only access
-// violations are handled: anything else (guard page, in-page error, ...) belongs to the game.
-// No C++ objects here, so SEH is allowed.
-bool SafeCopy(void* dst, const void* src, size_t n) {
-    __try {
-        std::memcpy(dst, src, n);
-        return true;
-    } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER
-                                                                 : EXCEPTION_CONTINUE_SEARCH) {
-        return false;
-    }
-}
 
 // A dword of game memory without memcpy (the CRT's has jump tables the sse-mode x87 scan cannot verify): for the D1
 // producer, which runs inside R2's sse-mode callback.
@@ -38,7 +25,7 @@ bool ReadDword(const uint8_t* base, uint32_t off, uint32_t* out) {
 
 template <class T>
 bool Read(const uint8_t* base, uint32_t off, T* out) {
-    return base && SafeCopy(out, base + off, sizeof(T));
+    return base && Rs7_SafeCopy(out, base + off, sizeof(T));
 }
 
 unsigned Va(const void* p) {
@@ -64,7 +51,7 @@ bool Rs7Diag_Take(int point, uint32_t string) {
         return false;  // no further increments: the counter cannot wrap
     }
 
-    return InterlockedIncrement(n) <= kRs7DiagMaxHits;
+    return Rs7Log_Upto(n, kRs7DiagMaxHits);
 }
 
 bool Rs7Diag_Peek(int point, uint32_t string) {
@@ -200,7 +187,7 @@ extern "C" void __cdecl Rs7_DiagCellPos(uint32_t caller, const uint8_t* grid, ui
         uint32_t v[3] = {};
 
         if (out) {
-            if (!SafeCopy(v, out, sizeof v)) {
+            if (!Rs7_SafeCopy(v, out, sizeof v)) {
                 return;
             }
         } else {
@@ -232,7 +219,7 @@ extern "C" void __cdecl Rs7_DiagGemPos(const uint8_t* gem, const uint32_t* pos) 
         if (!Read(gem, 0xC, &sf) || !Rs7Diag_Peek(kRs7D5, sf[0])) {
             return;
         }
-        if (!Read(gem, 0x10, &type) || !Read(gem, 0x14, &offset) || !SafeCopy(p, pos, sizeof p)) {
+        if (!Read(gem, 0x10, &type) || !Read(gem, 0x14, &offset) || !Rs7_SafeCopy(p, pos, sizeof p)) {
             return;
         }
         if (!Rs7Diag_Take(kRs7D5, sf[0])) {

@@ -1,4 +1,6 @@
 #pragma once
+#include "model/instrument.h"
+#include "platform/field.h"
 #include "platform/midhook.h"
 #include <cstdint>
 
@@ -18,7 +20,7 @@
 //    "tuned" N seconds after the session's first query. Default off.
 // Every stub replays stock after one global read (g_rs7_tuner_any) while no native session or autotune exists.
 //
-// Native 8-slot tuner session (hooks_session.cpp, hooks_methods.cpp, hooks_copies.cpp; issue #18 job 3). Needs the
+// Native 8-slot tuner session (hooks_session.cpp, hooks_methods.cpp, hooks_copies.cpp; issue #18). Needs the
 // native strings, FretGrid and colours:
 //  - Every UI_PlayerTuner is allocated with 380h bytes (TU8ALLOC) and registered (TU8INIT / TU8FREE); the stock 278h
 //    prefix is unchanged.
@@ -35,13 +37,13 @@
 // The GuitarStrings readers TU8H / TU8C / TU8A (HighlightString, ClearHighlight, StringAction) run their native copies
 // for every native GuitarStrings (features/strings/strings.h).
 //
-// Low range ([tuner] lowrange; low-range research README "Demo-first hook plan", step 2): the guitar wrong-instrument
+// Low range ([tuner] lowrange): the guitar wrong-instrument
 // test (W, UI_PlayerTuner_CheckWrongInstrument 0x5B2DDE) warns when the mean of ten detected notes is <= 34.0
 // (event 8), which trips on a correctly played A1/G1/F#1. For a 7-string tuner session the threshold becomes
 // min(34, lowest open MIDI - 1); 6-string guitar, bass and sessions without Rs7String6 keep 34.0. The detector's
 // lowest-open (+11F8h) is lowered to that lowest open note on each selection (the tuner reaches SetTuning with six
 // entries, so S3 does not). The detector floor (MIDI 24, 0x4DBF73) stays: guitar needs no change, only a 5-string
-// bass B0 does. TODO(bass B0): floor 22 + lowest 23 + corrected bass expected-pitch/base (docs/ARCHITECTURE.md).
+// bass B0 does (not done: floor 22, lowest 23 and the bass expected-pitch base, docs/ARCHITECTURE.md).
 
 extern "C" {
 // ---- shared tuner hooks (hooks.cpp)
@@ -173,10 +175,13 @@ struct Config;
 
 // Rebuilds the wrong-instrument table and the stubs' fast-path flag from the native sessions.
 void Rs7Tuner_Refresh();
-void Rs7Tuner_ResetAll();
 // Tuning names (TN): whether `offs` is an offset array TK read Rs7String6 for (the tuner menus' +1B8h / +1D0h,
 // 0x5B76C0's stack array); *t6 = the 7th string's offset.
 bool Rs7Tuner_SevenFor(const int* offs, int* t6);
+// The 8th string's offset (Rs7String7) next to it: false when the arrangement has none.
+bool Rs7Tuner_EighthFor(const int* offs, int* t7);
+// TK's extended-bass count for that array: 5 / 6 (Rs7String4 / + Rs7String5), 0 = none.
+int Rs7Tuner_BassFor(const int* offs);
 
 // ---- tuning names (hooks_names.cpp)
 
@@ -186,12 +191,16 @@ void Rs7Tn_Configure(const rs7tn::Config& c);
 
 extern "C" {
 // TS (Rs7_TunerApply) in native mode: the session's target. offs = the six stock offsets, n = 6 / 7 / 8 strings,
-// extra = the offsets of strings 6 / 7. False = not a native session (stock).
-bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2]);
-// fix/menutuner: the string count of the guitar bound to `session` (+2Ch Rnd_Guitar -> +24h InstrumentInfo -> +0Bh,
+// extra = the offsets of strings 6 / 7. False = not a native session (stock); a refused conversion keeps the full
+// target per registered session for EnsureNative to retry once its prerequisites are ready.
+// bassStrings: 5 / 6 for a song marked as extended bass (its Rs7String4 / Rs7String5 keys), else 0.
+bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2], int bassStrings = 0);
+// The string count of the guitar bound to `session` (+2Ch Rnd_Guitar -> +24h InstrumentInfo -> +0Bh,
 // the bound every stock UI_PlayerTuner method loops to); 0 = no guitar bound yet / unreadable.
 unsigned Rs7Tuner8_GuitarCount(const uint8_t* session);
-// fix/menutuner: a registered grown session that is still stock while its guitar is built with 7/8 strings becomes a
+// First retries any deferred target, including extended bass, restarting an active stock pass at the lowest string.
+// Otherwise a registered grown session that is still
+// stock while its guitar is built with 7/8 strings becomes a
 // native session with its own six offsets (+50h) as a 6-string target (Rs7Tuner8_Apply n = 6). The stock methods would
 // index the six-slot arrays with string 6 (CONFIRMED crash tests/owner-crash1: UI_PlayerTuner_SetupPicks 0x5B1E50 at
 // 0x5B1EF5, +144h[6] = the fret byte +15Ch -> AV reading 0x1). Called by the copy dispatch (Rs7Tuner8_SessTarget)
@@ -211,23 +220,11 @@ void SetLabels(const uint8_t* session);
 // The native session's log, at most 300 lines (hooks_session.cpp).
 void Log(const char* fmt, const uint8_t* session, int a = 0, int b = 0, int c = 0);
 
-// The game's JSON objects (as 0x56C950 / 0x889C50 / 0x5B84DC read them): vtable +14h find(name) -> node or 0, node +50h
-// -> number object or 0, the double at +8. False on any fault.
-bool JsonNumber(void* obj, const char* key, double* out);
-// A tuning offset: a number in (-25, 25), truncated as the stock readers do (0xF5B0D0).
-bool JsonOffset(void* obj, const char* key, int* out, double* raw = nullptr);
-
 using Rs7Mid::Dword;  // platform/midhook.h
 
-template <class T>
-T Read(const uint8_t* p, uint32_t off) {
-    return *reinterpret_cast<const T*>(p + off);
-}
+using rs7mem::UncheckedRead;
 
-template <class T>
-T& At(uint8_t* p, uint32_t off) {
-    return *reinterpret_cast<T*>(p + off);
-}
+using rs7mem::UncheckedField;
 }  // namespace rs7tuner
 
 // UI_PlayerTuner (stock 278h bytes, docs/ARCHITECTURE.md "Session state machine") and the native tail.
@@ -243,6 +240,11 @@ static_assert(kPeaks - kOpen == 0x48, "0x5B0AA0 addresses the targets relative t
 // Stock session arrays.
 constexpr uint32_t kStockOpen = 0x38, kStockOff = 0x50, kStockPeaks = 0x80;
 constexpr uint32_t kStockLetters = 0x114, kStockPicks = 0x144, kStockLast = 0x160, kCur = 0x74;
-// The session's Rnd_Guitar (+2Ch), its Rnd_InstrumentInfo (+24h) and that one's string count (+0Bh).
-constexpr uint32_t kGuitar = 0x2C, kGuitarInfo = 0x24, kInfoCount = 0xB;
+constexpr uint32_t kMode = 0x18;          // current tuner mode (active string tuning: 0..3)
+constexpr uint32_t kDetectorId = 0x0C;    // u32 the session's pitch detector id (GetDetector)
+constexpr uint32_t kReversePass = 0x22D;  // u8 non-zero = mode 3's reverse pass (5B02A7: the last string first)
+// The session's Rnd_Guitar (+2Ch; the play session's is rs7::kSessionGuitar), its InstrumentInfo and string count.
+constexpr uint32_t kGuitar = 0x2C;
+using rs7::kGuitarInfo;
+using rs7::kInfoStrings;
 }  // namespace rs7tu

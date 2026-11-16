@@ -1,4 +1,4 @@
-// The fret bars' Wrap mid-hooks (ARCHITECTURE.md section 15 "Wrap placement"): F1 runs the stock
+// The fret bars' Wrap mid-hooks (ARCHITECTURE.md section 14 "Wrap placement"): F1 runs the stock
 // Rnd_FretBars_ApplyTransforms and then Rs7_FretsAfterApply, IN1 the stock inlay placement and then Rs7_InlaysAfter.
 // Full mode (both helpers use floats); a few calls per guitar transform update. Converted from naked stubs (frozen at
 // b72bc52, tools/tests/test_midhook_wrap_sites.py). Group Core (registration.cpp).

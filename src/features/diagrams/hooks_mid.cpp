@@ -4,7 +4,7 @@
 //   DGB   bind the PostProcess attribute dictionary to its SNG song (Rs7Diagram_Bind)
 //   DGM   after the colour/handedness finalizer: add the keys (Rs7Diagram_Manifest)
 //   DGS   after the loaded-song serializer: add the keys (Rs7Diagram_Loaded)
-//   TP13  template lookup of the loaded song: the T8 record (Rs7Ns_TplRecord)
+//   TP13  template lookup of the loaded song: the registered T8 record, else the stock record
 // Full-mode mid-hooks (once per chord diagram or song load), converted from naked stubs (refactor step 7 batch 5,
 // frozen at 9c0e44f, tools/tests/test_midhook_features.py). DGB / DGM / DGS call the helper and leave the replay; TP13
 // skips it and does the stock lookup itself. The old TP13 stub left the flags of its switch test or lookup; none is
@@ -56,12 +56,14 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_DGS(Context& c) {
 
 // TP13 - 0x7578BC (EAX = the template id, ESI = the loaded song's holder): stock `mov edx,[esi+94h]; lea ecx,
 // [eax+eax*8]; lea eax,[edx+ecx*8]` = &templates[id]. With diagrams7 the T8 record instead; EDX / ECX keep the stock
-// values, and the caller's song retain/release around this block is untouched.
+// values, and the caller's song retain/release around this block is untouched. A lookup miss keeps the stock
+// pointer: DGS checks registered membership before reading any widened fields.
 extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TP13(Context& c) {
     const uint32_t id = c.eax, begin = Dword(c.esi + 0x94);
+    const uint32_t record = g_rs7_diagrams ? Rs7Ns_FindTplRecord(begin, id) : 0;
 
     c.edx = begin;
     c.ecx = id * 9;
-    c.eax = g_rs7_diagrams ? Rs7Ns_TplRecord(begin, id) : begin + id * 0x48;
+    c.eax = record ? record : begin + id * rs7ns::kTplSize;
     c.jump = static_cast<uint32_t>(g_rs7_resume_TP13);
 }

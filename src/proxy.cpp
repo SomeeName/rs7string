@@ -9,6 +9,9 @@ HMODULE RealDinput8() {
     static HMODULE h = [] {
         wchar_t path[MAX_PATH];
         const UINT n = GetSystemDirectoryW(path, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH - 13) {  // never fall back to a relative path
+            return static_cast<HMODULE>(nullptr);
+        }
 
         lstrcpyW(path + n, L"\\dinput8.dll");
 

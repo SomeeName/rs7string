@@ -1,64 +1,26 @@
 // Chord glue: the 7-string arrangement state (S4) and the chord frame span (B1/B2 callbacks, the B2 stub is in
-// hooks_stubs.cpp); reads [chords] frame_axis / wide_misses.
+// hooks_stubs.cpp); reads [chords] wide_misses.
 #include "features/chords/chords.h"
 #include "features/frets/frets.h"
 #include "features/nslot/nslot.h"
-#include "features/pitch/pitch.h"
-#include "platform/config.h"
+#include "model/instrument.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/settings.h"
 #include <windows.h>
 #include <cmath>
-#include <cstring>
 
 namespace {
-volatile LONG g_active = 0;  // 7-string arrangement running (S4)
-volatile LONG g_t6 = 0;
-
-bool SafeRead(const void* p, void* out, size_t n) {
-    if (!p) {
-        return false;
-    }
-
-    __try {
-        std::memcpy(out, p, n);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-bool Logging(volatile LONG* counter, LONG max) {
-    return InterlockedIncrement(counter) <= max;
-}
-}  // namespace
-
-namespace {
-int g_frameAxis = 1;  // [chords] frame_axis
+constexpr int kFrameAxis = 1;  // the frame model's string axis (y; the former [chords] frame_axis default)
 constexpr int kMarks = 32;
-constexpr float kFrameSign =
-    1.0f;  // HYPOTHESIS (verify in game): model +axis points from the frame's origin edge to the lanes
 const void* g_boxMarks[kMarks] = {};
 const void* g_boxGuitar[kMarks] = {};  // the Rnd_Guitar the marked frame is drawn for
-uint8_t g_boxTop[kMarks] = {};         // highest string the marked chord uses: 5 (lanes 0-5 only), 6 or 7
+uint8_t g_boxTop[kMarks] = {};         // the string the marked frame reaches: the instrument's last (bass: 6)
 int g_boxNext = 0;
-volatile LONG g_songStrings = 6;  // S4: the arrangement's string count (bass 4); read by B1 under CL*
 volatile LONG g_boxLogged = 0;
-
-bool ExtOfObject(const void* obj, uint32_t tplOffset, rs7chord::Ext* x, const void** tplOut = nullptr) {
-    const void* tpl = nullptr;
-    if (!SafeRead(static_cast<const uint8_t*>(obj) + tplOffset, &tpl, sizeof tpl)) {
-        return false;
-    }
-
-    if (tplOut) {
-        *tplOut = tpl;
-    }
-
-    return Rs7Chord_Get(tpl, x);
-}
 }  // namespace
 
-void Rs7Chord_OnSong(bool active, int t6) {
+void Rs7Chord_OnSong() {
     const Rs7MatchStats st = Rs7Ns_MatchStats(true);
 
     if (st.stock6 || st.portN) {
@@ -67,8 +29,6 @@ void Rs7Chord_OnSong(bool active, int t6) {
                st.stock6, st.portN, st.portHits);
     }
 
-    InterlockedExchange(&g_t6, t6);
-    InterlockedExchange(&g_active, active ? 1 : 0);
     InterlockedExchange(&g_boxLogged, 0);
 
     for (auto& m : g_boxMarks) {
@@ -76,82 +36,23 @@ void Rs7Chord_OnSong(bool active, int t6) {
     }
 }
 
-bool Rs7Chord_Get(const void* tpl, rs7chord::Ext* out) {
-    if (!g_active) {
-        return false;
-    }
-
-    const uint8_t* t8 = Rs7Ns_AsT8(tpl);
-    if (!t8) {
-        return false;
-    }
-
-    const int8_t fret = static_cast<int8_t>(t8[rs7ns::kT8Frets + 6]);
-    if (fret < 0) {
-        return false;
-    }
-
-    out->fret = fret;
-    out->finger = static_cast<int8_t>(t8[rs7ns::kT8Fingers + 6]);
-
-    return true;
-}
-
-int Rs7Chord_Midi6(int fret) {
-    return rs7::kLowB + static_cast<int>(g_t6) + fret;
-}
-
-// ---------------------------------------------------------------- chord frame span (game thread)
-
-void Rs7Chord_Configure(const wchar_t* ini) {
-    wchar_t buf[64];
-
-    GetPrivateProfileStringW(L"chords", L"frame_scale", L"", buf, 64, ini);
-    const bool scaleSet = buf[0] != 0;
-    const int a = Rs7Config_ReadInt(L"chords", L"frame_axis", 1, ini, 2);
-
-    g_frameAxis = a >= 0 && a <= 2 ? a : 1;
-    const int m = Rs7Config_ReadInt(L"chords", L"wide_misses", 2, ini, 2);
-
-    g_rs7_match_misses = static_cast<uintptr_t>(m >= 0 && m <= 2 ? m : 2);
-    Rs7Log("config: [chords] frame_axis=%d (chord frames follow the lane positions of the guitar; [chords] frame_scale "
-           "is %s: no longer used), wide_misses=%d (seven/eight-note chords may miss up to %d notes on any string; "
-           "5/6-note chords one and 2-4-note chords none, as in stock)",
-           g_frameAxis, scaleSet ? "set but ignored" : "not set", int(g_rs7_match_misses), int(g_rs7_match_misses));
+// The startup value; settings.cpp's ApplyMisses only runs on later live changes (Rs7Set_Commit).
+void Rs7Chord_Configure() {
+    g_rs7_match_misses = static_cast<uintptr_t>(Rs7Set_Int("chords.wide_misses"));  // the table's range: 0-2
+    Rs7Log("config: [chords] wide_misses=%d (seven/eight-note chords may miss up to %d notes on any string; 5/6-note "
+           "chords one and 2-4-note chords none, as in stock)",
+           int(g_rs7_match_misses), int(g_rs7_match_misses));
 }
 
 void Rs7Chord_StartLoops(bool nativeStrings) {
-    g_rs7_native_chordloops = Rs7Chord_Config().nativeChordloops && nativeStrings ? 1 : 0;
-    Rs7Log("config: [chords] native_chordloops=%d -> %s", Rs7Chord_Config().nativeChordloopsRaw,
-           g_rs7_native_chordloops
-               ? "native 8-slot chord bends / sustain techniques (CL* sites), 7/8-string chord frames (B1/B2)"
-           : Rs7Chord_Config().nativeChordloops ? "off: native_strings is unavailable (CL* sites unwritten)"
-                                                : "off (CL* sites unwritten)");
+    g_rs7_native_chordloops = nativeStrings ? 1 : 0;
+    Rs7Log("config: chord loops -> %s", g_rs7_native_chordloops
+                                            ? "on: native 8-slot chord bends / sustain techniques (CL* sites), "
+                                              "7/8-string chord frames (B1/B2)"
+                                            : "off (native_strings unavailable; CL* sites not written)");
 }
 
-void Rs7Chord_SetSongStrings(int n) {
-    InterlockedExchange(&g_songStrings, n);
-}
-
-int Rs7Chord_FrameTop(const void* tpl) {
-    const LONG n = g_songStrings;
-    if (!g_rs7_native_chordloops || n < 7 || n > 8) {
-        return -1;
-    }
-
-    const uint8_t* t8 = Rs7Ns_AsT8(tpl);
-    if (!t8) {
-        return -1;
-    }
-
-    for (int s = static_cast<int>(n) - 1; s >= 6; --s) {
-        if (static_cast<int8_t>(t8[rs7ns::kT8Frets + s]) >= 0) {
-            return s;
-        }
-    }
-
-    return -1;
-}
+// ---------------------------------------------------------------- chord frame span (game thread)
 
 extern "C" void __cdecl Rs7Chord_OnBoxGeom(void* geom, const void* chordObj, const void* player) {
     try {
@@ -159,36 +60,28 @@ extern "C" void __cdecl Rs7Chord_OnBoxGeom(void* geom, const void* chordObj, con
             return;
         }
 
-        // Every chord frame of a 7/8-string arrangement is marked: B2 derives its span from the lane positions, so a
-        // chord with strings 0-5 only keeps the stock frame on a floor that F1 moved, a chord with string 6/7 reaches
-        // it.
-        const bool seven = g_active || (g_rs7_native_chordloops && g_songStrings >= 7 && g_songStrings <= 8);
-        if (!seven) {
-            return;
-        }
-
-        int top = -1;
-
-        if (g_rs7_native_chordloops) {
-            // [chords] native_chordloops: the highest added string (6 or 7) the chord uses in its T8 record.
-            const void* tpl = nullptr;
-            if (!SafeRead(static_cast<const uint8_t*>(chordObj) + 0x30, &tpl, sizeof tpl)) {
-                return;
-            }
-
-            top = Rs7Chord_FrameTop(tpl);
-        }
-
-        if (top < 0) {
-            rs7chord::Ext x;
-
-            top = ExtOfObject(chordObj, 0x30, &x) ? 6 : 5;
-        }
-
         const void* guitar = nullptr;
-        if (!SafeRead(static_cast<const uint8_t*>(player) + 0x37C, &guitar, sizeof guitar) || !guitar) {
+        const uint8_t* info = nullptr;
+        uint8_t kind = 0, count = 0;
+
+        if (!Rs7_SafeCopy(&guitar, static_cast<const uint8_t*>(player) + rs7::kSessionGuitar, sizeof guitar) ||
+            !guitar || !Rs7_SafeCopy(&info, static_cast<const uint8_t*>(guitar) + rs7::kGuitarInfo, sizeof info) ||
+            !info || !Rs7_SafeCopy(&kind, info + rs7::kInfoKind, 1) ||
+            !Rs7_SafeCopy(&count, info + rs7::kInfoStrings, 1)) {
             return;
         }
+
+        // Every chord frame of an extended instrument covers the whole instrument, like the stock frame covers the
+        // stock one: B2 derives its span from the lane positions. A 7/8-string guitar: up to its last string (6 / 7),
+        // whatever strings the chord uses. A 5/6-string bass: low B .. G / high C (B2 with top 6: the low B one lane
+        // beyond string 0; frets: the high C beyond the G).
+        const bool bass = rs7::IsBassKind(kind) && rs7::IsExtendedBass(count);
+        const bool seven = !rs7::IsBassKind(kind) && (count == 7 || (count == 8 && g_rs7_native_chordloops));
+        if (!seven && !bass) {
+            return;
+        }
+
+        const int top = bass ? 6 : count - 1;
 
         g_boxMarks[g_boxNext] = geom;
         g_boxGuitar[g_boxNext] = guitar;
@@ -219,7 +112,7 @@ extern "C" int __cdecl Rs7Chord_BoxScale(const void* geom) {
         rs7frets::FrameFit fit;
 
         if (!Rs7Frets_ChordFrame(static_cast<const uint8_t*>(g_boxGuitar[i]), top, &fit)) {
-            if (Logging(&g_boxLogged, 4)) {
+            if (Rs7Log_Upto(&g_boxLogged, 4)) {
                 Rs7Log("chords B2: chord frame %p: no lane geometry for guitar %p, stock frame", geom, g_boxGuitar[i]);
             }
             return 0;
@@ -231,34 +124,32 @@ extern "C" int __cdecl Rs7Chord_BoxScale(const void* geom) {
 
         float v1[3], v2[3];
         const uint8_t* g = static_cast<const uint8_t*>(geom);
-        if (!SafeRead(g + 0x20, v1, sizeof v1) || !SafeRead(g + 0x2C, v2, sizeof v2)) {
+        if (!Rs7_SafeCopy(v1, g + 0x20, sizeof v1) || !Rs7_SafeCopy(v2, g + 0x2C, sizeof v2)) {
             return 0;
         }
 
         // Stock Rnd_GemGeom_ApplySpan 0x7AEE80: scale (1, 1, |-v2.y + v1.y|), translate (0, 0, (-v1.y - v2.y) / 2).
         g_rs7_box_scale[0] = 1.0f;
         g_rs7_box_scale[1] = 1.0f;
-        g_rs7_box_scale[2] = std::fabs(-v2[1] - -v1[1]);
+        g_rs7_box_scale[2] = std::fabs(v1[1] - v2[1]);
         g_rs7_box_trans[0] = 0.0f;
         g_rs7_box_trans[1] = 0.0f;
         g_rs7_box_trans[2] = (-v1[1] + -v2[1]) * 0.5f;
         // The frame's extent (origin edge at the model's 0, growing towards the lanes) in model units: scale about
         // the origin edge, then translate (HYPOTHESIS: model +axis = the direction the frame extends).
-        g_rs7_box_scale[g_frameAxis] *= fit.scale;
-        g_rs7_box_trans[g_frameAxis] += fit.shift * kFrameSign;
+        g_rs7_box_scale[kFrameAxis] *= fit.scale;
+        g_rs7_box_trans[kFrameAxis] += fit.shift;
 
-        if (Logging(&g_boxLogged, 12)) {
+        if (Rs7Log_Upto(&g_boxLogged, 12)) {
             Rs7Log(
                 "chords B2: chord frame %p up to string %d: span scale (%.3f %.3f %.3f) translate (%.3f %.3f %.3f) - "
                 "axis %d: x %.4f, origin edge moved %.4f (guitar %p: d %.4f m %.4f origin p %.4f; floor locator B "
-                "local "
-                "(%.3f %.3f %.3f) world now (%.3f %.3f %.3f), string 0 attach z %.3f)",
+                "local (%.3f %.3f %.3f) world now (%.3f %.3f %.3f), string 0 attach z %.3f)",
                 geom, top, double(g_rs7_box_scale[0]), double(g_rs7_box_scale[1]), double(g_rs7_box_scale[2]),
-                double(g_rs7_box_trans[0]), double(g_rs7_box_trans[1]), double(g_rs7_box_trans[2]), g_frameAxis,
-                double(fit.scale), double(fit.shift * kFrameSign), g_boxGuitar[i], double(fit.spacing),
-                double(fit.margin), double(fit.origin), double(fit.bLocal[0]), double(fit.bLocal[1]),
-                double(fit.bLocal[2]), double(fit.bWorld[0]), double(fit.bWorld[1]), double(fit.bWorld[2]),
-                double(fit.a0[2]));
+                double(g_rs7_box_trans[0]), double(g_rs7_box_trans[1]), double(g_rs7_box_trans[2]), kFrameAxis,
+                double(fit.scale), double(fit.shift), g_boxGuitar[i], double(fit.spacing), double(fit.margin),
+                double(fit.origin), double(fit.bLocal[0]), double(fit.bLocal[1]), double(fit.bLocal[2]),
+                double(fit.bWorld[0]), double(fit.bWorld[1]), double(fit.bWorld[2]), double(fit.a0[2]));
         }
 
         return 1;

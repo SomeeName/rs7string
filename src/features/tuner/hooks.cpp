@@ -1,17 +1,21 @@
 #include "features/tuner/hooks.h"
+#include "features/colours/colours.h"
 #include "features/pitch/pitch.h"
-#include "features/scene/scene.h"
 #include "features/tuner/state.h"
 #include "features/tuner/tuner.h"
+#include "model/instrument.h"
+#include "model/manifest.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstdarg>
 #include <cstdio>
 #include <intrin.h>
+#include <iterator>
 
 // The tuner's shared hooks (TK, TS, W, AT): the manifest key per offset array, the native 8-slot session hand-off
-// (hooks_session.cpp), the wrong-instrument threshold and [debug] tuner_autotune. Game thread only. The six-slot
-// B-phase tuner (low B as a phase of slot 0: T1 TA TR M1 M2 L1 L2 TLC TLI TLO1 TLO2 TF PK PE TD) was removed in 1.0.
+// (hooks_session.cpp), the wrong-instrument threshold and [debug] tuner_autotune. Game thread only.
 
 extern "C" {
 __declspec(dllexport) uintptr_t g_rs7_tuner_auto = 0;
@@ -19,7 +23,7 @@ __declspec(dllexport) volatile long g_rs7_tuner_any = 0;
 __declspec(dllexport) uintptr_t g_rs7_tuner_mgr = 0;
 __declspec(dllexport) uintptr_t g_rs7_lowrange = 0;
 __declspec(dllexport) Rs7WrongEnt g_rs7_wrong_tab[4] = {};
-__declspec(dllexport) float g_rs7_wrong_thr = 34.0f;
+__declspec(dllexport) float g_rs7_wrong_thr = float(rs7tuner::kStockWrongThreshold);
 __declspec(dllexport) uintptr_t g_rs7_wrong_const = 0;  // X_WTHR: the address of the game's threshold (34.0)
 __declspec(dllexport) uintptr_t g_rs7_fn_getdet = 0;
 }
@@ -28,20 +32,9 @@ rs7tuner::State rs7tuner::g_state;
 
 namespace {
 using rs7tn::kKey;
-using rs7tuner::At;
 using rs7tuner::g_state;
 using rs7tuner::Key;
-
-template <class T>
-T Rd(const void* base, uint32_t off) {
-    T v{};
-
-    if (base) {
-        rs7s7d::SafeCopy(&v, static_cast<const uint8_t*>(base) + off, sizeof v);
-    }
-
-    return v;
-}
+using rs7tuner::UncheckedField;
 
 void UpdateAny() {
     long any = g_rs7_tuner_auto ? 1 : 0;
@@ -50,7 +43,7 @@ void UpdateAny() {
         w = Rs7WrongEnt{};
     }
 
-    if (g_rs7_native_tuner && Rs7Tuner8_WrongEntries(g_rs7_wrong_tab, 4)) {
+    if (Rs7Tuner8_WrongEntries(g_rs7_wrong_tab, int(std::size(g_rs7_wrong_tab)))) {
         any = 1;
     }
     _InterlockedExchange(&g_rs7_tuner_any, any);
@@ -70,52 +63,8 @@ __declspec(noinline) void Log(const char* fmt, ...) {
 }
 }  // namespace
 
-// ---- the manifest key, through the game's JSON vtable (as Play_Tuning_ReadStringOffsets 0x5B84DC) ----
-// tools/tests/test_manifest_readkey.py compiles this part (from the JsonFind alias to the end marker) on its own.
-using JsonFind = void*(__thiscall*)(void* self, const char* name);
-using JsonNum = uint8_t*(__thiscall*)(void* self);
-
-namespace rs7tuner {
-bool JsonNumber(void* obj, const char* key, double* out) {
-    __try {
-        if (!obj) {
-            return false;
-        }
-
-        void** vt = *static_cast<void***>(obj);
-        void* node = reinterpret_cast<JsonFind>(vt[0x14 / 4])(obj, key);
-        if (!node) {
-            return false;
-        }
-
-        void** nvt = *static_cast<void***>(node);
-        uint8_t* num = reinterpret_cast<JsonNum>(nvt[0x50 / 4])(node);
-        if (!num) {
-            return false;
-        }
-
-        *out = *reinterpret_cast<const double*>(num + 8);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-bool JsonOffset(void* obj, const char* key, int* out, double* raw) {
-    double d = 0.0;
-    if (!JsonNumber(obj, key, &d) || !(d > -25.0 && d < 25.0)) {
-        return false;
-    }
-
-    *out = static_cast<int>(d);  // the stock readers truncate (0xF5B0D0)
-    if (raw) {
-        *raw = d;
-    }
-
-    return true;
-}
-}  // namespace rs7tuner
-
+// ---- the manifest key reader: ReadKey over model/manifest.h. tools/tests/test_manifest_readkey.py compiles
+// model/manifest.h and this part (from here to the end marker) on its own.
 namespace {
 // holder = the address of the target tuning's JSON object.
 bool ReadKey(void* holder, int* t6, double* raw, const char* key = kKey) {
@@ -123,11 +72,11 @@ bool ReadKey(void* holder, int* t6, double* raw, const char* key = kKey) {
 
     __try {
         obj = holder ? *static_cast<void**>(holder) : nullptr;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return false;
     }
 
-    return rs7tuner::JsonOffset(obj, key, t6, raw);
+    return rs7::JsonOffset(obj, key, t6, raw);
 }
 }  // namespace
 
@@ -140,8 +89,10 @@ bool SessionAlive(const uint8_t* session) {
         return false;
     }
 
-    for (uint32_t i = 0; i < 4; ++i) {
-        if (At<uint8_t*>(mgr, 0x10 + i * 4) == session) {
+    constexpr uint32_t kMgrSessions = 0x10, kMgrSlots = 4;  // the tuner manager's session per player slot
+
+    for (uint32_t i = 0; i < kMgrSlots; ++i) {
+        if (UncheckedField<uint8_t*>(mgr, kMgrSessions + i * 4) == session) {
             return true;
         }
     }
@@ -155,20 +106,44 @@ bool Rs7Tuner_SevenFor(const int* offs, int* t6) {
         return false;
     }
 
-    for (const Key& k : g_state.keys) {
-        if (k.offs == offs && k.found) {
-            *t6 = k.t6;
-            return true;
-        }
+    const Key* k = g_state.keys.Find(offs);
+
+    if (k && k->found) {
+        *t6 = k->t6;
+        return true;
     }
 
     return false;
 }
 
-void Rs7Tuner_ResetAll() {
-    for (Key& k : g_state.keys) {
-        k = Key{};
+int Rs7Tuner_BassFor(const int* offs) {
+    if (!offs) {
+        return 0;
     }
+
+    const Key* k = g_state.keys.Find(offs);
+
+    return k && !k->found ? k->bass : 0;
+}
+
+bool Rs7Tuner_EighthFor(const int* offs, int* t7) {
+    if (!offs) {
+        return false;
+    }
+
+    const Key* k = g_state.keys.Find(offs);
+
+    if (k && k->found && k->found7) {
+        *t7 = k->t7;
+        return true;
+    }
+
+    return false;
+}
+
+namespace {
+void ResetAll() {
+    g_state.keys.Clear();
 
     for (rs7tuner::Auto& a : g_state.autos) {
         a = rs7tuner::Auto{};
@@ -177,9 +152,8 @@ void Rs7Tuner_ResetAll() {
     UpdateAny();
 }
 
-namespace {
 void PublishedTarget(const uint8_t* session, int* n, int extra[2]);
-}
+}  // namespace
 
 // ---- stub entry points ----
 extern "C" void __cdecl Rs7_TunerKey(int* offs, void* holder) {
@@ -187,74 +161,66 @@ extern "C" void __cdecl Rs7_TunerKey(int* offs, void* holder) {
         return;
     }
 
-    Key k{offs, false, 0, 0.0};
+    Key k{false, 0, 0.0};
 
     k.found = ReadKey(holder, &k.t6, &k.raw);
     double raw7 = 0.0;
 
     if (k.found) {
         k.found7 = ReadKey(holder, &k.t7, &raw7, rs7tn::kKey8);
+    } else if (int b = 0; ReadKey(holder, &b, &raw7, rs7tn::kKeyBass4)) {
+        k.bass = ReadKey(holder, &b, &raw7, rs7tn::kKeyBass5) ? 6 : 5;
     }
-    Key* slot = nullptr;
+    // The tuner shows the low B before the song setup decides it (bass hooks): without this the first extended-bass
+    // tuner kept slot 4 green and the next guitar's tuner kept the last bass song's grey B string.
+    const uint32_t now = GetTickCount();
 
-    for (Key& x : g_state.keys) {
-        if (x.offs == offs) {
-            slot = &x;
-        }
-    }
+    rs7colour::SetBassLowB(rs7tuner::BassLowB(k.bass != 0, g_state.guitarKeySeen, now - g_state.guitarKeyTick));
 
-    if (!slot) {
-        for (Key& x : g_state.keys) {
-            if (!slot && !x.offs) {
-                slot = &x;
-            }
-        }
+    if (!k.bass) {
+        g_state.guitarKeySeen = true;
+        g_state.guitarKeyTick = now;
     }
 
-    if (!slot) {
-        slot = &g_state.keys[0];
-    }
-    const bool changed = slot->offs != offs || slot->found != k.found || slot->t6 != k.t6 || slot->found7 != k.found7 ||
-                         slot->t7 != k.t7;
+    const Key* old = g_state.keys.Find(offs);
+    const bool changed = !old || old->found != k.found || old->t6 != k.t6 || old->found7 != k.found7 ||
+                         old->t7 != k.t7 || old->bass != k.bass;
 
-    *slot = k;
+    g_state.keys.Put(offs, k);
 
     if (changed) {
         Log("tuner: target tuning read into %p: %s", offs,
-            k.found ? (k.found7 ? "manifest keys Rs7String6 and Rs7String7 present (8-string arrangement)"
-                                : "manifest key Rs7String6 present (7-string arrangement)")
-                    : "no Rs7String6 (6-string)");
+            k.found  ? (k.found7 ? "manifest keys Rs7String6 and Rs7String7 present (8-string arrangement)"
+                                 : "manifest key Rs7String6 present (7-string arrangement)")
+            : k.bass ? "extended bass (Rs7String4)"
+                     : "no Rs7String6 (6-string)");
     }
 }
 
 extern "C" void __cdecl Rs7_TunerApply(uint8_t* session, const int* offs) {
-    if (!g_rs7_native_tuner || !session || !offs) {
-        return;  // without the native 8-slot session the stock six-string tuner runs
+    if (!session || !offs || (!g_rs7_native_tuner && !Rs7Tuner8_IsNative(session))) {
+        return;  // isolation stops new migrations; existing sessions retain their tail ownership
     }
 
-    const Key* k = nullptr;
+    const Key* k = g_state.keys.Find(offs);
 
-    for (const Key& x : g_state.keys) {
-        if (x.offs == offs) {
-            k = &x;
-        }
-    }
-
-    int n = !k ? 6 : !k->found ? 6 : k->found7 ? 8 : 7;
+    int n = !k || !k->found ? 6 : k->found7 ? 8 : 7;
     int extra[2] = {k && k->found ? k->t6 : 0, k && k->found7 ? k->t7 : 0};
 
-    PublishedTarget(session, &n, extra);
+    if (!k) {
+        PublishedTarget(session, &n, extra);
+    }
     if (!k && n <= 6) {
         return;  // not read by TK and nothing published: keep the state
     }
 
-    Rs7Tuner8_Apply(session, offs, n, extra);
+    Rs7Tuner8_Apply(session, offs, n, extra, k ? k->bass : 0);
 }
 
 // W: called inside pushad with the tuner's x87 stack live (ST0 = the mean). Integer and SSE only
 // (a float assignment compiles to movss; no CRT, no logging, no exception frame).
 extern "C" void __cdecl Rs7_WrongThreshold(uint8_t* session) {
-    int thr = 34;
+    int thr = rs7tuner::kStockWrongThreshold;
 
     for (const Rs7WrongEnt& w : g_rs7_wrong_tab) {
         if (w.session && w.session == session) {
@@ -292,7 +258,7 @@ using GetDetectorFn = void*(__fastcall*)(uint32_t id, void* edx);
 void* GetDetector(uint32_t id) {
     __try {
         return g_rs7_fn_getdet ? reinterpret_cast<GetDetectorFn>(g_rs7_fn_getdet)(id, nullptr) : nullptr;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -300,21 +266,21 @@ void* GetDetector(uint32_t id) {
 // Lowest-open policy (detector +11F8h = string0 + 40 from SetTuning): lowered to the session's lowest
 // open note, never raised. Only a guitar detector linked to its matcher (as Rs7_OnSongTuning checks).
 void LowerDetectorTo(const uint8_t* session, int low) {
-    uint8_t* det = static_cast<uint8_t*>(GetDetector(Rd<uint32_t>(session, 0xC)));
+    uint8_t* det = static_cast<uint8_t*>(GetDetector(Rs7_SafeRead<uint32_t>(session, rs7tu::kDetectorId)));
     if (!det) {
         return;
     }
 
-    uint8_t* input = At<uint8_t*>(det, rs7::kDetOwner);
-    uint8_t* matcher = input ? At<uint8_t*>(input, rs7::kInputMatcher) : nullptr;
-    if (!matcher || At<uint8_t*>(matcher, rs7::kMatcherDetector) != det) {
+    uint8_t* input = UncheckedField<uint8_t*>(det, rs7::kDetOwner);
+    uint8_t* matcher = input ? UncheckedField<uint8_t*>(input, rs7::kInputMatcher) : nullptr;
+    if (!matcher || UncheckedField<uint8_t*>(matcher, rs7::kMatcherDetector) != det) {
         return;
     }
-    if (At<int>(det, rs7::kDetInstrument) == 2) {
+    if (rs7::IsBassKind(UncheckedField<int>(det, rs7::kDetInstrument))) {
         return;
     }
 
-    int& cur = At<int>(det, rs7::kDetLowestOpen);
+    int& cur = UncheckedField<int>(det, rs7::kDetLowestOpen);
     if (low >= cur) {
         return;
     }
@@ -322,6 +288,7 @@ void LowerDetectorTo(const uint8_t* session, int low) {
     Log("tuner: low range: detector %p lowest open %d -> %d, wrong-instrument threshold %d", det, cur, low,
         rs7tuner::WrongThreshold(low));
     cur = low;
+    Rs7Pitch_DetFloor(det, 0);
 }
 
 // [neck] native_tuner, no manifest key: a count feat/publish published on the session's guitar
@@ -333,17 +300,17 @@ void PublishedTarget(const uint8_t* session, int* n, int extra[2]) {
             return;
         }
 
-        uint8_t* det = static_cast<uint8_t*>(GetDetector(Rd<uint32_t>(session, 0xC)));
+        uint8_t* det = static_cast<uint8_t*>(GetDetector(Rs7_SafeRead<uint32_t>(session, rs7tu::kDetectorId)));
         const bool tail = det && Rs7Pitch_Tailed(det, 1);
 
         for (int s = *n; s < published; ++s) {
-            extra[s - 6] = tail ? Rd<int16_t>(det, rs7p::kDetTuning8 + 2 * uint32_t(s)) : 0;
+            extra[s - 6] = tail ? Rs7_SafeRead<int16_t>(det, rs7p::kDetTuning8 + 2 * uint32_t(s)) : 0;
         }
 
         Log("tuner: native tuner: no manifest key for %d strings, the guitar's published count %d (offsets %s)", *n,
             published, tail ? "from the detector's tuning8" : "0: no detector tail");
         *n = published;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
     }
 }
 }  // namespace
@@ -371,18 +338,27 @@ extern "C" uint32_t __cdecl Rs7_TunerAutotune(uint8_t* session) {
             continue;
         }
 
-        if (GetTickCount() - x.tick < uint32_t(g_rs7_tuner_auto) * 1000u) {
+        const uint32_t now = GetTickCount();
+        const int cur = Rs7_SafeRead<int>(session, rs7tu::kCur);
+
+        if (cur != x.cur) {
+            x.cur = cur;
+            x.tick = now;
             return 0;
         }
 
-        x.tick = GetTickCount();  // once per interval
+        if (now - x.tick < uint32_t(g_rs7_tuner_auto) * 1000u) {
+            return 0;
+        }
+
+        x.tick = now;  // once per interval
         Log("tuner: [debug] tuner_autotune: string %d reported tuned", x.cur);
         return 1;
     }
 
     // The session's first query (or autotune was switched on during it): its interval starts now.
     if (free && session) {
-        *free = rs7tuner::Auto{session, GetTickCount(), At<int>(session, rs7tu::kCur)};
+        *free = rs7tuner::Auto{session, GetTickCount(), UncheckedField<int>(session, rs7tu::kCur)};
         Log("tuner: [debug] tuner_autotune=%u: session %p string %d reports tuned in %u s", unsigned(g_rs7_tuner_auto),
             session, free->cur, unsigned(g_rs7_tuner_auto));
     }
@@ -429,7 +405,7 @@ void Rs7Tuner_Configure() {
                ? "7-string tuner: wrong-instrument threshold and detector lowest open follow the lowest string"
                : "stock (wrong-instrument threshold 34)");
     g_rs7_tuner_auto = static_cast<uintptr_t>(c.tunerAutotune);
-    Rs7Tuner_ResetAll();
+    ResetAll();
     Rs7Log("config: [debug] tuner_autotune=%d%s", c.tunerAutotune,
            c.tunerAutotune ? " s (TEST DRIVING: strings report tuned by themselves)" : " (off)");
     rs7tn::Config tn;
@@ -443,6 +419,6 @@ void Rs7Tuner_Configure() {
 
     Rs7Log("config: [tuner] names=%d name_prefix=\"%s\" name_suffix=\"%s\"%s -> %s", c.tunerNamesRaw, tn.prefix,
            tn.suffix, c.nameAffixValid ? "" : " (INVALID text replaced by the default)",
-           c.tunerNames ? ("7-string tuning names, e.g. \"" + rs7tn::KnownDisplay(b0, tn, 0, false) + "\"").c_str()
+           c.tunerNames ? ("extended tuning names, e.g. \"" + rs7tn::KnownDisplay(b0, tn, 0, false) + "\"").c_str()
                         : "stock tuning names");
 }

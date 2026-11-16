@@ -1,9 +1,18 @@
 #include "model/extblock.h"
+#include "model/slots.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <set>
 
 namespace rs7ext {
+
+// The wire limits of the spec match the game model: extended columns follow the six stock guitar strings, an
+// extended bass has the model's 5 or 6 strings in the six stock tuning entries of the SNG.
+constexpr int kStockGuitar = int(rs7::kStockGuitarStrings);
+constexpr uint32_t kBassTuningEntries = rs7::kStockGuitarStrings;
+static_assert(kMaxBassStrings == int(rs7::kMaxBassSlots), "RS7X bass limit = model bass slots");
+static_assert(rs7::IsExtendedBass(kMinBassStrings) && rs7::IsExtendedBass(kMaxBassStrings), "RS7X bass range");
 
 int Block::Column(int string) const {
     for (size_t i = 0; i < strings.size(); ++i) {
@@ -15,7 +24,7 @@ int Block::Column(int string) const {
     return -1;
 }
 
-bool Block::TemplateColumn(uint32_t t, int string, int* f, int* g) const {
+bool Block::TemplateColumn(uint32_t t, int string, int* fretOut, int* fingerOut) const {
     const int c = Column(string);
     if (c < 0 || !hasTemplates || strings.empty() || t >= fret.size() / strings.size()) {
         return false;
@@ -26,8 +35,8 @@ bool Block::TemplateColumn(uint32_t t, int string, int* f, int* g) const {
         return false;
     }
 
-    *f = fret[i];
-    *g = finger[i];
+    *fretOut = fret[i];
+    *fingerOut = finger[i];
 
     return true;
 }
@@ -102,41 +111,8 @@ struct Header {
     uint32_t blockSize, count;
 };
 
-// The sections met so far: each may appear once.
-struct Seen {
-    size_t first;
-    uint32_t ids[16] = {};
-    size_t count = 0;
-
-    bool Add(uint32_t id, const uint8_t* p, size_t current) {
-        for (size_t i = 0; i < count; ++i) {
-            if (ids[i] == id) {
-                return false;
-            }
-        }
-
-        if (count < sizeof ids / sizeof ids[0]) {
-            ids[count++] = id;
-            return true;
-        }
-
-        // Optional future sections have no format-level count limit. Beyond the small cache, scan only
-        // headers already validated by ParseSection rather than allocating or imposing a new wire limit.
-        for (size_t at = first; at < current;) {
-            uint32_t previous, size;
-
-            std::memcpy(&previous, p + at, sizeof previous);
-            std::memcpy(&size, p + at + 8, sizeof size);
-            if (previous == id) {
-                return false;
-            }
-
-            at += kSectionHeader + size_t(size);
-        }
-
-        return true;
-    }
-};
+// One node per validated header, bounded by the input size; logarithmic even for adversarial ids.
+using Seen = std::set<uint32_t>;
 
 Status ReadHeader(const uint8_t* p, size_t n, Header* h, char* why, size_t whyLen) {
     if (n < 4 || std::memcmp(p, "RS7X", 4) != 0) {
@@ -163,6 +139,22 @@ Status ReadHeader(const uint8_t* p, size_t n, Header* h, char* why, size_t whyLe
     return Status::Ok;
 }
 
+// Extended bass (spec 2.3, instrument 1): strings 4 (low B) and 5 (high C) live in the six stock tuning / note slots,
+// so the block only marks the arrangement: 5 or 6 strings, six tuning entries, no extended columns.
+Status ParseBassStrs(const Context& x, const uint8_t h[4]) {
+    if (h[1] < kMinBassStrings || h[1] > kMaxBassStrings) {
+        return Fail(Status::Invalid, x.why, x.whyLen, "bass with %u strings", h[1]);
+    }
+    if (x.tuning != kBassTuningEntries) {
+        return Fail(Status::Invalid, x.why, x.whyLen, "bass with %u tuning entries", x.tuning);
+    }
+    if (h[2] != 0) {
+        return Fail(Status::Invalid, x.why, x.whyLen, "bass with %u columns", h[2]);
+    }
+
+    return Status::Ok;
+}
+
 Status ParseStrs(const Context& x, Cursor& c) {
     Block* out = x.out;
     uint8_t h[4];
@@ -172,16 +164,19 @@ Status ParseStrs(const Context& x, Cursor& c) {
 
     out->instrument = h[0];
     out->stringCount = h[1];
-    if (out->instrument != 0) {
+    if (out->instrument == kInstrumentBass) {
+        return ParseBassStrs(x, h);
+    }
+    if (out->instrument != kInstrumentGuitar) {
         return Fail(Status::Unsupported, x.why, x.whyLen, "instrument %d", out->instrument);
     }
-    if (out->stringCount < 7 || out->stringCount > kMaxStrings) {
+    if (out->stringCount <= kStockGuitar || out->stringCount > kMaxStrings) {
         return Fail(Status::Invalid, x.why, x.whyLen, "%d strings", out->stringCount);
     }
     if (static_cast<uint32_t>(out->stringCount) != x.tuning) {
         return Fail(Status::Invalid, x.why, x.whyLen, "%d strings but %u tuning entries", out->stringCount, x.tuning);
     }
-    if (h[2] != out->stringCount - 6) {
+    if (h[2] != out->stringCount - kStockGuitar) {
         return Fail(Status::Invalid, x.why, x.whyLen, "%u columns for %d strings", h[2], out->stringCount);
     }
 
@@ -190,7 +185,7 @@ Status ParseStrs(const Context& x, Cursor& c) {
         if (!c.Get(&st)) {
             return Fail(Status::Invalid, x.why, x.whyLen, "STRS too short");
         }
-        if (st != 6 + i) {
+        if (st != kStockGuitar + i) {
             return Fail(Status::Invalid, x.why, x.whyLen, "column %d is string %u", i, st);
         }
 
@@ -325,7 +320,7 @@ Status ParseSection(const Context& x, const uint8_t* p, uint32_t bsize, uint32_t
     uint32_t sectionId;
 
     std::memcpy(&sectionId, id, sizeof sectionId);
-    if (!seen->Add(sectionId, p, size_t(id - p))) {
+    if (!seen->insert(sectionId).second) {
         return Fail(Status::Invalid, x.why, x.whyLen, "section %.4s twice", reinterpret_cast<const char*>(id));
     }
 
@@ -385,7 +380,7 @@ Status Parse(const uint8_t* p, size_t n, uint32_t templates, uint32_t chordNotes
     *out = Block();
     const Context x{templates, chordNotes, tuning, out, why, whyLen};
     size_t at = h.size;
-    Seen seen{h.size};
+    Seen seen;
 
     for (uint32_t s = 0; s < h.count; ++s) {
         const Status r = ParseSection(x, p, h.blockSize, s, &at, &seen);

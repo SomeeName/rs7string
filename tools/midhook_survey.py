@@ -95,8 +95,7 @@ def survey(text: bytes, text_va: int, sites, relocate: Relocator) -> list[tuple[
 
 def game_text(exe: Path) -> tuple[bytes, int]:
     pe = pefile.PE(str(exe), fast_load=True)
-    sec = next(s for s in pe.sections if s.Name.rstrip(b"\0") == b".text")
-    return sec.get_data()[: sec.Misc_VirtualSize], pe.OPTIONAL_HEADER.ImageBase + sec.VirtualAddress
+    return sitecheck.text_section(pe)
 
 
 def main(argv: list[str]) -> int:

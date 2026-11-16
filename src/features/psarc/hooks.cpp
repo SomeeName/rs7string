@@ -11,7 +11,9 @@
 #include "platform/pattern.h"
 #include "platform/resolve.h"
 #include "platform/retry.h"
+#include "platform/settings.h"
 #include <windows.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -21,7 +23,7 @@
 
 extern "C" __declspec(dllexport) uintptr_t g_rs7_plain_psarc = uintptr_t(Rs7PlainProvider::Unknown);
 
-//   PP_TOC   0x8A3643 PSARC TOC loader: plain TOC (archive flag bit 4 clear) skips the decrypt block
+//   PP_TOC   0x8A3643 PSARC TOC loader: plain TOC (archiveFlags & 4 clear) skips the decrypt block
 //   PP_SNGF  0x558C1A SNG loader: flags 1 (plain) passes the flags check
 //   PP_SNGD  0x558CD4 SNG loader: the call of the SNG decrypt becomes decrypt-or-copy (a C function)
 extern "C" __declspec(dllexport) uintptr_t g_rs7_target_PP_SNGD = 0;  // the game's SNG decrypt (0xE3EA10)
@@ -69,7 +71,9 @@ uintptr_t OurTarget(size_t index, const Rs7Site& s, const Rs7Hook& h, uintptr_t 
     }
 
     m = MidEntry{};
-    if (g_midUsed >= (g_midLimit ? g_midLimit : std::size(g_midPool)) || g_midUsed >= std::size(g_midPool)) {
+    const size_t limit = g_midLimit ? (std::min)(g_midLimit, std::size(g_midPool)) : std::size(g_midPool);
+
+    if (g_midUsed >= limit) {
         return 0;
     }
 
@@ -249,7 +253,7 @@ Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
     ops.prepare = [](size_t) {
         return true;
     };
-    // Review #9: the CAS writes run under the same thread freeze as the main batch (ops.range), so the
+    // The CAS writes run under the same thread freeze as the main batch (ops.range), so the
     // CDLC enabler's threads and the loaders are stopped and none stands inside a site; the compare-exchange
     // still guards against an enabler that wrote before the freeze. Inside the freeze: no logging.
     static Rs7CasResult casResult[8];
@@ -262,9 +266,10 @@ Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
             casResult[i] = r;
         }
 
-        return r == Rs7CasResult::Written;
+        return Rs7WriteResult(r == Rs7CasResult::Written || r == Rs7CasResult::WrittenCleanupFailed,
+                              r != Rs7CasResult::WrittenCleanupFailed && r != Rs7CasResult::MismatchCleanupFailed);
     };
-    ops.restore = [](size_t i) {  // review #8: success = the bytes are no longer ours
+    ops.restore = [](size_t i) {  // success = the bytes are no longer ours
         const Unit& u = g_unit[i];
         const Rs7CasResult r =
             Rs7_CasCode(u.addr, u.ours, u.original.data(), sizeof u.ours);  // only if it is still ours
@@ -284,9 +289,11 @@ Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
 
             if (r != Rs7CasResult::Written && r != Rs7CasResult(-1)) {
                 Rs7Log("plain psarc: %s compare-exchange failed (%s)", g_unit[i].site->id,
-                       r == Rs7CasResult::Mismatch      ? "the bytes changed"
-                       : r == Rs7CasResult::Unsupported ? "no atomic window"
-                                                        : "protection");
+                       r == Rs7CasResult::Mismatch                ? "the bytes changed"
+                       : r == Rs7CasResult::Unsupported           ? "no atomic window"
+                       : r == Rs7CasResult::WrittenCleanupFailed  ? "written, protection restore failed"
+                       : r == Rs7CasResult::MismatchCleanupFailed ? "not written, protection restore failed"
+                                                                  : "protection");
             }
 
             casResult[i] = Rs7CasResult(-1);
@@ -308,7 +315,7 @@ void ReportPatch(const Rs7GroupPolicy& groups, Rs7PatchResult pr, const std::vec
         groups.disable(kPsarc);
     }
 
-    if (pr == Rs7PatchResult::Unrecoverable) {  // review #8: our bytes stay; plain packages still load through them
+    if (pr == Rs7PatchResult::Unrecoverable) {  // our bytes stay; plain packages still load through them
         SetProvider(Rs7PlainProvider::Failed);
         Rs7Log("plain psarc: UNRECOVERABLE rollback - %u site(s) stay rs7string's, no retries [%s]",
                unsigned(written.size()), Describe(States()).c_str());
@@ -346,7 +353,7 @@ void Rs7Plain_StartFromIni(const Rs7PlainHost& host, const wchar_t* ini, const R
         Sleep(delay < 30000 ? delay : 30000u);
     }
 
-    Rs7Plain_Start(host, GetPrivateProfileIntW(L"psarc", L"plain", 1, ini) != 0, sites, count, textVa, textSize);
+    Rs7Plain_Start(host, Rs7Set_Bool("psarc.plain"), sites, count, textVa, textSize);
 }
 
 void Rs7Plain_Start(const Rs7PlainHost& host, bool enabled, const Rs7Site* sites, int count, uintptr_t textVa,
@@ -419,7 +426,7 @@ using Rs7SngDecrypt = bool(__cdecl*)(const uint8_t* src, uint32_t len, const cha
 extern "C" __declspec(dllexport) bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t* src, uint32_t len, const char* key,
                                                                uint32_t keyLen, uint8_t* out, uint32_t outLen) {
     // Even encrypted input needs the IV slot. Reject it before inspecting the preceding header.
-    if (!src || len < 0x10) {
+    if (!src || !out || len < 0x10) {
         return false;
     }
 
@@ -434,7 +441,13 @@ extern "C" __declspec(dllexport) bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t* sr
             return true;
         case Rs7SngAction::Reject:
             return false;
-        default:
-            return reinterpret_cast<Rs7SngDecrypt>(g_rs7_target_PP_SNGD)(src, len, key, keyLen, out, outLen);
+        default: {
+            const auto decrypt = reinterpret_cast<Rs7SngDecrypt>(g_rs7_target_PP_SNGD);
+            if (!decrypt) {
+                return false;  // not resolved (cannot happen once the site is written): fail the load, never call null
+            }
+
+            return decrypt(src, len, key, keyLen, out, outLen);  // the game's own result, AL as it left it
+        }
     }
 }

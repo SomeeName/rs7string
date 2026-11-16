@@ -1,5 +1,4 @@
-// The headstock's Wrap mid-hook (ARCHITECTURE.md section 15 "Wrap placement"). Converted from a naked stub (frozen at
-// b72bc52, tools/tests/test_midhook_wrap_sites.py).
+// The headstock's Wrap mid-hooks (ARCHITECTURE.md section 14 "Wrap placement").
 #include "features/headstock/hooks.h"
 
 extern "C" {
@@ -11,6 +10,14 @@ extern "C" {
 __declspec(dllexport) void __cdecl Rs7_Mid_PSN2Before(Rs7Mid::Context& c) {
     if (Rs7Mid::Frame(c, kRs7WrapPSN2).Arg(0) == 0) {
         Rs7Mid::WrapReturn(c, kRs7WrapPSN2, c.eax);
+    }
+}
+
+// PSN3 - the same dispatch call at 0x5B09D2 in the tuner's per-peg loop 0x5B0960 (EBX = peg index): a NULL slot
+// (a peg the model has no Locator_Peg for, extended bass strings 4/5) skips the call. No after part.
+__declspec(dllexport) void __cdecl Rs7_Mid_PSN3Before(Rs7Mid::Context& c) {
+    if (Rs7Mid::Frame(c, kRs7WrapPSN3).Arg(0) == 0) {
+        Rs7Mid::WrapReturn(c, kRs7WrapPSN3, c.eax);
     }
 }
 

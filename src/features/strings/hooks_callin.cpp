@@ -1,5 +1,5 @@
 // The calls written into the native GuitarStrings copies (tools/gen_fncopy.py, fncopy_specs.generated.h): call-in
-// entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 15 "Call-in entries") that run these callbacks with the copy's
+// entries (Rs7Mid::CallIn, docs/ARCHITECTURE.md section 14 "Call-in entries") that run these callbacks with the copy's
 // registers in place of one stock instruction or call. They replaced the naked Rs7_Call_* helpers (frozen at 304b9d3,
 // tools/tests/test_midhook_callin.py); TP2's callback is the nslot redirect (features/nslot/hooks_records.cpp). Light
 // where the copy runs per string per frame and the callback is integer only; Sse for the glow read (an x87 result
@@ -8,6 +8,7 @@
 #include "features/nslot/nslot.h"
 #include "features/string7/string7.h"
 #include "features/strings/hooks.h"
+#include "platform/log.h"
 
 using Rs7Mid::Byte;
 using Rs7Mid::Dword;
@@ -35,7 +36,7 @@ __declspec(dllexport) void __cdecl Rs7_CallIn_GlowColour(Rs7Mid::Context& c) {
     } else if (s >= 6) {
         const uint32_t mode = modeA8 ? 1 : 0;
 
-        c.eax = reinterpret_cast<uintptr_t>(g_rs7_ns_rgb + ((mode * 2 + s - 6) * 3 + 2) * 3);
+        c.eax = reinterpret_cast<uintptr_t>(Rs7Gs_NsRgb(mode, s, 2));
         return;
     } else {
         c.eax = Dword(c.ecx + c.eax * 4 + 0x398);
@@ -79,14 +80,15 @@ __declspec(dllexport) void __cdecl Rs7_CallIn_HsSeg(Rs7Mid::Context& c) {
 __declspec(dllexport) void __cdecl Rs7_CallIn_Attach(Rs7Mid::Context& c) {
     const uint32_t s = Dword(c.esp + 4);
 
-    if ((s & 0xFF) < 6) {
+    if ((s & 0xFF) < rs7gs::StockAttachCount(Ptr<const uint8_t>(c.ecx))) {
         c.jump = g_rs7_fn_attach;
         return;
     }
 
     const Rs7Mid::GameFcw fcw(c);  // Rs7Gs_AttachExt calls the game's attach query twice
+    const int spaced = Rs7Gs_AttachSpaced(Ptr(c.ecx), s, Ptr<float>(Dword(c.esp + 8)));
 
-    c.eax = uint32_t(Rs7Gs_AttachExt(Ptr(c.ecx), s, Ptr<float>(Dword(c.esp + 8))));
+    c.eax = spaced >= 0 ? uint32_t(spaced) : uint32_t(Rs7Gs_AttachExt(Ptr(c.ecx), s, Ptr<float>(Dword(c.esp + 8))));
 }
 
 // The return entry of the added strings' shape lookup (g_rs7_callin_ShapeDone below; Rs7Gs_PrepareCallIns).
@@ -101,7 +103,7 @@ __declspec(dllexport) void __cdecl Rs7_CallIn_Shape(Rs7Mid::Context& c) {
 
     c.jump = g_rs7_fn_shape;
     // Rs7Gs_PrepareCallIns builds the return entry before any copy exists; without it, the stock lookup alone.
-    if ((s & 0xFF) < 6 || !g_rs7_callin_shape_ret) {
+    if ((s & 0xFF) < rs7gs::StockAttachCount(Ptr<const uint8_t>(info)) || !g_rs7_callin_shape_ret) {
         return;
     }
 

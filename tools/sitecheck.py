@@ -3,14 +3,13 @@
 
 Every pattern must match exactly once inside .text and the bytes at the site must equal
 `expect`. A jmp-kind site (a jmp over several instructions) must cover whole instructions and no direct
-branch anywhere in .text may target a byte inside it other than its start (issue #18: PSL2 once
+branch anywhere in .text may target a byte inside it other than its start (PSL2 once
 covered `mov byte [ebx+8],1; mov eax,[ebp+8]` and 0x59C587 jumps to the second instruction - into
 the middle of the patched jmp). Run before every in-game test:  uv run python rs7string/tools/sitecheck.py
 """
 
 from __future__ import annotations
 
-import re
 import sys
 import itertools
 from pathlib import Path
@@ -24,11 +23,22 @@ from sitetable import REF_KINDS, Site, load, parse_pattern
 # [neck] switches that choose between site variants (overlap check: every combination). A site
 # field "native" means written only when the switch is 1, "" always (the "legacy" variants went in 1.0).
 # native_colours has no site field: the CM* sites are written with 1 only.
-SWITCH_NAMES = ("strings", "fretgrid", "colours", "pitch", "nextgrid", "publish", "chordloops", "tuner", "clite")
+SWITCH_NAMES = (
+    "strings",
+    "fretgrid",
+    "colours",
+    "pitch",
+    "nextgrid",
+    "publish",
+    "tuner",
+    "clite",
+    "eight",
+)
+# eight (always on; features/nslot/nslot.h): the E8* sites.
 # clite ([neck] clite, features/clite/clite.h): the GK* sites; GKC replaces PSQ1 (it writes the peg word itself).
 # publish (native_publish) is effective only with all five layouts on: PUBLISH_LAYOUTS.
 PUBLISH_LAYOUTS = ("strings", "fretgrid", "colours", "pitch", "nextgrid")
-CHORDLOOPS_OFF = frozenset({"N22", "N23", "NF2", "NF3", *[f"CT{i}" for i in range(4, 12)]})
+# The CL* chord-loop sites (features/chords) are written with the native strings.
 # tuner (native_tuner, features/tuner/hooks.h): effective only with strings, fretgrid, colours.
 
 
@@ -45,10 +55,10 @@ def written_under(site: Site, state: dict[str, bool]) -> bool:
         return False
     if site.id in {"NN1", "NN3", "NN4"} and publish:
         return False
-    chordloops = state.get("chordloops", False) and state["strings"]
-    if site.id.startswith("CL") and not chordloops:
+    if site.id.startswith("CL") and not state["strings"]:
         return False
-    if site.id in CHORDLOOPS_OFF and chordloops:
+    eight = state.get("eight", False)
+    if site.id.startswith("E8") and not eight:
         return False
     tuner = state.get("tuner", False) and state["strings"] and state["fretgrid"] and state["colours"]
     if site.tuner == "native" and not tuner:
@@ -67,8 +77,29 @@ DEFAULT_EXE = game_files.ANALYSIS_EXE
 
 
 def find_all(data: bytes, pattern: list[int | None]) -> list[int]:
-    rx = b"".join(b"." if b is None else re.escape(bytes([b])) for b in pattern)
-    return [m.start() for m in re.finditer(b"(?=" + rx + b")", data, re.S)]
+    """Every start (overlapping ones too) where `pattern` matches; None is a wildcard byte.
+
+    Searches for the pattern's longest run of literal bytes with bytes.find, then compares the rest at each
+    candidate: a regex lookahead at every position of .text took about 0.3 s per pattern.
+    """
+    best_at, best_len, run_at = 0, 0, 0
+    for i, b in enumerate(pattern + [None]):
+        if b is None:
+            if i - run_at > best_len:
+                best_at, best_len = run_at, i - run_at
+            run_at = i + 1
+    if best_len == 0:  # wildcards only: every position that leaves room for the pattern
+        return list(range(len(data) - len(pattern) + 1))
+    anchor = bytes(pattern[best_at : best_at + best_len])
+    checks = [(i, b) for i, b in enumerate(pattern) if b is not None and not best_at <= i < best_at + best_len]
+    hits = []
+    pos = data.find(anchor, best_at)
+    while pos != -1:
+        start = pos - best_at
+        if start + len(pattern) <= len(data) and all(data[start + i] == b for i, b in checks):
+            hits.append(start)
+        pos = data.find(anchor, pos + 1)
+    return hits
 
 
 def check_site(text: bytes, text_va: int, site: Site):
@@ -171,14 +202,20 @@ def inbound_branches(text: bytes, text_va: int, ranges: list[tuple[int, int, str
     return hits
 
 
+def text_section(pe: pefile.PE) -> tuple[bytes, int]:
+    """(bytes, virtual address) of the exe's .text; an exit with a message if the image has none (a packed exe)."""
+    sec = next((s for s in pe.sections if s.Name.rstrip(b"\0") == b".text"), None)
+    if sec is None:
+        sys.exit("no .text section in the image (packed exe? use the unpacked or analysis exe)")
+    return sec.get_data()[: sec.Misc_VirtualSize], pe.OPTIONAL_HEADER.ImageBase + sec.VirtualAddress
+
+
 def main(argv: list[str]) -> int:
     sites_path = Path(argv[0]) if argv else DEFAULT_SITES
     exe_path = Path(argv[1]) if len(argv) > 1 else DEFAULT_EXE
     checksum, sites = load(sites_path)
     pe = pefile.PE(str(exe_path), fast_load=True)
-    text_sec = next(s for s in pe.sections if s.Name.rstrip(b"\0") == b".text")
-    text = text_sec.get_data()[: text_sec.Misc_VirtualSize]
-    text_va = pe.OPTIONAL_HEADER.ImageBase + text_sec.VirtualAddress
+    text, text_va = text_section(pe)
     failures = 0
     if pe.OPTIONAL_HEADER.CheckSum != checksum:
         print(f"PE checksum {pe.OPTIONAL_HEADER.CheckSum:#010x} != sites.json {checksum:#010x}")

@@ -13,7 +13,7 @@ param([int]$Seconds = 30, [string[]]$Target = @(), [switch]$NoBuild, [string]$To
       [string]$MSBuild = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot
-$all = 'rs7x', 'dxt', 'settings', 'ini', 'text', 'package', 'nif', 'dds', 'recipe'
+$all = 'rs7x', 'settings', 'ini', 'text', 'package', 'nif', 'dds', 'recipe', 'nslot', 'plain', 'pattern', 'tuningname', 'redact'
 $targets = if ($Target.Count) { $Target | ForEach-Object { $_ -split ',' } } else { $all }
 $exe = Join-Path $repo 'bin\Fuzz\rs7string_fuzz.exe'
 $work = Join-Path $repo 'obj\fuzz'
@@ -49,9 +49,10 @@ foreach ($t in $targets) {
     Remove-Item Env:\RS7_FUZZ_SEEDS
     if ($seeded) { throw "writing the built-in seeds of $t failed (exit $seeded)" }
     switch ($t) {
-        'package' {  # the start of both headstock packages (the manifest is at the front)
-            Add-Seed $seeds 'headstock.bin' @() (Join-Path $repo 'data\headstock\rs7string_headstock.bin') 65536
-            Add-Seed $seeds 'headstock_lh.bin' @() (Join-Path $repo 'data\headstock\rs7string_headstock_lh.bin') 65536
+        'package' {  # the start of every headstock package (the manifest is at the front)
+            foreach ($kit in '', '_lh', '_bass', '_bass_lh') {
+                Add-Seed $seeds "headstock$kit.bin" @() (Join-Path $repo "data\headstock\rs7string_headstock$kit.bin") 65536
+            }
         }
         'recipe' {  # the shipped recipes without their game movie: the header checks
             foreach ($r in Get-ChildItem (Join-Path $repo 'data\chord-diagrams') -Filter *.rs7da) {

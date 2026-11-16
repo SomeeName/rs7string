@@ -1,5 +1,7 @@
 #include "features/nextgrid/nextgrid.h"
+#include "features/publish/publish.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 #include <vector>
 
@@ -51,16 +53,21 @@ TEST(nextgrid_set_accepts_eight_strings_and_26_frets) {
 }
 
 TEST(nextgrid_configure_sets_the_switch) {
-    const uintptr_t saved = g_rs7_native_nextgrid;
+    rs7test::Restore restore_g_rs7_native_nextgrid(g_rs7_native_nextgrid);
 
     Configure(true);
     CHECK_EQ(g_rs7_native_nextgrid, uintptr_t(1));
     Configure(false);
     CHECK_EQ(g_rs7_native_nextgrid, uintptr_t(0));
-    g_rs7_native_nextgrid = saved;
 }
 
 TEST(nextgrid_row6_native_spawns_from_the_native_time_row_only_at_six_strings) {
+    rs7test::Restore restore_publish(g_rs7_native_publish);  // another test may leave it on
+
+    g_rs7_native_publish = 0;
+    rs7test::Restore restore_adv3(g_rs7_fn_adv3);
+
+    g_rs7_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
     std::vector<uint8_t> g(kGridNative, 0);
     uint8_t notes[3][0x80] = {};
 
@@ -85,6 +92,12 @@ TEST(nextgrid_row6_native_spawns_from_the_native_time_row_only_at_six_strings) {
 }
 
 TEST(nextgrid_row6_native_is_left_to_the_stock_loops_from_seven_strings) {
+    rs7test::Restore restore_publish(g_rs7_native_publish);  // another test may leave it on
+
+    g_rs7_native_publish = 0;
+    rs7test::Restore restore_adv3(g_rs7_fn_adv3);
+
+    g_rs7_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
     std::vector<uint8_t> g(kGridNative, 0);
     uint8_t note[0x80] = {};
 

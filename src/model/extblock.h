@@ -12,9 +12,13 @@
 // stream: the bytes between its position and size are the block.
 //
 // This header is the format and its parser (pure: bytes in, Block out). The block of each loaded song is kept by
-// the XB1 store (core/extstore.h); the native N-slot chord data builds its T8/C8 records from it (packages without
-// a block: the old name[31] byte, see features/chords/chords.h).
+// the XB1 store (features/nslot/hooks_extblock.cpp, nslot.h); the native N-slot chord data builds its T8/C8 records
+// from it (packages without a block: the old name[31] byte, see features/chords/chords.h).
 namespace rs7ext {
+
+// The stock SNG chord template record (mask, frets[6], fingers[6], notes[6], name[32] = 0x48 bytes); Parse's
+// `templates` counts these.
+constexpr uint32_t kTemplateSize = 0x48;
 
 constexpr uint32_t kHeaderSize = 16;
 constexpr uint32_t kSectionHeader = 12;
@@ -23,6 +27,10 @@ constexpr uint16_t kFlagCritical = 1;
 constexpr int kMaxStrings = 16;
 constexpr int kMaxFret = 24;
 constexpr int kMaxBends = 32;
+constexpr int kInstrumentGuitar = 0;
+constexpr int kInstrumentBass = 1;  // extended bass: STRS stringCount 5 or 6, no columns, six tuning entries
+constexpr int kMinBassStrings = 5;
+constexpr int kMaxBassStrings = 6;
 
 struct Bend {
     float time;
@@ -53,7 +61,7 @@ struct Block {
 
     int Column(int string) const;
     // Extended column `string` of template `t`: false if the string is not extended or not played.
-    bool TemplateColumn(uint32_t t, int string, int* fret, int* finger) const;
+    bool TemplateColumn(uint32_t t, int string, int* fretOut, int* fingerOut) const;
 };
 
 enum class Status {

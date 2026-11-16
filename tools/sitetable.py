@@ -16,6 +16,38 @@ class SiteError(ValueError):
     pass
 
 
+def append_missing(path: Path, sites: list[dict]) -> int:
+    """Append missing rows, keeping existing rows and the table's one-line row format."""
+    raw = path.read_text(encoding="utf-8")
+    doc = json.loads(raw)
+    have = {s["id"] for s in doc["sites"]}
+    new = []
+    for site in sites:
+        if site["id"] not in have:
+            new.append(site)
+            have.add(site["id"])
+    if not new:
+        return 0
+
+    # Decode top-level members to locate this array, even when other arrays follow it.
+    decoder = json.JSONDecoder()
+    pos = raw.index("{") + 1
+    while True:
+        pos = re.match(r"\s*", raw[pos:]).end() + pos
+        key, pos = decoder.raw_decode(raw, pos)
+        pos = raw.index(":", pos) + 1
+        pos = re.match(r"\s*", raw[pos:]).end() + pos
+        _, end = decoder.raw_decode(raw, pos)
+        if key == "sites":
+            break
+        pos = raw.index(",", end) + 1
+    body = raw[: end - 1].rstrip()
+    rows = ",\n".join("    " + json.dumps(s, separators=(", ", ": ")) for s in new)
+    text = body + ("," if doc["sites"] else "") + "\n" + rows + "\n  " + raw[end - 1 :]
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return len(new)
+
+
 @dataclass(frozen=True)
 class Site:
     id: str
@@ -30,7 +62,7 @@ class Site:
     write: bytes = b""  # kind "bytes": the bytes written over `expect` (same length)
     strings: str = ""  # "native": written only with the native GuitarStrings
     fretgrid: str = ""  # "native": written only with [neck] native_fretgrid=1
-    pitch: str = ""  # "native": written only with [neck] native_pitch=1 (issue #18 stage 5 area 3)
+    pitch: str = ""  # "native": written only with [neck] native_pitch=1
     nextgrid: str = ""  # "native": written only with the native next-note grid
     publish: str = ""  # "native": request + all five native layouts
     tuner: str = ""  # "native": written only with the native tuner (features/tuner/hooks.h)
@@ -56,12 +88,24 @@ def _int(v) -> int:
     return int(v, 0) if isinstance(v, str) else int(v)
 
 
-def load(path) -> tuple[int, list[Site]]:
+def feature_files(path, without=()) -> list[Path]:
+    """A feature's own sites (src/features/<name>/sites.json next to the main table), in name order. A feature that is
+    not in the checkout (the public tree has no private extras) or is built without (`without`) adds none."""
+    return [
+        p for p in sorted((Path(path).parent / "src" / "features").glob("*/sites.json")) if p.parent.name not in without
+    ]
+
+
+def load(path, without=()) -> tuple[int, list[Site]]:
+    """The main table, then every feature's own sites (feature_files)."""
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
     checksum = _int(doc["pe_checksum"])
+    raws = list(doc["sites"])
+    for extra in feature_files(path, without):
+        raws += json.loads(extra.read_text(encoding="utf-8"))["sites"]
     sites: list[Site] = []
     seen: set[str] = set()
-    for raw in doc["sites"]:
+    for raw in raws:
         sid = raw["id"]
         if sid in seen:
             raise SiteError(f"duplicate id {sid}")

@@ -1,4 +1,4 @@
-"""Stage 5 ColourManager: exact address ports, stock-column equivalence."""
+"""ColourManager: exact address ports, stock-column equivalence."""
 
 import gen_colournative as cm
 from emu_common import needs_exe
@@ -31,6 +31,12 @@ def test_generated_sites_are_current():
 
     actual = json.loads((cm.REPO / "sites.json").read_text())["sites"]
     assert [s for s in actual if s["id"].startswith("CM")] == cm.sites()
+
+
+@needs_exe
+def test_ports_do_not_need_research_ledger(monkeypatch, tmp_path):
+    monkeypatch.setattr(cm, "EVIDENCE", tmp_path, raising=False)
+    assert cm.ports()
 
 
 def test_native_tables_leave_the_six_column_rsmods_abi_intact():

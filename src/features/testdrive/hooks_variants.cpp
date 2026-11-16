@@ -1,5 +1,6 @@
 // The test variants' mid-hooks TVCB / TVGP (testdrive.h): they give the game's runtime copies of the profile's settings
 // the forced values. The profile's own settings store is never written.
+#include "features/colours/colours.h"
 #include "features/testdrive/testdrive.h"
 #include "platform/log.h"
 #include "platform/midhook.h"
@@ -8,6 +9,9 @@
 
 namespace {
 constexpr uint32_t kGpLefty = 0x11, kGpColourblind = 0x15;  // GuitarProfile bytes (Rnd_GuitarProfile_Load 0x593B00)
+constexpr uint32_t kCmMode = 0x348, kPlayers = 2;           // ColourManager colorMode[2] (0x519680)
+
+unsigned long g_modeResets = 0;  // Rs7Variant_OnFrame's writes (Present thread only)
 
 // The NUL-terminated text at `src` (at most cap - 1 characters, "?" when unreadable).
 void ReadText(uintptr_t src, char* out, size_t cap) {
@@ -44,7 +48,9 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TVCB(Rs7Mid::Context& cont
     }
 
     Rs7Log("variant: colour mode of player %u: profile \"%s\" -> %s (test override)", unsigned(context.esi), was,
-           v.colourblind ? "colourblind" : "unchanged");
+           v.colourblind     ? "colourblind"
+           : v.normalColours ? "normal"
+                             : "unchanged");
 }
 
 // TVGP 0x593D4A in Rnd_GuitarProfile_Load 0x593B00, before `mov [esi+13h], al`: ESI = the runtime GuitarProfile
@@ -61,4 +67,39 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TVGP(Rs7Mid::Context& cont
     Rs7Log("variant: guitar profile lefty %u -> %u, in-line %u -> %u, colourblind %u -> %u (test override, not saved)",
            unsigned(was.lefty), unsigned(now.lefty), unsigned(was.inlineHead), unsigned(now.inlineHead),
            unsigned(was.colourblind), unsigned(now.colourblind));
+}
+
+// The overlay's Present callback (testdrive.h): the colour manager's mode back to the forced value.
+void Rs7Variant_OnFrame() {
+    const Rs7Variant& v = Rs7Variant_Get();
+    uintptr_t mgr = 0;
+
+    if (!v.colourblind || !g_rs7_colormgr ||
+        !Rs7_SafeCopy(&mgr, reinterpret_cast<const void*>(g_rs7_colormgr), sizeof mgr) || !mgr) {
+        return;
+    }
+
+    for (uint32_t player = 0; player < kPlayers; ++player) {
+        auto* mode = reinterpret_cast<uint32_t*>(mgr + kCmMode + 4 * player);
+        uint32_t was = 0;
+
+        if (!Rs7_SafeCopy(&was, mode, sizeof was)) {
+            return;
+        }
+
+        const uint32_t now = Rs7Variant_ColourMode(v, was);
+
+        if (now == was) {
+            continue;
+        }
+
+        *mode = now;
+
+        if (++g_modeResets == 1) {
+            Rs7Log("variant: colour mode of player %u was %u at a frame's end (before the profile load, or RSMods' "
+                   "Extended Range flag) - colourblind written back whenever a frame ends with another mode (test "
+                   "override)",
+                   unsigned(player), unsigned(was));
+        }
+    }
 }

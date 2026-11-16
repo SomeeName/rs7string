@@ -92,13 +92,13 @@ def run_mask_site(emu: Emu, sid: str, until: int, regs: dict[int, int]):
 
 @pytest.mark.parametrize("string", list(range(8)) + [0xFF])
 def test_n12_string_mask_forward(emus, s7_state, string):
-    """0x55CC71 (`cmp cl,6; jae skip` in PostProcessNotes): strings 0-5 and > 6 as stock; string 6
-    goes on to the stock mask write (va + 5) only with [neck] string7_line on."""
+    """0x55CC71 (`cmp cl,6; jae skip` in PostProcessNotes): strings 0-5 and > 7 as stock; strings 6 and 7
+    (eight strings) go on to the stock mask write (va + 5) only with [neck] string7_line on."""
     stock, patched = emus
     va, skip = site_va("N12"), site_target("N12")
     regs = {UC_X86_REG_ECX: 0x1200 | string}
     want_stock = va + 5 if string < 6 else skip
-    want_patched = va + 5 if string < 6 or (string == 6 and s7_state[0]) else skip
+    want_patched = va + 5 if string < 6 or (string in (6, 7) and s7_state[0]) else skip
     a = run_mask_site(stock, "N12", want_stock, regs)
     b = run_mask_site(patched, "N12", want_patched, regs)
     assert a == b

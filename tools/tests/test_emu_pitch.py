@@ -1,7 +1,7 @@
-"""[neck] native_pitch (issue #18 stage 5 area 3, features/pitch/pitch.h) in Unicorn on the game snapshot.
+"""[neck] native_pitch, features/pitch/pitch.h) in Unicorn on the game snapshot.
 
 Three emulators: stock (no site written), `cur` (today's default build: every site but the P* ones,
-string 6 through S1/S2/S3/I1) and `nat` (also the P* sites, g_rs7_native_pitch = 1, _msize replaced by
+string 6 through S1/S3/I1) and `nat` (also the P* sites, g_rs7_native_pitch = 1, _msize replaced by
 a stub that reports SIZE). Six-string inputs must give stock results in `nat` (ports and tails are
 equivalence-checked against the stock code); seven-string inputs must give what `cur` returns, eight
 strings what the native formula gives.
@@ -107,11 +107,10 @@ def test_pe0_strings_0_to_5_equal_stock(emus3, instrument, string, tuning):
 @pytest.mark.parametrize("instrument", [0, 1])
 @pytest.mark.parametrize("t6", [0, -1, -2, -5, 3])
 @pytest.mark.parametrize("fret", [0, 3, 7, 24])
-def test_pe0_string_6_of_a_7_entry_vector_equals_the_current_s2(emus3, instrument, t6, fret):
-    _, cur, nat = emus3
+def test_pe0_string_6_of_a_7_entry_vector_is_the_low_b(emus3, instrument, t6, fret):
+    _, _, nat = emus3
     tuning = [0, 0, 0, 0, 0, 0, t6]
-    got = call_vec(nat, instrument, 6, fret, tuning)
-    assert got[0] == call_vec(cur, instrument, 6, fret, tuning)[0] == 35 + t6 + fret
+    assert call_vec(nat, instrument, 6, fret, tuning)[0] == 35 + t6 + fret
 
 
 @pytest.mark.parametrize("string,base", [(6, 35), (7, 30)])
@@ -297,6 +296,9 @@ def run_set_tuning(emu: Emu, tuning: list[int], instrument: int):
     put_vec(emu, tuning)
     det = bytearray((i * 7 + 3) & 0xFF for i in range(DET_SIZE))
     det[DET_INSTR : DET_INSTR + 4] = struct.pack("<I", instrument)
+    # The candidate floor as Play_Detector_Reset leaves it (24): the game always resets a detector before setting its
+    # tuning, and the DLL never takes an unrecorded floor below the stock one (pitch/hooks.cpp ResetFloorOf).
+    det[0x11F4:0x11F8] = struct.pack("<i", 24)
     emu.uc.mem_write(DET, bytes(det))
     esp = STACK + 0x80000
     emu.uc.mem_write(esp, struct.pack("<I", RET_MAGIC))
@@ -470,3 +472,90 @@ def test_matcher_set_tuning(emus3, tuning, instrument):
     n = min(len(tuning), 8)
     assert list(struct.unpack_from("<8h", got[0], MAT_T8)) == tuning[:n] + [0] * (8 - n)
     assert struct.unpack_from("<I", got[0], MAT_MAGIC)[0] == MAGIC
+
+
+# ---- extended bass (features/bass/bass.h): strings 4 / 5 of a marked song -------------------------------------------
+
+
+def set_bass(emu: Emu, strings: int, det: int = 0):
+    emu.uc.mem_write(emu.exports["g_rs7_bass_strings"], struct.pack("<I", strings))
+    # rs7bass::Players: two {det, strings, instrument, ms} setups; the song's bass player in the first.
+    emu.uc.mem_write(
+        emu.exports["g_rs7_bass_players"], struct.pack("<4I4I", det, strings if det else 0, 2, 0, 0, 0, 0, 0)
+    )
+
+
+@pytest.mark.parametrize("strings", [5, 6])
+@pytest.mark.parametrize("fret", [0, 1, 5, 12])
+def test_pe0_extended_bass_strings(emus3, strings, fret):
+    stock, _, nat = emus3
+    tuning = [0, 0, 0, 0, -1, 2]
+    set_bass(nat, strings)
+    try:
+        assert i32(call_vec(nat, 2, 4, fret, tuning)[0]) == 23 - 1 + fret
+        got5 = call_vec(nat, 2, 5, fret, tuning)
+        if strings == 6:
+            assert i32(got5[0]) == 48 + 2 + fret
+        else:
+            assert got5 == call_vec(stock, 2, 5, fret, tuning)  # five strings: slot 5 stays stock
+        for instrument in (0, 1):  # guitars keep their string 4 / 5
+            for s in (4, 5):
+                assert call_vec(nat, instrument, s, fret, tuning) == call_vec(stock, instrument, s, fret, tuning)
+        for s in range(4):
+            assert call_vec(nat, 2, s, fret, tuning) == call_vec(stock, 2, s, fret, tuning)
+    finally:
+        set_bass(nat, 0)
+
+
+@pytest.mark.parametrize("sid", sorted(PC_OFF))
+@pytest.mark.parametrize("strings", [0, 6])
+def test_pc_extended_bass_strings(emus3, sid, strings):
+    stock, _, nat = emus3
+    base, off = PC_OFF[sid]
+    t8 = [3, -1, 0, 2, -2, 1, 0, 0]
+    native_objects(nat, t8)
+    native_objects(stock, t8)
+    set_bass(nat, strings)
+    try:
+        for s in (4, 5):
+            regs = call_raw(nat, nat.hook_entry(sid), base + off, 2, s, 7)
+            if strings:
+                assert i32(regs[0]) == (23 if s == 4 else 48) + t8[s] + 7
+                assert regs[2] == base + off and regs[3] == 0  # ECX kept, EDX = instrument - 2
+            else:
+                assert regs == call_raw(stock, EXPECT_RAW, base + off, 2, s, 7)
+        regs = call_raw(nat, nat.hook_entry(sid), base + off, 1, 4, 7)  # guitar string 4: stock
+        assert regs == call_raw(stock, EXPECT_RAW, base + off, 1, 4, 7)
+    finally:
+        set_bass(nat, 0)
+
+
+DET_FLOOR = 0x11F4
+
+
+@pytest.mark.parametrize("strings", [0, 5, 6])
+def test_pt1_extended_bass_detector(emus3, strings):
+    _, _, nat = emus3
+    tuning = [0, 0, 0, 0, -1, 2]
+    set_bass(nat, strings, DET)
+    try:
+        put_vec(nat, tuning)
+        det = bytearray(DET_SIZE)
+        det[DET_INSTR : DET_INSTR + 4] = struct.pack("<I", 2)
+        det[DET_FLOOR : DET_FLOOR + 4] = struct.pack("<I", 24)
+        nat.uc.mem_write(DET, bytes(det))
+        esp = STACK + 0x80000
+        nat.uc.mem_write(esp, struct.pack("<I", RET_MAGIC))
+        nat.run(0x4E2590, RET_MAGIC, {UC_X86_REG_ESP: esp, UC_X86_REG_EAX: DET, UC_X86_REG_ESI: VEC})
+        out = nat.read(DET, DET_SIZE)
+    finally:
+        set_bass(nat, 0)
+    floor, lowest = struct.unpack_from("<iI", out, DET_FLOOR)
+    open6 = list(struct.unpack_from("<6h", out, DET_OPEN))
+    assert open6[:4] == [28, 33, 38, 43]
+    if not strings:
+        assert (floor, lowest, open6[4:]) == (24, 28, [-1, 2])  # stock: raw offsets, floor 24
+        return
+    # low B tuned down one (Bb0 = 22): the floor follows one below it (rs7p::Floor)
+    assert (floor, lowest, open6[4]) == (21, 22, 22)
+    assert open6[5] == (50 if strings == 6 else 2)

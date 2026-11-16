@@ -1,4 +1,4 @@
-"""fix/clite3: static checks behind docs/ARCHITECTURE.md.
+"""Static checks behind docs/ARCHITECTURE.md.
 
 - Door (b): every return address in features/clite/clite.h kRetModeEntries is a `call 0x5B6030` (Play_Tuning_SetPlayerTargetTuning)
   in the game, and every caller of 0x5B6030 is classified (song select, mode entry, or deliberately left out).
@@ -29,11 +29,11 @@ LEFT_OUT = {
     0x742B24: "tuner event 0x742990",
     0x742C09: "tuner event 0x742990",
     0x69A7AF: "song options 0x69A2E0",
-    0x74236F: "tuner cancel 0x73FC80 -> 0x742270 (fix/escrebuild: was misread as a Guitarcade tuner entry)",
+    0x74236F: "tuner cancel 0x73FC80 -> 0x742270 (was misread as a Guitarcade tuner entry)",
 }
 
 
-# fix/menutuner: the tuning-list screen's stores rebuild to the picked tuning (features/clite/clite.h kRetTunerMenu).
+# the tuning-list screen's stores rebuild to the picked tuning (features/clite/clite.h kRetTunerMenu).
 TUNER_MENU = {
     0x745E46: "TuningOptionsMenu select 0x745D90 (player 0)",
     0x745EC3: "TuningOptionsMenu select 0x745D90 (MP)",
@@ -72,7 +72,7 @@ def _tuner_menu() -> list[int]:
 
 
 def test_tuner_menu_stores_are_the_tuning_options_menu():
-    # fix/menutuner: both stores sit in 0x745D90, the TuningOptionsMenu select handler (vtable 0x11C2418 slot 0xD8,
+    # both stores sit in 0x745D90, the TuningOptionsMenu select handler (vtable 0x11C2418 slot 0xD8,
     # installed by the factory 0x5D48F0 that 0x5D198E registers under "TuningOptionsMenu"), before it opens "Tuner".
     rets = _tuner_menu()
     assert sorted(rets) == sorted(TUNER_MENU)
@@ -119,7 +119,7 @@ def test_every_target_tuning_caller_is_classified():
 
 
 def test_0x742270_is_only_the_tuner_cancel_handler():
-    # fix/escrebuild: 0x742270 (store at 0x74236A, return 0x74236F) restores the profile's tuning; its only caller is
+    # 0x742270 (store at 0x74236A, return 0x74236F) restores the profile's tuning; its only caller is
     # 0x73FF4F in 0x73FC80, the tuner's cancel handler (input event 5Bh in 0x73ED40, UI_TunerMenu_Tick 0x73E5B5).
     assert _call_target(0x74236F) == TARGET_TUNING
     assert _call_target(0x73FF54) == 0x742270

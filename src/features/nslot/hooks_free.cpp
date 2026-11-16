@@ -1,4 +1,4 @@
-// SF1 - drop the T8 / C8 arrays when the song is freed. A call site (Before placement, ARCHITECTURE.md section 15
+// SF1 - drop the T8 / C8 arrays when the song is freed. A call site (Before placement, ARCHITECTURE.md section 14
 // "Call sites"): 0x558686 in the SNG_Song scalar deleting destructor 0x558680 (ESI = this) calls the destructor body
 // 0x5586C0. The callback drops the song's arrays and leaves ctx.jump at the callee, which then runs with the game's
 // stack and return address. Full mode: Rs7Ns_OnSongFree logs, and the destructor also runs on loader threads.

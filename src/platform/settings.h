@@ -1,4 +1,5 @@
 #pragma once
+#include "platform/config.h"
 #include <cstdint>
 #include <string>
 
@@ -13,8 +14,8 @@
 //
 //  Live         the change reaches the game at once (a global the hooks read every call/frame, or a
 //               setter that hands it to the render/game thread safely).
-//  NextSession  read at the start of a session (no key uses it at the moment; the former tuner seven_slot became
-//  Restart, review F2). Restart      read once at startup (sites written or not, hooks installed or not, pools sized):
+//  NextSession  read at the start of a session (no key uses it at the moment).
+//  Restart      read once at startup (sites written or not, hooks installed or not, pools sized):
 //               the new value is only saved, the running one stays until the game is restarted.
 //
 // Threads: Rs7Set_InitFromIni runs once on the startup worker before the overlay exists; everything
@@ -24,7 +25,7 @@
 enum class Rs7SetType : uint8_t { Bool, Int, Float, Rgb, Text };
 enum class Rs7SetWhen : uint8_t { Live, NextSession, Restart };
 
-constexpr int kRs7SetTextMax = 260;
+constexpr int kRs7SetTextMax = kRs7IniValueMax + 1;  // the longest ini value and its terminator (platform/config.h)
 
 struct Rs7SetValue {
     int i = 0;                       // Bool (0/1), Int
@@ -36,7 +37,7 @@ struct Rs7SetValue {
 bool Rs7Set_Equal(Rs7SetType t, const Rs7SetValue& a, const Rs7SetValue& b);
 
 struct Rs7SetDef {
-    const char* id;  // "section.key", e.g. "neck.string7_v"
+    const char* id;  // "section.key", e.g. "neck.spacing_guitar7"
     const wchar_t* section;
     const wchar_t* key;
     Rs7SetType type;
@@ -64,9 +65,16 @@ struct Rs7SetTable {
 extern const Rs7SetTable* const kRs7SettingTables[];
 extern const int kRs7SettingTableCount;
 
-// Runs every table's read in table order (once at startup, again in Rs7Set_InitFromIni). Returns whether the file
+// Runs every table's read in table order (Rs7Set_InitFromIni, once at startup). Returns whether the file
 // exists. An invalid path is logged and every table gets its defaults.
 bool Rs7Set_ReadIni(const wchar_t* iniPath);
+
+// Reads the Bool / Int key of row `id` of `t` with that row's default and upper bound (Rs7Config_ReadInt: invalid or
+// out of range = 0), so a feature's startup read does not repeat the table's default. A missing row logs and returns 0.
+int Rs7Set_ReadTableInt(const Rs7SetTable& t, const char* id, const wchar_t* iniPath);
+// Parses the ini text of the Float row `id` of `t` with the overlay's rules (the whole text a number, within the row's
+// range). True: *out = the number. False (empty, invalid, out of range or no such row): *out = the row's default.
+bool Rs7Set_ParseTableFloat(const Rs7SetTable& t, const char* id, const wchar_t* text, float* out);
 
 struct Rs7SetState {
     Rs7SetValue value;     // the overlay's value (what Save writes)
@@ -81,9 +89,10 @@ Rs7SetState& Rs7Set_State(int i);
 // "section.key" or a bare key that is unique across sections; -1 if unknown.
 int Rs7Set_Find(const char* id);
 
-// Loads every key (missing file or key: the default; invalid text: the default, as the feature's startup read).
-// running = value = saved. Applies nothing: Rs7_Startup has set the globals from the same ini.
-void Rs7Set_InitFromIni(const wchar_t* iniPath);
+// Loads every key once at startup (missing file or key: the default; invalid text: the default, as the feature's
+// startup read): runs every table's read (Rs7Set_ReadIni), then running = value = saved. Applies nothing: Rs7_Startup
+// sets the globals from the store and the features' reads afterwards. Returns whether the file exists.
+bool Rs7Set_InitFromIni(const wchar_t* iniPath);
 // Back to the built-in defaults (tests), nothing applied.
 void Rs7Set_ResetForTests();
 

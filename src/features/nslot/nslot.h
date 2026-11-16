@@ -8,8 +8,12 @@
 struct Rs7HookTable;
 // The N-slot chord sites (stubs, byte patches and the matcher / tracker references; group Core): registration.cpp.
 extern const Rs7HookTable kRs7NslotHooks;
+// Eight strings: the E8* byte patches (group Core), the eight-slot bounds of 24 N-slot loops (render, fingers, section
+// masks, tracker; docs/ARCHITECTURE.md section 12). Always written. Every record they index holds eight slots (T8 frets
+// / fingers / midi, C8 mask / slideTo / slideUnpitchTo / bends), so a 6- or 7-string song sees empty slots there.
+extern const Rs7HookTable kRs7NslotEightHooks;
 
-// Native N-slot chord data (issue #18 stage 2). The SNG's chord templates (0x48 bytes, six string
+// Native N-slot chord data. The SNG's chord templates (0x48 bytes, six string
 // slots) and ChordNotes records (0x948 bytes, six string slots) are converted once per song into
 // relocated "superset" records; the game's own template / ChordNotes stride sites (begin + id * 0x48
 // / 0x948) are redirected to them (TP*/CP* sites), and the chord loops that matter are widened in
@@ -35,14 +39,16 @@ namespace rs7ns {
 constexpr int kSlots = 8;   // record slots: strings 0..7
 constexpr int kNative = 7;  // strings the widened gameplay loops cover (0..6)
                             // diagrams7 additionally populates both tails for 8-string diagrams
-constexpr uint32_t kTplSize = 0x48;
+constexpr uint32_t kTplSize = rs7ext::kTemplateSize;
+constexpr uint32_t kTplFrets = 0x04, kTplFingers = 0x0A, kTplMidi = 0x10, kTplName = 0x28;  // stock template
 constexpr uint32_t kT8Size = 0x80;
 constexpr uint32_t kT8Frets = 0x48, kT8Fingers = 0x50, kT8Midi = 0x58, kT8Slots = 0x78, kT8Used = 0x79;
 constexpr uint32_t kCnSize = 0x948;
+constexpr uint32_t kCnMask = 0, kCnBends = 0x18, kCnSlideTo = 0x930, kCnSlideUnp = 0x936, kCnVib = 0x93C;  // stock
 constexpr uint32_t kBendSize = 0x184;  // BendData32: 32 x 12-byte values + u32 usedCount (+0x180)
+constexpr uint32_t kBendUsed = 0x180;
 constexpr uint32_t kC8Mask = 0x948, kC8SlideTo = 0x968, kC8SlideUnp = 0x970, kC8Vib = 0x978, kC8Bends = 0x988;
 constexpr uint32_t kC8Size = kC8Bends + kSlots * kBendSize;  // 0x15A8
-constexpr int kOpenMidi[kSlots] = {40, 45, 50, 55, 59, 64, 35, 30};
 
 // One extended column (string >= 6) of a template, as authored.
 struct Col {
@@ -60,7 +66,7 @@ struct Tech {
     int bendCount = 0;
 };
 
-// Old M4 format: name[31] = ((finger + 1) << 5) | (fret + 1), read only when the name's NUL lies
+// Old format (before the RS7X block): name[31] = ((finger + 1) << 5) | (fret + 1), read only when the name's NUL lies
 // in name[0..30]. False: no string-6 column.
 bool DecodeName31(const uint8_t* tpl, Col* out);
 
@@ -79,8 +85,9 @@ uint32_t SynthMask(uint32_t noteMask, int fret, uint8_t capo);
 bool StringMask8(const uint8_t* c8, uint32_t string, uint32_t flag, uint32_t* bits);
 
 // SNG_Song_PostProcessNotes' double-stop count (DS1): the frets the count loop reads. `record` = Rs7Ns_TplRecord(begin,
-// id). A T8 record: its frets[8] over the kNative strings. The stock record (vector not registered, id out of range):
-// the stock frets[6] at +4 over 6 strings, exactly like the game.
+// id). A T8 record: its frets[8] over all eight slots (an 8-string chord on the low F# + B + one stock string is three
+// notes, not a double stop). A stock record passed directly uses frets[6] at +4 over 6 strings;
+// redirects of unregistered vectors / invalid ids instead supply an empty T8.
 struct FretSpan {
     uint32_t frets;  // address of the first fret
     uint32_t count;  // frets the loop reads
@@ -112,13 +119,17 @@ void Rs7Ns_OnSngLoaded(void* song);
 extern "C" __declspec(dllexport) void __cdecl Rs7Ns_OnPostProcessed(void* song);
 // SF1 (song destructor 0x558680, before the stock body): drops the song's arrays.
 extern "C" __declspec(dllexport) void __cdecl Rs7Ns_OnSongFree(void* song);
-// C++ users (virtual guitarist, tests): the T8 record a template pointer points at (nullptr if the
-// pointer is not inside a registered T8 array).
+// C++ users (tests): the T8 record a template pointer points at (nullptr if the
+// pointer is neither inside a registered T8 array nor the process-lived empty fallback).
 const uint8_t* Rs7Ns_AsT8(const void* tpl);
 const uint8_t* Rs7Ns_AsC8(const void* cn);
-// The TP* / CP* stride redirects (lock-free, integer only: light mid-hooks call them): the song's T8 / C8 record for
-// template / ChordNotes `id` of the stock vector `begin`, or the stock record begin + id * 48h / 948h when the vector
-// is not registered (a song still loading, not an SNG song) or the id is out of range.
+// Registered T8 lookup, or 0 on a miss. TP13 keeps the stock pointer on a miss; DGS validates membership
+// before reading widened fields. Gameplay readers must use Rs7Ns_TplRecord's empty widened fallback instead.
+uint32_t Rs7Ns_FindTplRecord(uint32_t begin, uint32_t id);
+// The gameplay TP* / CP* stride redirects (lock-free, integer only: light mid-hooks call them): the song's T8 / C8
+// record for template / ChordNotes `id` of the stock vector `begin`, or an immutable, allocation-free empty T8 / C8
+// when the vector is not registered or the id is out of range. Widened readers must never receive a stock-sized record.
+// Failure omits chord contents (including stock strings); single notes continue. Slots 6/7 are always unused.
 uint32_t Rs7Ns_TplRecord(uint32_t begin, uint32_t id);
 uint32_t Rs7Ns_CnRecord(uint32_t begin, uint32_t id);
 // TP2's redirect for the GSDM copy's call (a call-in entry the strings feature builds; hooks_records.cpp).
@@ -128,7 +139,7 @@ int Rs7Ns_LiveSongs();
 
 // ---- the tracker's Play_NoteEval (0xC28 bytes, 100 inline slots: it cannot grow). Its template copy
 // (+274h) keeps midi[6] at +284h; the copy's name (+29Ch..+2BBh) has no reader once copied, so the
-// N-slot tails live there and +284h is a contiguous int32 midi[8] (issue #18 stage 2):
+// N-slot tails live there and +284h is a contiguous int32 midi[8]:
 namespace rs7ns {
 constexpr uint32_t kEvMidi6 = 0x2C;      // int32 midi[6]: the stock target array the matcher wrappers get
 constexpr uint32_t kEvMidi8 = 0x284;     // int32 midi[8]: [0..5] the template copy, [6..7] the tails
@@ -142,7 +153,7 @@ constexpr uint32_t kEvVib67 = 0x2B4;     // int16 vibrato[6], vibrato[7]
 constexpr uint32_t kEvChild67 = 0xC1E;   // u8 child eval slot of strings 6, 7 (0xFF = none)
 // Writes the eval's N-slot tails from its T8 / C8 (nullptr: none): Play_Eval_Build's tail (BT1).
 void WriteEvalTails(uint8_t* eval, const uint8_t* t8, const uint8_t* c8);
-// The empty tails (Play_Eval_ClearState, CS1).
+// The empty tails (WriteEvalTails' first step; CS1 in Play_Eval_ClearState clears them in place, hooks_eval.cpp).
 void ClearEvalTails(uint8_t* eval);
 }  // namespace rs7ns
 

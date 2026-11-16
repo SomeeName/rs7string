@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <d3d9.h>
 
-// Step 2 (plan D1-D6): the game device's vtable slots 64 (GetTexture) and 65 (SetTexture) point at
+// The game device's vtable slots 64 (GetTexture) and 65 (SetTexture) point at
 // our thunks. On the render thread, the first time the game binds a candidate (a stock ramp found by
 // the worker), Process copies it into a same-size MANAGED texture with the string-6 band and, after the
 // self-check, binds the copy in its place; GetTexture returns the stock again. Any refusal or fault:
@@ -17,12 +17,11 @@
 //   swap_texio.cpp    texture level reads, copy build and write-back with read-back check
 
 struct Rs7SwapCfg {
-    uint32_t rgb[2];
-    bool allowInexact;
+    uint32_t rgb[2];  // rgb[mode] = 0xRRGGBB
     // RSMods is installed: its own note ramps (custom string colours, Extended Range) bound on stage 1 get
     // a copy with string 6's lines too (same build + self-check; see swap_foreign.cpp).
     bool rsmods = false;
-};  // rgb[mode] = 0xRRGGBB
+};
 
 void Rs7Swap_Configure(const Rs7SwapCfg&);
 // The game's NiTexture list lock and d3d9.dll's image range, for the render thread's revalidation
@@ -36,7 +35,9 @@ bool Rs7Swap_InstallOn(void* device);
 // runtime rewrote its vtable copy), patch them again; if someone else replaced a slot, leave it (a
 // re-hook could close a loop through their hook) and log once. Reads are SEH-guarded.
 void Rs7Swap_Recheck();
-bool Rs7Swap_Installed();
+// Present callback, render thread: overlay binds are temporary and a state block restores them without
+// SetTexture. Preserve the game's swap mappings and defer ramp work until its next bind.
+void Rs7Swap_SetOverlayDrawing(IDirect3DDevice9* dev, bool drawing);
 // Rs7Ramp_UpdateV6 with this module's state (enabled = installed, deviceOk = no foreign device seen).
 void Rs7Swap_UpdateV6(const char* reason);
 // Worker -> render thread: release the Active entries flagged gone (Rs7Cand::gone >= 2) at the next

@@ -6,8 +6,10 @@
 #include "features/tuner/state.h"
 #include "features/tuner/tuner.h"
 #include "features/tuner/tuner8_specs.generated.h"
+#include "model/instrument.h"
 #include "platform/fncopy.h"
 #include "platform/log.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <cstring>
 
@@ -17,7 +19,7 @@
 
 namespace {
 using rs7tuner::g_state;
-using rs7tuner::Read;
+using rs7tuner::UncheckedRead;
 
 // ---- the session copies (tools/gen_tuner8s.py) ----
 struct Tu8Rel {
@@ -67,26 +69,28 @@ uintptr_t SymAddress(uintptr_t t) {
 
 // ---- entry dispatch ----
 extern "C" int __cdecl Rs7Tuner8_Use(uint32_t kind, uint8_t* reg) {
-    if (!g_rs7_native_tuner || !g_rs7_native_strings || !g_rs7_native_fretgrid || kind >= 3 || !reg) {
+    // Installed readers follow the owned GuitarStrings layout even after runtime isolation.
+    if (kind >= 3 || !reg) {
         return 0;
     }
 
     __try {
-        uint8_t* guitar = Read<uint8_t*>(reg, kind == 2 ? 0x37C : 0x2C);
+        uint8_t* guitar = UncheckedRead<uint8_t*>(reg, kind == 2 ? rs7::kSessionGuitar : rs7tu::kGuitar);
         if (!guitar) {
             return 0;
         }
 
-        uint8_t* gsObj = Read<uint8_t*>(guitar, 0xC);
+        uint8_t* gsObj = UncheckedRead<uint8_t*>(guitar, rs7::kGuitarStrings);
         if (!rs7gs::IsNative(gsObj)) {
             return 0;
         }
 
-        uint8_t* info = Read<uint8_t*>(guitar, 0x24);
-        uint8_t* owner = Read<uint8_t*>(gsObj, 0);
-        if (!info || !owner || Read<uint8_t*>(owner, 0x24) != info || Read<uint8_t*>(gsObj, rs7gs::kInfo) != info ||
-            Read<uint8_t*>(gsObj, rs7gs::kGuitar) != guitar ||
-            Read<uint32_t>(info, rs7gs::kInfoMagicOff) != rs7gs::kInfoMagic) {
+        uint8_t* info = UncheckedRead<uint8_t*>(guitar, rs7::kGuitarInfo);
+        uint8_t* owner = UncheckedRead<uint8_t*>(gsObj, 0);
+        if (!info || !owner || UncheckedRead<uint8_t*>(owner, rs7::kGuitarInfo) != info ||
+            UncheckedRead<uint8_t*>(gsObj, rs7gs::kInfo) != info ||
+            UncheckedRead<uint8_t*>(gsObj, rs7gs::kGuitar) != guitar ||
+            UncheckedRead<uint32_t>(info, rs7gs::kInfoMagicOff) != rs7gs::kInfoMagic) {
             return 0;
         }
 
@@ -102,7 +106,7 @@ extern "C" int __cdecl Rs7Tuner8_Use(uint32_t kind, uint8_t* reg) {
         }
 
         return 1;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -154,7 +158,7 @@ extern "C" uintptr_t __cdecl Rs7Tuner8_SessTarget(uint32_t index, const uint32_t
 
     const uint8_t* session = reinterpret_cast<const uint8_t*>(uintptr_t(s));
 
-    // fix/menutuner (a): a stock session on a guitar built with 7/8 strings (a 6-string target, or one TS never made
+    // A stock session on a guitar built with 7/8 strings (a 6-string target, or one TS never made
     // native) runs the native copy too; the stock method would index its six-slot arrays with string 6.
     if (g_state.sessCopy[index] && !Rs7Tuner8_IsNative(session) && Rs7Tuner8_HasSession(session)) {
         Rs7Tuner8_EnsureNative(const_cast<uint8_t*>(session), kTu8Specs[index].id);
@@ -239,6 +243,18 @@ bool LinkSessionCopy(int k) {
 
     return true;
 }
+
+// A failed build: frees every session copy (each trampoline lives in its copy's block) and zeroes the pointers, so
+// no half-built copy stays reachable.
+void ReleaseSessionCopies() {
+    for (int k = 0; k < kTu8SpecCount; ++k) {
+        if (g_state.sessCopy[k]) {
+            VirtualFree(reinterpret_cast<void*>(g_state.sessCopy[k]), 0, MEM_RELEASE);
+        }
+
+        g_state.sessCopy[k] = g_state.sessTramp[k] = 0;
+    }
+}
 }  // namespace
 
 bool Rs7Tuner8_BuildCopies() {
@@ -258,11 +274,13 @@ bool Rs7Tuner8_BuildCopies() {
     }
 
     if (!AllocSessionCopies()) {
+        ReleaseSessionCopies();
         return false;
     }
 
     for (int k = 0; k < kTu8SpecCount; ++k) {
         if (!LinkSessionCopy(k)) {
+            ReleaseSessionCopies();
             return false;
         }
     }
@@ -274,7 +292,8 @@ bool Rs7Tuner8_BuildCopies() {
         for (int s = 0; s < 6; ++s) {
             g_rs7_tu8_labels[s] = stock[s];
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        ReleaseSessionCopies();
         return false;
     }
 

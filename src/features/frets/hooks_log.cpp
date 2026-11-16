@@ -3,6 +3,7 @@
 #include "features/frets/hooks.h"
 #include "features/scene/scene.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <cmath>
 
 namespace {
@@ -15,11 +16,11 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
     float lt[3] = {}, ls = 0, wt[3] = {}, ws = 0, rb[4] = {};
 
     if (root) {
-        rs7s7d::SafeCopy(lt, root + 0x70, 12);
-        rs7s7d::SafeCopy(&ls, root + 0x7C, 4);
-        rs7s7d::SafeCopy(wt, root + 0xA4, 12);
-        rs7s7d::SafeCopy(&ws, root + 0xB0, 4);
-        rs7s7d::SafeCopy(rb, root + 0x2C, 16);
+        Rs7_SafeCopyZero(lt, root + 0x70, 12);
+        Rs7_SafeCopyZero(&ls, root + 0x7C, 4);
+        Rs7_SafeCopyZero(wt, root + 0xA4, 12);
+        Rs7_SafeCopyZero(&ws, root + 0xB0, 4);
+        Rs7_SafeCopyZero(rb, root + 0x2C, 16);
     }
 
     // Depth-first search for the first NiMesh (fretShape).
@@ -48,13 +49,13 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
         uint8_t* arr = nullptr;
         uint16_t slots = 0;
 
-        rs7s7d::SafeCopy(&arr, n + 0xD8, 4);
-        rs7s7d::SafeCopy(&slots, n + 0xDC, 2);
+        Rs7_SafeCopyZero(&arr, n + 0xD8, 4);
+        Rs7_SafeCopyZero(&slots, n + 0xDC, 2);
 
         for (int i = int(slots) - 1; arr && i >= 0 && sp < 64; --i) {
             uint8_t* c = nullptr;
 
-            rs7s7d::SafeCopy(&c, arr + i * 4, 4);
+            Rs7_SafeCopyZero(&c, arr + i * 4, 4);
             if (c) {
                 stack[sp++] = c;
             }
@@ -65,9 +66,9 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
     char name[48] = {};
 
     if (mesh) {
-        rs7s7d::SafeCopy(mw, mesh + 0x2C, 16);
-        rs7s7d::SafeCopy(mb, mesh + 0xF0, 16);
-        rs7s7d::SafeCopy(&ms, mesh + 0xB0, 4);
+        Rs7_SafeCopyZero(mw, mesh + 0x2C, 16);
+        Rs7_SafeCopyZero(mb, mesh + 0xF0, 16);
+        Rs7_SafeCopyZero(&ms, mesh + 0xB0, 4);
         rs7s7d::NameOfNode(mesh, name, sizeof name);
     }
 
@@ -157,29 +158,30 @@ __declspec(noinline) void LogReadBack(const char* tag, uint8_t* guitar, uint8_t*
 
     for (int f : pick) {
         if (f < bars) {
-            if (uint8_t* e = At<uint8_t*>(Bar(grid, f), kBarEntity)) {
+            if (uint8_t* e = UncheckedField<uint8_t*>(Bar(grid, f), kBarEntity)) {
                 LogBar(tag, f, e, d, w0, w1);
             }
         }
     }
 }
 
-__declspec(noinline) void LogInlay(const uint8_t* guitar, const float* p, float dz) {
+__declspec(noinline) void LogInlay(const uint8_t* guitar, const float* p, float dz, int net) {
     try {
-        Rs7Log("frets: IN1 inlays of guitar %p centred on 7 strings: entity at (%.3f, %.3f, %.3f) (string axis %+.4f)",
-               guitar, double(p[0]), double(p[1]), double(p[2]), double(dz));
+        Rs7Log("frets: IN1 inlays of guitar %p centred (%+d net lane(s)): entity at (%.3f, %.3f, %.3f) (string axis "
+               "%+.4f)",
+               guitar, net, double(p[0]), double(p[1]), double(p[2]), double(dz));
     } catch (...) {
     }
 }
 
 __declspec(noinline) void LogFloor(const uint8_t* guitar, const float* before, const float* shift, int n) {
     try {
-        Rs7Log(
-            "frets: highway floor of guitar %p (the fret-wire bottom ends lie on string 6's side: inverted strings): "
-            "%d ends moved by (%.4f, %.4f, %.4f); bar 0 end (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
-            guitar, n, double(shift[0]), double(shift[1]), double(shift[2]), double(before[0]), double(before[1]),
-            double(before[2]), double(before[0] + shift[0]), double(before[1] + shift[1]),
-            double(before[2] + shift[2]));
+        Rs7Log("frets: highway floor of guitar %p moved past the extra lane on its side (low strings of an inverted "
+               "7/8-string guitar or bass, or a 6-string bass's high C): "
+               "%d ends moved by (%.4f, %.4f, %.4f); bar 0 end (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
+               guitar, n, double(shift[0]), double(shift[1]), double(shift[2]), double(before[0]), double(before[1]),
+               double(before[2]), double(before[0] + shift[0]), double(before[1] + shift[1]),
+               double(before[2] + shift[2]));
     } catch (...) {
     }
 }

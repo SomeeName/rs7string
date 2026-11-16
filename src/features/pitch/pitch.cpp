@@ -1,5 +1,6 @@
 // The native pitch storage's logic (pitch.h): the eight-entry tuning, open-MIDI and lowest-open values the tails hold.
 #include "features/pitch/pitch.h"
+#include "model/slots.h"
 
 namespace rs7p {
 void FillTuning(const int16_t* v, size_t n, int16_t out[8]) {
@@ -35,10 +36,21 @@ int Lowest(int stock, const int16_t t[8], size_t n, bool bass) {
     return low;
 }
 
-uint32_t ExpectedPitch8(const int16_t tuning8[8], uint32_t instrument, uint32_t string, uint32_t fret) {
-    const bool bass = instrument == 2;
+int Floor(int reset, int lowest) {
+    if (lowest >= reset) {
+        return reset;
+    }
 
-    if (string >= (bass ? 4u : 8u)) {
+    const int low = reset < kMinFloor ? reset : kMinFloor;
+
+    return lowest - 1 > low ? lowest - 1 : low;
+}
+
+uint32_t ExpectedPitch8(const int16_t tuning8[8], uint32_t instrument, uint32_t string, uint32_t fret) {
+    const bool bass = rs7::IsBassKind(int(instrument));
+
+    // Bass stays at its stock strings here: the extra bass bases come from rs7bass::ExtraBase.
+    if (string >= (bass ? rs7::kStockBassStrings : rs7::kMaxGuitarSlots)) {
         return fret - 1;
     }
 

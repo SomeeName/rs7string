@@ -1,4 +1,4 @@
-; Shared mid-hook thunks (ARCHITECTURE.md section 15). Every generated entry (Rs7Mid_Build, Rs7Mid_BuildLight,
+; Shared mid-hook thunks (ARCHITECTURE.md section 14). Every generated entry (Rs7Mid_Build, Rs7Mid_BuildLight,
 ; Rs7Mid_BuildSse, Rs7Mid_BuildCall, Rs7Mid_BuildWrap in midhook.cpp / midhook_wrap.cpp) pushes the continuation and the callback and jumps here, so on entry:
 ;   [esp+0] callback, [esp+4] continuation (replay copy, callee or site + 5), [esp+8] the site's stack.
 ; The thunks build an Rs7Mid::Context (midhook.h, 44 bytes, its offsets are static_asserted there), call the cdecl
@@ -12,6 +12,8 @@
         .686
         .xmm
         .model flat, C
+
+EXTERN Rs7Mid_Guard:PROC                ; void __cdecl Rs7Mid_Guard(callback, Context*) (midhook.cpp)
 
         .code
 
@@ -37,8 +39,9 @@ Rs7Mid_Thunk PROC EXPORT
         fninit
         mov     eax, [ebp+36]           ; the callback (entry slot copied into Context::fpu)
         mov     [ebp+36], ebx           ; Context::fpu = the FXSAVE image
-        push    ebp
-        call    eax
+        push    ebp                     ; Rs7Mid_Guard(callback, &Context): the callback runs inside its __try
+        push    eax
+        call    Rs7Mid_Guard
         fxrstor [ebx]
 
         ; Copy the nine register dwords under the requested ESP; the destination may overlap the context, so copy
@@ -109,8 +112,9 @@ Rs7Mid_ThunkLight PROC EXPORT
         mov     [ebp+40], eax           ; Context::jump
         add     dword ptr [ebp+12], 56  ; Context::esp: the site's ESP, above the gap, entry slots and PUSHFD
         cld
-        push    ebp
-        call    dword ptr [ebp+80]      ; the callback entry slot
+        push    ebp                     ; Rs7Mid_Guard(the callback entry slot, &Context)
+        push    dword ptr [ebp+80]
+        call    Rs7Mid_Guard
         RESUME_FRAME
 Rs7Mid_ThunkLight ENDP
 
@@ -146,7 +150,9 @@ Rs7Mid_ThunkSse PROC EXPORT
         ldmxcsr [esp]
         mov     [esp], ebp              ; the same slot is the callback's argument
         cld
-        call    dword ptr [ebp+88]      ; the callback entry slot
+        push    dword ptr [ebp+88]      ; Rs7Mid_Guard(the callback entry slot, &Context)
+        call    Rs7Mid_Guard
+        add     esp, 4                  ; back to the saved XMM block layout
         ldmxcsr [esp+132]
         movups  xmm0, [esp+4]
         movups  xmm1, [esp+20]

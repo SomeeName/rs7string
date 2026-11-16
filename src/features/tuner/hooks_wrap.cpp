@@ -2,7 +2,7 @@
 // tuning-name resolvers, run the stock resolver on copies of its arguments and name a 7-string tuning before and after
 // it; the handle of the open call goes from the before to the after callback in WrapFrame::user. Full mode: measured in
 // game, TJ about 194 calls per song-list build, TU one per song start, TN one every 2-3 s in a tuner, none per frame
-// (ARCHITECTURE.md section 15). Converted from naked stubs (frozen at b72bc52, tools/tests/test_midhook_wrap_sites.py).
+// (ARCHITECTURE.md section 14). Converted from naked stubs (frozen at b72bc52, tools/tests/test_midhook_wrap_sites.py).
 #include "features/tuner/hooks.h"
 
 using Rs7Mid::Context;

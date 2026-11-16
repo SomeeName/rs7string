@@ -5,9 +5,15 @@
     "copies": 1037,
     "literal_bytes": 1413740
   },
+  "rs7_inline8_lh.nif": {
+    "bytes": 1523951,
+    "sha256": "57c5d984fead678e38398916c06257629ac2e6278d6a33eee18c52a61f5b0cf5",
+    "copies": 1115,
+    "literal_bytes": 1512606
+  },
   "package": {
-    "bytes": 2863876,
-    "sha256": "e49b718c20b19695a9ae942f9942f17592d69f7e5bc542dc839e21edabf5a07e",
+    "bytes": 5928092,
+    "sha256": "df7160427c23c26f88ef448394a8dd4060c155f3cb2fbfa4f8add6f1038fb73a",
     "templates": [
       "epi_whilshire_cherry_lh.nif",
       "epi_whilshire_peg.nif"

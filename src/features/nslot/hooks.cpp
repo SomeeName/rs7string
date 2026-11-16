@@ -1,9 +1,10 @@
+#include "features/nslot/hooks.h"
 #include "features/allocstats/allocstats.h"
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "features/publish/publish.h"
-#include "model/eight.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <cstdarg>
 #include <cstdio>
@@ -17,29 +18,38 @@ namespace {
 
 using namespace rs7ns;
 
+// Redirected pointers can be retained by render objects. Keep the failure records immutable, process-lived and
+// constant-initialized: even allocation failure / registry exhaustion must leave every widened reader in bounds.
+struct EmptyRecords {
+    alignas(4) uint8_t t8[kT8Size] = {}, c8[kC8Size] = {};
+
+    constexpr EmptyRecords() {
+        for (uint32_t i = kTplFrets; i < kTplName; ++i) {
+            t8[i] = 0xFF;  // stock frets, fingers and MIDI: no chord notes
+        }
+
+        for (uint32_t i = kT8Frets; i < kT8Slots; ++i) {
+            t8[i] = 0xFF;
+        }
+
+        t8[kT8Slots] = 6;
+
+        for (uint32_t i = kCnSlideTo; i < kCnVib; ++i) {
+            c8[i] = 0xFF;
+        }
+
+        for (uint32_t i = kC8SlideTo; i < kC8Vib; ++i) {
+            c8[i] = 0xFF;
+        }
+    }
+};
+
+constexpr EmptyRecords kEmptyRecords;
+
 SRWLOCK g_lock = SRWLOCK_INIT;  // writers only (loader thread, song destructor); readers are lock-free
 volatile LONG g_logged = 0;
 
-bool SafeCopy(void* dst, const void* src, size_t n) {
-    if (!dst || !src) {
-        return false;
-    }
-
-    __try {
-        std::memcpy(dst, src, n);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-struct Vec {
-    uintptr_t begin = 0, end = 0;
-};
-
-bool ReadVec(const void* song, uint32_t off, Vec* v) {
-    return SafeCopy(v, static_cast<const uint8_t*>(song) + off, sizeof *v) && v->end >= v->begin;
-}
+using namespace rs7nslot;
 
 uint8_t* Alloc(Rs7AllocKind kind, size_t n) {
     uint8_t* p = n ? static_cast<uint8_t*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, n)) : nullptr;
@@ -96,8 +106,9 @@ struct SongView {
 };
 
 bool ReadSong(const void* song, SongView* v) {
-    if (!ReadVec(song, 0x94, &v->tpl) || !ReadVec(song, 0xAC, &v->cn) || !ReadVec(song, 0x110, &v->tuning) ||
-        !ReadVec(song, 0x40, &v->levels) || !SafeCopy(&v->capo, static_cast<const uint8_t*>(song) + 0x11C, 1)) {
+    if (!ReadVec(song, kSongTemplates, &v->tpl) || !ReadVec(song, kSongChordNotes, &v->cn) ||
+        !ReadVec(song, kSongTuning, &v->tuning) || !ReadVec(song, kSongLevels, &v->levels) ||
+        !Rs7_SafeCopy(&v->capo, static_cast<const uint8_t*>(song) + kSongCapo, 1)) {
         return false;
     }
 
@@ -106,7 +117,7 @@ bool ReadSong(const void* song, SongView* v) {
     const size_t templates = v->tpl.end - v->tpl.begin, chordNotes = v->cn.end - v->cn.begin;
     if (templates % kTplSize || chordNotes % kCnSize || templates / kTplSize > SIZE_MAX / kT8Size ||
         chordNotes / kCnSize > SIZE_MAX / kC8Size || (v->tuning.end - v->tuning.begin) % 2 ||
-        (v->levels.end - v->levels.begin) % 100) {
+        (v->levels.end - v->levels.begin) % kLevelSize) {
         return false;
     }
 
@@ -115,7 +126,8 @@ bool ReadSong(const void* song, SongView* v) {
         v->n = 16;
     }
 
-    return v->n == 0 || SafeCopy(v->tun, reinterpret_cast<const void*>(v->tuning.begin), static_cast<size_t>(v->n) * 2);
+    return v->n == 0 ||
+           Rs7_SafeCopy(v->tun, reinterpret_cast<const void*>(v->tuning.begin), static_cast<size_t>(v->n) * 2);
 }
 
 // Extended columns of template t: the RS7X block, else (7-string arrangements) the old name[31].
@@ -151,7 +163,7 @@ int BuildTemplates(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* b, int
     if (!stock) {
         return -1;
     }
-    if (count && !SafeCopy(stock.get(), reinterpret_cast<const void*>(v.tpl.begin), count * kTplSize)) {
+    if (count && !Rs7_SafeCopy(stock.get(), reinterpret_cast<const void*>(v.tpl.begin), count * kTplSize)) {
         return -1;
     }
 
@@ -188,33 +200,38 @@ int BuildTemplates(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* b, int
     return ext;
 }
 
-// For a ChordNotes record Fixup appended (index >= origCn): the first note that uses it, its chord.
-bool FindUser(const SongView& v, uint32_t r, uint32_t* noteMask, int32_t* chordId) {
-    const size_t levels = (v.levels.end - v.levels.begin) / 100;
+// The first note that uses a ChordNotes record Fixup appended (index >= origCn), and its chord (-1: none found).
+struct User {
+    uint32_t noteMask = 0;
+    int32_t chord = -1;
+};
+
+// One pass over every level's notes: users[r - origCn] for each appended record r < count. Stops at the first
+// unreadable note vector or note (the records not found by then keep chord -1).
+void FindUsers(const SongView& v, uint32_t origCn, uint32_t count, User* users) {
+    const size_t levels = (v.levels.end - v.levels.begin) / kLevelSize;
 
     for (size_t l = 0; l < levels; ++l) {
         Vec notes;
-        if (!ReadVec(reinterpret_cast<const void*>(v.levels.begin + l * 100), 0x30, &notes)) {
-            return false;
+        if (!ReadVec(reinterpret_cast<const void*>(v.levels.begin + l * kLevelSize), kLevelNotes, &notes)) {
+            return;
         }
 
-        for (uintptr_t p = notes.begin; p + 0x1C8 <= notes.end; p += 0x1C8) {
+        for (uintptr_t p = notes.begin; p + kNoteSize <= notes.end; p += kNoteSize) {
             int32_t ids[2];
             uint32_t mask;
-            if (!SafeCopy(ids, reinterpret_cast<const void*>(p + 0x14), 8) ||
-                !SafeCopy(&mask, reinterpret_cast<const void*>(p), 4)) {
-                return false;
+            if (!Rs7_SafeCopy(ids, reinterpret_cast<const void*>(p + kNoteChordIds), 8) ||
+                !Rs7_SafeCopy(&mask, reinterpret_cast<const void*>(p + kNoteMask), 4)) {
+                return;
             }
 
-            if (ids[1] == static_cast<int32_t>(r) && ids[0] >= 0) {
-                *noteMask = mask;
-                *chordId = ids[0];
-                return true;
+            const uint32_t r = static_cast<uint32_t>(ids[1]);
+
+            if (ids[0] >= 0 && ids[1] >= 0 && r >= origCn && r < count && users[r - origCn].chord < 0) {
+                users[r - origCn] = User{mask, ids[0]};
             }
         }
     }
-
-    return false;
 }
 
 void Log(const char* fmt, ...) {
@@ -260,18 +277,16 @@ int BlockTech(const rs7ext::Block& block, uint32_t r, Tech* t, const Tech** tp) 
 
 // ChordNotes record r added by Fixup: the strings 6/7 technique synthesized from its user note and chord template.
 // Returns how many were synthesized.
-int SynthTech(const SongView& v, const Rs7NsEntry& e, uint32_t r, Tech* t, const Tech** tp) {
-    uint32_t noteMask = 0;
-    int32_t chord = -1;
-    if (!FindUser(v, r, &noteMask, &chord) || chord < 0 || static_cast<uint32_t>(chord) >= e.tplCount) {
+int SynthTech(const Rs7NsEntry& e, const User& u, uint8_t capo, Tech* t, const Tech** tp) {
+    if (u.chord < 0 || static_cast<uint32_t>(u.chord) >= e.tplCount) {
         return 0;
     }
 
-    const int8_t* f = reinterpret_cast<const int8_t*>(e.t8 + chord * kT8Size + kT8Frets);
+    const int8_t* f = reinterpret_cast<const int8_t*>(e.t8 + u.chord * kT8Size + kT8Frets);
     int synth = 0;
 
     for (int i = 0; i < 2; ++i) {
-        t[i].mask = SynthMask(noteMask, f[6 + i], v.capo);
+        t[i].mask = SynthMask(u.noteMask, f[6 + i], capo);
 
         if (t[i].mask) {
             tp[i] = &t[i];
@@ -282,7 +297,7 @@ int SynthTech(const SongView& v, const Rs7NsEntry& e, uint32_t r, Tech* t, const
     return synth;
 }
 
-// The outcome of FillC8Locked: on failure the scratch record was not allocated or record `bad` was unreadable.
+// The outcome of FillC8Locked: on failure the scratch buffers were not allocated or record `bad` was unreadable.
 struct C8Fill {
     bool ok = true, noScratch = false;
     uint32_t bad = 0;
@@ -300,8 +315,22 @@ C8Fill FillC8Locked(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* block
         return out;
     }
 
+    // Appended records' users, found in one pass before the loop (not one note scan per record under g_lock).
+    const uint32_t appended = count > e->origCn ? count - e->origCn : 0;
+    std::unique_ptr<User[]> users(appended ? new (std::nothrow) User[appended] : nullptr);
+
+    if (appended && !users) {
+        out.ok = false;
+        out.noScratch = true;
+        return out;
+    }
+
+    if (appended) {
+        FindUsers(v, e->origCn, count, users.get());
+    }
+
     for (uint32_t r = 0; r < count; ++r) {
-        if (!SafeCopy(rec.get(), reinterpret_cast<const void*>(v.cn.begin + r * kCnSize), kCnSize)) {
+        if (!Rs7_SafeCopy(rec.get(), reinterpret_cast<const void*>(v.cn.begin + r * kCnSize), kCnSize)) {
             out.ok = false;
             out.bad = r;
             return out;
@@ -312,8 +341,8 @@ C8Fill FillC8Locked(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* block
 
         if (r < e->origCn && block && block->hasChordNotes) {
             out.fromBlock += BlockTech(*block, r, t, tp);
-        } else if (r >= e->origCn) {
-            out.synth += SynthTech(v, *e, r, t, tp);
+        } else if (r >= e->origCn && users) {
+            out.synth += SynthTech(*e, users[r - e->origCn], v.capo, t, tp);
         }
 
         BuildC8(rec.get(), tp[0], tp[1], reinterpret_cast<uint8_t*>(e->c8) + r * kC8Size);
@@ -349,16 +378,13 @@ void Rs7Ns_OnSngLoaded(void* song) {
 
         if (e) {
             ClearLocked(e);  // a recycled song object
-        }
-        if (!e) {
+        } else {
             e = FindLocked(0);
         }
 
         if (!e) {
             ReleaseSRWLockExclusive(&g_lock);
-            Log("nslot: SNG %p: no free registry slot (%d songs live) - its chords read past the stock records: "
-                "REPORT THIS",
-                song, kRs7NsEntries);
+            Log("nslot: SNG %p: no free registry slot (%d songs live); using empty chords", song, kRs7NsEntries);
             return;
         }
 
@@ -370,6 +396,11 @@ void Rs7Ns_OnSngLoaded(void* song) {
         if (ext < 0) {
             DropArraysLocked(e);
         }
+
+        // The entry may change once the lock is released: log from copies.
+        const uint32_t tplCount = e->tplCount, origCn = e->origCn;
+        void* const t8 = reinterpret_cast<void*>(e->t8);
+
         ReleaseSRWLockExclusive(&g_lock);
 
         if (ext < 0) {
@@ -379,12 +410,11 @@ void Rs7Ns_OnSngLoaded(void* song) {
 
         Log("nslot: SNG %p: %u templates -> T8 %p (%d with a 7th/8th-string column, from %s), %u tuning entries, "
             "capo %u, %u ChordNotes, tid %lu",
-            song, e->tplCount, reinterpret_cast<void*>(e->t8), ext,
+            song, tplCount, t8, ext,
             block    ? "the RS7X block"
             : byName ? "name[31] (old format)"
                      : "nothing",
-            v.n, v.capo, e->origCn,
-            GetCurrentThreadId());  // L4 (review #3)
+            v.n, v.capo, origCn, GetCurrentThreadId());
     } catch (...) {
     }
 }
@@ -465,11 +495,15 @@ extern "C" void __cdecl Rs7Ns_OnPostProcessed(void* song) {
             InterlockedExchange(reinterpret_cast<volatile LONG*>(&e->cnBegin), static_cast<LONG>(v.cn.begin));
         }
 
+        // The entry may change once the lock is released: log from copies.
+        const uint32_t origCn = e->origCn;
+        void* const c8 = reinterpret_cast<void*>(e->c8);
+
         ReleaseSRWLockExclusive(&g_lock);
         Log("nslot: SNG %p post-processed: T8 re-synced (%d with an extended column), %u ChordNotes (%u loaded, %u "
             "added by Fixup) -> C8 %p (%d extended technique entries from the block, %d synthesized), tid %lu",
-            song, ext, count, e->origCn, count > e->origCn ? count - e->origCn : 0, reinterpret_cast<void*>(e->c8),
-            fill.fromBlock, fill.synth, GetCurrentThreadId());  // L4 (review #3)
+            song, ext, count, origCn, count > origCn ? count - origCn : 0, c8, fill.fromBlock, fill.synth,
+            GetCurrentThreadId());
     } catch (...) {
     }
 }
@@ -489,13 +523,17 @@ extern "C" void __cdecl Rs7Ns_OnSongFree(void* song) {
             ClearLocked(e);
         }
         ReleaseSRWLockExclusive(&g_lock);
-        // L5 (review #3): the thread that runs the SNG_Song destructor (SF1) - main (closed) or a loader (real).
+        // The thread that runs the SNG_Song destructor (SF1) - main (closed) or a loader (real).
         Log("nslot: SNG %p freed tid %lu%s", song, GetCurrentThreadId(), e ? " (had T8/C8)" : "");
     } catch (...) {
     }
 }
 
 const uint8_t* Rs7Ns_AsT8(const void* tpl) {
+    if (tpl == kEmptyRecords.t8) {
+        return kEmptyRecords.t8;
+    }
+
     const uintptr_t p = reinterpret_cast<uintptr_t>(tpl);
 
     for (const auto& e : g_rs7_ns) {
@@ -511,6 +549,10 @@ const uint8_t* Rs7Ns_AsT8(const void* tpl) {
 }
 
 const uint8_t* Rs7Ns_AsC8(const void* cn) {
+    if (cn == kEmptyRecords.c8) {
+        return kEmptyRecords.c8;
+    }
+
     const uintptr_t p = reinterpret_cast<uintptr_t>(cn);
 
     for (const auto& e : g_rs7_ns) {
@@ -525,24 +567,30 @@ const uint8_t* Rs7Ns_AsC8(const void* cn) {
     return nullptr;
 }
 
-uint32_t Rs7Ns_TplRecord(uint32_t begin, uint32_t id) {
+uint32_t Rs7Ns_FindTplRecord(uint32_t begin, uint32_t id) {
     for (const auto& e : g_rs7_ns) {
-        if (e.tplBegin == begin && id < e.tplCount) {
+        if (begin && e.tplBegin == begin && e.t8 && id < e.tplCount) {
             return static_cast<uint32_t>(e.t8) + id * kT8Size;
         }
     }
 
-    return begin + id * kTplSize;
+    return 0;
+}
+
+uint32_t Rs7Ns_TplRecord(uint32_t begin, uint32_t id) {
+    const uint32_t record = Rs7Ns_FindTplRecord(begin, id);
+
+    return record ? record : static_cast<uint32_t>(reinterpret_cast<uintptr_t>(kEmptyRecords.t8));
 }
 
 uint32_t Rs7Ns_CnRecord(uint32_t begin, uint32_t id) {
     for (const auto& e : g_rs7_ns) {
-        if (e.cnBegin == begin && id < e.cnCount) {
+        if (begin && e.cnBegin == begin && e.c8 && id < e.cnCount) {
             return static_cast<uint32_t>(e.c8) + id * kC8Size;
         }
     }
 
-    return begin + id * kCnSize;
+    return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(kEmptyRecords.c8));
 }
 
 int Rs7Ns_LiveSongs() {

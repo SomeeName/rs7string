@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-// Diagnostic log points D1-D5 of docs/ARCHITECTURE.md ("Diagnostic log points").
+// Diagnostic log points D1-D5 (docs/ARCHITECTURE.md, "Diagnostic log points").
 // They run inside game render paths, so:
 //  - each (point, string) pair logs only its first kRs7DiagMaxHits hits per song (reset by
 //    Rs7_OnSongTuning); only strings 0 (comparison) and 6 are logged;
@@ -23,7 +23,7 @@ bool Rs7Diag_Peek(int point, uint32_t string);
 // New song: every (point, string) gets kRs7DiagMaxHits hits again.
 void Rs7Diag_Reset();
 // Logs the D1 lines Rs7_DiagNoteHead queued (call from a full-mode context: it formats with the CRT). The full-mode
-// diagnostic hooks D2 D3 D5 call it; they are written under the same switch as D1.
+// diagnostic hooks D2 D3 D5 and the always-installed full-mode N5 frame hook call it.
 void Rs7Diag_FlushNoteHeads();
 
 // Called from the asm stubs and R2 (cdecl). Byte arguments arrive as dwords; only the low byte counts.

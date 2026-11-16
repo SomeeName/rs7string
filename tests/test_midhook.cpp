@@ -302,7 +302,7 @@ TEST(midhook_pilot_registration) {
         const auto* hook = Rs7_FindHook(id);
 
         CHECK(hook && hook->callback && !hook->stub && !hook->resume);
-        CHECK(hook && !hook->diagOnly && !hook->vgOnly);
+        CHECK(hook && !hook->diagOnly && !hook->privateOnly);
     }
 }
 

@@ -1,5 +1,6 @@
 #include "d3d/present.h"
 #include "d3d_fixture.h"
+#include "overlay/capture.h"
 #include "platform/log.h"
 #include "test.h"
 #include <windows.h>
@@ -10,9 +11,10 @@
 
 namespace {
 using rs7d3d::Device;
-int g_presents, g_before, g_after;
+int g_presents, g_before, g_after, g_disabled;
 HRESULT g_afterHr;
 bool g_crash;
+int g_resetCrash;
 IDirect3DDevice9* g_seen;
 
 void OnPresent(IDirect3DDevice9* dev) {
@@ -25,22 +27,34 @@ void OnPresent(IDirect3DDevice9* dev) {
 
 void Before(IDirect3DDevice9*) {
     ++g_before;
+    if (g_resetCrash == 1) {
+        RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);
+    }
 }
 
 void After(IDirect3DDevice9*, HRESULT hr) {
     ++g_after;
     g_afterHr = hr;
+    if (g_resetCrash == 2) {
+        RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);
+    }
+}
+
+void Disable() {
+    ++g_disabled;
+    Rs7Overlay_SetCapture(false, false);
 }
 
 Rs7PresentCallbacks Cb() {
-    return Rs7PresentCallbacks{OnPresent, Before, After};
+    return Rs7PresentCallbacks{OnPresent, Before, After, Disable};
 }
 
 void Begin() {
     Rs7Present_UninstallForTests();
-    g_presents = g_before = g_after = 0;
+    g_presents = g_before = g_after = g_disabled = 0;
     g_afterHr = E_FAIL;
     g_crash = false;
+    g_resetCrash = 0;
     g_seen = nullptr;
 }
 
@@ -124,12 +138,16 @@ TEST(present_fault_in_the_callback_is_contained_and_sticky) {
     Begin();
     CHECK(Rs7Present_InstallOn(d.dev, Cb()));
     g_crash = true;
+    Rs7Overlay_SetCapture(true, true);
     CHECK(SUCCEEDED(d.dev->Present(nullptr, nullptr, nullptr, nullptr)));  // the game's call still goes through
     CHECK_EQ(g_presents, 1);
     CHECK_EQ(Rs7Present_Faults(), 1ul);
+    CHECK_EQ(g_disabled, 1);
+    CHECK(!Rs7Overlay_WantsMouse() && !Rs7Overlay_WantsKeys());
     g_crash = false;
     CHECK(SUCCEEDED(d.dev->Present(nullptr, nullptr, nullptr, nullptr)));
     CHECK_EQ(g_presents, 1);  // never called again
+    CHECK_EQ(g_disabled, 1);
     D3DPRESENT_PARAMETERS pp = Params();
 
     CHECK(SUCCEEDED(d.dev->Reset(&pp)));
@@ -158,6 +176,14 @@ TEST(present_recheck_rehooks_only_when_d3d9_restored_the_slots) {
     Rs7Present_Recheck();
     CHECK(vt[16] == reinterpret_cast<void*>(&Rs7_Thunk_Reset));
     CHECK(vt[17] == reinterpret_cast<void*>(&Rs7_Thunk_Present));
+    vt[17] = o17;  // only Present reset: recover the mixed original/thunk pair
+    Rs7Present_Recheck();
+    CHECK(vt[16] == reinterpret_cast<void*>(&Rs7_Thunk_Reset));
+    CHECK(vt[17] == reinterpret_cast<void*>(&Rs7_Thunk_Present));
+    vt[16] = o16;  // only Reset reset
+    Rs7Present_Recheck();
+    CHECK(vt[16] == reinterpret_cast<void*>(&Rs7_Thunk_Reset));
+    CHECK(vt[17] == reinterpret_cast<void*>(&Rs7_Thunk_Present));
     void* const foreign = reinterpret_cast<void*>(&Params);
 
     vt[17] = foreign;
@@ -166,6 +192,31 @@ TEST(present_recheck_rehooks_only_when_d3d9_restored_the_slots) {
     vt[17] = reinterpret_cast<void*>(&Rs7_Thunk_Present);
     Rs7Present_UninstallForTests();
     CHECK(vt[16] == o16 && vt[17] == o17);
+}
+
+TEST(present_reset_faults_release_input_and_notify_only_once) {
+    Device d;
+    if (!rs7d3d::Have(d)) {
+        return;
+    }
+
+    for (int fault = 1; fault <= 2; ++fault) {
+        Begin();
+        CHECK(Rs7Present_InstallOn(d.dev, Cb()));
+        Rs7Overlay_SetCapture(true, true);
+        g_resetCrash = fault;
+        D3DPRESENT_PARAMETERS pp = Params();
+
+        CHECK(SUCCEEDED(d.dev->Reset(&pp)));
+        CHECK_EQ(Rs7Present_Faults(), 1ul);
+        CHECK_EQ(g_disabled, 1);
+        CHECK(!Rs7Overlay_WantsMouse() && !Rs7Overlay_WantsKeys());
+        CHECK(SUCCEEDED(d.dev->Present(nullptr, nullptr, nullptr, nullptr)));
+        CHECK_EQ(g_presents, 0);
+        CHECK(SUCCEEDED(d.dev->Reset(&pp)));
+        CHECK_EQ(g_disabled, 1);
+        Rs7Present_UninstallForTests();
+    }
 }
 
 TEST(present_second_device_is_refused) {

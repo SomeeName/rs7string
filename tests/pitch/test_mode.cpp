@@ -186,33 +186,3 @@ void CaptureNote(const char* msg) {
     NoteLines().push_back(msg);
 }
 }  // namespace
-
-TEST(note_string6_logs_each_fret_once_per_song) {
-    Rs7Store_ClearAll();
-    NoteLines().clear();
-    Rs7Log_SetSink(CaptureNote);
-    Player p(1);
-
-    p.Song({0, 0, 0, 0, 0, 0, -1});  // resets the per-song fret set (and logs the song line)
-    NoteLines().clear();
-    Rs7_NoteString6(5, -1);
-    Rs7_NoteString6(5, -1);
-    Rs7_NoteString6(-1, -1);  // out of range: ignored
-    Rs7_NoteString6(31, -1);
-    const std::vector<std::string> first = NoteLines();
-
-    p.Song({0, 0, 0, 0, 0, 0, -1});
-    NoteLines().clear();
-    Rs7_NoteString6(5, -1);  // new song: logged again
-    Rs7Log_SetSink(nullptr);
-    const std::string want = "string 6 fret 5: expected MIDI 39 (35 + t6 -1 + fret)";
-
-    CHECK_EQ(first.size(), size_t(1));
-    if (!first.empty()) {
-        CHECK_EQ(first[0], want);
-    }
-    CHECK_EQ(NoteLines().size(), size_t(1));
-    if (!NoteLines().empty()) {
-        CHECK_EQ(NoteLines()[0], want);
-    }
-}

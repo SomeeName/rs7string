@@ -66,8 +66,8 @@ def json_sink(emu):
 
 
 @pytest.mark.parametrize("count", [6, 7, 8])
-@pytest.mark.parametrize("stock_pointer", [False, True])
-def test_loaded_serializer_tail_real_output(emus, count, stock_pointer):
+@pytest.mark.parametrize("pointer_kind", ["t8", "stock", "past-stock"])
+def test_loaded_serializer_tail_real_output(emus, count, pointer_kind):
     _, emu = emus
     with json_sink(emu) as values:
         t8 = BASE + 0x4000
@@ -87,7 +87,8 @@ def test_loaded_serializer_tail_real_output(emus, count, stock_pointer):
         ns_set(emu, [(stock, 1, t8, 0, 0, 0, 1, 0)])
         sp = STACK + 0x9000
         bp = sp + 0x500
-        emu.uc.mem_write(bp + 8, struct.pack("<II", holder, stock if stock_pointer else t8))
+        pointer = {"t8": t8, "stock": stock, "past-stock": stock + 0x48}[pointer_kind]
+        emu.uc.mem_write(bp + 8, struct.pack("<II", holder, pointer))
         emu.uc.mem_write(sp + 0x180, struct.pack("<I", 0x12345678))
         regs = {r: 0x200 + i for i, r in enumerate(ALL_REGS)}
         regs.update({UC_X86_REG_ESP: sp, UC_X86_REG_EBP: bp})
@@ -97,7 +98,7 @@ def test_loaded_serializer_tail_real_output(emus, count, stock_pointer):
             if r not in (UC_X86_REG_ECX, UC_X86_REG_EIP):
                 assert emu.uc.reg_read(r) == regs[r]
         assert emu.uc.reg_read(UC_X86_REG_ECX) == 0x12345678
-        if count == 6:
+        if count == 6 or pointer_kind == "past-stock":
             assert values == {}
         else:
             assert values["StartFret"] == 12 and values["LowEFret"] == 0

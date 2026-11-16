@@ -1,7 +1,9 @@
 #include "features/diagrams/diagrams.h"
+#include "features/extras/extras.h"
 #include "features/fretgrid/fretgrid.h"
 #include "features/headstock/headstock.h"
 #include "features/nextgrid/nextgrid.h"
+#include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
 #include "features/strings/strings.h"
@@ -9,7 +11,9 @@
 #include "features/tuner/tuner.h"
 #include "generated/sites.generated.h"
 #include "hook_rules.h"
+#include "model/gates.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 
 TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
@@ -51,14 +55,14 @@ TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
         }
 
         CHECK(h->stub != nullptr);
-        if (h->publish && h->resume == nullptr) {
+        if ((h->gates & kRs7GatePublish) && h->resume == nullptr) {
             continue;  // copied entries / fixed-ABI tail wrappers
         }
 
         // TA ends SelectString itself (`mov esp,ebp; pop ebp; ret`): no resume.
         // GS* entries of the copied functions (features/strings/strings.h) jump to their copy or trampoline instead.
-        const bool gsEntry = h->strs == kRs7StrNative && h->resume == nullptr;
-        if (h->tuner == kRs7TunerNative) {
+        const bool gsEntry = (h->gates & kRs7GateStrings) != 0 && h->resume == nullptr;
+        if (h->gates & kRs7GateTuner) {
             continue;  // whole-function copy, no resume variable
         }
 
@@ -86,12 +90,15 @@ TEST(ref_sites_are_never_written) {
         CHECK(h && !Rs7_ShouldPatch(*h, true) && !Rs7_ShouldPatch(*h, false));
     }
 
-    CHECK_EQ(refs, 13);      // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
-                             // + X_VGSLOT, X_VGDI (virtual guitarist)
-                             // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
-                             // + X_DDSH (the 7-string model's textures)
-                             // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
-    CHECK_EQ(callRefs, 37);  // X_SPAWN, X_ADV3 (neck targets, N9) + the string object calls the native strings use
+    CHECK_EQ(refs,
+             12 + kRs7PrivateRefSites);  // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
+                                         // + the private extras' refs (src/features/extras/extras.h)
+                                         // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
+                                         // + X_DDSH (the 7-string model's textures)
+                                         // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
+                                         // + X_TBASS (the tuner's bass open MIDI table, extended bass)
+    CHECK_EQ(callRefs, 38);  // MenuMovieRequest (menu loading retry) + X_SPAWN, X_ADV3 (neck targets, N9) + the string
+                             // object calls the native strings use
                              // + X_WORLD, X_ROOT (entity root nodes, features/scene)
                              // + X_SETSCALE (F1/F2 fret bars), X_EULER (peg placement)
                              // + X_PEGSELECT, X_PEGPLACE, X_PEGLAYER (N-slot PegSet)
@@ -117,7 +124,7 @@ TEST(unknown_id_has_no_hook) {
 }
 
 TEST(diagnostics_only_hooks_are_d2_d3_d5) {
-    const uintptr_t savedDiagrams = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     g_rs7_diagrams = 1;
     int diagOnly = 0;
@@ -131,34 +138,34 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
         if (!h) {
             continue;
         }
-        if (h->publish) {
+        if (h->gates & kRs7GatePublish) {
             continue;
         }
-        if (h->vgOnly) {
-            continue;  // vguitar_only_hooks_are_the_four_vg_sites (tests/vguit)
+        if (h->privateOnly) {
+            continue;  // the private extras test their own sites
         }
-        if (h->pegs) {
+        if (h->gates & kRs7GatePegs) {
             continue;  // peg_hooks_follow_native_pegset
         }
-        if (h->strs) {
+        if (h->gates & kRs7GateStrings) {
             continue;  // string_hooks_follow_native_strings
         }
-        if (h->fg) {
+        if (h->gates & kRs7GateFretgrid) {
             continue;  // fretgrid_hooks_follow_native_fretgrid
         }
-        if (!std::strncmp(h->id, "CM", 2)) {
-            continue;  // colour_hooks_are_the_cm_sites (tests/colours)
+        if (!std::strncmp(h->id, "CM", 2) || !std::strncmp(h->id, "CB", 2)) {
+            continue;  // colour_hooks_are_the_cm_ports_and_the_cb_getters (tests/colours)
         }
-        if (h->pitch) {
+        if (h->gates & kRs7GatePitch) {
             continue;  // pitch_hooks_follow_native_pitch
         }
-        if (h->ng) {
+        if (h->gates & kRs7GateNextgrid) {
             continue;  // nextgrid_hooks_follow_native_nextgrid
         }
         if (!std::strncmp(h->id, "CL", 2)) {
-            continue;  // chordloops_default_on_and_requires_native_owner
+            continue;  // chordloops_require_native_strings
         }
-        if (h->tuner) {
+        if (h->gates & kRs7GateTuner) {
             continue;  // tuner8_sites_are_on_by_default_and_require_native_strings
         }
         if (!std::strncmp(h->id, "LS", 2)) {
@@ -173,6 +180,9 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
         if (!std::strncmp(h->id, "TV", 2)) {
             continue;  // test_variant_hooks_are_off_by_default
         }
+        if (!std::strncmp(h->id, "E8", 2)) {
+            continue;  // eight_sites_are_always_written
+        }
 
         const bool diag =
             std::strcmp(h->id, "D2") == 0 || std::strcmp(h->id, "D3") == 0 || std::strcmp(h->id, "D5") == 0;
@@ -184,7 +194,6 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
     }
 
     CHECK_EQ(diagOnly, 3);
-    g_rs7_diagrams = savedDiagrams;
 }
 
 TEST(test_variant_hooks_are_off_by_default) {
@@ -199,8 +208,25 @@ TEST(test_variant_hooks_are_off_by_default) {
     }
 }
 
+TEST(eight_sites_are_always_written) {
+    int count = 0;
+
+    for (const Rs7Site& site : kRs7Sites) {
+        const Rs7Hook* e8 = std::strncmp(site.id, "E8", 2) ? nullptr : Rs7_FindHook(site.id);
+        if (!e8) {
+            continue;
+        }
+
+        ++count;
+        CHECK(Rs7_FindHook(site.id + 2) == nullptr);  // the seven-bound site it replaced is gone
+        CHECK(Rs7_ShouldPatch(*e8, true));
+    }
+
+    CHECK_EQ(count, 24);
+}
+
 TEST(diagram_hooks_are_all_unpatched_by_default_and_enabled_together) {
-    const uintptr_t saved = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     for (const char* id : {"DGM", "DGS", "DGB", "TP13"}) {
         const auto* hook = Rs7_FindHook(id);
@@ -215,8 +241,6 @@ TEST(diagram_hooks_are_all_unpatched_by_default_and_enabled_together) {
         g_rs7_diagrams = 1;
         CHECK(Rs7_ShouldPatch(*hook, false));
     }
-
-    g_rs7_diagrams = saved;
 }
 
 TEST(peg_hooks_follow_native_pegset) {
@@ -230,15 +254,14 @@ TEST(peg_hooks_follow_native_pegset) {
 
         const bool isNative = !std::strncmp(h->id, "PS", 2);
 
-        CHECK_EQ(h->pegs == kRs7PegNative, isNative);
-        CHECK(h->pegs == 0 || h->pegs == kRs7PegNative);  // 1.0: the stage-2 legacy peg (PG*, PH*) is gone
+        CHECK_EQ((h->gates & kRs7GatePegs) != 0, isNative);
         native += isNative;
-        if (h->pegs) {
+        if (h->gates & kRs7GatePegs) {
             CHECK_EQ(Rs7_ShouldPatch(*h, true, false, true), isNative);
         }
     }
 
-    CHECK_EQ(native, 16);
+    CHECK_EQ(native, 17);
 }
 
 TEST(string_hooks_follow_native_strings) {
@@ -253,21 +276,20 @@ TEST(string_hooks_follow_native_strings) {
         const char* id = h->id;
         const bool isNative = (!std::strncmp(id, "GS", 2) || !std::strncmp(id, "GI", 2) || !std::strncmp(id, "GRM", 3));
 
-        CHECK_EQ(h->strs == kRs7StrNative, isNative);
-        CHECK(h->strs == 0 || h->strs == kRs7StrNative);  // 1.0: the S7 object sites (N2-N4, N6, N7, N14-N17) are gone
+        CHECK_EQ((h->gates & kRs7GateStrings) != 0, isNative);
         native += isNative;
 
-        if (h->strs) {
+        if (h->gates & kRs7GateStrings) {
             CHECK_EQ(Rs7_ShouldPatch(*h, true, false, true, true), isNative);
             CHECK(!Rs7_ShouldPatch(*h, true, false, true, false));
         }
     }
 
-    CHECK_EQ(native, 26);
+    CHECK_EQ(native, 27);  // includes GIP1: profile assignment caps incomplete native allocations
 }
 
 TEST(integrated_side_hooks_follow_both_string_modes) {
-    const uintptr_t saved = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     for (bool nativeStrings : {false, true}) {
         for (const char* id : {"W", "I1", "D2", "D3"}) {
@@ -298,12 +320,10 @@ TEST(integrated_side_hooks_follow_both_string_modes) {
             CHECK(Rs7_ShouldPatch(*h, true, false, true, nativeStrings));
         }
     }
-
-    g_rs7_diagrams = saved;
 }
 
 TEST(fretgrid_hooks_follow_native_fretgrid) {
-    const uintptr_t saved = g_rs7_native_fretgrid;
+    rs7test::Restore restore_g_rs7_native_fretgrid(g_rs7_native_fretgrid);
     int n = 0;
 
     for (int i = 0; i < kRs7SiteCount; ++i) {
@@ -315,7 +335,7 @@ TEST(fretgrid_hooks_follow_native_fretgrid) {
         const bool isFg = !std::strncmp(h->id, "FGR", 3) || !std::strcmp(h->id, "FGHK") ||
                           !std::strcmp(h->id, "FGCT");  // FGR<va> in-place patches, FGRB, the FGHK mid-hook
 
-        CHECK_EQ(h->fg == kRs7FgNative, isFg);
+        CHECK_EQ((h->gates & kRs7GateFretgrid) != 0, isFg);
         if (!isFg) {
             continue;
         }
@@ -329,16 +349,15 @@ TEST(fretgrid_hooks_follow_native_fretgrid) {
     }
 
     CHECK_EQ(n, 73);
-    g_rs7_native_fretgrid = saved;
 }
 
 TEST(pitch_hooks_follow_native_pitch) {
-    const uintptr_t saved = g_rs7_native_pitch;
+    rs7test::Restore restore_g_rs7_native_pitch(g_rs7_native_pitch);
     int n = 0;
 
     for (int i = 0; i < kRs7SiteCount; ++i) {
         const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
-        if (!h || !h->pitch) {
+        if (!h || !(h->gates & kRs7GatePitch)) {
             continue;
         }
 
@@ -351,12 +370,11 @@ TEST(pitch_hooks_follow_native_pitch) {
         CHECK(Rs7_ShouldPatch(*h, false, false, true, true));
     }
 
-    CHECK_EQ(n, 11);  // PA1 PA2 PM0 PR0 PT1 PM1 PE0 PC1-PC4
-    g_rs7_native_pitch = saved;
+    CHECK_EQ(n, 12);  // PA1 PA2 PM0 PR0 PT1 PM1 PE0 PC1-PC4 PBH
 }
 
 TEST(nextgrid_hooks_follow_native_nextgrid) {
-    const uintptr_t saved = g_rs7_native_nextgrid;
+    rs7test::Restore restore_g_rs7_native_nextgrid(g_rs7_native_nextgrid);
     int n = 0;
 
     for (int i = 0; i < kRs7SiteCount; ++i) {
@@ -368,7 +386,7 @@ TEST(nextgrid_hooks_follow_native_nextgrid) {
         const bool isNg = !std::strncmp(h->id, "NGB", 3) || !std::strcmp(h->id, "NG1") || !std::strcmp(h->id, "NGP") ||
                           !std::strcmp(h->id, "NG9");
 
-        CHECK_EQ(h->ng == kRs7NgNative, isNg);
+        CHECK_EQ((h->gates & kRs7GateNextgrid) != 0, isNg);
         if (!isNg) {
             continue;
         }
@@ -384,11 +402,10 @@ TEST(nextgrid_hooks_follow_native_nextgrid) {
     }
 
     CHECK_EQ(n, 28);
-    g_rs7_native_nextgrid = saved;
 }
 
 TEST(loadstep_probes_follow_publish_trace) {
-    const uintptr_t saved = g_rs7_publish_trace;
+    rs7test::Restore restore_g_rs7_publish_trace(g_rs7_publish_trace);
 
     for (const char* id : {"LSA", "LSG", "LSC", "LSE"}) {
         const Rs7Hook* h = Rs7_FindHook(id);
@@ -404,6 +421,4 @@ TEST(loadstep_probes_follow_publish_trace) {
         g_rs7_publish_trace = 1;
         CHECK(Rs7_ShouldPatch(*h, false));
     }
-
-    g_rs7_publish_trace = saved;
 }

@@ -21,13 +21,12 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI,
 )
 
+from emu_harness import needs_emu
 from emu_harness import DATA, DLL, SNAPSHOT, site_va
 from midhook_oracle import Case, Helper, Spec, oracle_tests
 from midhook_stock import RET_AT, Ref, W, ruled, stock_tests
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 D = DATA + 0x2000  # scratch objects
 SPECS: dict[str, tuple[Spec, list[Case]]] = {}

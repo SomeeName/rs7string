@@ -4,6 +4,7 @@
 #include "platform/patch.h"
 #include "platform/protect.h"
 #include "test.h"
+#include "testutil.h"
 #include <windows.h>
 #include <cstring>
 #include <string>
@@ -15,7 +16,8 @@ struct Page {
     uint8_t* p;
 
     Page() {
-        p = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        p = static_cast<uint8_t*>(
+            rs7test::Must(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), "VirtualAlloc"));
         std::memset(p, 0xCC, 4096);
         DWORD old;
 
@@ -123,7 +125,7 @@ struct Batch {
 };
 
 void UnrecoverableCase(bool frozen) {
-    const auto savedDg = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     Batch b;
@@ -145,7 +147,6 @@ void UnrecoverableCase(bool frozen) {
     CHECK(b.Logged("UNRECOVERABLE S1"));
     CHECK(!b.Logged("restored\""));
     Rs7_ResetFeatureFailures();
-    g_rs7_diagrams = savedDg;
 }
 }  // namespace
 
@@ -158,7 +159,7 @@ TEST(isolate_failed_rollback_is_unrecoverable_under_the_freeze) {
 }
 
 TEST(isolate_verified_rollback_still_isolates_and_retries) {
-    const auto savedDg = g_rs7_diagrams;
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
 
     Rs7_ResetFeatureFailures();
     Batch b;
@@ -171,5 +172,35 @@ TEST(isolate_verified_rollback_still_isolates_and_retries) {
     CHECK(std::memcmp(reinterpret_cast<void*>(b.Site(1)), kOrig, 5) == 0);
     CHECK(!b.Logged("UNRECOVERABLE"));
     Rs7_ResetFeatureFailures();
-    g_rs7_diagrams = savedDg;
+}
+
+TEST(isolate_cleanup_failure_keeps_the_written_site_accounted_for_and_stops_rounds) {
+    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+
+    Rs7_ResetFeatureFailures();
+    Batch b;
+    Rs7PatchOps ops = b.Ops(true);
+
+    ops.apply = [&](size_t i) {
+        ++b.applies;
+        Rs7_ProtectInjectFailure(i == 1 ? b.Site(i) : 0, i == 1 ? b.Site(i) + 5 : 0, PAGE_EXECUTE_READ);
+        const Rs7WriteResult result = Rs7_WriteBytes(b.Site(i), kOurs, 5);
+
+        Rs7_ProtectInjectFailure(0, 0);
+
+        return result;
+    };
+    std::vector<size_t> written;
+
+    CHECK(Rs7_PatchIsolated(kRs7Groups, ops, written) == Rs7PatchResult::Unrecoverable);
+    CHECK_EQ(b.applies, 2);
+    CHECK_EQ(b.restores, 2);  // includes the site written before its cleanup failed
+    CHECK_EQ(written.size(), size_t(1));
+    if (!written.empty()) {
+        CHECK_EQ(written[0], size_t(1));
+    }
+    CHECK(std::memcmp(reinterpret_cast<void*>(b.Site(0)), kOrig, 5) == 0);
+    CHECK(std::memcmp(reinterpret_cast<void*>(b.Site(1)), kOrig, 5) == 0);
+    CHECK(b.Logged("page protection failed"));
+    Rs7_ResetFeatureFailures();
 }

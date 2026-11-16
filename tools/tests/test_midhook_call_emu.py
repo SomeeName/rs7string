@@ -1,4 +1,4 @@
-"""Call-site mid-hooks (Rs7Mid_BuildCall, ARCHITECTURE.md section 15 "Call sites") executed in Unicorn against both
+"""Call-site mid-hooks (Rs7Mid_BuildCall, ARCHITECTURE.md section 14 "Call sites") executed in Unicorn against both
 thunks and both placements: a caller `push imm32; call site` runs stock and hooked on identical machine state. The
 callee counts its runs, returns [esp+4] + ECX (flags from the ADD) and cleans up with `ret 4`."""
 

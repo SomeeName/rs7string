@@ -6,8 +6,58 @@ import struct
 from pathlib import Path
 
 import cmp_functions as c
+import pytest
 
 BASE = 0x5E000000
+
+
+def pe_fixture(path, opcode=0xC3):
+    data = bytearray(0x400)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 0x80)
+    data[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", data, 0x84, 0x14C, 1, 0, 0, 0, 224, 0x102)
+    opt = 0x98
+    struct.pack_into("<H", data, opt, 0x10B)
+    struct.pack_into("<III", data, opt + 28, BASE, 0x1000, 0x200)
+    struct.pack_into("<II", data, opt + 56, 0x2000, 0x200)
+    struct.pack_into("<I", data, opt + 92, 16)
+    sec = opt + 224
+    data[sec : sec + 8] = b".text\0\0\0"
+    struct.pack_into("<IIII", data, sec + 8, 0x200, 0x1000, 0x200, 0x200)
+    struct.pack_into("<I", data, sec + 36, 0x60000020)
+    data[0x200] = opcode
+    path.write_bytes(data)
+    return path
+
+
+@pytest.mark.parametrize(
+    "text", ["", "not a linker map", " 0001:00000000 00000200H .text CODE\n", " 0001:00000000 _F 5e001000 f a.obj\n"]
+)
+def test_unusable_maps_fail_instead_of_all_equal(tmp_path, capsys, text):
+    old = pe_fixture(tmp_path / "old.dll")
+    new = pe_fixture(tmp_path / "new.dll", 0x90)
+    mapping = tmp_path / "x.map"
+    mapping.write_text(text)
+    assert c.main([str(old), str(mapping), str(new), str(mapping)]) == 1
+    assert "ALL EQUAL" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("address", [0x4E001000, BASE + 0x3000, BASE + 0x500])
+def test_map_function_addresses_must_belong_to_image_code(tmp_path, capsys, address):
+    dll = pe_fixture(tmp_path / "x.dll")
+    mapping = tmp_path / "x.map"
+    mapping.write_text(f" 0001:00000000 00000200H .text CODE\n 0001:00000000 _F {address:08x} f a.obj\n")
+    assert c.main([str(dll), str(mapping), str(dll), str(mapping)]) == 1
+    assert "ALL EQUAL" not in capsys.readouterr().out
+
+
+def test_valid_map_and_image_compare_equal(tmp_path, capsys):
+    dll = pe_fixture(tmp_path / "x.dll")
+    mapping = tmp_path / "x.map"
+    mapping.write_text(" 0001:00000000 00000200H .text CODE\n 0001:00000000 _F 5e001000 f a.obj\n")
+    assert c.main([str(dll), str(mapping), str(dll), str(mapping)]) == 0
+    assert "ALL EQUAL" in capsys.readouterr().out
 
 
 class FakeImage:

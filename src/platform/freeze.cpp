@@ -1,30 +1,38 @@
-#include "platform/freeze.h"
+#include "platform/freeze_completion.h"
+#include "platform/freeze_stack.h"
 #include "platform/protect.h"
 #include <windows.h>
-#include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <winternl.h>
 
 namespace {
-constexpr size_t kMaxThreads = 1024;
+constexpr size_t kMaxThreads = Rs7FreezeStats::kMaxThreads;
 constexpr LONG kInfoLengthMismatch = LONG(0xC0000004);
+constexpr LONG kNoMoreEntries = LONG(0x8000001A);
+constexpr ACCESS_MASK kThreadAccess =
+    THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | SYNCHRONIZE;
+constexpr unsigned kMaxResuspends = 8;  // per job: threads let run to their WoW64 safe point and suspended again
 
 using NtQsi = LONG(NTAPI*)(ULONG, PVOID, ULONG, PULONG);
+using NtGnt = LONG(NTAPI*)(HANDLE, HANDLE, ACCESS_MASK, ULONG, ULONG, _Out_ PHANDLE);
 
 SRWLOCK g_lock = SRWLOCK_INIT;  // one freeze at a time (the tables below are shared)
-NtQsi g_qsi = nullptr;
-uint8_t* g_buf = nullptr;  // touched by the reader during a job only; resized while it is idle
+NtGnt g_gnt = nullptr;          // NtGetNextThread: this process's threads only (preferred)
+NtQsi g_qsi = nullptr;          // fallback without NtGetNextThread (old Wine): the system-wide process list
+uint8_t* g_buf = nullptr;       // fallback only; touched by the reader during a job only; resized while it is idle
 ULONG g_bufSize = 0;
 
 struct Frozen {
     DWORD tid;
     HANDLE h;
+    bool held;  // we hold one suspension (false: the coordinator let it run to its WoW64 safe point)
+    bool gone;  // termination confirmed: nothing of ours to resume
+    Rs7FrozenContext context;
 };
 
-// The thread table. The reader appends while a job runs; the coordinator (the Rs7_RunFrozen caller) reads it
-// when the reader is idle, or under g_table when it aborts a stalled job. g_table is held only for a few
-// instructions by those two threads, neither of which is ever suspended by a freeze.
-Frozen g_frozen[kMaxThreads];
+// Reader appends during a job; coordinator reads only while idle or under g_table on abort. Neither is suspended.
+Frozen g_frozen[kMaxThreads] = {};
 size_t g_count = 0;
 SRWLOCK g_table = SRWLOCK_INIT;
 
@@ -33,19 +41,20 @@ unsigned g_graceMs = 2000;  // then wait this long for the reader to come back
 Rs7FreezeSuspendFn g_suspendHook = nullptr;
 Rs7FreezeContextFn g_contextHook = nullptr;
 
-// ---- the reader thread: all SuspendThread / GetThreadContext calls of a freeze ----
-HANDLE g_reader = nullptr, g_go = nullptr, g_done = nullptr;
+HANDLE g_reader = nullptr, g_go = nullptr;
+Rs7FreezeCompletion g_completion;
 DWORD g_readerTid = 0;
-bool g_readerReady = false;      // the reader has signalled g_done once after starting
-volatile LONG g_readerBusy = 0;  // 1 from SetEvent(g_go) until the reader has finished the job
-volatile LONG g_abort = 0;       // the coordinator gave up on the job and resumed the table
-volatile LONG g_progress = 0;    // +1 per completed thread-control call
-volatile LONG g_curTid = 0;      // the thread the reader is working on
-volatile LONG g_curOp = 0;       // 'S' / 'C'
+bool g_readerReady = false;    // the reader has signalled its completion event once after starting
+volatile LONG g_abort = 0;     // the coordinator gave up on the job and resumed the table
+volatile LONG g_progress = 0;  // +1 per completed thread-control call
+volatile LONG g_curTid = 0;    // the thread the reader is working on
+volatile LONG g_curOp = 0;     // 'S' / 'C'
 
 enum class Suspend { Ok, Grow, TooMany, Failed };
+enum class Visit { Next, NextKept, Stop };  // Stop: the visitor has closed or kept the handle itself
 
 struct Job {
+    LONG generation = 0;
     DWORD coordinator = 0;
     const Rs7Range* ranges = nullptr;
     size_t n = 0;
@@ -56,6 +65,7 @@ struct Result {
     unsigned skipped = 0;
     ULONG grow = 0;
     bool busy = false, aborted = false;
+    unsigned resuspends = 0;
     DWORD busyTid = 0;
     uintptr_t busyEip = 0;
     size_t busyRange = 0;
@@ -84,41 +94,44 @@ bool EnsureBuffer(ULONG want) {  // reader idle only
 DWORD WINAPI Reader(void*);
 
 bool Init() {  // outside the freeze only, under g_lock
-    if (!g_qsi) {
+    if (!g_gnt && !g_qsi) {
         const HMODULE nt = GetModuleHandleW(L"ntdll.dll");
 
-        g_qsi = nt ? reinterpret_cast<NtQsi>(GetProcAddress(nt, "NtQuerySystemInformation")) : nullptr;
+        g_gnt = nt ? reinterpret_cast<NtGnt>(GetProcAddress(nt, "NtGetNextThread")) : nullptr;
+        if (!g_gnt) {
+            g_qsi = nt ? reinterpret_cast<NtQsi>(GetProcAddress(nt, "NtQuerySystemInformation")) : nullptr;
+        }
     }
 
     Rs7_ProtectMethod();  // resolves the protect syscall (file read, heap) now, never inside a freeze
     if (!g_go) {
         g_go = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     }
-    if (!g_done) {
-        g_done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!g_completion.done) {
+        g_completion.done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     }
-    if (!g_reader && g_go && g_done) {
+    if (!g_reader && g_go && g_completion.done) {
         g_reader = CreateThread(nullptr, 64 * 1024, Reader, nullptr, STACK_SIZE_PARAM_IS_A_RESERVATION, &g_readerTid);
     }
-    // A new thread first runs the loader's thread attach (loader lock, every DllMain): that took ~0.4 s once
-    // during startup (smoke wmi-5) and looked like a stall. Wait for the reader to come up before any job.
-    if (g_reader && !g_readerReady) {
-        g_readerReady = WaitForSingleObject(g_done, 5000) == WAIT_OBJECT_0;
+    // Thread attach took ~0.4 s once at startup (smoke wmi-5): await readiness before starting any job.
+    const HANDLE done = g_completion.done;  // a local the analyser tracks
+
+    if (g_reader && done && !g_readerReady) {
+        g_readerReady = WaitForSingleObject(done, 5000) == WAIT_OBJECT_0;
     }
-    if (!g_qsi || !g_reader || !g_readerReady) {
+    if ((!g_gnt && !g_qsi) || !g_reader || !g_readerReady) {
         return false;
     }
-    if (InterlockedCompareExchange(&g_readerBusy, 0, 0)) {
-        return true;  // buffer belongs to the reader
+    if (g_gnt || InterlockedCompareExchange(&g_completion.busy, 0, 0)) {
+        return true;  // no buffer needed, or it belongs to the reader
     }
 
-    return EnsureBuffer(g_bufSize ? g_bufSize : 0x100000);
+    return EnsureBuffer(g_bufSize ? g_bufSize : 0x200000);
 }
 
-// Calls visit(tid) for every thread of this process. Heap-free. Returns false (needSize set) when the buffer
-// is too small.
+// Fallback: visit(tid) for this process's threads. False with needSize set if the system-list buffer is too small.
 template <class F>
-bool ForEachThread(F visit, ULONG* needSize) {
+bool ForEachThreadId(F visit, ULONG* needSize) {
     ULONG need = 0;
     const LONG s = g_qsi(5 /* SystemProcessInformation */, g_buf, g_bufSize, &need);
 
@@ -162,13 +175,78 @@ bool ForEachThread(F visit, ULONG* needSize) {
     }
 }
 
+// Heap-free visit(tid, handle): Next closes the handle, NextKept leaves it to the visitor, Stop ends the walk.
+// NtGetNextThread visits only this process; the system-list fallback can exceed the stall limit under load.
+template <class F>
+bool ForEachThread(F visit, ULONG* needSize) {
+    *needSize = 0;
+
+    if (g_gnt) {
+        HANDLE cur = nullptr;
+        bool owned = false;
+
+        for (;;) {
+            HANDLE next = nullptr;
+            const LONG s = g_gnt(GetCurrentProcess(), cur, kThreadAccess, 0, 0, &next);
+
+            if (owned) {
+                CloseHandle(cur);
+            }
+            if (s < 0 || !next) {
+                return s == kNoMoreEntries;
+            }
+
+            // C6001 "*next": a HANDLE is no data pointer; GetThreadId's _In_ makes /analyze want its pointee.
+#pragma warning(suppress : 6001)
+            const Visit v = visit(GetThreadId(next), next);
+
+            if (v == Visit::Stop) {
+                return true;
+            }
+
+            cur = next;
+            owned = v == Visit::Next;
+        }
+    }
+
+    return ForEachThreadId(
+        [&](DWORD tid) {
+            const HANDLE h = OpenThread(kThreadAccess, FALSE, tid);
+
+            if (!h) {
+                return visit(tid, nullptr) != Visit::Stop;
+            }
+
+            const Visit v = visit(tid, h);
+
+            if (v == Visit::Next) {
+                CloseHandle(h);
+            }
+
+            return v != Visit::Stop;
+        },
+        needSize);
+}
+
 void ResumeAll() {  // coordinator, reader idle
     for (size_t i = 0; i < g_count; ++i) {
-        ResumeThread(g_frozen[i].h);
+        if (g_frozen[i].held && !g_frozen[i].gone) {
+            ResumeThread(g_frozen[i].h);
+        }
         CloseHandle(g_frozen[i].h);
     }
 
     g_count = 0;
+}
+
+bool AllHeld() {  // coordinator, reader idle
+    for (size_t i = 0; i < g_count; ++i) {
+        if (!g_frozen[i].held) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Known(DWORD tid) {
@@ -198,94 +276,92 @@ void Working(DWORD tid, char op) {
     InterlockedExchange(&g_curOp, op);
 }
 
-// Reader. Suspends every other thread (not the coordinator, not itself); repeats the listing until a pass
-// finds no new thread (a thread may have created one before it was suspended). Appends under g_table and
-// re-checks g_abort there, so a thread is either in the table (the coordinator resumes it on abort) or
-// resumed here.
-Suspend SuspendOthers(DWORD coordinator, Result* res) {
-    const DWORD me = GetCurrentThreadId();
-
-    for (int pass = 0; pass < 16; ++pass) {
-        bool fresh = false, full = false;
-        const bool ok = ForEachThread(
-            [&](DWORD tid) {
-                if (res->aborted) {
-                    return false;
-                }
-                if (tid == me || tid == coordinator || Known(tid)) {
-                    return true;
-                }
-
-                if (g_count >= kMaxThreads) {
-                    full = true;
-                    return false;
-                }
-
-                Working(tid, 'O');
-                const HANDLE h =
-                    OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, tid);
-
-                if (!h) {
-                    ++res->skipped;
-                    return true;
-                }
-
-                Working(tid, 'S');
-                const DWORD prev =
-                    g_suspendHook ? DWORD(g_suspendHook(h, tid)) : SuspendThread(h);  // may block (WoW64)
-
-                InterlockedIncrement(&g_progress);
-                AcquireSRWLockExclusive(&g_table);
-
-                if (Aborted()) {
-                    ReleaseSRWLockExclusive(&g_table);
-                    if (prev != DWORD(-1)) {
-                        ResumeThread(h);
-                    }
-                    CloseHandle(h);
-                    res->aborted = true;
-                    return false;
-                }
-
-                if (prev == DWORD(-1)) {
-                    ReleaseSRWLockExclusive(&g_table);
-                    CloseHandle(h);
-                    ++res->skipped;
-                    return true;
-                }
-
-                g_frozen[g_count] = {tid, h};
-                ++g_count;
-                ReleaseSRWLockExclusive(&g_table);
-                fresh = true;
-
-                return true;
-            },
-            &res->grow);
-        if (res->aborted) {
-            return Suspend::Failed;
-        }
-        if (!ok) {
-            return res->grow ? Suspend::Grow : Suspend::Failed;
-        }
-        if (full) {
-            return Suspend::TooMany;
-        }
-        if (!fresh) {
-            return Suspend::Ok;
-        }
-    }
-
-    return Suspend::Ok;  // still new threads after 16 passes: proceed with what is suspended
+bool Exited(HANDLE h) {
+    return h && WaitForSingleObject(h, 0) == WAIT_OBJECT_0;
 }
 
-// Reader. GetThreadContext also waits until the suspension has taken effect (SuspendThread is asynchronous).
+// Reader repeats listing after contexts acknowledge suspensions; g_table/g_abort ensure late suspensions are undone.
+Suspend SuspendOthers(DWORD coordinator, Result* res) {
+    const DWORD me = GetCurrentThreadId();
+    bool full = false, failed = false;
+    const bool ok = ForEachThread(
+        [&](DWORD tid, HANDLE h) {
+            if (tid == me || tid == coordinator || Known(tid)) {
+                return Visit::Next;
+            }
+
+            if (!h) {
+                failed = true;  // no handle: termination cannot be established
+                return Visit::Stop;
+            }
+
+            if (g_count >= kMaxThreads) {
+                full = true;
+                CloseHandle(h);
+                return Visit::Stop;
+            }
+
+            Working(tid, 'S');
+            const DWORD prev = g_suspendHook ? DWORD(g_suspendHook(h, tid)) : SuspendThread(h);  // may block (WoW64)
+
+            InterlockedIncrement(&g_progress);
+            AcquireSRWLockExclusive(&g_table);
+
+            if (Aborted()) {
+                ReleaseSRWLockExclusive(&g_table);
+                if (prev != DWORD(-1)) {
+                    ResumeThread(h);
+                }
+                CloseHandle(h);
+                res->aborted = true;
+                return Visit::Stop;
+            }
+
+            if (prev == DWORD(-1)) {
+                ReleaseSRWLockExclusive(&g_table);
+
+                if (!Exited(h)) {
+                    failed = true;
+                    CloseHandle(h);
+                    return Visit::Stop;
+                }
+
+                ++res->skipped;
+                return Visit::Next;
+            }
+
+            g_frozen[g_count] = {tid, h, true, false, {}};
+            ++g_count;
+            ReleaseSRWLockExclusive(&g_table);
+
+            return Visit::NextKept;
+        },
+        &res->grow);
+    if (res->aborted || failed) {
+        return Suspend::Failed;
+    }
+    if (!ok) {
+        return res->grow ? Suspend::Grow : Suspend::Failed;
+    }
+    if (full) {
+        return Suspend::TooMany;
+    }
+
+    return Suspend::Ok;
+}
+
+// Reader: GetThreadContext acknowledges suspension; a thread released during the call must be suspended/read again.
 void FindBusy(const Rs7Range* r, size_t n, Result* res) {
-    for (size_t i = 0; i < g_count; ++i) {
+    for (size_t i = 0; i < g_count;) {
+        if (g_frozen[i].gone) {
+            ++i;
+            continue;
+        }
+
         CONTEXT c;
 
         std::memset(&c, 0, sizeof c);
-        c.ContextFlags = CONTEXT_CONTROL;
+        c.ContextFlags = CONTEXT_CONTROL | CONTEXT_SEGMENTS;
         Working(g_frozen[i].tid, 'C');
         const BOOL got = g_contextHook ? BOOL(g_contextHook(g_frozen[i].h, g_frozen[i].tid, &c))
                                        : GetThreadContext(g_frozen[i].h, &c);  // may block (WoW64)
@@ -297,9 +373,61 @@ void FindBusy(const Rs7Range* r, size_t n, Result* res) {
             return;
         }
 
-        if (!got) {
-            continue;  // exiting thread: runs no user code
+        AcquireSRWLockExclusive(&g_table);
+        const bool held = g_frozen[i].held;
+
+        ReleaseSRWLockExclusive(&g_table);
+
+        if (!held) {  // c was taken while it ran: suspend it again and read it again
+            if (++res->resuspends > kMaxResuspends) {
+                return;  // the coordinator sees an entry not held and retries the attempt (AllHeld)
+            }
+
+            Working(g_frozen[i].tid, 'S');
+            const DWORD prev =
+                g_suspendHook ? DWORD(g_suspendHook(g_frozen[i].h, g_frozen[i].tid)) : SuspendThread(g_frozen[i].h);
+
+            InterlockedIncrement(&g_progress);
+            AcquireSRWLockExclusive(&g_table);
+
+            if (Aborted()) {  // the coordinator resumed what it held; this suspension is ours to undo
+                ReleaseSRWLockExclusive(&g_table);
+                if (prev != DWORD(-1)) {
+                    ResumeThread(g_frozen[i].h);
+                }
+                res->aborted = true;
+                return;
+            }
+
+            g_frozen[i].gone = prev == DWORD(-1) && Exited(g_frozen[i].h);
+            g_frozen[i].held = prev != DWORD(-1) || g_frozen[i].gone;
+            ReleaseSRWLockExclusive(&g_table);
+
+            if (prev == DWORD(-1)) {
+                if (!g_frozen[i].gone) {
+                    res->s = Suspend::Failed;
+                    return;
+                }
+
+                ++i;
+            }
+
+            continue;
         }
+
+        if (!got) {
+            if (!Exited(g_frozen[i].h)) {
+                res->s = Suspend::Failed;
+                return;
+            }
+
+            AcquireSRWLockExclusive(&g_table);  // termination confirmed: runs no user code, the stack scan skips it
+            g_frozen[i++].gone = true;
+            ReleaseSRWLockExclusive(&g_table);
+            continue;
+        }
+
+        g_frozen[i].context = Rs7FrozenContext::Capture(g_frozen[i].h, c.Eip, c.Esp, c.SegFs);
 
         for (size_t k = 0; k < n; ++k) {
             if (Rs7_FreezeRangeBusy(r[k], c.Eip)) {
@@ -310,20 +438,35 @@ void FindBusy(const Rs7Range* r, size_t n, Result* res) {
                 return;
             }
         }
+
+        ++i;
     }
 }
 
 DWORD WINAPI Reader(void*) {
-    SetEvent(g_done);  // up and running (Init waits for this)
+    SetEvent(g_completion.done);  // up and running (Init waits for this)
 
     for (;;) {
         WaitForSingleObject(g_go, INFINITE);
         Result res;
 
-        Working(0, 'L');
-        res.s = SuspendOthers(g_job.coordinator, &res);
-        if (!res.aborted && res.s == Suspend::Ok) {
+        for (unsigned pass = 0; pass < 16; ++pass) {
+            const size_t before = g_count;
+            const unsigned resuspends = res.resuspends;
+
+            Working(0, 'L');
+            res.s = SuspendOthers(g_job.coordinator, &res);
+            if (res.aborted || res.s != Suspend::Ok) {
+                break;
+            }
+
             FindBusy(g_job.ranges, g_job.n, &res);
+            if (res.aborted || res.s != Suspend::Ok || res.busy || res.resuspends > kMaxResuspends ||
+                (g_count == before && res.resuspends == resuspends)) {
+                break;
+            }
+
+            res.s = Suspend::Failed;  // the pass limit must never allow an unvalidated thread set
         }
 
         if (res.aborted) {  // the coordinator resumed every thread in the table; the handles are ours to close
@@ -339,12 +482,10 @@ DWORD WINAPI Reader(void*) {
 
         Working(0, 0);
         g_res = res;
-        InterlockedExchange(&g_readerBusy, 0);
-        SetEvent(g_done);
+        g_completion.Publish(g_job.generation);
     }
 }
 
-// ---- coordinator ----
 enum class Run { Done, Stalled, Wedged };
 
 double NowMs() {
@@ -356,21 +497,19 @@ double NowMs() {
     return double(c.QuadPart) * 1000.0 / double(f.QuadPart);
 }
 
-// Hands one suspend + check job to the reader and watches it. On a stall resumes the table (under g_table,
-// with g_abort set, so the reader resumes anything it suspends afterwards) and gives the reader graceMs.
 Run RunJob(const Rs7Range* ranges, size_t n, Rs7FreezeStats* st, Result* res) {
     g_job.coordinator = GetCurrentThreadId();
     g_job.ranges = ranges;
     g_job.n = n;
     InterlockedExchange(&g_abort, 0);
-    ResetEvent(g_done);  // a wedged job that finished later left it signalled
-    InterlockedExchange(&g_readerBusy, 1);
+    g_job.generation = g_completion.Start();
     SetEvent(g_go);
     LONG last = InterlockedCompareExchange(&g_progress, 0, 0);
     double lastT = NowMs();
+    bool released = false;  // the current GetThreadContext target was let run (once per stall)
 
     for (;;) {
-        if (WaitForSingleObject(g_done, 2) == WAIT_OBJECT_0) {
+        if (g_completion.Wait(g_job.generation, 2)) {
             *res = g_res;
             return Run::Done;
         }
@@ -381,10 +520,35 @@ Run RunJob(const Rs7Range* ranges, size_t n, Rs7FreezeStats* st, Result* res) {
         if (p != last) {
             last = p;
             lastT = now;
+            released = false;
             continue;
         }
 
         if (now - lastT < double(g_stallMs)) {
+            continue;
+        }
+
+        // GetThreadContext stall: WoW64 waits for the target to reach a safe point, and we hold it. Let only that
+        // thread run (the reader suspends and reads it again); everything else stays suspended.
+        if (!released && InterlockedCompareExchange(&g_curOp, 0, 0) == 'C') {
+            const DWORD tid = DWORD(InterlockedCompareExchange(&g_curTid, 0, 0));
+
+            released = true;
+            AcquireSRWLockExclusive(&g_table);
+
+            for (size_t i = 0; i < g_count; ++i) {
+                if (g_frozen[i].tid == tid && g_frozen[i].held && !g_frozen[i].gone) {
+                    if (ResumeThread(g_frozen[i].h) != DWORD(-1)) {
+                        g_frozen[i].held = false;
+                        ++st->released;
+                    }
+
+                    break;
+                }
+            }
+
+            ReleaseSRWLockExclusive(&g_table);
+            lastT = now;
             continue;
         }
 
@@ -398,12 +562,15 @@ Run RunJob(const Rs7Range* ranges, size_t n, Rs7FreezeStats* st, Result* res) {
         InterlockedExchange(&g_abort, 1);
 
         for (size_t i = 0; i < g_count; ++i) {
-            ResumeThread(g_frozen[i].h);  // the reader closes them
+            if (g_frozen[i].held && !g_frozen[i].gone) {
+                ResumeThread(g_frozen[i].h);  // the reader closes them
+            }
+            g_frozen[i].held = false;
         }
 
         ReleaseSRWLockExclusive(&g_table);
         const double t1 = NowMs();
-        const bool back = WaitForSingleObject(g_done, g_graceMs) == WAIT_OBJECT_0;
+        const bool back = g_completion.Wait(g_job.generation, g_graceMs);
 
         ev.releaseMs = back ? float(NowMs() - t1) : -1.0f;
         ++st->stalls;
@@ -429,7 +596,6 @@ Run RunJob(const Rs7Range* ranges, size_t n, Rs7FreezeStats* st, Result* res) {
     }
 }
 
-// Every other thread is suspended and none stands in a range: runs fn, flushes the ranges and resumes.
 void WriteFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, const LARGE_INTEGER& a,
                  Rs7FreezeStats* st) {
     LARGE_INTEGER b;
@@ -445,7 +611,6 @@ void WriteFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, co
     st->frozenMs = Ms(a, b);
 }
 
-// Freezes and retries until fn ran (true), the deadline passed or the freeze failed for good. Caller holds g_lock.
 bool FreezeAndRun(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, Rs7FreezeStats* st,
                   unsigned deadlineMs) {
     const DWORD start = GetTickCount();
@@ -495,6 +660,21 @@ bool FreezeAndRun(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, R
         st->threads = unsigned(g_count);
         st->skipped = res.skipped;
 
+        if (!AllHeld()) {  // a thread let run to its safe point (RunJob) kept escaping: retry the attempt
+            st->lastWasStall = true;
+            ++st->stalls;
+            ResumeAll();
+
+            if (GetTickCount() - start >= deadlineMs) {
+                st->timedOut = true;
+                return false;
+            }
+
+            Sleep(backoff);
+            backoff = backoff < 64 ? backoff * 4 : 100;
+            continue;
+        }
+
         if (!res.busy) {
             WriteFrozen(ranges, n, fn, ctx, a, st);
             return true;
@@ -517,13 +697,18 @@ bool FreezeAndRun(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, R
 }
 }  // namespace
 
+bool Rs7_FrozenThreadCallsRange(const Rs7Range& range, Rs7FrozenRefusal* refusal) {
+    return std::any_of(g_frozen, g_frozen + g_count,
+                       [&](const Frozen& f) { return !f.gone && f.context.CallsRange(range, refusal, f.tid); });
+}
+
 bool Rs7_RunFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, Rs7FreezeStats* out,
                    unsigned deadlineMs) {
     Rs7FreezeStats st;
 
     AcquireSRWLockExclusive(&g_lock);
 
-    if (InterlockedCompareExchange(&g_readerBusy, 0, 0)) {  // still blocked from an earlier freeze
+    if (InterlockedCompareExchange(&g_completion.busy, 0, 0)) {  // still blocked from an earlier freeze
         ReleaseSRWLockExclusive(&g_lock);
         st.readerBusy = true;
         if (out) {
@@ -544,6 +729,7 @@ bool Rs7_RunFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, 
     LARGE_INTEGER t0, b;
 
     QueryPerformanceCounter(&t0);
+    st.graceMs = g_graceMs;
     const bool done = FreezeAndRun(ranges, n, fn, ctx, &st, deadlineMs);
 
     QueryPerformanceCounter(&b);
@@ -556,84 +742,22 @@ bool Rs7_RunFrozen(const Rs7Range* ranges, size_t n, Rs7FrozenFn fn, void* ctx, 
     return done;
 }
 
-void Rs7_FreezeDescribe(const Rs7FreezeStats& st, char* out, size_t cap) {
-    int w = 0;
-
-    if (st.readerBusy) {
-        w = std::snprintf(
-            out, cap, "freeze: REFUSED - the thread reader is still blocked from an earlier freeze; nothing written");
-    } else if (st.wedged) {
-        w = std::snprintf(
-            out, cap,
-            "freeze: WEDGED after %.1f ms - the thread reader did not return within %u ms after every thread was "
-            "resumed; nothing written, later freezes refused until it returns",
-            st.totalMs, g_graceMs);
-    } else if (st.tooMany) {
-        w = std::snprintf(out, cap, "freeze: more than %u threads - nothing written", unsigned(kMaxThreads));
-    } else if (st.timedOut && st.lastWasStall) {
-        w = std::snprintf(
-            out, cap,
-            "freeze: DEADLINE after %.1f ms, %u stalls and %u retries - thread control kept stalling; nothing written",
-            st.totalMs, st.stalls, st.retries);
-    } else if (st.timedOut) {
-        w = std::snprintf(out, cap,
-                          "freeze: DEADLINE after %.1f ms and %u retries - thread %lu stayed at %08X inside range %u; "
-                          "nothing written",
-                          st.totalMs, st.retries, st.busyTid, unsigned(st.busyEip), unsigned(st.busyRange));
-    } else {
-        w = std::snprintf(out, cap,
-                          "freeze: %u threads suspended for %.3f ms, %u retries, %u stalls (%.1f ms total, %u skipped)",
-                          st.threads, st.frozenMs, st.retries, st.stalls, st.totalMs, st.skipped);
-    }
-
-    for (unsigned i = 0; i < st.nEvents && w >= 0 && size_t(w) < cap; ++i) {
-        const auto& e = st.events[i];
-        const char* op = e.op == 'S'   ? "SuspendThread"
-                         : e.op == 'C' ? "GetThreadContext"
-                         : e.op == 'O' ? "OpenThread"
-                         : e.op == 'L' ? "thread listing"
-                                       : "job pickup";
-        int k;
-
-        if (e.releaseMs >= 0) {
-            k = std::snprintf(
-                out + w, cap - size_t(w),
-                "; stall %u: %s(thread %lu) no progress for %.0f ms -> all resumed, reader back after %.1f ms", i + 1,
-                op, e.tid, double(e.waitMs), double(e.releaseMs));
-        } else {
-            k = std::snprintf(out + w, cap - size_t(w),
-                              "; stall %u: %s(thread %lu) no progress for %.0f ms -> all resumed, reader NOT back",
-                              i + 1, op, e.tid, double(e.waitMs));
-        }
-
-        if (k < 0) {
-            break;
-        }
-
-        w += k;
-    }
-
-    if (st.stalls > st.nEvents && w >= 0 && size_t(w) < cap) {
-        std::snprintf(out + w, cap - size_t(w), "; +%u more stalls", st.stalls - st.nEvents);
-    }
-}
-
 size_t Rs7_FreezeListThreads(unsigned long* out, size_t cap) {
     AcquireSRWLockExclusive(&g_lock);
     size_t n = 0;
 
-    if (!InterlockedCompareExchange(&g_readerBusy, 0, 0) && Init()) {
+    if (!InterlockedCompareExchange(&g_completion.busy, 0, 0) && Init()) {
         for (int tries = 0; tries < 4; ++tries) {
             n = 0;
             ULONG grow = 0;
             if (ForEachThread(
-                    [&](DWORD tid) {
+                    [&](DWORD tid, HANDLE) {
                         if (n < cap) {
                             out[n] = tid;
                         }
                         ++n;
 
-                        return true;
+                        return Visit::Next;
                     },
                     &grow)) {
                 break;
@@ -662,5 +786,13 @@ void Rs7_FreezeSetTiming(unsigned stallMs, unsigned graceMs) {
 }
 
 bool Rs7_FreezeReaderBusy() {
-    return InterlockedCompareExchange(&g_readerBusy, 0, 0) != 0;
+    return InterlockedCompareExchange(&g_completion.busy, 0, 0) != 0;
+}
+
+bool Rs7_FreezeAbortedForTests() {
+    return Aborted();
+}
+
+void Rs7_FreezeSetCompletionHookForTests(void (*hook)()) {
+    g_completion.hook = hook;
 }

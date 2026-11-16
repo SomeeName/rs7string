@@ -27,16 +27,19 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = (git -C $PSScriptRoot rev-parse --show-toplevel).Trim().Replace('/', '\')
+if ($LASTEXITCODE -or -not $repo) { throw 'git rev-parse --show-toplevel failed' }
 $work = Join-Path (Split-Path $repo) 'rs7-cmp-work'
 $out = Join-Path (Split-Path $repo) 'rs7-cmp-out'
 $suffix = if ($NoOpt) { '-noopt' } else { '' }
 
 function Build-Rev([string]$Rev) {
     $sha = (git -C $repo rev-parse --short=10 $Rev).Trim()
+    if ($LASTEXITCODE -or -not $sha) { throw "unknown revision $Rev" }
     $dest = Join-Path $out ($sha + $suffix)
     if (Test-Path (Join-Path $dest 'rs7string_tests.map')) { return $dest }
     if (Test-Path $work) { git -C $repo worktree remove --force $work | Out-Null; if (Test-Path $work) { Remove-Item -Recurse -Force $work } }
     git -C $repo worktree add --detach $work $sha | Out-Null
+    if ($LASTEXITCODE) { throw "git worktree add failed for $sha" }
     $env:_LINK_ = '/MAP'    # link.exe writes <output>.map; no project or source change
     if ($NoOpt) { $env:_CL_ = '/Od /Ob0' }    # cl.exe appends _CL_: overrides the project's /O2 (warning D9025)
     try {

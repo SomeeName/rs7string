@@ -1,10 +1,11 @@
 #include "features/pitch/pitch.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstdint>
 #include <cstring>
 #include <vector>
 
-// Native 8-entry tuning / open-MIDI storage (features/pitch/pitch.h, issue #18 stage 5 area 3).
+// Native 8-entry tuning / open-MIDI storage (features/pitch/pitch.h).
 namespace {
 size_t g_fakeSize = 0;
 
@@ -172,7 +173,7 @@ TEST(pitch8_tailed_trusts_only_the_registered_allocations) {
         Rs7Pitch_DetReset(d.data());
     }
 
-    const uintptr_t saved = g_rs7_fn_msize;
+    rs7test::Restore restore_g_rs7_fn_msize(g_rs7_fn_msize);
 
     g_rs7_fn_msize = 0;  // the check needs no _msize
     CHECK_EQ(Rs7Pitch_Tailed(m.data(), 0), 1);
@@ -182,7 +183,6 @@ TEST(pitch8_tailed_trusts_only_the_registered_allocations) {
     CHECK_EQ(Rs7Pitch_Tailed(nullptr, 0), 0);
     Put<uint32_t>(m, rs7p::kMatMagic, 0);
     CHECK_EQ(Rs7Pitch_Tailed(m.data(), 0), 0);
-    g_rs7_fn_msize = saved;
 }
 
 // The registry keeps the most recently written objects: kTailedMax + 10 registrations evict an object written once,
@@ -251,7 +251,7 @@ TEST(pitch8_tailed_stale_entry_of_a_reused_address_is_dropped) {
 // re-apply) six entries zero them as before.
 TEST(pitch8_profile_reapply_keeps_the_song_strings_with_native_tuner) {
     MsizeScope msize(rs7p::kDetSize);
-    const uintptr_t savedTuner = g_rs7_native_tuner;
+    rs7test::Restore restore_g_rs7_native_tuner(g_rs7_native_tuner);
 
     for (int nativeTuner : {0, 1}) {
         g_rs7_native_tuner = uintptr_t(nativeTuner);
@@ -284,8 +284,6 @@ TEST(pitch8_profile_reapply_keeps_the_song_strings_with_native_tuner) {
         CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), 0);
         CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), 40);
     }
-
-    g_rs7_native_tuner = savedTuner;
 }
 
 TEST(pitch8_song_count_survives_the_set_tuning_and_ends_with_the_detector) {

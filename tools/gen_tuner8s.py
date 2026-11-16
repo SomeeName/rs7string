@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native 8-slot tuner session (issue #18, job 3 "tuner8"): relocated copies of UI_PlayerTuner methods.
+"""Native 8-slot tuner session: relocated copies of UI_PlayerTuner methods.
 
 A native tuner session (features/tuner/hooks.h) keeps capacity-8 copies of the six per-string session arrays in
 a tail of the grown 380h UI_PlayerTuner and its string count / tuning order next to them. The stock
@@ -63,8 +63,6 @@ SYMS = [
     "Rs7Asset_LetterInline",
 ]
 SYN = 0x70000000
-
-REG = r"(?:e[abcd]x|e[sd]i|ebp|esp)"
 
 
 @dataclass
@@ -380,6 +378,29 @@ fn(
         0x5B4E0F: ["mov ecx, dword ptr [eax + 0x18]", "mov ecx, dword ptr [ecx + 0xc]"],
         0x5B4E12: ["movzx ecx, word ptr [ecx + 4]"],
         0x5B4E18: ["jl L5b4e1d"],
+        # An empty peg slot (or one past the PegSet's count): the stock path read [0+4] (a 5/6-string bass whose frame
+        # has no model of ours, low B selected in the tuner; CONFIRMED crash). Like LT0 (rs7head::LetterSeat) the
+        # widget borrows the neighbouring seated peg: slot 3 (the G) for string 5, else slot 0 (the E). Only if that
+        # one is empty too does it fall back to the stock NULL. EDX is dead here; ESI is reloaded right after the
+        # second lookup.
+        0x5B4E3D: [
+            "cmp bl, 5",
+            "lea eax, [ecx + 0xc]",
+            "lea edx, [ecx + 0x84]",
+            "cmove eax, edx",
+            "cmp byte ptr [eax], 0",
+            "jne L5b4e3f",
+            "xor eax, eax",
+        ],
+        0x5B4E90: [
+            "cmp bl, 5",
+            "lea eax, [ecx + 0xc]",
+            "lea esi, [ecx + 0x84]",
+            "cmove eax, esi",
+            "cmp byte ptr [eax], 0",
+            "jne L5b4e92",
+            "xor eax, eax",
+        ],
     },
 )
 # UI_NoteTuner_Initialize (EDX = session + 0D0h; only SelectString calls it): string clamp by the
@@ -636,7 +657,7 @@ def site_lines(text: bytes, base: int) -> list[str]:
             continue
         o = f.start - base
         n = 16
-        while text.count(text[o : o + n]) > 1:
+        while not fc.occurs_once(text, text[o : o + n]):
             n += 4
         pat = " ".join(f"{b:02X}" for b in text[o : o + n])
         e = entry_len(f, text, base)

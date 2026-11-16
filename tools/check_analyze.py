@@ -4,6 +4,8 @@
   uv run python tools/check_analyze.py                   check (build.ps1 runs this after the analysis build)
   uv run python tools/check_analyze.py --write-baseline  drop fixed entries / lower counts in the baseline
   uv run python tools/check_analyze.py --write-baseline --allow-grow   also add new findings (false positives only)
+  uv run python tools/check_analyze.py --strict          also fail when a count is below its baseline (slack)
+  uv run python tools/check_analyze.py --update          shrink the baseline to the current counts (never grows)
 
 build.ps1 compiles both projects with /p:Rs7Analyze=true (analyze.props: rule set, own object folder obj/analyze),
 which leaves one .nativecodeanalysis.xml per source file. A finding is keyed `file::function::Cnnnn` (no line
@@ -78,6 +80,16 @@ def findings(results: Path | None = None) -> dict[str, int]:
     for project in PROJECTS:
         if not any((results / project).rglob(f"*{_SUFFIX}")):
             raise AnalyzeError(f"no analysis results for {project}; run build.ps1 (it runs the analysis build)")
+        manifest = results / project / "analysis-reports.txt"
+        try:
+            expected = manifest.read_text(encoding="utf-8-sig").splitlines()
+        except OSError as error:
+            raise AnalyzeError(f"cannot read {manifest}: {error}; run build.ps1") from None
+        if not expected:
+            raise AnalyzeError(f"{manifest}: no analysed translation units; run build.ps1")
+        for report in expected:
+            if not Path(report).is_file():
+                raise AnalyzeError(f"missing analysis report: {report}; delete obj/analyze and rebuild")
 
     seen: set[tuple[str, str, str, str]] = set()
 
@@ -115,6 +127,15 @@ def compare(current: dict[str, int], baseline: dict[str, dict]) -> list[str]:
     return errors
 
 
+def slack(current: dict[str, int], baseline: dict[str, dict]) -> list[str]:
+    """Notes for entries whose current count is below the baseline (a later regression would still pass)."""
+    return [
+        f"baseline can shrink: {key} {entry['count']} -> {current[key]}"
+        for key, entry in sorted(baseline.items())
+        if key in current and current[key] < entry["count"]
+    ]
+
+
 def rewrite(current: dict[str, int], baseline: dict[str, dict], allow_grow: bool) -> tuple[dict, list[str]]:
     """The new baseline (notes kept) and the growth it would need; growth is refused unless allow_grow."""
     grown = [k for k, n in current.items() if k not in baseline or n > baseline[k]["count"]]
@@ -130,8 +151,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--write-baseline", action="store_true", help="record the current findings")
     ap.add_argument("--allow-grow", action="store_true", help="with --write-baseline: also add or raise entries")
+    ap.add_argument("--strict", action="store_true", help="fail when a count is below its baseline entry")
+    ap.add_argument("--update", action="store_true", help="shrink the baseline to the current counts, never grow")
     args = ap.parse_args()
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    args.write_baseline = args.write_baseline or args.update
+
+    try:
+        baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"check_analyze: cannot read {BASELINE}: {e}")
+        return 1
 
     try:
         current = findings()
@@ -152,8 +181,15 @@ def main() -> int:
         return 0
 
     errors = compare(current, baseline)
+    notes = slack(current, baseline)
     for e in errors:
         print(e)
+
+    for n in notes:
+        print(n)
+
+    if args.strict and notes:
+        errors.append("slack in the baseline (--strict)")
 
     if errors:
         print(f"check_analyze: {len(errors)} problem(s); details in obj/analyze/**/*{_SUFFIX}")

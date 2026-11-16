@@ -25,8 +25,8 @@ void StoreV6(bool on) {
         InterlockedExchange(reinterpret_cast<volatile LONG*>(&g_rs7_v6[m]), on ? Bits(kRs7V6[m]) : 0);
     }
 
-    // Review #5: callers include the ramp worker (our own thread). Never touch the colour manager here: mark the
-    // palette pending; the game thread publishes it (CMBUILD / FGHK / the SetTexture hook, colournative.h).
+    // Callers include the ramp worker (our own thread). Never touch the colour manager here: mark the palette
+    // pending; the game thread publishes it (CMBUILD / FGHK / the SetTexture hook, hooks_publish.cpp).
     rs7colour::RequestPublish();
 }
 }  // namespace
@@ -34,6 +34,14 @@ void StoreV6(bool on) {
 int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj) {
     if (!d3d) {
         return -1;
+    }
+
+    // The game's file name, copied before the lock: a fault reading it (caught by Rs7Mid_Guard further up) must
+    // not leave addLock held.
+    char name[sizeof g_colour.cands[0].path] = {};
+
+    for (size_t i = 0; path && path[i] && i < sizeof name - 1; ++i) {
+        name[i] = path[i];
     }
 
     AcquireSRWLockExclusive(&g_colour.addLock);
@@ -61,19 +69,12 @@ int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj) {
         c.stock = nullptr;
         c.ours = nullptr;
         c.hash = 0;
+        c.colourGeneration = 0;
         c.retries = 0;
         c.retryAtMs = 0;
         c.obj = obj;
         c.gone = 0;
-        size_t len = 0;
-
-        if (path) {
-            for (; path[len] && len < sizeof c.path - 1; ++len) {
-                c.path[len] = path[len];
-            }
-        }
-
-        c.path[len] = '\0';
+        std::memcpy(c.path, name, sizeof c.path);
         // Publish (full barriers: the fields are visible before the pointer / the count).
         InterlockedExchangePointer(const_cast<void**>(&c.d3d), d3d);
         if (slot == int(n)) {
@@ -161,6 +162,10 @@ bool Rs7Ramp_V6Rule(bool enabled, bool deviceOk) {
 
     for (LONG i = 0; i < n; ++i) {
         const Rs7CandState s = g_colour.cands[i].state;
+        if (g_colour.cands[i].family == Rs7Family::Embedded) {
+            continue;
+        }
+
         if (s == Rs7CandState::Refused || s == Rs7CandState::Retry) {
             return false;
         }
@@ -202,13 +207,14 @@ void Rs7Ramp_CountFault() {
 }
 
 void Rs7Ramp_LogStats() {
-    unsigned st[6] = {0, 0, 0, 0, 0, 0};  // indexed by Rs7CandState
+    constexpr unsigned kCandStates = unsigned(Rs7CandState::Retired) + 1;
+    unsigned st[kCandStates] = {};  // indexed by Rs7CandState
     const LONG n = g_colour.candCount;
 
     for (LONG i = 0; i < n; ++i) {
         const unsigned s = unsigned(g_colour.cands[i].state);
 
-        if (s < 6) {
+        if (s < kCandStates) {
             ++st[s];
         }
     }

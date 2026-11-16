@@ -1,6 +1,6 @@
 // Mid-hooks of the native next-note grid (nextgrid.h): NG1 (the cell index of Rnd_NextNoteGrid_Set over 8 rows, light:
 // per note set, integer only) and NG9 (the string-6 neck targets and the tree release after the consumer loop, full
-// mode: once per frame, its helpers log). Converted from naked stubs (refactor step 7 batch 5, frozen at 9c0e44f,
+// mode: once per frame, its helpers log). Converted from naked stubs (frozen at 9c0e44f,
 // tools/tests/test_midhook_features.py). Both skip the replay and do the replaced instructions' work themselves: the
 // displaced bytes carry the stock offsets of a frame and a grid that grew. NGP (a stack probe) stays a stub
 // (hooks_stubs.cpp).

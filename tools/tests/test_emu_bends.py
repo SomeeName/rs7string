@@ -1,4 +1,4 @@
-"""Bend stubs for string 6 (BD1-BD4, N18/N19/N20) and the 7th string ghost (N21-N23) without a shown S7."""
+"""Bend stubs for string 6 (BD1-BD4, N18/N19/N20) and the 7th string ghost (N21) without a shown S7."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from emu_harness import (
 pytestmark = needs_emu
 
 
-# ---- BD1-BD4: perStringMode (bend direction) guards, string 6 -> string 0's mode (issue #14) ----
+# ---- BD1-BD4: perStringMode (bend direction) guards, string 6 -> string 0's mode ----
 
 BEND_MEM = DATA + 0x48000
 PSM = [1, 1, 1, 0, 0, 0]  # perStringMode of the menu snapshot guitar (strings 0-2 rotated)
@@ -93,15 +93,16 @@ def test_bd_bend_mode(emus, sid, string):
 
 @pytest.mark.parametrize("string", [0, 3, 6, 7])
 def test_bd1_bend_notation_branch(emus, string):
-    """Mode 0 continues at 0x79FEAA, any other mode (and string > 6) jumps to 0x79FEB7."""
+    """Mode 0 continues at 0x79FEAA, any other mode (and string > 7) jumps to 0x79FEB7; strings 6 and 7 (eight
+    strings) take the added-string path."""
     until = 0x79FEAA if string in (3, 4, 5) else 0x79FEB7
     stock_e, patched_e = emus
     patched = run_bend(patched_e, "BD1", string, until)
-    if string != 6:
+    if string not in (6, 7):
         assert patched == run_bend(stock_e, "BD1", string, until)
 
 
-# ---- 7th string bend (issue #16): N18 (SetBend guard), N19 (release guard) ----
+# ---- 7th string bend: N18 (SetBend guard), N19 (release guard) ----
 # Without a shown S7 every string takes the stock continuation with the stock registers. The S7 path
 # (the stock SetBend / release on the 7th string) needs the live string object and is checked in game
 # ("string7 bend" log lines, tests/shots/bend).
@@ -172,7 +173,7 @@ def test_n19_n20_release_without_a_7th_string_is_stock(emus, s7_state, sid, stri
     assert out[1] == out[0]
 
 
-# ---- the 7th string's ghost (issue #16): N21 (type-2 request count), N22/N23 (ghost bend guards) ----
+# ---- the 7th string's ghost: N21 (type-2 request count) ----
 
 
 @pytest.mark.parametrize("count", [4, 6])
@@ -192,32 +193,26 @@ def test_n21_ghost_request_count(emus, s7_state, count):
     assert stock[3][:8] == stack(1, 0xA0A0)  # push eax; push 1
 
 
-def test_n22_n23_join_offsets():
-    t = game_text()
-    a = site_va("N22") + 5 + 0xC
-    assert t[a - TEXT_VA : a - TEXT_VA + 4] == bytes.fromhex("83 79 04 00")
-    b = site_va("N23") + 5 + 7
-    assert t[b - TEXT_VA : b - TEXT_VA + 7] == bytes.fromhex("80 B9 BD 00 00 00 FF")
-    assert (site_target("N22"), site_target("N23")) == (0x7E3F14, 0x7E4373)
+# ---- C-lite counts (+0Bh = the build count 7 / 8): strings 6/7 never reach the six-slot stock body ----
 
 
-@pytest.mark.parametrize("sid", ["N22", "N23"])
-@pytest.mark.parametrize("count", [4, 6])
-@pytest.mark.parametrize("string", [0, 3, 5, 6, 7])
-def test_n22_n23_ghost_without_a_7th_string_is_stock(emus, s7_state, sid, string, count):
+@pytest.mark.parametrize("sid", ["N18", "N19", "N20"])
+@pytest.mark.parametrize("count", [7, 8])
+@pytest.mark.parametrize("string", [0, 5, 6, 7])
+def test_bend_sites_keep_strings_6_7_off_the_stock_slots(emus, s7_state, sid, string, count):
+    """Without a native string-6 object, strings 6/7 go to the stock target, where the stock bound (string < count) would
+    run the stock body and index the ghosts past the six main slots. Strings 0-5 still take the stock body."""
     info = bytearray(0x40)
     info[0x0B] = count
     va = site_va(sid)
-    until = va + 5 if string < count else site_target(sid)
-    reg = (
-        {UC_X86_REG_EAX: 0xAB00 | string, UC_X86_REG_EDX: 0xCD05, UC_X86_REG_ECX: S7_MEM + 0x180}
-        if sid == "N22"
-        else {UC_X86_REG_ECX: 0xAB00 | string, UC_X86_REG_EDX: S7_MEM + 0x180}
-    )
-    out = []
-    for emu in emus:
-        emu.uc.mem_write(S7_MEM + 0x400, bytes(info))
-        emu.uc.mem_write(S7_EBP - 0x60, struct.pack("<f", 0.75))
-        emu.run(va, until, {**S7_REGS, **reg, UC_X86_REG_ESI: S7_MEM + 0x400})
-        out.append((emu.regs(*ALL_REGS), emu.fpu_top()))
-    assert out[1] == out[0]
+    length = 9 if sid == "N18" else 5
+    until = va + length if string < 6 else site_target(sid)
+    if sid == "N18":
+        reg = {UC_X86_REG_EAX: 0xAB00 | string, UC_X86_REG_EDX: 0xCD05, UC_X86_REG_ECX: S7_MEM + 0x180}
+        reg[UC_X86_REG_ESI] = S7_MEM + 0x400
+    else:
+        reg = {UC_X86_REG_EAX: 0xAB00 | string, UC_X86_REG_EDX: S7_MEM + 0x400, UC_X86_REG_ECX: S7_MEM + 0x180}
+    emu = emus[1]
+    emu.uc.mem_write(S7_MEM + 0x400, bytes(info))
+    emu.uc.mem_write(S7_EBP - 0x64, struct.pack("<f", 0.5))
+    emu.run(va, until, {**S7_REGS, **reg})  # asserts it stops at `until`

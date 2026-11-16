@@ -5,12 +5,69 @@
 #include <d3d9.h>
 // clang-format on
 #include "d3d/iids.h"
+#include "d3d/sehread.h"
 #include "d3d/swap.h"
+#include "d3d/worker.h"
 #include "swap_fixture.h"
 #include "test.h"
 #include <cstring>
 
 using namespace rs7swapfix;
+
+TEST(d3d_device_discovery_accepts_our_installed_texture_hooks) {
+    Device d;
+    if (!rs7d3d::Have(d)) {
+        return;
+    }
+
+    Begin();
+    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    uintptr_t lo = 0, hi = 0;
+
+    CHECK(Rs7_ImageRange(GetModuleHandleW(L"d3d9.dll"), &lo, &hi));
+    CHECK(Rs7Ramp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
+    CHECK(Rs7Swap_InstallOn(d.dev));
+    CHECK(Rs7Ramp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
+    End(d.dev);
+    CHECK_EQ(stock->Release(), 0ul);
+}
+
+TEST(d3d_overlay_state_block_preserves_the_hidden_stock_texture) {
+    Device d;
+    if (!rs7d3d::Have(d)) {
+        return;
+    }
+
+    Begin();
+    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, Stock(1));
+
+    Add(stock);
+    CHECK(Rs7Swap_InstallOn(d.dev));
+    CHECK(SUCCEEDED(d.dev->SetTexture(0, stock)));
+    IDirect3DStateBlock9* state = nullptr;
+
+    CHECK(SUCCEEDED(d.dev->CreateStateBlock(D3DSBT_ALL, &state)));
+
+    if (state) {
+        Rs7Swap_SetOverlayDrawing(d.dev, true);
+        CHECK(SUCCEEDED(d.dev->SetTexture(0, other)));
+        CHECK(SUCCEEDED(state->Apply()));
+        Rs7Swap_SetOverlayDrawing(d.dev, false);
+        IDirect3DBaseTexture9* got = nullptr;
+
+        CHECK(SUCCEEDED(d.dev->GetTexture(0, &got)));
+        CHECK(got == static_cast<IDirect3DBaseTexture9*>(stock));
+        if (got) {
+            got->Release();
+        }
+        state->Release();
+    }
+
+    End(d.dev);
+    CHECK_EQ(other->Release(), 0ul);
+    CHECK_EQ(stock->Release(), 0ul);
+}
 
 TEST(iid_texture9_matches_the_sdk) {
     CHECK(IsEqualGUID(kRs7IID_Texture9, IID_IDirect3DTexture9));
@@ -164,7 +221,7 @@ TEST(d3d_recheck_rehooks_only_when_d3d9_restored_the_slots) {
     Rs7Swap_Recheck();
     CHECK(vt[65] == reinterpret_cast<void*>(&Rs7_Thunk_SetTexture) &&
           vt[64] == reinterpret_cast<void*>(&Rs7_Thunk_GetTexture));
-    CHECK(Logged("slots were reset", "hooked again"));
+    CHECK(Logged("slots 64/65 were reset", "hooked again"));
     void* const foreign = reinterpret_cast<void*>(&Rs7_Thunk_GetTexture);
 
     vt[65] = foreign;  // someone else's hook: left alone

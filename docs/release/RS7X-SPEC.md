@@ -2,20 +2,21 @@
 
 **Byte-level specification of the block that carries chord data for strings beyond the stock six.**
 
-[Contributing](../../CONTRIBUTING.md) · [Development](../DEVELOPMENT.md) · [Architecture](../ARCHITECTURE.md) · **RS7X spec** · [Releasing](RELEASING.md) · [Agents](../../AGENTS.md)
+[Contributing](../../CONTRIBUTING.md) · [Development](../DEVELOPMENT.md) · [Architecture](../ARCHITECTURE.md) · **RS7X spec** · [Chart tools](CHART-TOOLS.md) · [Releasing](../RELEASING.md) · [Agents](../../AGENTS.md)
 
 | | |
 |---|---|
 | Format version | 1 (2026-10-13) |
-| Document revision | 2026-10-14, for the rs7string 1.0 release candidate: byte layout and validation rules re-checked against the reader, unchanged |
+| Document revision | 2026-11-06: test results section removed, checklist generalised. 2026-11-01: section masks for bass, and the game derives missing mask bits; corrected 8-string example. Byte layout unchanged since 2026-10-14 |
 | Tracking issue | SomeeName/rs7string#18 |
-| Audience | DotCharter (and any other chart writer) exporting 7-string (later 8-string, 5/6-string bass) arrangements for Rocksmith 2014 Remastered with the rs7string mod |
+| Audience | Chart tools (DotCharter and others) exporting 7- and 8-string guitar and 5/6-string bass arrangements for Rocksmith 2014 Remastered with the rs7string mod |
 | Reference writer | The maintainer's rs7chart tool (to be published later: `src/rs7chart/sng.py` `ExtBlock`, writer in `convert.py`, tests in `tests/test_extblock.py`) |
 | Reference reader | rs7string `src/model/extblock.cpp`, `rs7ext::Parse` |
 
 > [!TIP]
-> Chart-tool authors: [section 9](#9-dotcharter-checklist-state-of-dotcharter-master-45ff88cc8-2026-10-14)
-> is the DotCharter checklist, and [section 4](#4-writer-rules-dotcharter) has the writer rules.
+> Chart-tool authors: start with the [chart tools guide](CHART-TOOLS.md) (overview, arrangement XML, XML to
+> SNG, checklists). [Section 8](#8-writer-checklist)
+> is the export checklist, and [section 4](#4-writer-rules) has the writer rules.
 > Chart authors who only need the basics should read the [charting guide](CHARTING.md).
 
 ## Contents
@@ -26,12 +27,11 @@
    [`CHDT`](#24-chdt---chord-templates-version-1-critical),
    [`CHNT`](#25-chnt---chord-notes-version-1-not-critical), [future sections](#26-future-sections)
 3. [Validation rules](#3-validation-rules)
-4. [Writer rules (DotCharter)](#4-writer-rules-dotcharter)
-5. [Stable rules for 7-string charts](#5-stable-rules-for-7-string-charts-all-of-them-not-only-the-block)
+4. [Writer rules](#4-writer-rules)
+5. [Rules for every extended chart](#5-rules-for-every-extended-chart-not-only-the-block)
 6. [How rs7string reads it](#6-how-rs7string-reads-it)
-7. [Example](#7-example)
-8. [Results](#8-results-2026-10-13-rs7string-featneck--rs7x-september-2022-exe)
-9. [DotCharter checklist](#9-dotcharter-checklist-state-of-dotcharter-master-45ff88cc8-2026-10-14)
+7. [Examples](#7-examples)
+8. [Writer checklist](#8-writer-checklist)
 
 ## 1. Why a block, and where it goes
 
@@ -51,20 +51,20 @@ counts the block:
 
 **Why the stock game is fine with it** (September 2022 exe, `SNG_Song_Load` 0x558BD0):
 
-- CONFIRMED (static): the loader reads the body size from the container, inflates with zlib's
+- Checked in the game code: the loader reads the body size from the container, inflates with zlib's
   `uncompress` (0xE316E0: `inflateInit_`, `inflate(Z_FINISH)`, `*destLen = total_out`) into a
   buffer of exactly that size and fails only if `uncompress` fails or the inflated length differs
   from the size field (0x558DBD / 0x558DC9). It then reads the sections from a memory stream
   (vtable 0x11E7C64; `+10h` buffer, `+14h` position, `+18h` size; reads clamp at the end) and, after
   the last MetaData read (0x55922A), destroys the stream and returns success (0x55922C..0x559246).
   The position is never compared with the size, so bytes after MetaData are never read.
-- CONFIRMED (in game, section 8): packages with the block load and play; rs7string's XB1 hook logs
+- Checked in game: packages with the block load and play; rs7string's XB1 hook logs
   the stream position (end of MetaData) below the body size on every such load.
 - Consequence: the block must be **inside** the zlib stream. Data after the zlib stream (before the
   56-byte signature slot) is a different matter and is not used. A body larger than the size field
   makes `uncompress` fail (Z_BUF_ERROR) and the song does not load.
 
-Other readers: HYPOTHESIS (not tested): Rocksmith2014.NET-style readers parse section by section
+Other readers: Not verified: Rocksmith2014.NET-style readers parse section by section
 and stop after MetaData, so they ignore the block. `tools/rs7chart` reads and validates it
 (`rs7chart dump` prints it and flags rule violations).
 
@@ -72,6 +72,24 @@ and stop after MetaData, so they ignore the block. `tools/rs7chart` reads and va
 
 All integers little-endian, no alignment or padding anywhere. `i8`/`u8` are bytes, `i16`/`u16`
 2 bytes, `u32` 4 bytes, `f32` IEEE single.
+
+The whole format at a glance (C-like notation; `[n]` = n entries back to back, nothing in between). The
+tables below give every field's meaning, [section 7](#7-examples) walks through real blocks byte by byte.
+
+```c
+Block     { Header header; Section sections[header.sectionCount]; }
+Header    { char magic[4] = "RS7X"; u16 version = 1; u16 headerSize = 16; u32 blockSize; u32 sectionCount; }
+Section   { char id[4]; u16 version = 1; u16 flags; /* bit 0 = critical */ u32 size; u8 payload[size]; }
+
+// payload of each section id
+STRS      { u8 instrument; u8 stringCount; u8 columnCount; u8 reserved = 0; u8 strings[columnCount]; }
+CHDT      { u32 templateCount; Fret frets[templateCount][columnCount]; }
+CHNT      { u32 recordCount;   Tech techs[recordCount][columnCount]; }      // Tech has a variable size
+
+Fret      { i8 fret; i8 finger; }                                           // -1 = not in the chord / none
+Tech      { u32 mask; i8 slideTo; i8 slideUnpitchTo; i16 vibrato; u8 bendCount; Bend bends[bendCount]; }
+Bend      { f32 time; f32 step; u32 reserved = 0; }
+```
 
 ### 2.1 Header (16 bytes)
 
@@ -100,13 +118,22 @@ section appears at most once.
 
 | Offset | Type | Field | Value |
 |---|---|---|---|
-| 0 | u8 | instrument | 0 = guitar (1 = bass: reserved for a later version, see 6) |
+| 0 | u8 | instrument | 0 = guitar, 1 = extended bass (5 / 6 strings, see below) |
 | 1 | u8 | stringCount | all strings of the instrument: 7 for a 7-string, 8 for an 8-string (max 16) |
 | 2 | u8 | columnCount | number of extended columns = stringCount - 6 for guitar |
 | 3 | u8 | reserved | 0 |
 | 4 | u8[columnCount] | strings | the string index of each column: guitar 6, 7, ... stringCount-1 |
 
 Payload size = 4 + columnCount. "Column" below means one of these extended strings, in this order.
+
+Extended bass (instrument 1): stringCount 5 (low B) or 6 (low B and high C), columnCount 0, no strings, MetaData
+tuning has six entries. The extra strings use the stock six-slot data: string index 4 = B0 (MIDI 23 + tuning[4]),
+5 = C3 (MIDI 48 + tuning[5]); strings 0-3 stay E A D G. Chords too: chord template columns 4 / 5 hold the low B / high
+C (checked, bass chords with string 4 and 5 scored 20/20 in the 2026-10-30 low-tuning runs). The block only marks the arrangement (a six-entry tuning
+alone cannot tell it from a stock padded four-string bass). Bass blocks must omit `CHDT` and `CHNT`, even with
+zero records: the reader rejects these sections with zero columns. The manifest and .hsan
+`Tuning` object get `Rs7String4` (low B) and, for six strings, `Rs7String5` (high C) after `string5`: rs7string builds
+the bass with as many strings as these keys say.
 String indices: 0 = low E ... 5 = high e (stock); 6 = the 7th string (B1, MIDI 35); 7 = the 8th
 string (F#1, MIDI 30).
 
@@ -149,7 +176,7 @@ in the chord, or has no technique, gets the empty entry `00 00 00 00 ff ff 00 00
 
 New data goes into new sections (or a new section version); readers skip what they do not know
 (non-critical) or drop the block (critical). Candidates: per-level data, handshape/arpeggio
-extensions, bass column mapping.
+extensions. Extended bass needs none: its extra strings use the stock columns 4 / 5.
 
 ## 3. Validation rules
 
@@ -163,7 +190,8 @@ A reader treats the block as absent (and falls back, see 5) when any rule fails:
    last one ending at `blockSize`.
 4. The first section is `STRS`; no id twice; an unknown or unknown-version section with the
    critical bit drops the block.
-5. `STRS`: instrument 0; 7 <= stringCount <= 16; **stringCount == the number of MetaData tuning
+5. `STRS`: instrument 1 (bass): stringCount 5 or 6, columnCount 0, six MetaData tuning entries; omit `CHDT` and
+   `CHNT`. Instrument 0: 7 <= stringCount <= 16; **stringCount == the number of MetaData tuning
    entries**; columnCount == stringCount - 6; strings == 6, 7, ..., stringCount - 1.
 6. `CHDT`: templateCount == stock chord template count; payload exactly 4 + 2 x count x columns;
    fret in {-1, 0..24}; finger in {-1, 0..4}; fret -1 implies finger -1.
@@ -173,15 +201,17 @@ A reader treats the block as absent (and falls back, see 5) when any rule fails:
 
 Absent `CHDT` = every extended column is -1. Absent `CHNT` = no extended techniques.
 
-## 4. Writer rules (DotCharter)
+## 4. Writer rules
 
-- **When:** write the block for every arrangement with more than six strings (MetaData tuning has
-  7 or 8 entries), with `STRS`, `CHDT` and `CHNT` in this order, even when the counts are 0. Write
-  no block for 6-string guitar and 4-string bass: their SNG stays byte-for-byte stock.
+- **When:** write the block for every guitar arrangement with more than six strings (MetaData tuning
+  has 7 or 8 entries), with `STRS`, `CHDT` and `CHNT` in this order, even when the counts are 0, and
+  for every five- or six-string bass (`STRS` instrument 1, [section 2.3](#23-strs---strings-version-1-critical-must-be-the-first-section)).
+  Bass blocks must omit `CHDT` and `CHNT`, even with zero records. Write no block for 6-string guitar and
+  4-string bass: their SNG stays byte-for-byte stock.
 - **Chord templates:** the six stock columns stay a valid six-column projection (strings 0..5:
   frets/fingers as usual, unused = -1, MIDI `notes[s]` = -1 for unused). Never put an extended
   string's pitch into a free stock MIDI slot. A template keeps at least one stock column (one-column
-  templates such as C#5 = s6 fret 2 + s0 fret 4 -> stock column s0 only: CONFIRMED to load, render
+  templates such as C#5 = s6 fret 2 + s0 fret 4 -> stock column s0 only: checked to load, render
   and score with rs7string, M4). The extended columns go to `CHDT`; deduplicate templates on all
   columns (two chords with the same stock columns but different string-6 frets are two templates).
 - **name[31]:** leave the last byte of the 32-byte template name 0 (the pre-block M4 format put the
@@ -197,23 +227,28 @@ Absent `CHDT` = every extended column is -1. Absent `CHNT` = no extended techniq
   (Changed 2026-10-13: version 1 packages written before this rule have no record for chords whose
   only open string is extended.)
 - **Double stop:** a chord with exactly two sounding strings, stock and extended counted together,
-  gets the note's DOUBLE_STOP bit 0x02000000 (rs7string recounts it over 7 strings at load anyway).
+  gets the note's DOUBLE_STOP bit 0x02000000 (rs7string recounts it over all 8 strings at load anyway).
 - **Single notes** on extended strings are stock note records with `string` = 6 (7); no block data.
 - **Sections:** `StringMask` bit 6 (bit 7 for the 8th string) set in sections that use the string,
-  for chords too.
+  for chords too. Bass: bits 4 / 5 as for any stock string. A missing bit is not an error: when the
+  song loads, the game ORs `1 << string` into each section's mask for every single note and chord
+  fret and then fills it in for earlier sections (checked, `SNG_Song_PostProcessNotes`, chord frets
+  `0x55CC1C`, single notes `0x55CC71`, fill-in `0x55CD30`). Stock code covers strings 0-5, so bass
+  bits 4 / 5 come for free; rs7string adds guitar bits 6 / 7 (`Rs7_Mid_N12`, `N13`, `TP11`). A
+  bit the file sets but no note uses is kept (not verified: no clearing pass seen), so write exact masks.
 
-## 5. Stable rules for 7-string charts (all of them, not only the block)
+## 5. Rules for every extended chart (not only the block)
 
 | What | Rule | Status |
 |---|---|---|
-| String index | the 7th string is index 6 (low B, MIDI 35 + tuning[6]); single notes use `string` = 6 | CONFIRMED (M1/M2) |
-| SNG tuning | MetaData tuning has exactly **7** entries (index 6 = offset of the B); rs7string switches 7-string mode on for exactly 7 entries | CONFIRMED (mode.cpp, S4) |
-| Manifest key | the arrangement manifest's and the .hsan's `Tuning` object gets `Rs7String6` (the 7th string's offset) after `string5`; **never `string6`** (the song-list reader 0x56D0B0 writes every `string%d` into a 6-int stack array: `string6` overwrites the /GS cookie and crashes the stock game) | CONFIRMED |
-| Chord data | stock six columns + RS7X block (this document); old packages: name[31] | CONFIRMED (stage 1) |
-| Package | plain PSARC (unencrypted TOC, archive flags without 0x4; SNG flags 1 = zlib, no encryption, zero IV and signature slots), loaded by rs7string's `[psarc] plain` patches (or a CDLC enabler with the plain-psarc PR #1); any CDLC enabler still bypasses the signature check. No Ubisoft keys anywhere | CONFIRMED |
+| String index | the 7th string is index 6 (low B, MIDI 35 + tuning[6]); single notes use `string` = 6 | checked |
+| SNG tuning | MetaData tuning has **7** entries for a 7-string guitar (index 6 = offset of the B), 8 for an 8-string | checked |
+| Manifest key | the arrangement manifest's and the .hsan's `Tuning` object gets `Rs7String6` (the 7th string's offset) after `string5`; **never `string6`** (the stock game's song list reads every `string%d` key into room for six values, so a `string6` key crashes it) | checked |
+| Chord data | stock six columns + RS7X block (this document); old packages: name[31] | checked |
+| Package | plain PSARC (unencrypted TOC, archive flags without 0x4; SNG flags 1 = zlib, no encryption, zero IV and signature slots), loaded by rs7string's `[psarc] plain` setting (or a CDLC enabler that loads plain packages); any CDLC enabler still bypasses the signature check. No Ubisoft keys anywhere | checked |
 | Text | DLC keys, file names, chord/section/phrase names: printable ASCII | project rule |
-| 8 strings | index 7 = F#1 (MIDI 30 + tuning[7]), 8 tuning entries, `Rs7String6` + `Rs7String7`; STRS stringCount 8, columns 6, 7. rs7string 1.0 does not play 8-string charts (prepared behind `[neck] eight=0`, off; several game paths still assume at most 7): writers may implement it, but do not ship such packages to players yet | format defined, game support after 1.0 |
-| Bass 5/6 | not defined in version 1 (instrument 1 is reserved; a reader ignores such a block) | later |
+| 8 strings | index 7 = F#1 (MIDI 30 + tuning[7]), 8 tuning entries, `Rs7String6` + `Rs7String7`; STRS stringCount 8, columns 6, 7. rs7string plays 8 strings: notes, chords, eight-peg headstock, tuner | supported |
+| Bass 5/6 | STRS instrument 1, stringCount 5 / 6, no columns ([2.3](#23-strs---strings-version-1-critical-must-be-the-first-section)), Tuning keys `Rs7String4` / `Rs7String5`; rs7string builds a 5 / 6-string bass and plays single notes and chords on strings 4 / 5 | supported |
 
 ## 6. How rs7string reads it
 
@@ -228,95 +263,130 @@ song's chord templates and ChordNotes records are converted into superset record
 followed by 8-slot arrays: template frets/fingers/MIDI, ChordNotes masks/slides/vibrato/bends) once
 at load (`CHDT` -> template slots 6/7, `CHNT` -> ChordNotes slots 6/7), and the game's own chord code
 reads those. Packages without a block: the old name[31] byte fills slot 6 (7-string arrangements).
-Stage 1 rewrote name[31] from the block instead; that is gone. Since `[chords] native_chordloops`
-(on by default in 1.0) the game's chord bend, vibrato, slide and sustain loops also run over slots
+Stage 1 rewrote name[31] from the block instead; that is gone. Since 1.0 the game's chord bend, vibrato, slide and sustain loops also run over slots
 6/7, so the `CHNT` entries are used, not only parsed.
 
-## 7. Example
+## 7. Examples
 
-7 strings, two chord templates (0: C#5 with string 6 at fret 2, finger 1; 1: no string-6 column),
-one ChordNotes record whose string-6 entry is sustained (78 bytes):
+Three complete blocks, one row per field. Offsets count from the first byte of the block (the `R` of `RS7X`), in
+decimal. The one-line hex under each table is the same block for copying into a test.
 
-    52 53 37 58  01 00  10 00  4e 00 00 00  03 00 00 00     RS7X, v1, header 16, block 78, 3 sections
-    53 54 52 53  01 00  01 00  05 00 00 00                  STRS v1 critical, 5 bytes
-      00 07 01 00 06                                        guitar, 7 strings, 1 column, -, string 6
-    43 48 44 54  01 00  01 00  08 00 00 00                  CHDT v1 critical, 8 bytes
-      02 00 00 00                                           2 templates
-      02 01                                                 template 0: fret 2, finger 1
-      ff ff                                                 template 1: -1, -1
-    43 48 4e 54  01 00  00 00  0d 00 00 00                  CHNT v1, 13 bytes
-      01 00 00 00                                           1 record
-      00 20 00 00  ff  ff  00 00  00                        mask 0x2000 (sustain), no slide, no vibrato, 0 bends
+### 7.1 Seven-string guitar (78 bytes)
 
-8 strings, one template (F#5: string 7 open, string 6 fret 2 finger 2, stock column s0 fret 2), no
-ChordNotes records (70 bytes):
+Two chord templates: template 0 is a C#5 with the 7th string at fret 2 (index finger), template 1 does not use the
+7th string. One ChordNotes record, whose 7th-string entry is sustained.
 
-    52 53 37 58 01 00 10 00 46 00 00 00 03 00 00 00
-    53 54 52 53 01 00 01 00 06 00 00 00   00 08 02 00 06 07
-    43 48 44 54 01 00 01 00 08 00 00 00   01 00 00 00   02 02   00 ff
-    43 48 4e 54 01 00 00 00 04 00 00 00   00 00 00 00
+| Offset | Bytes | Field | Value |
+|---|---|---|---|
+| **0** | | **Header** | |
+| 0 | `52 53 37 58` | magic | `RS7X` |
+| 4 | `01 00` | version | 1 |
+| 6 | `10 00` | headerSize | 16 |
+| 8 | `4e 00 00 00` | blockSize | 78 |
+| 12 | `03 00 00 00` | sectionCount | 3 |
+| **16** | | **Section `STRS`** | |
+| 16 | `53 54 52 53` | id | `STRS` |
+| 20 | `01 00` | version | 1 |
+| 22 | `01 00` | flags | critical |
+| 24 | `05 00 00 00` | size | 5 payload bytes follow |
+| 28 | `00` | instrument | 0 = guitar |
+| 29 | `07` | stringCount | 7 |
+| 30 | `01` | columnCount | 1 extended column |
+| 31 | `00` | reserved | 0 |
+| 32 | `06` | strings[0] | column 0 is string 6 (the low B) |
+| **33** | | **Section `CHDT`** | |
+| 33 | `43 48 44 54` | id | `CHDT` |
+| 37 | `01 00` | version | 1 |
+| 39 | `01 00` | flags | critical |
+| 41 | `08 00 00 00` | size | 8 |
+| 45 | `02 00 00 00` | templateCount | 2 (= the stock Chords count) |
+| 49 | `02 01` | template 0, column 0 | fret 2, finger 1 (index) |
+| 51 | `ff ff` | template 1, column 0 | -1, -1: string 6 not in this chord |
+| **53** | | **Section `CHNT`** | |
+| 53 | `43 48 4e 54` | id | `CHNT` |
+| 57 | `01 00` | version | 1 |
+| 59 | `00 00` | flags | not critical |
+| 61 | `0d 00 00 00` | size | 13 |
+| 65 | `01 00 00 00` | recordCount | 1 (= the stock ChordNotes count) |
+| 69 | `00 20 00 00` | record 0, column 0: mask | 0x2000 = sustain |
+| 73 | `ff` | slideTo | -1 = no slide |
+| 74 | `ff` | slideUnpitchTo | -1 = no unpitched slide |
+| 75 | `00 00` | vibrato | 0 = none |
+| 77 | `00` | bendCount | 0, so no Bend entries; the block ends at 78 |
 
-## 8. Results (2026-10-13, rs7string feat/neck + RS7X, September 2022 exe)
+    52 53 37 58 01 00 10 00 4e 00 00 00 03 00 00 00 53 54 52 53 01 00 01 00 05 00 00 00 00 07 01 00 06
+    43 48 44 54 01 00 01 00 08 00 00 00 02 00 00 00 02 01 ff ff
+    43 48 4e 54 01 00 00 00 0d 00 00 00 01 00 00 00 00 20 00 00 ff ff 00 00 00
 
-<details>
-<summary><b>Test packages and in-game results</b></summary>
+### 7.2 Eight-string guitar (88 bytes)
 
-Packages regenerated by `tools/rs7chart` (`tests/rs7/generated`). Static: the 6-string controls are
-byte-identical to the previous build; every 7-string package differs only in its SNG, whose stock
-sections are identical to the previous (name[31]) build apart from name[31] = 0, plus the block; the
-`rs7c_m4_1_pairs_b31` twin's SNG is byte-identical to the old M4-1 SNG.
+One chord template, an F#5: 8th string open, 7th string at fret 2 (middle finger); its stock column s0 (fret 2) is
+in the stock template as usual. The open 8th string needs its `OPEN` bit, so the chord gets a ChordNotes record
+([section 4](#4-writer-rules)). With two columns, every template and record has two entries: column 0 =
+string 6, column 1 = string 7. Section headers are shown as one row.
 
-In game, virtual guitarist (`[test] vguitar=1`, lead 40 ms, chart mode, `vguitar_chord6=play`),
-compared with the merge regression (rs7string README):
+| Offset | Bytes | Field | Value |
+|---|---|---|---|
+| 0 | `52 53 37 58 01 00 10 00 58 00 00 00 03 00 00 00` | Header | `RS7X`, version 1, header 16, block 88, 3 sections |
+| 16 | `53 54 52 53 01 00 01 00 06 00 00 00` | `STRS` header | version 1, critical, 6 bytes |
+| 28 | `00 08 02 00` | instrument, stringCount, columnCount, reserved | guitar, 8 strings, 2 columns |
+| 32 | `06 07` | strings | column 0 = string 6, column 1 = string 7 |
+| 34 | `43 48 44 54 01 00 01 00 08 00 00 00` | `CHDT` header | version 1, critical, 8 bytes |
+| 46 | `01 00 00 00` | templateCount | 1 |
+| 50 | `02 02` | template 0, string 6 | fret 2, finger 2 (middle) |
+| 52 | `00 ff` | template 0, string 7 | fret 0 (open), no finger |
+| 54 | `43 48 4e 54 01 00 00 00 16 00 00 00` | `CHNT` header | version 1, not critical, 22 bytes |
+| 66 | `01 00 00 00` | recordCount | 1 |
+| 70 | `00 00 00 00 ff ff 00 00 00` | record 0, string 6 | no technique (the empty entry) |
+| 79 | `04 00 00 00 ff ff 00 00 00` | record 0, string 7 | mask 0x4 = open; no slide, vibrato or bends |
 
-| Package | Chord data | `extblock` log at load | Hits | Merge regression |
-|---|---|---|---|---|
-| RS7C M4-1 pairs | block only | body 6693, stock sections end at 6620, block 73 bytes, 4/4 templates with string 6 | 25/25 | 25/25 |
-| RS7C M4-2 three-note chords | block only | body 10278, end 10192, block 86 bytes, 6/6 templates, 1 ChordNotes record | 15/21 | 15/21 |
-| RS7C M4-3 full 7-string chords | block only | body 22969, end 22833, block 136 bytes, 4/4 templates, 7 records | 12/16 | 12/16 |
-| RS7C M4-1 pairs (byte 31) | name[31] only (old format) | body 6620, end 6620, no block -> name[31] fallback, 4/4 templates | 25/25 | (= M4-1) 25/25 |
-| RS7C M4-1 pairs (6-str ctrl) | - | no block, 6 tuning entries | 25/25 | 25/25 |
-| RS7C M4-2 three-note (6-str ctrl) | - | no block | 21/21 | 21/21 |
-| RS7C M4-3 full (6-str ctrl) | - | no block | 16/16 | 16/16 |
+    52 53 37 58 01 00 10 00 58 00 00 00 03 00 00 00 53 54 52 53 01 00 01 00 06 00 00 00 00 08 02 00 06 07
+    43 48 44 54 01 00 01 00 08 00 00 00 01 00 00 00 02 02 00 ff
+    43 48 4e 54 01 00 00 00 16 00 00 00 01 00 00 00 00 00 00 00 ff ff 00 00 00 04 00 00 00 ff ff 00 00 00
 
-CONFIRMED: the stock loader stops at the end of MetaData (logged position < body size) and the songs
-with a block load and play; the block is read and applied (string-6 columns of block-only packages
-are judged; Q1 log `string 6 fret 2 -> MIDI 37 added`); packages without a block fall back to name[31].
-In game the SNG is loaded after the pre-song tuner is skipped (log 75-80 s), not at song selection.
+### 7.3 Five-string bass (32 bytes)
 
-Update 2026-10-14: the extended strings' CHNT data is now read by the native chord paths
-(`native_chordloops`, section 6). Release-candidate runs: chords chart 16/16, RS7 Test 36/36 (virtual
-guitarist). Whether a sustained chord now draws its string-6 tail was not checked separately
-(HYPOTHESIS until checked).
+Only `STRS`, to mark the arrangement as an extended bass: no columns, because the low B's notes and chord frets use
+the stock string 4 ([section 2.3](#23-strs---strings-version-1-critical-must-be-the-first-section)). A six-string
+bass is the same with stringCount `06`.
 
-</details>
+| Offset | Bytes | Field | Value |
+|---|---|---|---|
+| 0 | `52 53 37 58 01 00 10 00 20 00 00 00 01 00 00 00` | Header | `RS7X`, version 1, header 16, block 32, 1 section |
+| 16 | `53 54 52 53 01 00 01 00 04 00 00 00` | `STRS` header | version 1, critical, 4 bytes |
+| 28 | `01 05 00 00` | instrument, stringCount, columnCount, reserved | extended bass, 5 strings, no columns |
 
-## 9. DotCharter checklist (state of DotCharter master 45ff88cc8, 2026-10-14)
+    52 53 37 58 01 00 10 00 20 00 00 00 01 00 00 00 53 54 52 53 01 00 01 00 04 00 00 00 01 05 00 00
 
-DotCharter's editor already allows more than six strings, but its Rocksmith export is six-string only
-(`DotCharter.Services/Export/Sng/SngFromDomainMapper.cs`: `SngStringLimits.MaxStringIndex = 5`, and
-`ChartExportValidator.KeyStringOutOfRange` is an error that blocks the export). To export a 7-string
-arrangement:
+## 8. Writer checklist
 
-1. **Validator:** allow string index 6 for 7-string guitar arrangements (keep the error for 8+ until
-   rs7string plays 8 strings, and for bass).
-2. **MetaData tuning:** write 7 entries (index 6 = the B offset), not a fixed `short[6]`.
-3. **Notes:** single notes on the 7th string = stock note records with `string` = 6; section
-   `StringMask` bit 6 where the string is used (chords too).
-4. **Chord templates:** stock six columns as a valid projection (section 4); the 7th string's
-   fret/finger go to `CHDT`; deduplicate on all seven columns; `name[31]` = 0; ASCII names <= 30
-   chars; stock MIDI `notes[]` only for strings 0..5 (`MapToMidiNotes` stays six-wide, never put the
-   B into a free slot).
-5. **ChordNotes:** create a record when any string (stock or 7th) has a technique or is open; the 7th
-   string's mask/slide/vibrato/bends go to `CHNT`; empty entry `00 00 00 00 ff ff 00 00 00`.
-6. **Double stop:** count the 7th string when setting 0x02000000.
-7. **Block:** append RS7X (`STRS`, `CHDT`, `CHNT`, in that order, even with zero records) after MetaData
-   **inside** the zlib body; the container's body size includes it. No block for 6-string / bass.
-8. **Manifest + HSAN:** `Tuning` gets `Rs7String6` after `string5`; never `string6`.
+What a chart tool needs to export 7/8-string guitar and 5/6-string bass arrangements for rs7string. DotCharter
+follows this list.
+
+1. **Validator:** allow string indices 6-7 for 7/8-string guitar arrangements and 4-5 for 5/6-string bass;
+   keep the error beyond that.
+2. **MetaData tuning:** guitar: 7 or 8 entries (index 6 = the B offset, 7 = the F# offset), not a fixed
+   `short[6]`. Bass: six entries as stock (index 4 = the low B offset, 5 = the high C offset, [section 2.3](#23-strs---strings-version-1-critical-must-be-the-first-section)).
+3. **Notes:** single notes on the extra strings = stock note records with `string` = 6 / 7 (guitar) or
+   4 / 5 (bass); section `StringMask` bit 6 / 7 (guitar) or 4 / 5 (bass) where the string is used
+   (chords too). The game derives missing bits at load ([section 4](#4-writer-rules)).
+4. **Chord templates (guitar):** stock six columns as a valid projection ([section 4](#4-writer-rules)); the extra strings'
+   fret/finger go to `CHDT`; deduplicate on all columns; `name[31]` = 0; ASCII names <= 30 chars; stock
+   MIDI `notes[]` only for strings 0..5 (`MapToMidiNotes` stays six-wide, never put the B or F# into a
+   free slot).
+5. **ChordNotes (guitar):** create a record when any string (stock or extra) has a technique or is open;
+   the extra strings' mask/slide/vibrato/bends go to `CHNT`; empty entry `00 00 00 00 ff ff 00 00 00`.
+6. **Double stop:** count the extra strings when setting 0x02000000.
+7. **Block:** append RS7X after MetaData **inside** the zlib body; the container's body size includes it.
+   Guitar: `STRS` (instrument 0, stringCount 7 / 8), `CHDT`, `CHNT`, in that order, even with zero
+   records. Bass: `STRS` instrument 1, stringCount 5 / 6, columnCount 0; omit `CHDT` and `CHNT`. No block for 6-string guitar
+   and 4-string bass.
+8. **Manifest + HSAN:** guitar `Tuning` gets `Rs7String6` (and `Rs7String7` for 8 strings) after
+   `string5`; bass gets `Rs7String4` (low B) and, for six strings, `Rs7String5` (high C). Never a key
+   named `string6` or higher.
 9. **Package:** plain PSARC only (no Ubisoft keys), ASCII DLC keys and file names.
-10. **Import (round trip):** DotCharter's SNG reader should parse the block (section 3 rules) so a
-    7-string package opens with its 7th string; on a rule failure fall back to name[31] (old packages)
-    and else to six strings.
-11. **Test:** compare a DotCharter export of one of the rs7chart test charts with rs7chart's own
-    output (`rs7chart dump` validates the block and flags rule violations), then play it in game:
-    the `extblock: SNG ...` log line must say the block was read (not "ignored").
+10. **Import (round trip):** the tool's SNG reader should parse the block ([section 3](#3-validation-rules) rules) so an
+    extended package opens with its extra strings; on a rule failure fall back to name[31] (old 7-string
+    packages) and else to the stock six / four strings.
+11. **Test:** play the exported chart in the game. The `extblock: SNG ...` line in `rs7string.log` must say the
+    block was read (not "ignored").

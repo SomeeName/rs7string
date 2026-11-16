@@ -6,10 +6,12 @@
       .\build.ps1 -Asan          also build the unit tests with AddressSanitizer (asan.props, bin\Asan, never the
                                  DLL) and run them; any ASan report or test failure fails the build
       .\build.ps1 -SkipAnalysis  no static analysis (quick local loop only, not for a pull request)
+      .\build.ps1 -Public        the public build: without the private extras (src/features/extras/extras.h, private.props, their
+                                 sites and tests; scripts\package.ps1 and release.ps1 build this way)
       .\build.ps1 -Toolset v143  another platform toolset than v145; -Toolset auto: v145 if installed, else the
                                  newest (CI runners without VS 2026)
     The build fails first when a source file is not formatted (scripts\format.ps1 -Check; fix with
-    scripts\format.ps1) or breaks a layout rule (tools\check_layout.py, AGENTS.md "Code structure").
+    scripts\format.ps1) or breaks a layout rule (tools\check_layout.py, docs/agents/code-structure.md).
     -SkipFormatCheck skips both gates.
     Last, MSVC static analysis (/analyze, analyze.props) compiles both projects into obj\analyze and
     tools\check_analyze.py compares the findings with tools\analyze_baseline.json. About 2 minutes from clean,
@@ -18,7 +20,7 @@
                                  its own project and output folder bin\Fuzz, never part of the default build)
 #>
 param([switch]$NoTests, [switch]$SkipFormatCheck, [switch]$SkipAnalysis, [switch]$Asan, [switch]$Fuzz,
-      [string]$Toolset = 'v145')
+      [switch]$Public, [string]$Toolset = 'v145')
 $ErrorActionPreference = 'Stop'
 $MSBuild = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe'
 if (-not (Test-Path -LiteralPath $MSBuild)) {
@@ -39,22 +41,35 @@ if ($Toolset -eq 'auto') {
     Write-Host "platform toolset: $Toolset (installed: $($found -join ', '))"
 }
 $Common = @('/p:Configuration=Release', '/p:Platform=Win32', '/p:PostBuildEventUseInBuild=false', "/p:PlatformToolset=$Toolset", '/m', '/nologo')
+# The private extras (src/features/extras/extras.h) are private-only: a public build leaves them out, as does a tree without them.
+# Their features' sites are the src/features/<name>/ folders .publicignore lists.
+$PrivateSites = @()
+if ($Public) {
+    $Common += '/p:Rs7Private=false'
+    if (Test-Path "$PSScriptRoot\.publicignore") {
+        foreach ($line in Get-Content "$PSScriptRoot\.publicignore") {
+            if ($line -match '^src/features/([^/]+)/$') { $PrivateSites += '--without', $Matches[1] }
+        }
+    }
+}
 Push-Location $PSScriptRoot
 try {
     if (-not $SkipFormatCheck) {
         & "$PSScriptRoot\scripts\format.ps1" -Check
         if ($LASTEXITCODE) { throw 'format check failed: run scripts\format.ps1' }
         uv run python tools\check_layout.py
-        if ($LASTEXITCODE) { throw 'layout check failed: see AGENTS.md "Code structure"' }
+        if ($LASTEXITCODE) { throw 'layout check failed: see docs/agents/code-structure.md' }
     }
-    uv run python tools\gen_sites.py sites.json src\generated\sites.generated.h
+    uv run python tools\gen_sites.py sites.json src\generated\sites.generated.h @PrivateSites
     if ($LASTEXITCODE) { throw 'gen_sites failed' }
     foreach ($proj in 'rs7string.vcxproj', 'tests\rs7string_tests.vcxproj') {
         & $MSBuild $proj @Common /v:minimal
         if ($LASTEXITCODE) { throw "build failed: $proj" }
     }
     Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rs7string_headstock.bin" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock.bin"
-    Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rs7string_headstock_lh.bin" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock_lh.bin"
+    foreach ($kit in '_lh', '_bass', '_bass_lh') {
+        Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rs7string_headstock$kit.bin" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock$kit.bin"
+    }
     Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\LICENSE.md" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock.LICENSE.md"
     if (-not $NoTests) {
         & "$PSScriptRoot\bin\Release\rs7string_tests.exe"

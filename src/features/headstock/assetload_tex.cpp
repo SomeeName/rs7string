@@ -2,12 +2,16 @@
 #include "features/allocstats/allocstats.h"
 #include "features/colours/colours.h"
 #include "features/headstock/assetload.h"
-#include "features/headstock/assetload_config.h"
 #include "features/headstock/assetload_scene.h"
+#include "features/headstock/state.h"
 #include "model/groups.h"
+#include "model/memoryfile.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
 #include <windows.h>
 #include <cstring>
+#include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 extern "C" {
@@ -17,9 +21,18 @@ __declspec(dllexport) uintptr_t g_rs7_fn_nfdtor = 0;
 }
 
 using namespace rs7asset;
+using rs7head::g_head;
+
+bool rs7asset::FilePresent(const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+
+    return !path.empty() && GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) &&
+           !(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (data.nFileSizeHigh || data.nFileSizeLow);
+}
 
 std::vector<std::string> Rs7Asset_DdsNames(const uint8_t* buf, size_t size) {
     std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
     if (!buf) {
         return out;
     }
@@ -56,8 +69,19 @@ std::vector<std::string> Rs7Asset_DdsNames(const uint8_t* buf, size_t size) {
         }
 
         std::string n(reinterpret_cast<const char*>(buf + base), i + 4 - base);
+        std::string low = n;
 
-        if (!INameIn(n, out)) {
+        for (char& ch : low) {
+            if (ch >= 'A' && ch <= 'Z') {
+                ch = char(ch + ('a' - 'A'));
+            }
+        }
+
+        if (seen.insert(low).second) {
+            if (out.size() == 256) {
+                throw std::length_error("too many model textures");
+            }
+
             out.push_back(n);
         }
     }
@@ -128,8 +152,6 @@ bool Rs7Asset_IsWoodColour(const std::string& name) {
 }
 
 namespace {
-volatile long g_logTex = 0;
-
 // ---- textures of the 7-string model (loader thread) ----
 // The nidds stream handler 0x4A81D0 (cdecl name, NiFile*, ctx): reads the DDS through the game's DDS
 // reader (0x9E8610 / 0x9E9720), then under the NiTexture list lock finds or creates the
@@ -140,84 +162,21 @@ volatile long g_logTex = 0;
 // 0x4A7BB9..0x4A7C02 does: the game's NiFile adapter (Res_NiFileAdapter_Ctor 0x49FF90, ESI = 0x1C
 // adapter, EDI = IFile*; destroyed by 0x4A0030), over an IFile - here our own in-memory one with the
 // interface the resource manager's memory IFile (vtable 0x11A33F8) has.
-struct MemFile {
-    const void* const* vtable;
-    volatile long refs;
-    const uint8_t* data;
-    uint32_t size;
-    uint32_t pos;
-};
+using MemFile = rs7::MemoryFile;
 
-// IFile methods, thiscall (MSVC: __fastcall with an unused EDX, the callee pops the stack args).
+// Borrowed bytes and a stack object: neither release nor destruction frees storage.
 void __fastcall MfDtor(MemFile*, void*, uint32_t) {}
 
-long __fastcall MfAddRef(MemFile* f, void*) {
-    return _InterlockedIncrement(&f->refs);
-}
-
 long __fastcall MfRelease(MemFile* f, void*) {
-    return _InterlockedDecrement(&f->refs);
-}  // ours: never freed by the game
-
-uint32_t __fastcall MfRead(MemFile* f, void*, void* dst, uint32_t n) {  // +0Ch
-    const uint32_t left = f->size - f->pos;
-
-    if (n > left) {
-        n = left;
-    }
-    if (n && dst) {
-        std::memcpy(dst, f->data + f->pos, n);
-    }
-    f->pos += n;
-
-    return n;
+    return rs7::MemoryFileOps::DropRef(f);
 }
 
-uint32_t __fastcall MfSize(MemFile* f, void*) {
-    return f->size;
-}  // +10h
-
-uint32_t __fastcall MfTell(MemFile* f, void*) {
-    return f->pos;
-}  // +14h
-
-bool __fastcall MfSeek(MemFile* f, void*, uint32_t to) {  // +18h, absolute
-    if (to > f->size) {
-        return false;
-    }
-
-    f->pos = to;
-
-    return true;
-}
-
-uint64_t __fastcall MfSize64(MemFile* f, void*) {
-    return f->size;
-}  // +1Ch (blob +18h u64 size)
-
-bool __fastcall MfTrue(MemFile*, void*) {
-    return true;
-}  // +20h (0xC94340: mov al,1)
-
-bool __fastcall MfGood(MemFile* f, void*) {
-    return f->data != nullptr;
-}  // +24h
-
-const void* const kMemFileVt[] = {
-    reinterpret_cast<const void*>(&MfDtor),    reinterpret_cast<const void*>(&MfAddRef),
-    reinterpret_cast<const void*>(&MfRelease), reinterpret_cast<const void*>(&MfRead),
-    reinterpret_cast<const void*>(&MfSize),    reinterpret_cast<const void*>(&MfTell),
-    reinterpret_cast<const void*>(&MfSeek),    reinterpret_cast<const void*>(&MfSize64),
-    reinterpret_cast<const void*>(&MfTrue),    reinterpret_cast<const void*>(&MfGood),
-    reinterpret_cast<const void*>(&MfTrue),    reinterpret_cast<const void*>(&MfTrue),
-};
-
-DWORD g_ddsFaultCode = 0;
-uintptr_t g_ddsFaultAt = 0;
+const auto kMemFileVt = rs7::MemoryFileVtable<true, true>(MfDtor, MfRelease);
 
 int DdsFilter(EXCEPTION_POINTERS* ep) {
-    g_ddsFaultCode = ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0;
-    g_ddsFaultAt = ep && ep->ExceptionRecord ? uintptr_t(ep->ExceptionRecord->ExceptionAddress) : 0;
+    g_head.ddsFaultCode = ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0;
+    g_head.ddsFaultAt = ep && ep->ExceptionRecord ? uintptr_t(ep->ExceptionRecord->ExceptionAddress) : 0;
+    _InterlockedExchange(&g_head.ddsDead, 1);
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -288,13 +247,13 @@ bool ReadFileBytes(const std::wstring& path, std::vector<uint8_t>& out) {
 }
 
 void* CallDdsHandler(const char* key, const uint8_t* bytes, uint32_t size) {
-    g_ddsFaultCode = 0;
-    g_ddsFaultAt = 0;
-    if (!g_rs7_fn_dds || !g_rs7_fn_nfctor || !g_rs7_fn_nfdtor) {
+    g_head.ddsFaultCode = 0;
+    g_head.ddsFaultAt = 0;
+    if (!g_rs7_fn_dds || !g_rs7_fn_nfctor || !g_rs7_fn_nfdtor || g_head.ddsDead) {
         return nullptr;
     }
 
-    MemFile file{kMemFileVt, 1, bytes, size, 0};
+    MemFile file{kMemFileVt.data(), 1, bytes, size, 0};
     alignas(8) uint8_t adapter[kNiFileSize] = {};
     void* res = nullptr;
 
@@ -328,7 +287,7 @@ std::vector<std::string> StockDdsNames(const void* stockBuf, uint32_t stockSize)
 // NiSourceTextures resolve to it like the stock ones resolve to the package's textures. Names the
 // stock model shares (the String shader's lookup textures) stay the game's.
 int RegisterTextures(const char* name, const std::wstring& path, const std::vector<uint8_t>& model,
-                     const void* stockBuf, uint32_t stockSize) {
+                     const void* stockBuf, uint32_t stockSize, std::vector<std::string>* done) {
     const std::vector<std::string> stock = StockDdsNames(stockBuf, stockSize);
     const std::string folder = Rs7Asset_FolderOf(name);
     const std::wstring dir = DirOf(path);
@@ -336,9 +295,13 @@ int RegisterTextures(const char* name, const std::wstring& path, const std::vect
 
     for (const std::string& tex : Rs7Asset_DdsNames(model.data(), model.size())) {
         if (INameIn(tex, stock)) {
-            if (Upto(&g_logTex, 24)) {
+            if (Rs7Log_Upto(&g_head.logTex, 24)) {
                 Rs7Log("assetload: texture %s: shared with the stock model - the game's", tex.c_str());
             }
+            continue;
+        }
+
+        if (done && INameIn(tex, *done)) {
             continue;
         }
 
@@ -348,37 +311,44 @@ int RegisterTextures(const char* name, const std::wstring& path, const std::vect
         std::vector<uint8_t> bytes;
 
         if (!ReadFileBytes(file, bytes)) {
-            if (Upto(&g_logTex, 24)) {
+            if (Rs7Log_Upto(&g_head.logTex, 24)) {
                 Rs7Log("assetload: texture %s: no %ls - left to the game (it may render untextured)", tex.c_str(),
                        file.c_str());
             }
             continue;
         }
 
-        if (g_wood < 1.0f && Rs7Asset_IsWoodColour(tex)) {
-            const bool ok = Rs7Asset_ScaleDxt1(bytes.data(), bytes.size(), g_wood);
+        if (g_head.wood < 1.0f && Rs7Asset_IsWoodColour(tex)) {
+            const bool ok = Rs7Asset_ScaleDxt1(bytes.data(), bytes.size(), g_head.wood);
 
-            if (Upto(&g_logTex, 24)) {
-                Rs7Log("assetload: texture %s: [assets] headstock7_wood=%.2f %s", tex.c_str(), double(g_wood),
+            if (Rs7Log_Upto(&g_head.logTex, 24)) {
+                Rs7Log("assetload: texture %s: [assets] headstock7_wood=%.2f %s", tex.c_str(), double(g_head.wood),
                        ok ? "applied (DXT1 end points scaled)" : "NOT applied (not a plain DXT1 .dds)");
             }
         }
 
         const std::string key = folder + tex;
         void* res = CallDdsHandler(key.c_str(), bytes.data(), uint32_t(bytes.size()));
-        uint8_t* t = res ? Rd<uint8_t*>(res, kResTexture) : nullptr;
+        uint8_t* t = res ? Rs7_SafeRead<uint8_t*>(res, kResTexture) : nullptr;
 
         if (t) {
             ++n;
             Rs7Alloc_Inc(kAkAssetTextures);
+            if (done) {
+                done->push_back(tex);
+            }
         }
 
-        if (Upto(&g_logTex, 24)) {
+        if (Rs7Log_Upto(&g_head.logTex, 24)) {
             Rs7Log("assetload: texture %s (%u bytes) registered by the game's dds handler as \"%s\": resource %p, "
                    "texture %p "
-                   "(renderer data %p)%s%08lX at %p",
-                   tex.c_str(), unsigned(bytes.size()), key.c_str(), res, t, t ? Rd<void*>(t, 0x2C) : nullptr,
-                   g_ddsFaultCode ? " - FAULT " : " - fault ", g_ddsFaultCode, reinterpret_cast<void*>(g_ddsFaultAt));
+                   "(renderer data %p)",
+                   tex.c_str(), unsigned(bytes.size()), key.c_str(), res, t,
+                   t ? Rs7_SafeRead<void*>(t, 0x2C) : nullptr);
+            if (g_head.ddsFaultCode) {
+                Rs7Log("assetload: texture %s: dds handler FAULT %08lX at %p - not called again", tex.c_str(),
+                       g_head.ddsFaultCode, reinterpret_cast<void*>(g_head.ddsFaultAt));
+            }
         }
         // The resource is kept (never released), like the merged model's.
     }
@@ -404,24 +374,24 @@ void LogTextureList(const char* when) {
     auto* cs = reinterpret_cast<CRITICAL_SECTION*>(g_rs7_texlist_cs);
 
     EnterCriticalSection(cs);
-    uintptr_t p = Rd<uintptr_t>(reinterpret_cast<void*>(g_rs7_texlist_head), 0);
+    uintptr_t p = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(g_rs7_texlist_head), 0);
 
     for (; p && nodes < 8192; ++nodes) {
-        const char* file = Rd<const char*>(reinterpret_cast<void*>(p), 0x3C);
+        const char* file = Rs7_SafeRead<const char*>(reinterpret_cast<void*>(p), 0x3C);
         char buf[64] = {};
 
         if (file) {
-            rs7s7d::SafeCopy(buf, file, sizeof buf - 1);
+            Rs7_SafeCopyZero(buf, file, sizeof buf - 1);
         }
 
         if (std::strstr(buf, "rs7hs") && n < 24) {
             found[n].obj = p;
-            found[n].rd = Rd<uintptr_t>(reinterpret_cast<void*>(p), 0x2C);
+            found[n].rd = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x2C);
             std::memcpy(found[n].file, buf, sizeof buf);
             ++n;
         }
 
-        p = Rd<uintptr_t>(reinterpret_cast<void*>(p), 0x34);
+        p = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x34);
     }
 
     LeaveCriticalSection(cs);

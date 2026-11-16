@@ -6,17 +6,17 @@
 #include "hook_rules.h"
 #include "platform/midhook.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstring>
 
 extern "C" void __cdecl Rs7_Mid_GKC(Rs7Mid::Context& c);
 extern "C" void __cdecl Rs7_Mid_GKM(Rs7Mid::Context& c);
 
 TEST(clite_desired_count_follows_the_manifest_keys) {
-    CHECK_EQ(rs7clite::Desired(false, false, false), 6u);
-    CHECK_EQ(rs7clite::Desired(false, true, true), 6u);  // Rs7String7 alone is not an arrangement width
-    CHECK_EQ(rs7clite::Desired(true, false, false), 7u);
-    CHECK_EQ(rs7clite::Desired(true, true, false), 7u);  // 8 only with [neck] eight
-    CHECK_EQ(rs7clite::Desired(true, true, true), 8u);
+    CHECK_EQ(rs7clite::Desired(false, false), 6u);
+    CHECK_EQ(rs7clite::Desired(false, true), 6u);  // Rs7String7 alone is not an arrangement width
+    CHECK_EQ(rs7clite::Desired(true, false), 7u);
+    CHECK_EQ(rs7clite::Desired(true, true), 8u);
 }
 
 TEST(clite_peg_word_keeps_psq1_seven_with_native_pegset) {
@@ -35,6 +35,16 @@ TEST(clite_headstock_loop_stays_in_the_six_slots) {
     CHECK_EQ(rs7clite::HeadstockLoopCount(8), 6u);
     CHECK_EQ(rs7clite::HeadstockLoopCount(0), 0u);
     CHECK_EQ(rs7clite::HeadstockLoopCount(0x107), 6u);  // only the byte counts
+    CHECK_EQ(rs7clite::HeadstockLoopCount(5, 2), 4u);   // extended bass: the stock model's four segments
+    CHECK_EQ(rs7clite::HeadstockLoopCount(6, 2), 4u);
+    CHECK_EQ(rs7clite::BassDesired(false, false), 4u);
+    CHECK_EQ(rs7clite::BassDesired(true, false), 5u);
+    CHECK_EQ(rs7clite::BassDesired(true, true), 6u);
+    CHECK_EQ(rs7clite::BassDesired(false, true), 4u);  // high C alone is not a bass width
+    CHECK_EQ(rs7clite::BassCountFor(5, 0), 5u);
+    CHECK_EQ(rs7clite::BassCountFor(5, 1), 5u);  // co-op: player 2's bass is built for its own arrangement
+    CHECK_EQ(rs7clite::BassCountFor(6, 2), 4u);  // unknown player
+    CHECK_EQ(rs7clite::BassCountFor(7, 0), 4u);
     CHECK_EQ(rs7clite::kGKH1Resume, 0x58E1BAu + 5u);
     CHECK_EQ(rs7clite::kGKH2Resume, 0x58E36Du + 6u);
 }
@@ -48,21 +58,25 @@ TEST(clite_rebuild_only_from_the_song_select_caller) {
 TEST(clite_mode_entries_rebuild_a_seven_built_guitar_back_to_six) {
     using rs7clite::RebuildTarget;
 
-    // Song select: either way, player 0 only, only on a change.
+    // Song select: either way, either player, only on a change.
     CHECK_EQ(RebuildTarget(0x697A24, 0, 7, 6), 7u);
     CHECK_EQ(RebuildTarget(0x697A24, 0, 6, 7), 6u);
     CHECK_EQ(RebuildTarget(0x697A24, 0, 7, 7), 0u);
-    CHECK_EQ(RebuildTarget(0x697A24, 1, 7, 6), 0u);
+    CHECK_EQ(RebuildTarget(0x697A24, 1, 7, 6), 7u);
+    CHECK_EQ(RebuildTarget(0x697A24, 2, 7, 6), 0u);
 
     // Mode entries: down to 6 only.
-    for (uint32_t r : rs7clite::kRetModeEntries) {
+    for (const auto& entry : rs7clite::kRetModeEntries) {
+        const uint32_t r = entry.ret;
+
         CHECK(rs7clite::ModeEntry(r) != nullptr);
         CHECK_EQ(RebuildTarget(r, 0, 6, 7), 6u);
         CHECK_EQ(RebuildTarget(r, 0, 6, 8), 6u);
         CHECK_EQ(RebuildTarget(r, 0, 6, 6), 0u);  // already six: nothing
         CHECK_EQ(RebuildTarget(r, 0, 7, 6), 0u);  // never up from a mode entry
         CHECK_EQ(RebuildTarget(r, 0, 7, 7), 0u);  // a tuning with Rs7 keys keeps the build
-        CHECK_EQ(RebuildTarget(r, 1, 6, 7), 0u);  // player 1: GKT only rebuilds player 0
+        CHECK_EQ(RebuildTarget(r, 1, 6, 7), 6u);  // player 2's co-op build goes back to six as well
+        CHECK_EQ(RebuildTarget(r, 2, 6, 7), 0u);
     }
 
     CHECK(std::strcmp(rs7clite::ModeEntry(0x6F44BE), "Session Mode") == 0);
@@ -90,7 +104,8 @@ TEST(clite_tuner_menu_rebuilds_to_the_picked_tuning_before_the_tuner) {
         CHECK_EQ(RebuildTarget(r, 0, 7, 6), 7u);  // a tuning with Rs7String6: up to 7
         CHECK_EQ(RebuildTarget(r, 0, 6, 6), 0u);  // unchanged: nothing
         CHECK_EQ(RebuildTarget(r, 0, 7, 7), 0u);
-        CHECK_EQ(RebuildTarget(r, 1, 6, 7), 0u);               // player 1 never
+        CHECK_EQ(RebuildTarget(r, 1, 6, 7), 6u);               // player 2's guitar as well (co-op)
+        CHECK_EQ(RebuildTarget(r, 2, 6, 7), 0u);               // unknown player: never
         CHECK_EQ(RebuildTarget(r, 0, 6, 7, true), 0u);         // a live tuner holds the guitar: never
         CHECK_EQ(RebuildTarget(r, 0, 6, 7, false, true), 0u);  // a song is loaded: never under it
     }
@@ -165,7 +180,7 @@ TEST(clite_and_publish_go_when_native_pegs_are_lost_at_runtime) {
 }
 
 TEST(clite_sites_follow_the_switch_and_replace_psq1) {
-    const uintptr_t saved = g_rs7_clite;
+    rs7test::Restore restore_g_rs7_clite(g_rs7_clite);
 
     Rs7_ResetFeatureFailures();
     const char* ids[] = {"GKC", "GKE", "GKM", "GKL", "GKT", "GKH1", "GKH2"};
@@ -205,7 +220,6 @@ TEST(clite_sites_follow_the_switch_and_replace_psq1) {
 
     CHECK(std::strcmp(Rs7_FeatureName(Rs7Feature::Clite), "C-lite") == 0);
     Rs7_ResetFeatureFailures();
-    g_rs7_clite = saved;
 }
 
 TEST(clite_build_count_of_reads_the_players_profile) {
@@ -268,23 +282,25 @@ TEST(clite_and_the_native_ports_fail_together) {
     g_rs7_native_strings = ss;
 }
 
-// Review F4 (1.0 scope): only player 0's guitar is built with 7/8 strings.
-TEST(clite_player_one_is_never_built_with_seven_or_eight) {
+// Local co-op: each player's guitar is built for that player's arrangement; an unknown player stays at six.
+TEST(clite_each_player_is_built_for_its_own_arrangement) {
     using rs7clite::BuildCountFor;
 
     CHECK_EQ(BuildCountFor(7, 0), 7u);
     CHECK_EQ(BuildCountFor(8, 0), 8u);
     CHECK_EQ(BuildCountFor(6, 0), 6u);
     CHECK_EQ(BuildCountFor(9, 0), 6u);
+    CHECK_EQ(BuildCountFor(7, 1), 7u);
+    CHECK_EQ(BuildCountFor(8, 1), 8u);
+    CHECK_EQ(BuildCountFor(9, 1), 6u);
 
     for (unsigned d : {6u, 7u, 8u}) {
-        CHECK_EQ(BuildCountFor(d, 1), 6u);
         CHECK_EQ(BuildCountFor(d, 2), 6u);
     }
 }
 
 TEST(clite_gkc_writes_six_for_a_profile_that_is_not_player_zeros) {
-    const uintptr_t sC = g_rs7_clite, sD = g_rs7_clite_desired, sM = g_rs7_clite_mgr, sP = g_rs7_native_pegset;
+    const uintptr_t sC = g_rs7_clite, sD = g_rs7_clite_desired[0], sM = g_rs7_clite_mgr, sP = g_rs7_native_pegset;
 
     g_rs7_native_pegset = 1;
     uint8_t profile[0x40] = {};
@@ -296,7 +312,7 @@ TEST(clite_gkc_writes_six_for_a_profile_that_is_not_player_zeros) {
     c.ebx = 0x1000;
 
     for (unsigned desired : {7u, 8u}) {
-        g_rs7_clite_desired = desired;
+        g_rs7_clite_desired[0] = desired;
         frame[3] = 0;  // player 0: the desired count
         Rs7_Mid_GKM(c);
         c.jump = 0;
@@ -315,7 +331,7 @@ TEST(clite_gkc_writes_six_for_a_profile_that_is_not_player_zeros) {
     }
 
     g_rs7_clite = sC;
-    g_rs7_clite_desired = sD;
+    g_rs7_clite_desired[0] = sD;
     g_rs7_clite_mgr = sM;
     g_rs7_native_pegset = sP;
 }
@@ -323,7 +339,9 @@ TEST(clite_gkc_writes_six_for_a_profile_that_is_not_player_zeros) {
 TEST(clite_mode_entry_normalises_a_seven_built_second_slot) {
     using rs7clite::NormaliseSlot1;
 
-    for (uint32_t r : rs7clite::kRetModeEntries) {
+    for (const auto& entry : rs7clite::kRetModeEntries) {
+        const uint32_t r = entry.ret;
+
         CHECK(NormaliseSlot1(r, 7));
         CHECK(NormaliseSlot1(r, 8));
         CHECK(!NormaliseSlot1(r, 6));  // single player / a six-built second slot: nothing, byte-identical

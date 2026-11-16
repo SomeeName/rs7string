@@ -10,6 +10,7 @@ void* operator new(size_t n) {
 }
 void operator delete(void* p) noexcept { std::free(p); }
 #include "model/extblock.cpp"
+#include "platform/safecopy.cpp"  // Rs7_SafeCopy* (the shared safe-copy helpers)
 #include "features/nslot/hooks_extblock.cpp"
 void Rs7Log(const char*, ...) {}
 extern "C" void __cdecl Rs7Mid_Fldcw(uint32_t) {}  // midhook_thunks.asm (Rs7Mid::GameFcw in XB1)

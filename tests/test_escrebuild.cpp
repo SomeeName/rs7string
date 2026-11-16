@@ -4,6 +4,7 @@
 #include "features/string7/string7.h"
 #include "features/tuner/tuner.h"
 #include "test.h"
+#include "testutil.h"
 #include <cstdint>
 #include <cstring>
 
@@ -18,7 +19,9 @@ TEST(escrebuild_tuner_cancel_is_not_a_mode_entry) {
     CHECK_EQ(RebuildTarget(rs7clite::kRetTunerCancel, 0, 6, 8), 0u);
     CHECK_EQ(sizeof rs7clite::kRetModeEntries / sizeof rs7clite::kRetModeEntries[0], size_t(8));
 
-    for (uint32_t r : rs7clite::kRetModeEntries) {
+    for (const auto& entry : rs7clite::kRetModeEntries) {
+        const uint32_t r = entry.ret;
+
         CHECK(r != rs7clite::kRetTunerCancel);
     }
 
@@ -67,7 +70,7 @@ TEST(escrebuild_tuners_holding_reads_the_manager_slots) {
 }
 
 TEST(escrebuild_guitar_gone_drops_every_per_guitar_state) {
-    const uintptr_t was = g_rs7_asset_on;
+    rs7test::Restore restore_g_rs7_asset_on(g_rs7_asset_on);
 
     g_rs7_asset_on = 1;
     Rs7Alloc_ResetForTests();
@@ -96,5 +99,4 @@ TEST(escrebuild_guitar_gone_drops_every_per_guitar_state) {
     CHECK_EQ(Rs7Asset_LiveHeads(), 0);
     CHECK_EQ(Rs7Alloc_Live(kAkHeadSlots), 0);
     Rs7Alloc_ResetForTests();
-    g_rs7_asset_on = was;
 }

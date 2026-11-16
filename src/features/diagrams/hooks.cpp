@@ -1,9 +1,11 @@
-// Chord-diagram glue: the DGB / DGM / DGS callbacks (hooks_stubs.cpp) write the keys through the game's own
+// Chord-diagram glue: the DGB / DGM / DGS callbacks (hooks_mid.cpp) write the keys through the game's own
 // dictionary functions (X_D* refs) and bind each SNG song's attribute dictionary to it.
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "platform/config.h"
 #include "platform/log.h"
+#include "platform/safecopy.h"
+#include "platform/seh.h"
 #include <windows.h>
 #include <algorithm>
 
@@ -24,9 +26,17 @@ using Method = void*(__thiscall*)(void*);
 using Find = void*(__thiscall*)(void*, const char*);
 using Ref = void(__thiscall*)(void*);
 
+// AddRef (0) / Release (4) through the object's vtable. Guarded: Rs7Diagram_Bind / _Drop call it while holding
+// g_bindingLock, and a fault caught further up (Rs7Mid_Guard) would leave the lock held.
 void RefOp(void* p, int offset) {
-    if (p) {
+    if (!p) {
+        return;
+    }
+
+    __try {
         reinterpret_cast<Ref>((*reinterpret_cast<uintptr_t**>(p))[offset / 4])(p);
+    } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER
+                                                                 : EXCEPTION_CONTINUE_SEARCH) {
     }
 }
 
@@ -38,22 +48,55 @@ struct Binding {
 Binding g_bindings[kRs7NsEntries];
 SRWLOCK g_bindingLock = SRWLOCK_INIT;
 
+// The game objects below are reached from mid-hook callbacks (asm thunks, no SEH frame): every vtable call and raw
+// read sits in an __try so a stale or foreign object yields "not found" instead of a crash.
 void* Dictionary(void* p) {
-    return p ? reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(p))[0x5c / 4])(p) : nullptr;
-}
-
-bool Number(void* node, int* out) {
-    if (!node) {
-        return false;
+    if (!p) {
+        return nullptr;
     }
 
-    void* number = reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(node))[0x54 / 4])(node);
+    __try {
+        return reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(p))[0x5c / 4])(p);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return nullptr;
+    }
+}
+
+// A dictionary node's number object (node vtable +54h); null for a null node or a fault.
+void* NodeNumberObject(void* node) {
+    if (!node) {
+        return nullptr;
+    }
+
+    __try {
+        return reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(node))[0x54 / 4])(node);
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return nullptr;
+    }
+}
+
+// The chord's "ChordId" node (chord vtable +18h); null for a fault.
+void* ChordIdNode(void* chord) {
+    __try {
+        return reinterpret_cast<Find>((*reinterpret_cast<uintptr_t**>(chord))[0x18 / 4])(chord, "ChordId");
+    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return nullptr;
+    }
+}
+
+// A dictionary node's number (node vtable +54h, the double at +8) as an integer in [-1, max].
+bool NodeNumber(void* node, double max, int* out) {
+    void* number = NodeNumberObject(node);
     if (!number) {
         return false;
     }
 
-    double d = *reinterpret_cast<double*>(static_cast<uint8_t*>(number) + 8);
-    if (!(d >= -1 && d <= 0x7fffffff) || d != int(d)) {
+    double d = 0;
+    if (!Rs7_SafeCopy(&d, static_cast<uint8_t*>(number) + 8, sizeof d)) {
+        return false;
+    }
+
+    if (!(d >= -1 && d <= max) || d != int(d)) {
         return false;
     }
 
@@ -68,9 +111,9 @@ bool LoadedManifest(void* attributes, void* chord, rs7diagram::Shape* shape) {
         return false;
     }
 
-    void* node = reinterpret_cast<Find>((*reinterpret_cast<uintptr_t**>(chord))[0x18 / 4])(chord, "ChordId");
+    void* node = ChordIdNode(chord);
     int id = -1;
-    if (!Number(node, &id) || id < 0) {
+    if (!NodeNumber(node, 0x7fffffff, &id) || id < 0) {
         return false;
     }
 
@@ -137,8 +180,8 @@ void GamePut(void* object, const char* text, int value) {
 }
 
 int ArrayCount(void* array) {
-    auto a = static_cast<uintptr_t*>(array);
-    if (!a || a[5] < a[4] || (a[5] - a[4]) % 4) {
+    uintptr_t a[6] = {};
+    if (!array || !Rs7_SafeCopy(a, array, sizeof a) || a[5] < a[4] || (a[5] - a[4]) % 4) {
         return 0;
     }
 
@@ -150,24 +193,9 @@ bool ArrayNumber(void* array, int i, int* value) {
         return false;
     }
 
-    void* node = reinterpret_cast<void**>(static_cast<uintptr_t*>(array)[4])[i];
-    if (!node) {
-        return false;
-    }
+    const auto begin = Rs7_SafeRead<uintptr_t>(array, 4 * sizeof(uintptr_t));
 
-    void* num = reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(node))[0x54 / 4])(node);
-    if (!num) {
-        return false;
-    }
-
-    double d = *reinterpret_cast<double*>(static_cast<uint8_t*>(num) + 8);
-    if (!(d >= -1 && d <= 255) || d != int(d)) {
-        return false;
-    }
-
-    *value = int(d);
-
-    return true;
+    return NodeNumber(Rs7_SafeRead<void*>(reinterpret_cast<const void*>(begin), size_t(i) * sizeof(void*)), 255, value);
 }
 }  // namespace
 
@@ -179,7 +207,8 @@ extern "C" void __cdecl Rs7Diagram_Loaded(void** holder, const uint8_t* tpl) {
     rs7diagram::Shape shape;
     const uint8_t* t8 = Rs7Ns_AsT8(tpl);
 
-    // Some lesson callers pass a stock-vector pointer directly, bypassing TP13.
+    // Some lesson callers pass a stock-vector pointer directly, bypassing TP13. This mirrors Rs7Ns_TplRecord
+    // (features/nslot/hooks.cpp) in reverse: stock template address -> T8 record.
     if (!t8) {
         for (const auto& e : g_rs7_ns) {
             uintptr_t p = reinterpret_cast<uintptr_t>(tpl);

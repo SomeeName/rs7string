@@ -1,6 +1,7 @@
 #include "features/string7/string7.h"
 #include "platform/log.h"
 #include "test.h"
+#include "testutil.h"
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -136,7 +137,7 @@ TEST(s7_mask_backfill_reads_the_song_sections) {
 
     std::memcpy(song + 0xF4, &b, 4);
     std::memcpy(song + 0xF8, &e, 4);
-    const uintptr_t on = g_rs7_s7_on;
+    rs7test::Restore restore_g_rs7_s7_on(g_rs7_s7_on);
 
     g_rs7_s7_on = 0;
     Rs7_S7MaskBackfill(song, 5);
@@ -147,7 +148,6 @@ TEST(s7_mask_backfill_reads_the_song_sections) {
     Rs7_S7MaskBackfill(song, 5);
     CHECK_EQ(sec[1 * 0x58 + 0x34 + 5], 0x40);
     CHECK_EQ(sec[0 * 0x58 + 0x34 + 5], 0);
-    g_rs7_s7_on = on;
 }
 
 // ---- N5/N6 placement (run 7 regression: S7 built in a song frame stayed at the pool's parking

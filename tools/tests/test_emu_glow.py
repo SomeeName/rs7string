@@ -25,11 +25,10 @@ from unicorn.x86_const import (
 
 from emu_common import DLL
 from callin_oracle import build_callin
+from emu_harness import needs_emu
 from emu_harness import ALL_REGS, DATA, RET_MAGIC, SNAPSHOT, STACK, Emu, site_va
 
-pytestmark = pytest.mark.skipif(
-    not DLL.exists() or not (SNAPSHOT / "memory.bin").exists(), reason="needs built DLL and snapshot"
-)
+pytestmark = needs_emu
 
 LOAD, COPY_END = 0x544384, 0x54439C  # the glow pointer load .. the first instruction after the RGB copy
 MGR = DATA + 0x10000

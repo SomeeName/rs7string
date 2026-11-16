@@ -32,10 +32,6 @@ void Rs7Alloc_Configure(const wchar_t* iniPath) {
               : "off");
 }
 
-bool Rs7Alloc_Enabled() {
-    return g_enabled != 0;
-}
-
 void Rs7Alloc_SetEnabledForTests(bool on) {
     InterlockedExchange(&g_enabled, on ? 1 : 0);
 }
@@ -145,7 +141,8 @@ void Rs7Alloc_Snapshot(const char* when) {
     }
 
     try {
-        const int song = std::strcmp(when, "song start") == 0 ? int(InterlockedIncrement(&g_songs)) : int(g_songs);
+        const int song = std::strcmp(when, "song start") == 0 ? int(InterlockedIncrement(&g_songs))
+                                                              : int(InterlockedCompareExchange(&g_songs, 0, 0));
 
         Rs7Log("%s", Rs7Alloc_Line(when, song).c_str());
     } catch (...) {

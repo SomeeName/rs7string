@@ -9,7 +9,7 @@
 // group "psarc", kRs7PsarcSites):
 //   PP_SNGD 0x558CD4  call SNG decrypt -> Rs7_Stub_PP_SNGD: SNG flags 1 (plain) copies, else decrypts
 //   PP_SNGF 0x558C1A  cmp [esp+68h],3 (SNG flags) -> also accepts 1
-//   PP_TOC  0x8A3643  TOC decrypt block -> skipped when PSARC archiveFlags bit 4 (encrypted TOC) is clear
+//   PP_TOC  0x8A3643  TOC decrypt block -> skipped when PSARC archiveFlags & 4 (encrypted TOC) is clear
 //
 // Coexistence: each site is Original (stock bytes), Ours (our jmp/call) or Foreign (anything else:
 // an enabler with the PR patched first). Any Foreign -> all three are left alone ("provided by the CDLC
