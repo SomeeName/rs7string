@@ -21,6 +21,7 @@
 #include "features/string7/string7.h"
 #include "features/strings/strings.h"
 #include "features/testdrive/testdrive.h"
+#include "features/tones/tones.h"
 #include "features/tuner/tuner.h"
 #include "hook_rules.h"
 #include "platform/isolate.h"
@@ -36,7 +37,7 @@ const RsxrHookTable* const kTables[] = {
     &kRsxrNextgridHooks,   &kRsxrFretHooks,          &kRsxrStringsHooks,     &kRsxrSceneHooks,
     &kRsxrString7Hooks,    &kRsxrPitchHooks,         &kRsxrPitchCoreHooks,   &kRsxrNslotHooks,
     &kRsxrChordFrameHooks, &kRsxrFretgridCoreHooks,  &kRsxrTestVariantHooks, &kRsxrArrangementHooks,
-    &kRsxrNslotEightHooks, &kRsxrMenuLoadHooks,      &kRsxrNativeHooks,
+    &kRsxrNslotEightHooks, &kRsxrMenuLoadHooks,      &kRsxrNativeHooks,      &kRsxrToneHooks,
 #if RSXR_PRIVATE
     &kRsxrPrivateHooks,  // the private extras (src/features/extras/extras.h)
 #endif

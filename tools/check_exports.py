@@ -43,6 +43,28 @@ REQUIRED_DATA = [
     "RsxrMid_Thunk",
     "RsxrMid_ThunkLight",
     "RsxrMid_ThunkSse",
+    # Tone sites are installed by emu_harness.py, including both callbacks of each wrapper.
+    "Rsxr_Mid_ToneLoad",
+    "Rsxr_Mid_ToneAutoBefore",
+    "Rsxr_Mid_ToneOtherBefore",
+    "Rsxr_Mid_ToneAutoAfter",
+    "Rsxr_Mid_ToneOtherAfter",
+    "Rsxr_Mid_ToneRefreshAfter",
+    "Rsxr_Mid_ToneRegisterAfter",
+    "g_rsxr_tone_apply",
+    "g_rsxr_tone_manager",
+    "g_rsxr_tone_register",
+    "g_rsxr_tone_destroy",
+    "g_rsxr_tone_context",
+    "Rsxr_Mid_TonePlanBefore",
+    "Rsxr_Mid_TonePlanAfter",
+    "Rsxr_Mid_TonePlanField",
+    "Rsxr_Mid_TonePlanExtension",
+    "Rsxr_Mid_TonePlanBound",
+    "Rsxr_Mid_TonePlanEdit",
+    "g_rsxr_resume_TonePlanField",
+    "g_rsxr_resume_TonePlanExtension",
+    "g_rsxr_resume_TonePlanBound",
 ]
 FORBIDDEN_IMPORTS = ["d3d9.dll"]
 IMAGE_BASE = 0x5E000000

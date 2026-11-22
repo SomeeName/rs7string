@@ -91,17 +91,20 @@ TEST(ref_sites_are_never_written) {
     }
 
     CHECK_EQ(refs,
-             12 + kRsxrPrivateRefSites);  // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
+             14 + kRsxrPrivateRefSites);  // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
                                           // + the private extras' refs (src/features/extras/extras.h)
                                           // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
                                           // + X_DDSH (the 7-string model's textures)
                                           // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
+                                          // + ToneManager (extended tone apply)
+                                          // + ToneContext (stock Tone Plan custom overrides)
                                           // + X_TBASS (the tuner's bass open MIDI table, extended bass)
-    CHECK_EQ(callRefs, 38);  // MenuMovieRequest (menu loading retry) + X_SPAWN, X_ADV3 (neck targets, N9) + the string
+    CHECK_EQ(callRefs, 41);  // MenuMovieRequest (menu loading retry) + X_SPAWN, X_ADV3 (neck targets, N9) + the string
                              // object calls the native strings use
                              // + X_WORLD, X_ROOT (entity root nodes, features/scene)
                              // + X_SETSCALE (F1/F2 fret bars), X_EULER (peg placement)
                              // + X_PEGSELECT, X_PEGPLACE, X_PEGLAYER (N-slot PegSet)
+                             // + ToneRegisterCall, ToneResourceDestroy (extended tone registration)
                              // + X_PULSE, X_LSPAWN, X_DESPAWN, X_BLACK, X_PEGRESET, X_MSG, X_FADEIN,
                              //   X_FADEOUT (tuner) + X_FIXSTR, X_STRPARAMS (edited headstock)
                              // + X_DETACH (the 7th string's ghost, issue #16)
@@ -110,7 +113,7 @@ TEST(ref_sites_are_never_written) {
                              // + X_STRCON, X_STRASG, X_LOC, X_STRDTOR (tuning names, issue #15)
                              // + X_MSORT, X_MINS1, X_MINS2 (the N-slot chord matcher's sort)
                              // + X_EVREL (the tracker's eval release, RL1/RL2)
-                             // + X_ATTACH (native GuitarStrings, issue #18 stage 4)
+                             // + X_ATTACH (native GuitarStrings, issue #18 stage 4), ToneApply (26 tone slots)
 }
 
 TEST(r7_r7b_n9_are_gone_the_native_grid_replaces_them) {

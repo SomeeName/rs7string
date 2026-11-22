@@ -4,6 +4,14 @@
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · **Changelog**
 
+## Unreleased
+
+### Added
+
+- Charts in the native format can use 26 tone slots, A through Z, plus Base. The game itself only has Base and A
+  through D. Tone changes to the new slots work like the stock ones. A test tool builds a chart with six tones and
+  20 tone changes from your own package.
+
 ## 1.0.0-beta.5
 
 ### Changed

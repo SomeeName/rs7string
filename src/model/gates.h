@@ -21,3 +21,4 @@ constexpr uint32_t kRsxrGateTestVariant = 1u << 13;
 constexpr uint32_t kRsxrGateGlow = 1u << 14;
 constexpr uint32_t kRsxrGateDiagrams = 1u << 15;
 constexpr uint32_t kRsxrGateMenuLoad = 1u << 16;
+constexpr uint32_t kRsxrGateTones = 1u << 17;

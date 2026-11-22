@@ -9,6 +9,10 @@ that it works.
 
 ## Why
 
+The tone-slot loader implementation and static site evidence are recorded in
+[tone research notes](agents/tones-notes.md). The writer fields are specified in
+[Tone slots A through Z](release/NATIVE-FORMAT.md#tone-slots-a-through-z).
+
 In the native format, the string order is positional throughout the package. The game cannot read this format
 directly, so RS Extended Range translates it while loading. The result is stock records plus an internal
 [extension block](architecture/extension-block.md) and internal manifest keys. Tools never write that internal form.

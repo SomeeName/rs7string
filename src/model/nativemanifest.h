@@ -22,7 +22,9 @@ size_t JsonExtent(const char* text, size_t limit);
 
 // False when `text` (a manifest .json or .hsan, `size` bytes, no terminator needed) has no native arrangement or is
 // not JSON this scanner accepts: *out is untouched and the game parses the original. True: *out is the whole text
-// with every native arrangement in the internal form and the marker removed. An arrangement that is marked but
+// with every native arrangement in the internal form and the marker removed. Valid arrangements with nonempty
+// Tone_E..Tone_Z names get the internal RsxrToneSlots=26 field for the tone loader; writers never emit it.
+// An arrangement that is marked but
 // invalid (unknown version, a string count the instrument does not have, Tuning keys that are not
 // exactly string0..stringN-1 with number values) gets a six-entry Tuning from what is there, so the stock readers
 // never meet a seventh "stringI" key; it counts in stats->bad. No C++ exception escapes.

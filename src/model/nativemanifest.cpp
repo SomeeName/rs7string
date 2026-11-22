@@ -308,6 +308,28 @@ std::string Tuning(const Scanner& sc, const Object& arrangement, const Object& m
     return out + "}";
 }
 
+void ToneMarker(const Scanner& sc, const Object& o, const Member& marker, bool valid, std::vector<Edit>& edits,
+                size_t markerEdit) {
+    bool extraTone = false, reserved = false;
+
+    for (const Member& m : o.members) {
+        const std::string_view key = sc.Text(m.keyBegin, m.keyEnd);
+        const std::string_view value = sc.Text(m.valueBegin, m.valueEnd);
+
+        extraTone |= key.size() == 6 && key.substr(0, 5) == "Tone_" && key[5] >= 'E' && key[5] <= 'Z' &&
+                     value.size() > 2 && value.front() == '"' && value.back() == '"';
+
+        if (key == "RsxrToneSlots") {
+            reserved = true;
+            edits.push_back({m.valueBegin, m.valueEnd, "0"});
+        }
+    }
+
+    if (valid && extraTone && !reserved) {
+        edits[markerEdit] = {marker.begin, marker.valueEnd, "\"RsxrToneSlots\": 26"};
+    }
+}
+
 bool Rewrite(const char* text, size_t size, std::string* out, ManifestStats* stats) {
     static const Object kNone;
     Scanner sc(text, size);
@@ -324,7 +346,8 @@ bool Rewrite(const char* text, size_t size, std::string* out, ManifestStats* sta
             continue;
         }
 
-        // The marker goes, with the comma that separated it from its neighbour.
+        // Remove the authoring marker; an eligible tone arrangement replaces this edit below.
+        const size_t markerEdit = edits.size();
         const size_t index = static_cast<size_t>(marker - o.members.data());
 
         if (index + 1 < o.members.size()) {
@@ -362,6 +385,8 @@ bool Rewrite(const char* text, size_t size, std::string* out, ManifestStats* sta
             valid = valid && one;
             edits.push_back({m.valueBegin, m.valueEnd, std::move(current)});
         }
+
+        ToneMarker(sc, o, *marker, valid, edits, markerEdit);
 
         ++(valid ? found.rewritten : found.bad);
     }

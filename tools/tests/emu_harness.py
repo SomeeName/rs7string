@@ -201,6 +201,14 @@ MID_CALLBACKS = {
     "R4": "Rsxr_Mid_R4",
     "S3": "Rsxr_Mid_S3",
     "PT1": "Rsxr_Mid_PT1",
+    # Tone slots (features/tones/registration.cpp): all full mode; Wrap entries name the after callback.
+    "ToneLoad": "Rsxr_Mid_ToneLoad",
+    "ToneAuto": "Rsxr_Mid_ToneAutoAfter",
+    **{sid: "Rsxr_Mid_ToneOtherAfter" for sid in ("ToneSetup", "ToneSeek", "ToneResume", "ToneOverride")},
+    "ToneRefresh": "Rsxr_Mid_ToneRefreshAfter",
+    "ToneRegister": "Rsxr_Mid_ToneRegisterAfter",
+    "TonePlanBuild": "Rsxr_Mid_TonePlanAfter",
+    **{sid: f"Rsxr_Mid_{sid}" for sid in ("TonePlanField", "TonePlanExtension", "TonePlanBound", "TonePlanEdit")},
 }
 
 
@@ -219,6 +227,16 @@ CALL_WRAP: dict[str, tuple[int, int, int, str | None, str | None]] = {
     "GIA1": (2, 0, 0, "Rsxr_Mid_GIA1Before", "Rsxr_Mid_GIA1"),
     "GSC1": (1, 4, 0, None, "Rsxr_Mid_GSC1"),
     **{sid: (n, 0, 0, f"Rsxr_Mid_{sid}Before", f"Rsxr_Mid_{sid}") for sid, n in (("TJ", 2), ("TU", 0), ("TN", 2))},
+    # Timeline accessor 0x559DB0: (time, out id), ret 8 (docs/agents/tones-notes.md).
+    "ToneAuto": (2, 8, 0, "Rsxr_Mid_ToneAutoBefore", "Rsxr_Mid_ToneAutoAfter"),
+    **{
+        sid: (2, 8, 0, "Rsxr_Mid_ToneOtherBefore", "Rsxr_Mid_ToneOtherAfter")
+        for sid in ("ToneSetup", "ToneSeek", "ToneResume", "ToneOverride")
+    },
+    # Function entry 0x7DF400: (session, force), ret 8 at 0x7DF697; no before callback.
+    "ToneRefresh": (2, 8, 0, None, "Rsxr_Mid_ToneRefreshAfter"),
+    "ToneRegister": (1, 4, 0, None, "Rsxr_Mid_ToneRegisterAfter"),
+    "TonePlanBuild": (2, 8, 0, "Rsxr_Mid_TonePlanBefore", "Rsxr_Mid_TonePlanAfter"),
 }
 # Sites registered with RsxrHook::midMode = RsxrMid::Mode::Light; keep in sync with the registration tables. Their
 # entries are built with RsxrMid_BuildLight, and test_midhook_emu.py checks their callbacks for x87/MMX/SSE code.
@@ -304,60 +322,8 @@ def mid_mode(sid: str) -> int:
 
 
 JMP_BUILDERS = ("RsxrMid_Build", "RsxrMid_BuildLight", "RsxrMid_BuildSse")  # by mode
-# Ref sites (never written): the variable Rsxr_Startup stores the site's dword in.
-REF_VARS = {
-    "X_DKEY": "g_rsxr_dkey",
-    "X_DNUMBER": "g_rsxr_dnumber",
-    "X_DSET": "g_rsxr_dset",
-    "X_DDROP": "g_rsxr_ddrop",
-    "X_ATTACH": "g_rsxr_fn_attach",
-    "X_CM": "g_rsxr_colormgr",
-    "X_TCS": "g_rsxr_texlist_cs",
-    "X_THEAD": "g_rsxr_texlist_head",
-    "X_SPAWN": "g_rsxr_fn_spawn",
-    "X_ADV3": "g_rsxr_fn_adv3",
-    "X_ALLOC": "g_rsxr_fn_alloc",
-    "X_STRCTOR": "g_rsxr_fn_strctor",
-    "X_SHAPE": "g_rsxr_fn_shape",
-    "X_SHOW": "g_rsxr_fn_show",
-    "X_DETACH": "g_rsxr_fn_detach",
-    "X_SETPOS": "g_rsxr_fn_setpos",
-    "X_SETROT": "g_rsxr_fn_setrot",
-    "X_DT": "g_rsxr_frame_global",
-    "X_WORLD": "g_rsxr_fn_world",
-    "X_ROOT": "g_rsxr_fn_root",
-    "X_SETSCALE": "g_rsxr_fn_setscale",
-    "MenuMovieRequest": "g_rsxr_menu_request",
-    "X_EULER": "g_rsxr_fn_euler",
-    "X_PEGNAMES": "g_rsxr_pegnames",
-    "X_PEGSELECT": "g_rsxr_fn_pegselect",
-    "X_PEGPLACE": "g_rsxr_fn_pegplace",
-    "X_PEGLAYER": "g_rsxr_fn_peglayer",
-    "X_TMGR": "g_rsxr_tuner_mgr",
-    "X_WTHR": "g_rsxr_wrong_const",
-    "X_FADEMGR": "g_rsxr_fade_mgr",
-    "X_FADEIN": "g_rsxr_fn_fadein",
-    "X_FADEOUT": "g_rsxr_fn_fadeout",
-    "X_FIXSTR": "g_rsxr_fn_fixstr",
-    "X_STRPARAMS": "g_rsxr_fn_strparams",
-    "X_TBASS": "g_rsxr_tuner_bassbase",
-    "X_DDSH": "g_rsxr_fn_dds",
-    "X_NFCTOR": "g_rsxr_fn_nfctor",
-    "X_NFDTOR": "g_rsxr_fn_nfdtor",
-    "X_GETDET": "g_rsxr_fn_getdet",
-    **private_features.get("EXPORTS", {}),  # the private extras
-    "X_SST": "g_rsxr_fn_sst",
-    "X_STRCON": "g_rsxr_fn_strcon",
-    "X_STRASG": "g_rsxr_fn_strasg",
-    "X_LOC": "g_rsxr_fn_loc",
-    "X_STRDTOR": "g_rsxr_fn_strdtor",
-    "X_MSORT": "g_rsxr_fn_msort",
-    "X_MINS1": "g_rsxr_fn_mins1",
-    "X_MINS2": "g_rsxr_fn_mins2",
-    "X_MCMP": "g_rsxr_fn_mcmp",
-    "X_MTAB": "g_rsxr_matcher_table",
-    "X_EVREL": "g_rsxr_fn_evrel",
-}
+from emu_refs import REF_VARS  # noqa: E402
+
 # Void cdecl loggers called by stubs that also call testable C code (NG9 -> Rsxr_NeckRow6N runs for
 # real, its once-per-song logger Rsxr_NeckLog needs Win32 and is replaced with `ret`).
 VOID_C_EXPORTS = ("Rsxr_NeckLog", "Rsxr_S7LogMask", "Rsxr_HeadLog", "Rsxr_DiagNoteHead", "RsxrPitch_FloorLog")

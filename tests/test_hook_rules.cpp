@@ -11,6 +11,7 @@
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
 #include "features/strings/strings.h"
+#include "features/tones/tones.h"
 #include "features/tuner/tuner.h"
 #include "hook_rules.h"
 #include "test.h"
@@ -24,7 +25,7 @@ uintptr_t* const kSwitches[] = {&g_rsxr_native_colours,    &g_rsxr_native_pegset
                                 &g_rsxr_native_fretgrid,   &g_rsxr_native_pitch,  &g_rsxr_native_nextgrid,
                                 &g_rsxr_diagrams,          &g_rsxr_publish_ports, &g_rsxr_native_publish,
                                 &g_rsxr_native_chordloops, &g_rsxr_native_tuner,  &g_rsxr_clite,
-                                &g_rsxr_glow_fix,          &g_rsxr_menu_retry};
+                                &g_rsxr_glow_fix,          &g_rsxr_menu_retry,    &g_rsxr_tones};
 constexpr size_t kSwitchCount = sizeof kSwitches / sizeof kSwitches[0];
 
 // Bit i: kSwitches[i] cleared.
@@ -43,6 +44,7 @@ enum : unsigned {
     sClite = 1u << 11,
     sGlow = 1u << 12,
     sMenu = 1u << 13,
+    sTones = 1u << 14,
 };
 
 constexpr unsigned G(F f) {
@@ -77,6 +79,7 @@ const Expect kCascade[] = {
     {F::Clite, true, kUnit, kUnitOff},
     {F::Glow, true, G(F::Glow), sGlow},
     {F::MenuLoad, true, G(F::MenuLoad), sMenu},
+    {F::Tones, true, G(F::Tones), sTones},
     {F::Count, false, 0, 0},
 };
 

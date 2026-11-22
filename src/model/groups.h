@@ -22,6 +22,7 @@ enum class RsxrFeature {
     Clite,
     Glow,
     MenuLoad,
+    Tones,
     Count
 };
 
