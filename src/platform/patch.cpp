@@ -11,12 +11,12 @@ struct Writable {
     bool ok;
 
     Writable(void* p_, size_t n_, DWORD protection = PAGE_EXECUTE_READWRITE) : p(p_), n(n_) {
-        ok = Rs7_Protect(p, n, protection, &old);
+        ok = Rsxr_Protect(p, n, protection, &old);
     }
 
-    Rs7WriteResult Finish(bool written) {
+    RsxrWriteResult Finish(bool written) {
         DWORD dummy;
-        const bool restored = Rs7_Protect(p, n, old, &dummy);
+        const bool restored = Rsxr_Protect(p, n, old, &dummy);
 
         FlushInstructionCache(GetCurrentProcess(), p, n);
 
@@ -24,13 +24,13 @@ struct Writable {
     }
 };
 
-Rs7CasResult FinishCas(Writable& w, bool written) {
-    const Rs7WriteResult result = w.Finish(written);
+RsxrCasResult FinishCas(Writable& w, bool written) {
+    const RsxrWriteResult result = w.Finish(written);
     if (!result.protectionRestored) {
-        return written ? Rs7CasResult::WrittenCleanupFailed : Rs7CasResult::MismatchCleanupFailed;
+        return written ? RsxrCasResult::WrittenCleanupFailed : RsxrCasResult::MismatchCleanupFailed;
     }
 
-    return written ? Rs7CasResult::Written : Rs7CasResult::Mismatch;
+    return written ? RsxrCasResult::Written : RsxrCasResult::Mismatch;
 }
 
 int32_t Rel(uintptr_t insnEnd, uintptr_t dest) {
@@ -38,7 +38,7 @@ int32_t Rel(uintptr_t insnEnd, uintptr_t dest) {
 }
 }  // namespace
 
-Rs7WriteResult Rs7_WriteBytes(uintptr_t at, const void* bytes, size_t len) {
+RsxrWriteResult Rsxr_WriteBytes(uintptr_t at, const void* bytes, size_t len) {
     Writable w(reinterpret_cast<void*>(at), len);
     if (!w.ok) {
         return false;
@@ -49,13 +49,13 @@ Rs7WriteResult Rs7_WriteBytes(uintptr_t at, const void* bytes, size_t len) {
     return w.Finish(true);
 }
 
-bool Rs7_RestoreBytes(uintptr_t at, const void* original, size_t len) {
-    const Rs7WriteResult result = Rs7_WriteBytes(at, original, len);
+bool Rsxr_RestoreBytes(uintptr_t at, const void* original, size_t len) {
+    const RsxrWriteResult result = Rsxr_WriteBytes(at, original, len);
 
     return result.protectionRestored && std::memcmp(reinterpret_cast<const void*>(at), original, len) == 0;
 }
 
-Rs7WriteResult Rs7_WriteJmp(uintptr_t site, size_t length, uintptr_t dest) {
+RsxrWriteResult Rsxr_WriteJmp(uintptr_t site, size_t length, uintptr_t dest) {
     if (length < 5 || length > 16) {
         return false;
     }
@@ -68,10 +68,10 @@ Rs7WriteResult Rs7_WriteJmp(uintptr_t site, size_t length, uintptr_t dest) {
 
     std::memcpy(buf + 1, &rel, 4);
 
-    return Rs7_WriteBytes(site, buf, length);
+    return Rsxr_WriteBytes(site, buf, length);
 }
 
-Rs7WriteResult Rs7_WriteJmpAtomic8(uintptr_t site, uintptr_t dest) {
+RsxrWriteResult Rsxr_WriteJmpAtomic8(uintptr_t site, uintptr_t dest) {
     const uintptr_t q = site & ~uintptr_t(7);
     const size_t off = site - q;
     if (off + 5 > 8) {
@@ -96,10 +96,10 @@ Rs7WriteResult Rs7_WriteJmpAtomic8(uintptr_t site, uintptr_t dest) {
     return w.Finish(InterlockedCompareExchange64(p, newv, oldv) == oldv);
 }
 
-Rs7WriteResult Rs7_WriteRel32(uintptr_t relAt, uintptr_t insnEnd, uintptr_t dest, bool atomic) {
+RsxrWriteResult Rsxr_WriteRel32(uintptr_t relAt, uintptr_t insnEnd, uintptr_t dest, bool atomic) {
     const int32_t rel = Rel(insnEnd, dest);
     if (!atomic) {
-        return Rs7_WriteBytes(relAt, &rel, 4);
+        return Rsxr_WriteBytes(relAt, &rel, 4);
     }
     if (relAt % 4 != 0) {
         return false;
@@ -115,7 +115,7 @@ Rs7WriteResult Rs7_WriteRel32(uintptr_t relAt, uintptr_t insnEnd, uintptr_t dest
     return w.Finish(true);
 }
 
-Rs7WriteResult Rs7_WritePtrAtomic(uintptr_t at, uintptr_t value, uintptr_t* old) {
+RsxrWriteResult Rsxr_WritePtrAtomic(uintptr_t at, uintptr_t value, uintptr_t* old) {
     if (at % 4 != 0) {
         return false;
     }
@@ -141,16 +141,16 @@ Rs7WriteResult Rs7_WritePtrAtomic(uintptr_t at, uintptr_t value, uintptr_t* old)
     return w.Finish(true);
 }
 
-bool Rs7_WritePtrPair(uintptr_t at, uintptr_t first, uintptr_t second, unsigned* failedSlot) {
+bool Rsxr_WritePtrPair(uintptr_t at, uintptr_t first, uintptr_t second, unsigned* failedSlot) {
     uintptr_t oldFirst = 0, oldSecond = 0;
-    const Rs7WriteResult low = Rs7_WritePtrAtomic(at, first, &oldFirst);
+    const RsxrWriteResult low = Rsxr_WritePtrAtomic(at, first, &oldFirst);
 
     if (failedSlot) {
         *failedSlot = 0;
     }
 
     if (low) {
-        const Rs7WriteResult high = Rs7_WritePtrAtomic(at + sizeof(uintptr_t), second, &oldSecond);
+        const RsxrWriteResult high = Rsxr_WritePtrAtomic(at + sizeof(uintptr_t), second, &oldSecond);
         if (high) {
             return true;
         }
@@ -159,18 +159,18 @@ bool Rs7_WritePtrPair(uintptr_t at, uintptr_t first, uintptr_t second, unsigned*
             *failedSlot = 1;
         }
         if (high.written) {
-            Rs7_WritePtrAtomic(at + sizeof(uintptr_t), oldSecond, nullptr);
+            Rsxr_WritePtrAtomic(at + sizeof(uintptr_t), oldSecond, nullptr);
         }
     }
 
     if (low.written) {
-        Rs7_WritePtrAtomic(at, oldFirst, nullptr);
+        Rsxr_WritePtrAtomic(at, oldFirst, nullptr);
     }
 
     return false;
 }
 
-bool Rs7_CasWindow(uintptr_t site, size_t n, uintptr_t* window) {
+bool Rsxr_CasWindow(uintptr_t site, size_t n, uintptr_t* window) {
     if (n == 0 || n > 8) {
         return false;
     }
@@ -192,15 +192,15 @@ bool Rs7_CasWindow(uintptr_t site, size_t n, uintptr_t* window) {
     return false;
 }
 
-Rs7CasResult Rs7_CasCode(uintptr_t site, const uint8_t* expect, const uint8_t* desired, size_t n) {
+RsxrCasResult Rsxr_CasCode(uintptr_t site, const uint8_t* expect, const uint8_t* desired, size_t n) {
     uintptr_t win = 0;
-    if (!Rs7_CasWindow(site, n, &win)) {
-        return Rs7CasResult::Unsupported;
+    if (!Rsxr_CasWindow(site, n, &win)) {
+        return RsxrCasResult::Unsupported;
     }
 
     Writable w(reinterpret_cast<void*>(win), 8);
     if (!w.ok) {
-        return Rs7CasResult::ProtectFailed;
+        return RsxrCasResult::ProtectFailed;
     }
 
     volatile LONG64* p = reinterpret_cast<volatile LONG64*>(win);

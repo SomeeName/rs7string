@@ -6,7 +6,7 @@
 #include <cstring>
 #include <initializer_list>
 #include "features/psarc/psarc.cpp"
-uintptr_t g_rs7_target_PP_SNGD = 0;
+uintptr_t g_rsxr_target_PP_SNGD = 0;
 #include "sngstub.inc"
 static int decrypts = 0;
 bool __cdecl Decrypt(const uint8_t*, uint32_t, const char*, uint32_t, uint8_t*, uint32_t) { ++decrypts; return false; }
@@ -20,7 +20,7 @@ static uint8_t* GuardedEnd(size_t room) {
 }
 enum { kFalse, kTrue, kFault };
 static int Call(const uint8_t* src, uint32_t len, uint8_t* out, uint32_t outLen) {
-    __try { return Rs7_Stub_PP_SNGD(src, len, nullptr, 0, out, outLen) ? kTrue : kFalse; }
+    __try { return Rsxr_Stub_PP_SNGD(src, len, nullptr, 0, out, outLen) ? kTrue : kFalse; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return kFault; }
 }
 
@@ -40,7 +40,7 @@ static int Run(uint32_t magic, uint32_t flags, uint32_t len, uint32_t outLen) {
 int main() {
     g_src = GuardedEnd(1 << 16); g_out = GuardedEnd(1 << 16);
     if (!g_src || !g_out) return 90;
-    g_rs7_target_PP_SNGD = reinterpret_cast<uintptr_t>(&Decrypt);
+    g_rsxr_target_PP_SNGD = reinterpret_cast<uintptr_t>(&Decrypt);
     for (uint32_t len = 0; len <= 0x40; ++len) {
         for (int d = -2; d <= 2; ++d) {
             const int64_t want = int64_t(len) - 16 + d;
@@ -59,14 +59,14 @@ int main() {
         if (decrypts != (len >= 16 ? 5 : 0)) { std::printf("FAIL: len %u routed %d decrypts\n", len, decrypts); return 3; }
     }
     // Pure decision table at the 32-bit edges.
-    struct Row { uint32_t magic, flags, len, outLen; Rs7SngAction want; } rows[] = {
-        {0x4a, 1, 0, 0xffffffffu, Rs7SngAction::Reject},      {0x4a, 1, 15, 0xffffffffu, Rs7SngAction::Reject},
-        {0x4a, 1, 16, 0, Rs7SngAction::Copy},                 {0x4a, 1, 0xffffffffu, 0xffffffeeu, Rs7SngAction::Reject},
-        {0x4a, 1, 0xffffffffu, 0xffffffefu, Rs7SngAction::Copy}, {0x4a, 1, 0x80000000u, 0x7fffffefu, Rs7SngAction::Reject},
-        {0x4a, 0, 16, 0, Rs7SngAction::Decrypt},              {0, 1, 16, 0, Rs7SngAction::Decrypt},
-        {0x4a00004a, 1, 16, 0, Rs7SngAction::Decrypt},        {0x4a, 0x101, 16, 0, Rs7SngAction::Decrypt},
+    struct Row { uint32_t magic, flags, len, outLen; RsxrSngAction want; } rows[] = {
+        {0x4a, 1, 0, 0xffffffffu, RsxrSngAction::Reject},      {0x4a, 1, 15, 0xffffffffu, RsxrSngAction::Reject},
+        {0x4a, 1, 16, 0, RsxrSngAction::Copy},                 {0x4a, 1, 0xffffffffu, 0xffffffeeu, RsxrSngAction::Reject},
+        {0x4a, 1, 0xffffffffu, 0xffffffefu, RsxrSngAction::Copy}, {0x4a, 1, 0x80000000u, 0x7fffffefu, RsxrSngAction::Reject},
+        {0x4a, 0, 16, 0, RsxrSngAction::Decrypt},              {0, 1, 16, 0, RsxrSngAction::Decrypt},
+        {0x4a00004a, 1, 16, 0, RsxrSngAction::Decrypt},        {0x4a, 0x101, 16, 0, RsxrSngAction::Decrypt},
     };
-    for (const Row& r : rows) if (Rs7Plain_SngAction(r.magic, r.flags, r.len, r.outLen) != r.want) {
+    for (const Row& r : rows) if (RsxrPlain_SngAction(r.magic, r.flags, r.len, r.outLen) != r.want) {
         std::printf("FAIL: action %x/%x/%u/%u\n", r.magic, r.flags, r.len, r.outLen); return 4;
     }
     uint32_t rng = 0x50a6c0deu;

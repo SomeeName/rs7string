@@ -3,7 +3,7 @@
 #include "platform/field.h"
 #include <cstdint>
 
-namespace rs7p {
+namespace rsxrp {
 // The field of type T at byte offset `off` of a game object.
-using rs7mem::UncheckedField;
-}  // namespace rs7p
+using rsxrmem::UncheckedField;
+}  // namespace rsxrp

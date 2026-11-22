@@ -16,7 +16,7 @@ import game_files
 import gen_fncopy
 
 REPO = Path(__file__).resolve().parents[2]  # this checkout (a worktree too)
-ROOT = game_files.ROOT  # original/, rskeys/ (tools/game_files.py; RS7_GAME_FILES)
+ROOT = game_files.ROOT  # original/, rskeys/ (tools/game_files.py; RSXR_GAME_FILES)
 DLL = REPO / "bin" / "Release" / "dinput8.dll"
 SITES = REPO / "sites.json"
 EXE = gen_fncopy.EXE  # original/Rocksmith2014.unpacked.exe
@@ -26,7 +26,7 @@ needs_exe = pytest.mark.skipif(not EXE.exists(), reason="needs original/Rocksmit
 
 def require_game_exe() -> None:
     """Skip (the test, or the module while pytest imports it) when the user's unpacked game exe is absent, e.g. on CI
-    or with RS7_GAME_FILES pointing at an empty folder (tools/game_files.py)."""
+    or with RSXR_GAME_FILES pointing at an empty folder (tools/game_files.py)."""
     if not EXE.exists():
         pytest.skip(f"needs {EXE} (tools/game_files.py)", allow_module_level=True)
 
@@ -42,7 +42,7 @@ SECURITY_CHECK_COOKIE = 0xF5AB08
 def call_after() -> set[str]:
     """Read After placement from registration; reject an unrecognised spelling instead of silently using Before."""
     out = set()
-    pattern = r'Rs7_Mid\(\s*"(\w+)"[^)]*\)((?:\s*\.\w+\([^)]*\))*)'
+    pattern = r'Rsxr_Mid\(\s*"(\w+)"[^)]*\)((?:\s*\.\w+\([^)]*\))*)'
     for path in sorted((REPO / "src" / "features").glob("*/registration.cpp")):
         source = re.sub(r"//[^\n]*|/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
         rows = [sid for sid, modifiers in re.findall(pattern, source) if ".After()" in modifiers]

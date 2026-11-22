@@ -1,4 +1,4 @@
-// Malformed-input coverage of the real RS7X parser (model/extblock.cpp) and its XB1 loader entry
+// Malformed-input coverage of the real extension block parser (model/extblock.cpp) and its XB1 loader entry
 // (features/nslot/hooks_extblock.cpp): every truncation, every boundary value at every offset, off-by-one
 // at the end and a fixed-seed random mutation run. Inputs end at a PAGE_NOACCESS page, so any read past
 // the block faults; accepted blocks must satisfy the spec's invariants.
@@ -18,11 +18,10 @@ void operator delete(void* p, size_t) noexcept { std::free(p); }
 #include "model/extblock.cpp"
 #include "platform/safecopy.cpp"
 #include "features/nslot/hooks_extblock.cpp"
-extern "C" void __cdecl Rs7Mid_Fldcw(uint32_t) {}
-void Rs7Log(const char*, ...) {}
-void Rs7Ns_OnSngLoaded(void*) {}
-void Rs7Ns_OnSongFree(void*) {}
-bool rs7chord::FromTemplateBytes(const uint8_t*, Ext*) { return false; }
+extern "C" void __cdecl RsxrMid_Fldcw(uint32_t) {}
+void RsxrLog(const char*, ...) {}
+void RsxrNs_OnSngLoaded(void*) {}
+void RsxrNs_OnSongFree(void*) {}
 
 using Bytes = std::vector<uint8_t>;
 static void U8(Bytes& b, int v) { b.push_back(uint8_t(v)); }
@@ -37,7 +36,7 @@ static void Finish(Bytes& b, uint32_t count) {
     uint32_t size = uint32_t(b.size());
     std::memcpy(b.data() + 8, &size, 4); std::memcpy(b.data() + 12, &count, 4);
 }
-static Bytes Header() { Bytes b; Id(b, "RS7X"); U16(b, 1); U16(b, 16); U32(b, 0); U32(b, 0); return b; }
+static Bytes Header() { Bytes b; Id(b, "RSXR"); U16(b, 1); U16(b, 16); U32(b, 0); U32(b, 0); return b; }
 
 struct Sample { Bytes bytes; uint32_t templates, chordNotes, tuning; };
 
@@ -85,24 +84,24 @@ static bool Arena() {
 
 enum Outcome { kOk, kRejected, kFault, kThrow };
 static int ParseCatch(const uint8_t* p, size_t n, const Sample& s, uint32_t t, uint32_t c, uint32_t u,
-                      rs7ext::Block* out, char* why) {
+                      rsxrext::Block* out, char* why) {
     try {
-        return rs7ext::Parse(p, n, t, c, u, out, why, 160) == rs7ext::Status::Ok ? kOk : kRejected;
+        return rsxrext::Parse(p, n, t, c, u, out, why, 160) == rsxrext::Status::Ok ? kOk : kRejected;
     } catch (...) { return kThrow; }
 }
 static int Guarded(const uint8_t* p, size_t n, const Sample& s, uint32_t t, uint32_t c, uint32_t u,
-                   rs7ext::Block* out, char* why) {
+                   rsxrext::Block* out, char* why) {
     __try { return ParseCatch(p, n, s, t, c, u, out, why); }
     __except (EXCEPTION_EXECUTE_HANDLER) { return kFault; }
 }
 
-static const char* Invariants(const rs7ext::Block& b, uint32_t t, uint32_t c, uint32_t u) {
+static const char* Invariants(const rsxrext::Block& b, uint32_t t, uint32_t c, uint32_t u) {
     const size_t cols = b.strings.size();
-    if (b.instrument == rs7ext::kInstrumentBass) {
+    if (b.instrument == rsxrext::kInstrumentBass) {
         if (b.stringCount < 5 || b.stringCount > 6 || cols || u != 6) return "bass layout";
         if (b.hasTemplates || b.hasChordNotes || !b.fret.empty() || !b.tech.empty()) return "bass with columns data";
     } else {
-        if (b.instrument != 0 || b.stringCount < 7 || b.stringCount > rs7ext::kMaxStrings) return "string count";
+        if (b.instrument != 0 || b.stringCount < 7 || b.stringCount > rsxrext::kMaxStrings) return "string count";
         if (uint32_t(b.stringCount) != u || cols != size_t(b.stringCount - 6)) return "columns vs tuning";
         for (size_t i = 0; i < cols; ++i) if (b.strings[i] != int(6 + i)) return "column string";
     }
@@ -110,18 +109,18 @@ static const char* Invariants(const rs7ext::Block& b, uint32_t t, uint32_t c, ui
     if (b.hasTemplates ? b.fret.size() != size_t(t) * cols : !b.fret.empty()) return "CHDT cell count";
     for (size_t i = 0; i < b.fret.size(); ++i) {
         int f = b.fret[i], g = b.finger[i];
-        if (f < -1 || f > rs7ext::kMaxFret || g < -1 || g > 4 || (f == -1 && g != -1)) return "CHDT cell value";
+        if (f < -1 || f > rsxrext::kMaxFret || g < -1 || g > 4 || (f == -1 && g != -1)) return "CHDT cell value";
     }
     if (b.hasChordNotes ? b.tech.size() != size_t(c) * cols : !b.tech.empty()) return "CHNT cell count";
     for (const auto& x : b.tech) {
-        if (x.bends.size() > rs7ext::kMaxBends) return "bend count";
-        if (x.slideTo < -1 || x.slideTo > rs7ext::kMaxFret || x.slideUnpitchTo < -1 ||
-            x.slideUnpitchTo > rs7ext::kMaxFret) return "slide value";
+        if (x.bends.size() > rsxrext::kMaxBends) return "bend count";
+        if (x.slideTo < -1 || x.slideTo > rsxrext::kMaxFret || x.slideUnpitchTo < -1 ||
+            x.slideUnpitchTo > rsxrext::kMaxFret) return "slide value";
     }
     for (uint32_t r : {0u, 1u, t, t + 1, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
-        for (int s = -1; s <= rs7ext::kMaxStrings + 1; ++s) {
+        for (int s = -1; s <= rsxrext::kMaxStrings + 1; ++s) {
             int f = 99, g = 99;
-            if (b.TemplateColumn(r, s, &f, &g) && (r >= t || f < 0 || f > rs7ext::kMaxFret || g < -1 || g > 4))
+            if (b.TemplateColumn(r, s, &f, &g) && (r >= t || f < 0 || f > rsxrext::kMaxFret || g < -1 || g > 4))
                 return "TemplateColumn out of range";
         }
     }
@@ -135,7 +134,7 @@ static bool Try(const char* what, const Bytes& v, const Sample& s, uint32_t t, u
     if (v.size() > kRoom) return true;
     uint8_t* p = g_end - v.size();
     if (!v.empty()) std::memcpy(p, v.data(), v.size());
-    rs7ext::Block b; char why[160] = "unset";
+    rsxrext::Block b; char why[160] = "unset";
     oversized = false;
     const int r = Guarded(p, v.size(), s, t, c, u, &b, why);
     const char* bad = nullptr;
@@ -225,7 +224,7 @@ int main() {
 
     // XB1 entry: the stream's buffer/position/size come from the game; the vectors from the loaded song.
     const Sample& s = samples[1];
-    static uint8_t song[0x120], stream[0x1c], templates[3 * rs7chord::kTplSize], tuning[16], cn[2 * rs7ns::kCnSize];
+    static uint8_t song[0x120], stream[0x1c], templates[3 * rsxrns::kTplSize], tuning[16], cn[2 * rsxrns::kCnSize];
     auto Vec2 = [](size_t off, const void* p, size_t n) {
         uintptr_t v[2] = {reinterpret_cast<uintptr_t>(p), reinterpret_cast<uintptr_t>(p) + n};
         std::memcpy(song + off, v, 8);
@@ -247,19 +246,19 @@ int main() {
     };
     for (const Case& k : cases) {
         std::memcpy(stream + 0x10, &k.buf, 4); std::memcpy(stream + 0x14, &k.pos, 4); std::memcpy(stream + 0x18, &k.size, 4);
-        Rs7Ext_Store(song, std::make_shared<rs7ext::Block>());  // a stale block must never survive a failed load
+        RsxrExt_Store(song, std::make_shared<rsxrext::Block>());  // a stale block must never survive a failed load
         oversized = false;
-        Rs7Ext_OnSngLoaded(song, stream);
-        if (bool(Rs7Ext_Find(song)) != k.stored || oversized) {
-            std::printf("FAIL: XB1 case '%s' stored=%d oversized=%d\n", k.name, int(bool(Rs7Ext_Find(song))), int(oversized));
+        RsxrExt_OnSngLoaded(song, stream);
+        if (bool(RsxrExt_Find(song)) != k.stored || oversized) {
+            std::printf("FAIL: XB1 case '%s' stored=%d oversized=%d\n", k.name, int(bool(RsxrExt_Find(song))), int(oversized));
             return 9;
         }
     }
     {  // end < begin
         uintptr_t v[2] = {uintptr_t(templates) + 8, uintptr_t(templates)}; std::memcpy(song + 0x94, v, 8); }
     std::memcpy(stream + 0x10, &cases[0].buf, 4); std::memcpy(stream + 0x14, &cases[0].pos, 4); std::memcpy(stream + 0x18, &cases[0].size, 4);
-    Rs7Ext_OnSngLoaded(song, stream);
-    if (Rs7Ext_Find(song)) { std::puts("FAIL: inverted template vector accepted"); return 10; }
+    RsxrExt_OnSngLoaded(song, stream);
+    if (RsxrExt_Find(song)) { std::puts("FAIL: inverted template vector accepted"); return 10; }
 
     std::printf("PASS: %u accepted / %u rejected (%u random mutations); no faults past the input, no oversized "
                 "allocation; XB1 stream table fail-closed\n", g_ok - okBefore, g_rejected, random);

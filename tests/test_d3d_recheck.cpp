@@ -5,7 +5,7 @@
 #include <cstring>
 
 namespace {
-struct Slots : Rs7MemReader {
+struct Slots : RsxrMemReader {
     uintptr_t values[2] = {0x1000, 0x2000};
 
     bool Read(uintptr_t, void* out, size_t n) const override {
@@ -34,7 +34,7 @@ TEST(d3d_recheck_rolls_back_when_the_second_slot_write_fails) {
     CHECK(VirtualAlloc(pages, info.dwPageSize, MEM_COMMIT, PAGE_READWRITE) == pages);
     auto** vt = reinterpret_cast<void**>(pages + info.dwPageSize - sizeof(void*));
     Slots mem;
-    const rs7d3d::VtSlotPair slots{"test", 0, {0x3000, 0x4000}};
+    const rsxrd3d::VtSlotPair slots{"test", 0, {0x3000, 0x4000}};
     bool foreign = false;
 
     vt[0] = reinterpret_cast<void*>(mem.values[0]);

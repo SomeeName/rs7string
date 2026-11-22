@@ -1,4 +1,4 @@
-"""Truncated, boundary-value and fixed-seed random movies / R7DA recipes against the real diagram movie swap."""
+"""Truncated, boundary-value and fixed-seed random movies / RXDA recipes against the real diagram movie swap."""
 
 from native_harness import ROOT, compile_harness, run_harness
 

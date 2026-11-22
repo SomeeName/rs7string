@@ -15,31 +15,31 @@ uint32_t ExpectedGates(const char* id) {
     uint32_t gates = 0;
 
     if (!std::strncmp(id, "GK", 2)) {
-        gates |= kRs7GateClite;
+        gates |= kRsxrGateClite;
     }
     if (!std::strcmp(id, "PSQ1")) {
-        gates |= kRs7GateNoClite;
+        gates |= kRsxrGateNoClite;
     }
     if (!std::strncmp(id, "LS", 2) && std::strlen(id) == 3) {
-        gates |= kRs7GatePublishTrace;
+        gates |= kRsxrGatePublishTrace;
     }
     if (!std::strcmp(id, "FGRB") || !std::strcmp(id, "NN1") || !std::strcmp(id, "NN3") || !std::strcmp(id, "NN4")) {
-        gates |= kRs7GateNoPublish;
+        gates |= kRsxrGateNoPublish;
     }
     if (!std::strncmp(id, "CL", 2)) {
-        gates |= kRs7GateChordloops;
+        gates |= kRsxrGateChordloops;
     }
     if (!std::strncmp(id, "CM", 2) || !std::strncmp(id, "CB", 2)) {
-        gates |= kRs7GateColours;
+        gates |= kRsxrGateColours;
     }
     if (!std::strncmp(id, "TV", 2)) {
-        gates |= kRs7GateTestVariant;
+        gates |= kRsxrGateTestVariant;
     }
     if (!std::strcmp(id, "GLW")) {
-        gates |= kRs7GateGlow;
+        gates |= kRsxrGateGlow;
     }
     if (!std::strncmp(id, "DG", 2) || !std::strcmp(id, "TP13")) {
-        gates |= kRs7GateDiagrams;
+        gates |= kRsxrGateDiagrams;
     }
 
     return gates;
@@ -47,12 +47,12 @@ uint32_t ExpectedGates(const char* id) {
 }  // namespace
 
 TEST(registration_metadata_preserves_all_previous_name_conditions) {
-    constexpr uint32_t migrated = kRs7GateClite | kRs7GateNoClite | kRs7GatePublishTrace | kRs7GateNoPublish |
-                                  kRs7GateChordloops | kRs7GateColours | kRs7GateTestVariant | kRs7GateGlow |
-                                  kRs7GateDiagrams;
+    constexpr uint32_t migrated = kRsxrGateClite | kRsxrGateNoClite | kRsxrGatePublishTrace | kRsxrGateNoPublish |
+                                  kRsxrGateChordloops | kRsxrGateColours | kRsxrGateTestVariant | kRsxrGateGlow |
+                                  kRsxrGateDiagrams;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
 
         CHECK(h != nullptr);
         if (h) {
@@ -62,37 +62,37 @@ TEST(registration_metadata_preserves_all_previous_name_conditions) {
 }
 
 TEST(registration_gates_ignore_site_names) {
-    rs7test::Restore clite(g_rs7_clite), trace(g_rs7_publish_trace), publish(g_rs7_publish_ports);
-    rs7test::Restore chords(g_rs7_native_chordloops), colours(g_rs7_native_colours);
-    rs7test::Restore glow(g_rs7_glow_fix), diagrams(g_rs7_diagrams);
+    rsxrtest::Restore clite(g_rsxr_clite), trace(g_rsxr_publish_trace), publish(g_rsxr_publish_ports);
+    rsxrtest::Restore chords(g_rsxr_native_chordloops), colours(g_rsxr_native_colours);
+    rsxrtest::Restore glow(g_rsxr_glow_fix), diagrams(g_rsxr_diagrams);
 
-    Rs7_ResetFeatureFailures();
+    Rsxr_ResetFeatureFailures();
 
     for (int switches = 0; switches < 128; ++switches) {
-        g_rs7_clite = bool(switches & 1);
-        g_rs7_publish_trace = bool(switches & 2);
-        g_rs7_publish_ports = bool(switches & 4);
-        g_rs7_native_chordloops = bool(switches & 8);
-        g_rs7_native_colours = bool(switches & 16);
-        g_rs7_glow_fix = bool(switches & 32);
-        g_rs7_diagrams = bool(switches & 64);
+        g_rsxr_clite = bool(switches & 1);
+        g_rsxr_publish_trace = bool(switches & 2);
+        g_rsxr_publish_ports = bool(switches & 4);
+        g_rsxr_native_chordloops = bool(switches & 8);
+        g_rsxr_native_colours = bool(switches & 16);
+        g_rsxr_glow_fix = bool(switches & 32);
+        g_rsxr_diagrams = bool(switches & 64);
 
         for (const char* id : {"GKC", "PSQ1", "LSA", "FGRB", "NN1", "NN3", "NN4", "CLB0", "CMUV", "CBUV", "TVCB", "GLW",
                                "DGM", "TP13"}) {
-            const Rs7Hook* h = Rs7_FindHook(id);
+            const RsxrHook* h = Rsxr_FindHook(id);
 
             CHECK(h != nullptr);
             if (!h) {
                 continue;
             }
 
-            Rs7Hook renamed = *h;
+            RsxrHook renamed = *h;
 
             renamed.id = "renamed";
 
             for (const bool strings : {false, true}) {
-                CHECK_EQ(Rs7_ShouldPatch(*h, true, true, true, strings),
-                         Rs7_ShouldPatch(renamed, true, true, true, strings));
+                CHECK_EQ(Rsxr_ShouldPatch(*h, true, true, true, strings),
+                         Rsxr_ShouldPatch(renamed, true, true, true, strings));
             }
         }
     }

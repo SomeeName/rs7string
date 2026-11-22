@@ -5,7 +5,7 @@
 
 // The vtable hook of the ramp swap (swap_hook.cpp): which device is hooked and what GetTexture hides. The
 // ramp and RSMods-ramp parts read it and fill the bound table; they never touch the vtable.
-namespace rs7swap {
+namespace rsxrswap {
 constexpr unsigned kStages = 16;
 constexpr unsigned kSlotGet = 64, kSlotSet = 65;  // IDirect3DDevice9 vtable: GetTexture, SetTexture
 using SetTex = HRESULT(__stdcall*)(IDirect3DDevice9*, DWORD, IDirect3DBaseTexture9*);
@@ -26,8 +26,8 @@ struct HookState {
     volatile bool deviceOk = true;  // false (sticky) once a candidate is bound on another device
     Bound bound[kStages];           // render thread only
     bool overlayDrawing;            // temporary binds must not change bound[]
-    const Rs7SehReader mem{};
+    const RsxrSehReader mem{};
 };
 
 extern HookState g_hook;
-}  // namespace rs7swap
+}  // namespace rsxrswap

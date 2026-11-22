@@ -1,6 +1,6 @@
-"""CALL_WRAP (emu_harness.py) against the C++ registration: every Rs7_WrapRow of src/features/*/registration.cpp has an
+"""CALL_WRAP (emu_harness.py) against the C++ registration: every Rsxr_WrapRow of src/features/*/registration.cpp has an
 entry with the same frame (argument dwords, bytes the callee pops, scratch) and callbacks, and every entry has a row.
-The frames are read from their `inline constexpr Rs7Mid::Wrap kRs7Wrap<ID>{...}` declarations in the features'
+The frames are read from their `inline constexpr RsxrMid::Wrap kRsxrWrap<ID>{...}` declarations in the features'
 hooks.h. No DLL or game needed."""
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from emu_harness import CALL_WRAP, MID_CALLBACKS
 
 REPO = Path(__file__).resolve().parents[2]
 FEATURES = REPO / "src" / "features"
-ROW = re.compile(r'Rs7_WrapRow\(\s*Rs7_Site\(\s*"(\w+)"\).*?(kRs7Wrap\w+),\s*(&\w+|nullptr),\s*(&\w+|nullptr)', re.S)
-FRAME = re.compile(r"inline constexpr Rs7Mid::Wrap (kRs7Wrap\w+)\{(\d+), Rs7Mid::Conv::(\w+)(?:, (\d+))?\}")
+ROW = re.compile(r'Rsxr_WrapRow\(\s*Rsxr_Site\(\s*"(\w+)"\).*?(kRsxrWrap\w+),\s*(&\w+|nullptr),\s*(&\w+|nullptr)', re.S)
+FRAME = re.compile(r"inline constexpr RsxrMid::Wrap (kRsxrWrap\w+)\{(\d+), RsxrMid::Conv::(\w+)(?:, (\d+))?\}")
 
 
 def callback(token: str) -> str | None:
@@ -36,7 +36,7 @@ def registered() -> dict[str, tuple]:
 
 def test_every_wrap_row_matches_call_wrap():
     rows = registered()
-    assert rows, "no Rs7_WrapRow found: the pattern no longer matches the registration sources"
+    assert rows, "no Rsxr_WrapRow found: the pattern no longer matches the registration sources"
     assert set(rows) == set(CALL_WRAP), set(rows) ^ set(CALL_WRAP)
     for sid, row in rows.items():
         assert CALL_WRAP[sid] == row, (sid, CALL_WRAP[sid], row)

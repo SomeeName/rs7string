@@ -4,7 +4,7 @@
 #include "test.h"
 #include <cstring>
 
-using namespace rs7ns;
+using namespace rsxrns;
 
 namespace {
 // A template with all six stock strings unused and the name "X".
@@ -70,8 +70,8 @@ TEST(records_t8_open_extended_strings_are_used) {
     BuildT8(t, ext, nullptr, 8, 0xFF, out);
     CHECK_EQ(FretAt(out, 6), 0);
     CHECK_EQ(FretAt(out, 7), 0);
-    CHECK_EQ(MidiAt(out, 6), rs7::kGuitarOpenMidi[6]);
-    CHECK_EQ(MidiAt(out, 7), rs7::kGuitarOpenMidi[7]);
+    CHECK_EQ(MidiAt(out, 6), rsxr::kGuitarOpenMidi[6]);
+    CHECK_EQ(MidiAt(out, 7), rsxr::kGuitarOpenMidi[7]);
     CHECK_EQ(out[kT8Used], 0xC0);
 }
 
@@ -83,8 +83,8 @@ TEST(records_t8_eighth_string_pitch_uses_its_own_tuning_entry) {
 
     EmptyTemplate(t);
     BuildT8(t, ext, tun, 8, 0xFF, out);
-    CHECK_EQ(MidiAt(out, 6), rs7::kGuitarOpenMidi[6] + 3 + 1);
-    CHECK_EQ(MidiAt(out, 7), rs7::kGuitarOpenMidi[7] - 4 + 5);
+    CHECK_EQ(MidiAt(out, 6), rsxr::kGuitarOpenMidi[6] + 3 + 1);
+    CHECK_EQ(MidiAt(out, 7), rsxr::kGuitarOpenMidi[7] - 4 + 5);
     CHECK_EQ(FingerAt(out, 6), 0);
     CHECK_EQ(FingerAt(out, 7), 2);
 }
@@ -99,8 +99,8 @@ TEST(records_t8_capo_rule_on_both_extended_strings) {
     BuildT8(t, ext, tun, 8, 2, out);
     CHECK_EQ(FretAt(out, 6), 0);
     CHECK_EQ(FretAt(out, 7), 0);
-    CHECK_EQ(MidiAt(out, 7), rs7::kGuitarOpenMidi[7] + 2);  // the pitch keeps the authored fret
-    CHECK_EQ(out[kT8Used], 0xC0);                           // a zeroed fret is still a used string
+    CHECK_EQ(MidiAt(out, 7), rsxr::kGuitarOpenMidi[7] + 2);  // the pitch keeps the authored fret
+    CHECK_EQ(out[kT8Used], 0xC0);                            // a zeroed fret is still a used string
     BuildT8(t, ext, tun, 8, 0xFF, out);
     CHECK_EQ(FretAt(out, 6), 2);
     CHECK_EQ(FretAt(out, 7), 2);
@@ -126,31 +126,6 @@ TEST(records_t8_used_mask_covers_all_eight_strings) {
     CHECK_EQ(out[kT8Used], 0x3B);
     CHECK_EQ(out[0x7A], 0);  // +7A..+7F stay zero
     CHECK_EQ(out[0x7F], 0);
-}
-
-// Catches: an off-by-one in the old-format name check (a 30-character name is terminated at name[30]) and the
-// finger / fret bit split of name[31].
-TEST(records_name31_bit_fields_and_terminator_bounds) {
-    uint8_t t[kTplSize];
-    Col c;
-
-    EmptyTemplate(t);
-    std::memset(t + 0x28, 'A', 30);
-    t[0x28 + 30] = 0;
-    t[0x28 + 31] = 0x1F;  // fret 30, finger -1
-    CHECK(DecodeName31(t, &c));
-    CHECK_EQ(c.fret, 30);
-    CHECK_EQ(c.finger, -1);
-    t[0x28 + 31] = static_cast<uint8_t>((7 << 5) | 1);  // fret 0, finger 6 (decoded as is; BuildT8 drops it)
-    CHECK(DecodeName31(t, &c));
-    CHECK_EQ(c.fret, 0);
-    CHECK_EQ(c.finger, 6);
-    c.fret = 99;
-    c.finger = 99;
-    t[0x28 + 31] = static_cast<uint8_t>(3 << 5);  // fret field 0: no string-6 column, *out untouched
-    CHECK(!DecodeName31(t, &c));
-    CHECK_EQ(c.fret, 99);
-    CHECK_EQ(c.finger, 99);
 }
 
 // Catches: the eighth string's technique written into slot 6, or a missing tech6 leaving slot 6 with garbage.

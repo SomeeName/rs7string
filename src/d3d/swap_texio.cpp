@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace rs7swap {
+namespace rsxrswap {
 namespace {
 struct Locked {
     IDirect3DTexture9* tex;
@@ -30,7 +30,7 @@ void UnlockLevel(IDirect3DTexture9* t, UINT k) {
 // The copy loops write and compare w x h 32-bit pixels per level: the level must be a 32-bit format of exactly
 // that size, and the image must hold w x h pixels. The callers build both from the same stock desc; this keeps a
 // mismatch a refused copy instead of a write past the locked rows.
-bool FitsLevel(IDirect3DTexture9* t, UINT k, const Rs7Image& im, char* why, size_t whyLen) {
+bool FitsLevel(IDirect3DTexture9* t, UINT k, const RsxrImage& im, char* why, size_t whyLen) {
     D3DSURFACE_DESC d{};
 
     if (FAILED(t->GetLevelDesc(k, &d))) {
@@ -50,7 +50,7 @@ bool FitsLevel(IDirect3DTexture9* t, UINT k, const Rs7Image& im, char* why, size
 }
 }  // namespace
 
-bool ReadLevels(IDirect3DTexture9* t, std::vector<Rs7Image>& out, char* why, size_t whyLen) {
+bool ReadLevels(IDirect3DTexture9* t, std::vector<RsxrImage>& out, char* why, size_t whyLen) {
     for (UINT k = 0; k < out.size(); ++k) {
         D3DSURFACE_DESC d{};
         D3DLOCKED_RECT lr{};
@@ -65,7 +65,7 @@ bool ReadLevels(IDirect3DTexture9* t, std::vector<Rs7Image>& out, char* why, siz
             return false;
         }
 
-        Rs7Image& im = out[k];
+        RsxrImage& im = out[k];
 
         im.w = d.Width;
         im.h = d.Height;
@@ -94,7 +94,7 @@ bool ReadLevels(IDirect3DTexture9* t, std::vector<Rs7Image>& out, char* why, siz
     return true;
 }
 
-bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<Rs7Image>& b, char* why, size_t whyLen) {
+bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<RsxrImage>& b, char* why, size_t whyLen) {
     for (UINT k = 0; k < b.size(); ++k) {
         D3DLOCKED_RECT lr{};
 
@@ -155,13 +155,13 @@ bool WriteAndCheck(IDirect3DTexture9* ours, const std::vector<Rs7Image>& b, char
     return true;
 }
 
-bool BuildChecked(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], CheckedBuild& out, char* why,
+bool BuildChecked(const std::vector<RsxrImage>& stock, const uint32_t rgb[2], CheckedBuild& out, char* why,
                   size_t whyLen) {
     // The eighth string's band (V7) is painted with every copy: unused lines on 6/7-string guitars.
-    const uint32_t rgb8[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};
+    const uint32_t rgb8[2] = {rsxrcolour::Colour8(0), rsxrcolour::Colour8(1)};
 
-    out.build = Rs7Ramp_Build(stock, rgb, rgb8);
-    out.chk = Rs7Ramp_Verify(stock, out.build, rgb, rgb8);
+    out.build = RsxrRamp_Build(stock, rgb, rgb8);
+    out.chk = RsxrRamp_Verify(stock, out.build, rgb, rgb8);
 
     if (!out.chk.exact || !out.chk.v6Pure) {
         std::snprintf(why, whyLen, "self-check failed: exact=%d v6-pure=%d %s", int(out.chk.exact), int(out.chk.v6Pure),
@@ -172,8 +172,8 @@ bool BuildChecked(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], Che
     return true;
 }
 
-CopyResult MakeCopy(IDirect3DDevice9* dev, const D3DSURFACE_DESC& d, unsigned levels, const std::vector<Rs7Image>& data,
-                    IDirect3DTexture9** out, char* why, size_t whyLen) {
+CopyResult MakeCopy(IDirect3DDevice9* dev, const D3DSURFACE_DESC& d, unsigned levels,
+                    const std::vector<RsxrImage>& data, IDirect3DTexture9** out, char* why, size_t whyLen) {
     IDirect3DTexture9* ours = nullptr;
     const HRESULT hr = dev->CreateTexture(d.Width, d.Height, levels, 0, d.Format, D3DPOOL_MANAGED, &ours, nullptr);
 
@@ -196,7 +196,7 @@ void UnlockAfterFault() {
     if (g_locked.tex) {
         __try {
             g_locked.tex->UnlockRect(g_locked.level);
-        } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         }
 
         g_locked = {};
@@ -206,4 +206,4 @@ void UnlockAfterFault() {
 void ForgetLocked() {
     g_locked = {};
 }
-}  // namespace rs7swap
+}  // namespace rsxrswap

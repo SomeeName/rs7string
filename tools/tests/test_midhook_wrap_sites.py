@@ -51,19 +51,19 @@ def stand_in(pops: int, eax: int = 0x1234):
     return patch
 
 
-# ---- PP1: SNG_Song_PostProcess (`ret 8`), then Rs7Ns_OnPostProcessed(song = argument 0) ------------------------------
+# ---- PP1: SNG_Song_PostProcess (`ret 8`), then RsxrNs_OnPostProcessed(song = argument 0) ------------------------------
 register(
-    Spec("PP1", 5, helpers={"Rs7Ns_OnPostProcessed": Helper(1)}, exits=("resume",), patch=stand_in(8), call=True),
+    Spec("PP1", 5, helpers={"RsxrNs_OnPostProcessed": Helper(1)}, exits=("resume",), patch=stand_in(8), call=True),
     [Case(f"song{n}", stack={0: ret("PP1"), 4: D + 0x100 * n, 8: 0x77}) for n in range(2)],
 )
 
-# ---- F1: the entry of Rnd_FretBars_ApplyTransforms (EAX = grid, ECX = guitar; plain `ret`), then Rs7_FretsAfterApply ---
+# ---- F1: the entry of Rnd_FretBars_ApplyTransforms (EAX = grid, ECX = guitar; plain `ret`), then Rsxr_FretsAfterApply ---
 # The stock body after the replayed prologue is replaced by its epilogue `mov esp,ebp; pop ebp; ret`.
 register(
     Spec(
         "F1",
         6,
-        helpers={"Rs7_FretsAfterApply": Helper(1)},
+        helpers={"Rsxr_FretsAfterApply": Helper(1)},
         flags="free",  # the old stub's `add esp,4` / the prologue's `sub`: dead after the function returns
         exits=(RET_AT,),
         patch=lambda m: {m.resume: bytes.fromhex("8B E5 5D C3")},
@@ -74,10 +74,10 @@ register(
     ],
 )
 
-# ---- IN1: Rnd_Inlays_ApplyTransforms (EAX = guitar, the set; `ret 4`), then Rs7_InlaysAfter(guitar, set) -------------
+# ---- IN1: Rnd_Inlays_ApplyTransforms (EAX = guitar, the set; `ret 4`), then Rsxr_InlaysAfter(guitar, set) -------------
 register(
     Spec(
-        "IN1", 5, helpers={"Rs7_InlaysAfter": Helper(2)}, flags="dead", exits=("resume",), patch=stand_in(4), call=True
+        "IN1", 5, helpers={"Rsxr_InlaysAfter": Helper(2)}, flags="dead", exits=("resume",), patch=stand_in(4), call=True
     ),
     [
         Case(f"set{n}", regs={UC_X86_REG_EAX: D, UC_X86_REG_EDI: D}, stack={0: ret("IN1"), 4: D + 0x400 + 0x40 * n})
@@ -87,7 +87,9 @@ register(
 
 # ---- PSN2: the named-colour dispatch (EAX = name, ECX = player, slot or NULL; `ret 4`; EBX = index, ESI = session) ----
 register(
-    Spec("PSN2", 5, helpers={"Rs7_PegNamed": Helper(2)}, flags="dead", exits=("resume",), patch=stand_in(4), call=True),
+    Spec(
+        "PSN2", 5, helpers={"Rsxr_PegNamed": Helper(2)}, flags="dead", exits=("resume",), patch=stand_in(4), call=True
+    ),
     [
         Case(
             f"i{index}-{'slot' if slot else 'null'}",
@@ -99,13 +101,13 @@ register(
     ],
 )
 
-# ---- AM1: 0x4E6A70 (targets, tolerance, two floats; `ret 10h`) gets an int32[8] built by Rs7Ns_Shift8 ---------------
+# ---- AM1: 0x4E6A70 (targets, tolerance, two floats; `ret 10h`) gets an int32[8] built by RsxrNs_Shift8 ---------------
 register(
     Spec(
         "AM1",
         5,
         # the int32[8] lies at different stack addresses (old stub frame / new scratch): compared by content
-        helpers={"Rs7Ns_Shift8": Helper(4, deref=((0, 32), (1, 24), (2, 16)), opaque=(0,))},
+        helpers={"RsxrNs_Shift8": Helper(4, deref=((0, 32), (1, 24), (2, 16)), opaque=(0,))},
         flags="dead",
         exits=("resume",),
         patch=stand_in(16),
@@ -132,30 +134,30 @@ def names(sid: str, helpers: dict) -> Spec:
     return Spec(sid, 9, helpers=helpers, flags="free", exits=(RET_AT,), patch=lambda m: {m.resume: BODY})
 
 
-ON = (0, 1, 2)  # g_rs7_tn_on, a noncanonical value included
+ON = (0, 1, 2)  # g_rsxr_tn_on, a noncanonical value included
 register(
-    names("TJ", {"Rs7_TnJsonPre": Helper(4), "Rs7_TnJsonPost": Helper(1)}),
+    names("TJ", {"Rsxr_TnJsonPre": Helper(4), "Rsxr_TnJsonPost": Helper(1)}),
     [
         Case(
             f"on{on}-h{handle:x}",
             regs={UC_X86_REG_ECX: D + 0x100, UC_X86_REG_EDX: D + 0x200},
             stack={0: RET_AT, 4: D + 0x300, 8: 0xFFFFFF9C},
-            words={"g_rs7_tn_on": on},
-            rets={"Rs7_TnJsonPre": handle},
+            words={"g_rsxr_tn_on": on},
+            rets={"Rsxr_TnJsonPre": handle},
         )
         for on in ON
         for handle in (0, 0x77)
     ],
 )
 register(
-    names("TU", {"Rs7_TnUuidPre": Helper(1), "Rs7_TnUuidPost": Helper(1)}),
+    names("TU", {"Rsxr_TnUuidPre": Helper(1), "Rsxr_TnUuidPost": Helper(1)}),
     [
         Case(
             f"on{on}-h{handle:x}",
             regs={UC_X86_REG_ECX: D + 0x100, UC_X86_REG_EDX: D + 0x200},
             stack={0: RET_AT},
-            words={"g_rs7_tn_on": on},
-            rets={"Rs7_TnUuidPre": handle},
+            words={"g_rsxr_tn_on": on},
+            rets={"Rsxr_TnUuidPre": handle},
         )
         for on in ON
         for handle in (0, 0x77)
@@ -163,15 +165,15 @@ register(
 )
 register(
     # the post flag lies in the old stub's frame / the new WrapFrame::user: compared by content
-    names("TN", {"Rs7_TnArrayPre": Helper(3, deref=((1, 24), (2, 4)), opaque=(2,)), "Rs7_TnArrayPost": Helper(2)}),
+    names("TN", {"Rsxr_TnArrayPre": Helper(3, deref=((1, 24), (2, 4)), opaque=(2,)), "Rsxr_TnArrayPost": Helper(2)}),
     [
         Case(
             f"on{on}-r{done}-p{post:x}",
             mem={D + 0x300: struct.pack("<6i", -2, 0, 0, 0, 0, 0)},
             stack={0: RET_AT, 4: D + 0x200, 8: D + 0x300},
-            words={"g_rs7_tn_on": on},
-            rets={"Rs7_TnArrayPre": done},
-            stores={"Rs7_TnArrayPre": ((2, post),)},
+            words={"g_rsxr_tn_on": on},
+            rets={"Rsxr_TnArrayPre": done},
+            stores={"Rsxr_TnArrayPre": ((2, post),)},
         )
         for on in ON
         for done in (0, 1)
@@ -180,7 +182,7 @@ register(
 )
 
 # ---- MD1: the entry of Play_Matcher_DetectChord (matcher, int32 targets[8], tolerance, history; `ret 10h`) ----------
-# Rs7Ns_DetectChord compacts into the scratch (returns -1, the stock body runs on it) or judges itself (0 / 1). The
+# RsxrNs_DetectChord compacts into the scratch (returns -1, the stock body runs on it) or judges itself (0 / 1). The
 # stand-in body after the replayed prologue returns targets[0] of the array it got: `mov eax,[ebp+0Ch]; mov eax,[eax]`,
 # then `mov esp,ebp; pop ebp; ret 10h`. The helper writes 55h as the compacted array's first target.
 TARGETS8 = struct.pack("<8i", 0x55, 45, -1, 50, 55, -1, 59, 64)
@@ -189,19 +191,19 @@ register(
         "MD1",
         9,
         # the int32[6] lies in the old stub's frame / the new scratch: compared by content
-        helpers={"Rs7Ns_DetectChord": Helper(5, deref=((1, 32), (4, 24)), opaque=(4,))},
+        helpers={"RsxrNs_DetectChord": Helper(5, deref=((1, 32), (4, 24)), opaque=(4,))},
         flags="free",
         exits=(RET_AT,),
         patch=lambda m: {m.resume: bytes.fromhex("8B 45 0C 8B 00 8B E5 5D C2 10 00")},
-        clobbers=("ecx", "edx"),  # the judged path: the old stub returns with Rs7Ns_DetectChord's ECX / EDX
+        clobbers=("ecx", "edx"),  # the judged path: the old stub returns with RsxrNs_DetectChord's ECX / EDX
     ),
     [
         Case(
             f"r{judged & 0xFF:x}",
             mem={D + 0x100: TARGETS8},
             stack={0: RET_AT, 4: D, 8: D + 0x100, 12: 50, 16: 3},
-            rets={"Rs7Ns_DetectChord": judged & 0xFFFFFFFF},
-            stores={"Rs7Ns_DetectChord": ((4, 0x55),)},
+            rets={"RsxrNs_DetectChord": judged & 0xFFFFFFFF},
+            stores={"RsxrNs_DetectChord": ((4, 0x55),)},
         )
         for judged in (-1, 0, 1)
     ],
@@ -220,8 +222,8 @@ ALWAYS_CALLS: set[str] = {"PP1", "F1", "IN1", "AM1", "MD1"}
 
 
 def tn_named(case: Case) -> bool:
-    """TN: Rs7_TnArrayPre built a known 7-string name, the original is skipped."""
-    return bool(case.words["g_rs7_tn_on"] and case.rets["Rs7_TnArrayPre"])
+    """TN: Rsxr_TnArrayPre built a known 7-string name, the original is skipped."""
+    return bool(case.words["g_rsxr_tn_on"] and case.rets["Rsxr_TnArrayPre"])
 
 
 REFS: dict[str, Ref] = {
@@ -231,17 +233,17 @@ REFS: dict[str, Ref] = {
         **ruled(
             lambda case: (
                 None
-                if case.rets["Rs7Ns_DetectChord"] == 0xFFFFFFFF
-                else W("regs", regs={"eax": case.rets["Rs7Ns_DetectChord"]})
+                if case.rets["RsxrNs_DetectChord"] == 0xFFFFFFFF
+                else W("regs", regs={"eax": case.rets["RsxrNs_DetectChord"]})
             ),
-            why="seven or eight targets: Rs7Ns_DetectChord judged the chord, the stock function is skipped",
+            why="seven or eight targets: RsxrNs_DetectChord judged the chord, the stock function is skipped",
         ),
     ),
     "TN": Ref(
         real=False,
         **ruled(
             lambda case: W("regs", regs={"eax": D + 0x200}) if tn_named(case) else None,
-            why="a known 7-string tuning: Rs7_TnArrayPre constructed the name, the hook returns the output itself",
+            why="a known 7-string tuning: Rsxr_TnArrayPre constructed the name, the hook returns the output itself",
         ),
     ),
 }

@@ -82,7 +82,7 @@ EXPORTS = dll_image()[3]
 SPECS = {**cold.SPECS, **x87.SPECS, **calls.SPECS}
 STRING6 = "string 6 or 7 (a seven- or eight-string input: stock has neither) takes the added-string path"
 NATIVE_PEGSET = (
-    "a PegSet in g_rs7_pegsets is a native capacity-8 PegSet (every PegSet is one after PSC1 unless the table is full): "
+    "a PegSet in g_rsxr_pegsets is a native capacity-8 PegSet (every PegSet is one after PSC1 unless the table is full): "
     "its sizes, counts and bounds are the native ones"
 )
 OWNED_SLOT = {"owned-first": 0, "owned-middle": 17, "owned-last": 63, "table-full-owned": 33}
@@ -151,7 +151,7 @@ def lane(sid: str):
     def expect(c: Case):
         if not c.id.startswith(f"row{6 * x87.ROWS:x}-"):
             return None
-        return W("fpu", "regs", regs={"eax": EXPORTS[f"g_rs7_scratch_{sid}"]})
+        return W("fpu", "regs", regs={"eax": EXPORTS[f"g_rsxr_scratch_{sid}"]})
 
     return expect
 
@@ -190,10 +190,10 @@ def mask_test(sid: str):
 
 
 def psn1(spec, cases):
-    """PSN1 reads g_rs7_pegnames, which startup binds to the game's own table (ref site X_PEGNAMES)."""
+    """PSN1 reads g_rsxr_pegnames, which startup binds to the game's own table (ref site X_PEGNAMES)."""
     table = site_target("X_PEGNAMES")
-    return dataclasses.replace(spec, words={"g_rs7_pegnames": table}), [
-        dataclasses.replace(c, words={"g_rs7_pegnames": table}, mem={}) for c in cases
+    return dataclasses.replace(spec, words={"g_rsxr_pegnames": table}), [
+        dataclasses.replace(c, words={"g_rsxr_pegnames": table}, mem={}) for c in cases
     ]
 
 
@@ -222,21 +222,21 @@ def psr1_cases(spec, cases):
 
 
 def psc1_cases(spec, cases):
-    """PSC1 plus a full g_rs7_pegsets, the one case where the constructor keeps the stock layout."""
-    full = {Sym("g_rs7_pegsets"): cold.peg_table(dict(cold.OTHERS))}
+    """PSC1 plus a full g_rsxr_pegsets, the one case where the constructor keeps the stock layout."""
+    full = {Sym("g_rsxr_pegsets"): cold.peg_table(dict(cold.OTHERS))}
     return spec, [*cases, dataclasses.replace(cases[0], id="table-full", mem={**cases[0].mem, **full})]
 
 
 # ---- the SE pilot (its frozen stubs are test_midhook_pilot.py's own fixture): song-end diagnostics ----
 for sid, length in (("SE1", 6), ("SE2", 6), ("SE3", 8)):
     SPECS[sid] = (
-        Spec(sid, length, helpers={"Rs7End_OnContext": Helper(2)}),
+        Spec(sid, length, helpers={"RsxrEnd_OnContext": Helper(2)}),
         [
             Case(
                 f"log{s:x}",
                 regs={ECX_REG: calls.D, ESI_REG: calls.D},  # SE3 replays `mov edx,[esi]; mov eax,[edx+0B0h]`
                 mem={calls.D: dword(calls.D + 0x100)},
-                words={"g_rs7_endlog": s},
+                words={"g_rsxr_endlog": s},
             )
             for s in (0, 1, 0x80000000)
         ],
@@ -263,10 +263,10 @@ REFS: dict[str, Ref] = {
         **ruled(
             lambda c: (
                 W("mem", "stack", "writes", at={"stack": (8, dword(0xB0))}, span={"mem0": (0x3A, 0xAF)})
-                if c.id == "marker3752-magic47375352"
+                if c.id == "marker5852-magic47585352"
                 else None
             ),
-            "the native GuitarStrings object (marker 3752h, magic RS7G) is freed with its own size B0h",
+            "the native GuitarStrings object (marker 5852h, magic RSXG) is freed with its own size B0h",
         )
     ),
     "GIZ1": Ref(),  # EAX differs, but is dead at the allocator's indirect call (regs_live_at)
@@ -277,7 +277,7 @@ REFS: dict[str, Ref] = {
                 if c.id in OWNED_SLOT
                 else None
             ),
-            NATIVE_PEGSET + ": freed with 1D4h, its g_rs7_pegsets entry cleared",
+            NATIVE_PEGSET + ": freed with 1D4h, its g_rsxr_pegsets entry cleared",
         )
     ),
     "PSD1": Ref(
@@ -306,7 +306,7 @@ REFS: dict[str, Ref] = {
     "PSC1": Ref(
         **ruled(
             lambda c: None if c.id == "table-full" else W("mem", "writes", span={"mem0": (0xFC, 0x1D3)}),
-            "Rs7_PegSetCtor makes every PegSet it can register native (its tail +0FCh..+1D3h); a full g_rs7_pegsets "
+            "Rsxr_PegSetCtor makes every PegSet it can register native (its tail +0FCh..+1D3h); a full g_rsxr_pegsets "
             "keeps the stock layout",
             variant=psc1_cases,
         )
@@ -318,7 +318,7 @@ REFS: dict[str, Ref] = {
                 if "owned-middle" in c.id and v(c, "count") == "6" and v(c, "head") != "0"
                 else None
             ),
-            NATIVE_PEGSET + " ([neck] headstock_peg loads g_rs7_peg_load pegs; the count is read as a word)",
+            NATIVE_PEGSET + " ([neck] headstock_peg loads g_rsxr_peg_load pegs; the count is read as a word)",
         )
     ),
     "PSR1": Ref(
@@ -385,7 +385,7 @@ REFS: dict[str, Ref] = {
 
 
 def i1(c: Case):
-    """I1 (Rs7_Base6 stubbed): 80000000h = no active seven-string song, the six-string answer; 37 = the base of one."""
+    """I1 (Rsxr_Base6 stubbed): 80000000h = no active seven-string song, the six-string answer; 37 = the base of one."""
     if v(c, "base") == "80000000":
         return None
     if v(c, "string") == "6" and v(c, "key") != "0" and v(c, "instr") != "2":
@@ -397,7 +397,7 @@ def i1(c: Case):
 REFS.update(
     {
         "I1": Ref(
-            **ruled(i1, STRING6 + ": MIDI - Rs7_Base6 of the active seven-string song, returned to the bass target"),
+            **ruled(i1, STRING6 + ": MIDI - Rsxr_Base6 of the active seven-string song, returned to the bass target"),
             real=False,
         ),
         # ---- x87 and atomic sites ----
@@ -412,7 +412,7 @@ REFS.update(
         "S3": Ref(
             **ruled(
                 lambda c: W("mem", "writes", at={"mem0": (0x11F8, dword(35))}) if c.id == "vec7" else None,
-                "a seven-entry tuning vector gives the detector string 6 (MIDI 35 at +11F8h, Rs7_OnDetectorTuned)",
+                "a seven-entry tuning vector gives the detector string 6 (MIDI 35 at +11F8h, Rsxr_OnDetectorTuned)",
                 variant=lambda spec, cases: returning_elsewhere(spec, cases, x87.S3_RET, -1),
             )
         ),

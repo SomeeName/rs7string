@@ -6,7 +6,7 @@
 
 // Unchecked memory access for validated objects and light callbacks. These do not handle faults;
 // use safecopy.h for foreign memory that may be unavailable. A field reference requires T alignment.
-namespace rs7mem {
+namespace rsxrmem {
 template <class T>
 T& UncheckedField(void* base, size_t off) {
     return *reinterpret_cast<T*>(static_cast<uint8_t*>(base) + off);
@@ -26,4 +26,4 @@ template <class T>
 T UncheckedRead(uintptr_t address) {
     return UncheckedRead<T>(reinterpret_cast<const void*>(address));
 }
-}  // namespace rs7mem
+}  // namespace rsxrmem

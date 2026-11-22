@@ -1,4 +1,4 @@
-#include "features/string7/string7.h"  // g_rs7_frame_global (X_DT): *0x135FBFC, the localisation context
+#include "features/string7/string7.h"  // g_rsxr_frame_global (X_DT): *0x135FBFC, the localisation context
 #include "features/tuner/hooks.h"
 #include "features/tuner/state.h"
 #include "features/tuner/tuningname.h"
@@ -17,21 +17,21 @@
 // name logic (tuningname.cpp) and writes the game's strings through its own string routines (callref sites).
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_tn_on = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_strcon = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_strasg = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_loc = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_strdtor = 0;
+__declspec(dllexport) uintptr_t g_rsxr_tn_on = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_strcon = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_strasg = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_loc = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_strdtor = 0;
 }
 
-thread_local rs7tuner::NameCalls rs7tuner::g_nameCalls{};
+thread_local rsxrtuner::NameCalls rsxrtuner::g_nameCalls{};
 
 namespace {
-using rs7::JsonNumber;
-using rs7::JsonOffset;
-using rs7tuner::g_nameCalls;
-using rs7tuner::g_state;
-using rs7tuner::NameCall;
+using rsxr::JsonNumber;
+using rsxr::JsonOffset;
+using rsxrtuner::g_nameCalls;
+using rsxrtuner::g_state;
+using rsxrtuner::NameCall;
 constexpr long kMaxLogs = 60;
 
 // The song list is rebuilt often: each distinct line is logged once.
@@ -60,7 +60,7 @@ __declspec(noinline) void Log(const char* fmt, ...) {
             return;
         }
 
-        Rs7Log("%s", buf);
+        RsxrLog("%s", buf);
     } catch (...) {
     }
 }
@@ -79,20 +79,20 @@ bool ReadSix(void* tuning, int t[6]) {
     return true;
 }
 
-// A Tuning object with Rs7String6 and all of string0..5: t[0..6]. Anything else: false (stock).
+// A Tuning object with RsxrString6 and all of string0..5: t[0..6]. Anything else: false (stock).
 bool ReadSeven(void* tuning, int t[7]) {
-    return JsonOffset(tuning, rs7tn::kKey, &t[6]) && ReadSix(tuning, t);
+    return JsonOffset(tuning, rsxrtn::kKey, &t[6]) && ReadSix(tuning, t);
 }
 
-// A Tuning object with Rs7String4 (+ Rs7String5) and all of string0..5: t[0..5], returns 5 / 6. Anything else: 0.
+// A Tuning object with RsxrString4 (+ RsxrString5) and all of string0..5: t[0..5], returns 5 / 6. Anything else: 0.
 int ReadBass(void* tuning, int t[6]) {
     int b = 0;
 
-    if (!JsonOffset(tuning, rs7tn::kKeyBass4, &b) || !ReadSix(tuning, t)) {
+    if (!JsonOffset(tuning, rsxrtn::kKeyBass4, &b) || !ReadSix(tuning, t)) {
         return 0;
     }
 
-    return JsonOffset(tuning, rs7tn::kKeyBass5, &b) ? 6 : 5;
+    return JsonOffset(tuning, rsxrtn::kKeyBass5, &b) ? 6 : 5;
 }
 
 // The game's 0x18-byte string: inline 16 bytes at +0 while +14h == &+10h, else the data pointer
@@ -101,12 +101,12 @@ std::string StrRead(const void* s) {
     char text[1025];
     size_t length = 0;
 
-    return rs7::ReadGameString(s, text, sizeof text, false, &length) ? std::string(text, length) : std::string();
+    return rsxr::ReadGameString(s, text, sizeof text, false, &length) ? std::string(text, length) : std::string();
 }
 
 // The game's string routines (callref sites). Custom register ABIs: every register saved around them.
 bool CallAssign(void* s, const char* b, const char* e) {
-    const uintptr_t fn = g_rs7_fn_strasg;
+    const uintptr_t fn = g_rsxr_fn_strasg;
     if (!fn || !s) {
         return false;
     }
@@ -122,13 +122,13 @@ bool CallAssign(void* s, const char* b, const char* e) {
         }
 
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
 
 bool CallConstruct(void* s, const char* b, const char* e) {
-    const uintptr_t fn = g_rs7_fn_strcon;
+    const uintptr_t fn = g_rsxr_fn_strcon;
     if (!fn || !s) {
         return false;
     }
@@ -150,14 +150,14 @@ bool CallConstruct(void* s, const char* b, const char* e) {
         }
 
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
 
 bool CallLocalise(void* dst, const char* text) {
-    const uintptr_t fn = g_rs7_fn_loc;
-    uint8_t* app = g_rs7_frame_global ? *reinterpret_cast<uint8_t**>(g_rs7_frame_global) : nullptr;
+    const uintptr_t fn = g_rsxr_fn_loc;
+    uint8_t* app = g_rsxr_frame_global ? *reinterpret_cast<uint8_t**>(g_rsxr_frame_global) : nullptr;
     if (!fn || !app || !dst) {
         return false;
     }
@@ -175,13 +175,13 @@ bool CallLocalise(void* dst, const char* text) {
         }
 
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
 
 void CallDestroy(void* s) {
-    const uintptr_t fn = g_rs7_fn_strdtor;
+    const uintptr_t fn = g_rsxr_fn_strdtor;
     if (!fn || !s) {
         return;
     }
@@ -193,7 +193,7 @@ void CallDestroy(void* s) {
             call fn
             popad
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 }
 
@@ -208,14 +208,14 @@ int StringCount(int bass, bool eight) {
 
 // The configured mark for an arrangement of `strings` strings: the 7-string suffix as set, else SuffixN.
 std::string MarkFor(int strings) {
-    return strings == 7 ? std::string(g_state.names.suffix) : rs7tn::SuffixN(g_state.names.suffix, strings);
+    return strings == 7 ? std::string(g_state.names.suffix) : rsxrtn::SuffixN(g_state.names.suffix, strings);
 }
 
 // The known name's display text for t[0..7] (t[7] only with `eight`), or empty.
 std::string KnownFor(const int t[8], int bass, bool eight, int cents, bool decorate) {
-    return bass    ? rs7tn::KnownDisplayBass(t, bass, g_state.names, cents, decorate)
-           : eight ? rs7tn::KnownDisplay8(t, g_state.names, cents, decorate)
-                   : rs7tn::KnownDisplay(t, g_state.names, cents, decorate);
+    return bass    ? rsxrtn::KnownDisplayBass(t, bass, g_state.names, cents, decorate)
+           : eight ? rsxrtn::KnownDisplay8(t, g_state.names, cents, decorate)
+                   : rsxrtn::KnownDisplay(t, g_state.names, cents, decorate);
 }
 
 // "$[17874]E Standard" -> "E STANDARD" through the game's localisation; plain text unchanged.
@@ -246,7 +246,7 @@ std::string Offsets(const int t[7]) {
 
 // Open calls (TJ / TU, state.h NameCall): Pre fills one, Post consumes it.
 uint32_t Open(void* raw, void* disp, int cents) {
-    for (int i = 0; i < rs7tuner::kNameCalls; ++i) {
+    for (int i = 0; i < rsxrtuner::kNameCalls; ++i) {
         if (!g_nameCalls.entries[i].used) {
             NameCall& c = g_nameCalls.entries[i];
 
@@ -265,8 +265,8 @@ uint32_t Open(void* raw, void* disp, int cents) {
 }
 
 NameCall* Get(uint32_t h) {
-    return (h >= 1 && h <= rs7tuner::kNameCalls && g_nameCalls.entries[h - 1].used) ? &g_nameCalls.entries[h - 1]
-                                                                                    : nullptr;
+    return (h >= 1 && h <= rsxrtuner::kNameCalls && g_nameCalls.entries[h - 1].used) ? &g_nameCalls.entries[h - 1]
+                                                                                     : nullptr;
 }
 
 void Close(NameCall* c) {
@@ -289,13 +289,13 @@ void Close(NameCall* c) {
 }
 }  // namespace
 
-void Rs7Tn_Configure(const rs7tn::Config& c) {
+void RsxrTn_Configure(const rsxrtn::Config& c) {
     g_state.names = c;
 }
 
 // ---- TJ: 0x56C950 ----
-extern "C" uint32_t __cdecl Rs7_TnJsonPre(void* raw, void* disp, void* json, int cents) {
-    if (!g_rs7_tn_on || !json) {
+extern "C" uint32_t __cdecl Rsxr_TnJsonPre(void* raw, void* disp, void* json, int cents) {
+    if (!g_rsxr_tn_on || !json) {
         return 0;
     }
 
@@ -312,14 +312,14 @@ extern "C" uint32_t __cdecl Rs7_TnJsonPre(void* raw, void* disp, void* json, int
     if (NameCall* c = Get(h)) {
         c->seven = true;
         c->bass = bass;
-        c->eight = seven && JsonOffset(json, rs7tn::kKey8, &c->t8);  // an 8-string chart
+        c->eight = seven && JsonOffset(json, rsxrtn::kKey8, &c->t8);  // an 8-string chart
         std::memcpy(c->t, t, sizeof t);
     }
 
     return h;
 }
 
-extern "C" void __cdecl Rs7_TnJsonPost(uint32_t h) {
+extern "C" void __cdecl Rsxr_TnJsonPost(uint32_t h) {
     NameCall* c = Get(h);
     if (!c) {
         return;
@@ -335,12 +335,12 @@ extern "C" void __cdecl Rs7_TnJsonPost(uint32_t h) {
             // Raw token (row +150h, the tuning sort's group equality) and the display text: the
             // extended name; the display decorated like a matched stock name.
             raw = known;
-            disp = raw + rs7tn::Decoration(c->cents);
+            disp = raw + rsxrtn::Decoration(c->cents);
             Assign(c->raw, raw);
         } else {
             const std::string mark = MarkFor(StringCount(c->bass, c->eight));
 
-            disp = rs7tn::MarkStock(Localise(disp0), g_state.names.prefix, mark.c_str());
+            disp = rsxrtn::MarkStock(Localise(disp0), g_state.names.prefix, mark.c_str());
         }
 
         Assign(c->disp, disp);
@@ -353,15 +353,15 @@ extern "C" void __cdecl Rs7_TnJsonPost(uint32_t h) {
 }
 
 // ---- TU / TUT: 0x56C300 ----
-extern "C" uint32_t __cdecl Rs7_TnUuidPre(void* out) {
-    if (!g_rs7_tn_on || !out) {
+extern "C" uint32_t __cdecl Rsxr_TnUuidPre(void* out) {
+    if (!g_rsxr_tn_on || !out) {
         return 0;
     }
 
     return Open(nullptr, out, 0);
 }
 
-extern "C" void __cdecl Rs7_TnUuidTuning(void* tuning, void* attributes) {
+extern "C" void __cdecl Rsxr_TnUuidTuning(void* tuning, void* attributes) {
     NameCall* c = nullptr;
 
     for (uint32_t h = g_nameCalls.top; h; h = g_nameCalls.entries[h - 1].previous) {
@@ -391,19 +391,19 @@ extern "C" void __cdecl Rs7_TnUuidTuning(void* tuning, void* attributes) {
     std::memcpy(c->t, t, sizeof t);
     c->seven = true;
     c->bass = bass;
-    c->eight = seven && JsonOffset(tuning, rs7tn::kKey8, &c->t8);  // an 8-string chart
+    c->eight = seven && JsonOffset(tuning, rsxrtn::kKey8, &c->t8);  // an 8-string chart
 }
 
 // TUT - 0x56C408 in 0x56C300: EDI = the arrangement's Tuning object, [ebp-88h] = its Attributes.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TUT(Rs7Mid::Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_TUT(RsxrMid::Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    if (g_rs7_tn_on) {
-        Rs7_TnUuidTuning(reinterpret_cast<void*>(c.edi), reinterpret_cast<void*>(rs7tuner::Dword(c.ebp - 0x88)));
+    if (g_rsxr_tn_on) {
+        Rsxr_TnUuidTuning(reinterpret_cast<void*>(c.edi), reinterpret_cast<void*>(rsxrtuner::Dword(c.ebp - 0x88)));
     }
 }
 
-extern "C" void __cdecl Rs7_TnUuidPost(uint32_t h) {
+extern "C" void __cdecl Rsxr_TnUuidPost(uint32_t h) {
     NameCall* c = Get(h);
     if (!c) {
         return;
@@ -418,7 +418,7 @@ extern "C" void __cdecl Rs7_TnUuidPost(uint32_t h) {
             if (out.empty()) {
                 const std::string mark = MarkFor(StringCount(c->bass, c->eight));
 
-                out = rs7tn::MarkStock(Localise(stock), g_state.names.prefix, mark.c_str());
+                out = rsxrtn::MarkStock(Localise(stock), g_state.names.prefix, mark.c_str());
             }
 
             Assign(c->disp, out);
@@ -432,26 +432,26 @@ extern "C" void __cdecl Rs7_TnUuidPost(uint32_t h) {
 }
 
 // ---- TN: 0x5B7750 ----
-extern "C" uint32_t __cdecl Rs7_TnArrayPre(void* out, const int* offs, uint32_t* post) {
+extern "C" uint32_t __cdecl Rsxr_TnArrayPre(void* out, const int* offs, uint32_t* post) {
     if (post) {
         *post = 0;
     }
-    if (!g_rs7_tn_on || !out || !offs) {
+    if (!g_rsxr_tn_on || !out || !offs) {
         return 0;
     }
 
     int t[8] = {};
-    const bool seven = Rs7Tuner_SevenFor(offs, &t[6]);
-    const int bass = seven ? 0 : Rs7Tuner_BassFor(offs);  // a 5/6-string bass arrangement
+    const bool seven = RsxrTuner_SevenFor(offs, &t[6]);
+    const int bass = seven ? 0 : RsxrTuner_BassFor(offs);  // a 5/6-string bass arrangement
 
     if (!seven && !bass) {
         return 0;
     }
-    if (!Rs7_SafeCopyZero(t, offs, 6 * sizeof(int))) {
+    if (!Rsxr_SafeCopyZero(t, offs, 6 * sizeof(int))) {
         return 0;
     }
 
-    const bool eight = seven && Rs7Tuner_EighthFor(offs, &t[7]);  // an 8-string arrangement: its own name (Name8)
+    const bool eight = seven && RsxrTuner_EighthFor(offs, &t[7]);  // an 8-string arrangement: its own name (Name8)
 
     try {
         const std::string name = KnownFor(t, bass, eight, 0, false);
@@ -481,7 +481,7 @@ extern "C" uint32_t __cdecl Rs7_TnArrayPre(void* out, const int* offs, uint32_t*
     }
 }
 
-extern "C" void __cdecl Rs7_TnArrayPost(void* out, uint32_t post) {
+extern "C" void __cdecl Rsxr_TnArrayPost(void* out, uint32_t post) {
     if (!post || !out) {
         return;
     }
@@ -489,7 +489,7 @@ extern "C" void __cdecl Rs7_TnArrayPost(void* out, uint32_t post) {
     try {
         const std::string stock = StrRead(out);
         const std::string mark = MarkFor(int(post));
-        const std::string marked = rs7tn::MarkStock(Localise(stock), g_state.names.prefix, mark.c_str());
+        const std::string marked = rsxrtn::MarkStock(Localise(stock), g_state.names.prefix, mark.c_str());
 
         Assign(out, marked);
         Log("tuning name [tuner 0x5B7750]: unknown tuning (%d strings): stock \"%s\" -> \"%s\"", int(post),

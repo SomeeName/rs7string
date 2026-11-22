@@ -73,7 +73,7 @@ def test_song_camera_mid_hook_replays_stock_and_shifts_only_four_z_values(enable
     uc.mem_write(a1 + 8, struct.pack("<3f", -0.25 if lefty else 0.25, 0, 2 if inverted else -2))
     uc.mem_write(grid + 0x5C40, bytes([1]) + bytes(0x37))
     uc.mem_write(grid + 0x5C58, struct.pack("<f", -20))
-    uc.mem_write(emu.exports["g_rs7_frets_on"], struct.pack("<I", enabled))
+    uc.mem_write(emu.exports["g_rsxr_frets_on"], struct.pack("<I", enabled))
     esp = STACK + 0x80000
     regs = dict(
         zip(

@@ -4,7 +4,7 @@
 // Helpers shared by the arrangement menu hooks (hooks.cpp: the Learn a Song page, coop.cpp: the co-op arrangement
 // list). Both pages derive from one menu class: view definition root +1A0h, page node +1C4h, focus lists +214h /
 // +220h, focused id +1FCh, vtable +B0h builder and +DCh / +E0h focus steps.
-namespace rs7menu {
+namespace rsxrmenu {
 constexpr uint32_t kRecordSize = 0xFC;        // an arrangement record (filled by 0x625E70)
 constexpr uint32_t kRoot = 0x1A0;             // page +1A0h: the view definition root, a new one per build (0x5C6C40)
 constexpr uint32_t kPageNode = 0x1C4;         // page +1C4h: the page's node under the root
@@ -50,4 +50,4 @@ void SwapFocusLists(uint32_t page, uint32_t (&spare)[kFocusListDwords]);
 
 // Points the focus steps of the page vtable `vtable` at `up` / `down`, if they still hold the stock steps.
 bool HookFocusSteps(uint32_t vtable, uintptr_t up, uintptr_t down);
-}  // namespace rs7menu
+}  // namespace rsxrmenu

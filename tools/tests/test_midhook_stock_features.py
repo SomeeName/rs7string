@@ -154,7 +154,7 @@ def ds1_templates() -> bytes:
 def ds1_cases(spec, cases):
     """DS1 counts the frets != -1 of a chord template (2 = double stop). Both layouts carry the same six frets (stock
     template +4, T8 record +48h with slots 6/7 empty); the run goes to the end of the count loop (0x55BA03). Registered:
-    the song's T8 array is in g_rs7_ns. Empty fallback counts are covered by the native failure tests."""
+    the song's T8 array is in g_rsxr_ns. Empty fallback counts are covered by the native failure tests."""
     t8 = bytearray(4 * T8_SIZE)
     for i, frets in enumerate(DS1_FRETS):
         t8[i * T8_SIZE + 0x48 : i * T8_SIZE + 0x50] = bytes(frets) + bytes([0xFF, 0xFF])
@@ -166,7 +166,7 @@ def ds1_cases(spec, cases):
             Case(
                 f"{'registered' if registered else 'unregistered'}-tpl{i}",
                 regs={UC_X86_REG_ESI: DS1_BEGIN, UC_X86_REG_ECX: i, UC_X86_REG_EDI: ns.D},
-                mem={DS1_BEGIN: ds1_templates(), DS1_T8: bytes(t8), Sym("g_rs7_ns"): table},
+                mem={DS1_BEGIN: ds1_templates(), DS1_T8: bytes(t8), Sym("g_rsxr_ns"): table},
             )
         )
     return dataclasses.replace(spec, exits=(("resume", 10),)), out
@@ -232,12 +232,12 @@ def pubga(c: Case):
     s = h(c, "s")
     if s < 6:
         return None
-    regs = {"eax": 1 if s < 8 else 0, "ebp": EBP, "esp": ESP + 4}  # Rs7Gs_AttachExt (stubbed: 1) or 0, returned
+    regs = {"eax": 1 if s < 8 else 0, "ebp": EBP, "esp": ESP + 4}  # RsxrGs_AttachExt (stubbed: 1) or 0, returned
     return W("eip", "final_esp", "regs", "stack", eip=("abs", RET_AT), esp=0x54, regs=regs)
 
 
 def at_autotune(c: Case):
-    """AT (Rs7_TunerAutotune stubbed): 0 = not tuned, the six-string answer."""
+    """AT (Rsxr_TunerAutotune stubbed): 0 = not tuned, the six-string answer."""
     if v(c, "r") == "0":
         return None
     if v(c, "auto") == "0":
@@ -294,8 +294,8 @@ REFS: dict[str, Ref] = {
         )
     ),
     # ---- features/tuner (void / dispatch helpers stubbed: they need the live tuner) ----
-    **{sid: entry(sid, "Rs7Tuner8_Target") for sid in ("TU8H", "TU8C", "TU8A")},
-    **{sid: entry(sid, "Rs7Tuner8_SessTarget") for sid in feat.TS8_IDS},
+    **{sid: entry(sid, "RsxrTuner8_Target") for sid in ("TU8H", "TU8C", "TU8A")},
+    **{sid: entry(sid, "RsxrTuner8_SessTarget") for sid in feat.TS8_IDS},
     "TU8INIT": Ref(
         six=lambda c: c.regs[UC_X86_REG_ESI] == 0,
         why="the installed allocation stays grown after runtime isolation",
@@ -305,8 +305,8 @@ REFS: dict[str, Ref] = {
     "TU8FREE": Ref(),
     "AT": Ref(**ruled(at_autotune, "[tuner] autotune on and the string in tune"), real=False, variant=returning),
     # ---- features/publish ----
-    **{sid: entry(sid, "Rs7Publish_Target") for sid in feat.PUB_ENTRIES},
-    **{sid: entry(sid, "Rs7PublishPitch_Target") for sid in feat.PUB_PITCH},
+    **{sid: entry(sid, "RsxrPublish_Target") for sid in feat.PUB_ENTRIES},
+    **{sid: entry(sid, "RsxrPublishPitch_Target") for sid in feat.PUB_PITCH},
     **{
         sid: Ref(
             **ruled(
@@ -331,12 +331,12 @@ REFS: dict[str, Ref] = {
     "PUBGB": Ref(
         **ruled(
             lambda c: None if c.id == "r2" else W("regs", regs={"eax": 0}),
-            "Rs7Publish_GridBuild (stubbed) answers 2, the stock status; 0 = not ready while the strings load",
+            "RsxrPublish_GridBuild (stubbed) answers 2, the stock status; 0 = not ready while the strings load",
         ),
         real=False,
     ),
     "PUBGA": Ref(
-        **ruled(pubga, STRING6 + ": strings 6/7 go to Rs7Gs_AttachExt, >= 8 return 0"), real=False, variant=returning
+        **ruled(pubga, STRING6 + ": strings 6/7 go to RsxrGs_AttachExt, >= 8 return 0"), real=False, variant=returning
     ),
     "PUBEDGE": Ref(),
     "PUBGF": Ref(variant=whole_function),
@@ -352,16 +352,16 @@ REFS: dict[str, Ref] = {
                     "final_esp",
                     "regs",
                     "stack",
-                    eip=("abs", EXPORTS["Rs7_NifHandler"]),
+                    eip=("abs", EXPORTS["Rsxr_NifHandler"]),
                     esp=4,
                     regs={"eax": 0x12345678, "ebp": EBP, "esp": ESP},
                 )
             ),
-            "with the asset hook on the load continues in Rs7_NifHandler (the game function's signature, entry stack)",
+            "with the asset hook on the load continues in Rsxr_NifHandler (the game function's signature, entry stack)",
         )
     ),  # fmt: skip
     # ---- features/strings ----
-    **{sid: entry(sid, "Rs7Gs_Target") for sid in feat.GS_ENTRIES},
+    **{sid: entry(sid, "RsxrGs_Target") for sid in feat.GS_ENTRIES},
     "GRM1": Ref(),
     "GRM2": Ref(
         **ruled(

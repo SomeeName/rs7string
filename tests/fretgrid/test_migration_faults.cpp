@@ -5,12 +5,12 @@
 #include <cstring>
 
 namespace {
-uint8_t g_fresh[rs7fg::kSizeNative], g_stock[rs7fg::kSizeStock];
+uint8_t g_fresh[rsxrfg::kSizeNative], g_stock[rsxrfg::kSizeStock];
 bool g_ctorFault = false, g_allocFails = false;
 int g_allocations = 0;
 
 void* Allocate(uint32_t size) {
-    CHECK_EQ(size, rs7fg::kSizeNative);
+    CHECK_EQ(size, rsxrfg::kSizeNative);
     ++g_allocations;
 
     return g_allocFails ? nullptr : g_fresh;
@@ -25,15 +25,15 @@ void* Construct(void* grid) {
 }
 
 void Free(void*, uint32_t size) {
-    CHECK_EQ(size, rs7fg::kSizeStock);
+    CHECK_EQ(size, rsxrfg::kSizeStock);
 }
 
-rs7fg::ApplyResult Apply(bool) {
-    return rs7fg::ApplyResult::Applied;
+rsxrfg::ApplyResult Apply(bool) {
+    return rsxrfg::ApplyResult::Applied;
 }
 
 struct Migration {
-    uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
     uint8_t guitar[0x40] = {};
 
     Migration() {
@@ -41,28 +41,28 @@ struct Migration {
 
         std::memset(g_stock, 0, sizeof g_stock);
 
-        std::memcpy(guitar + rs7::kGuitarGrid, &grid, sizeof grid);
-        rs7fg::ConfigureDeferred(true);
-        rs7fg::SetDeferredApply(&Apply);
-        rs7fg::SetGridAllocatorForTests(&Allocate, &Construct, &Free);
+        std::memcpy(guitar + rsxr::kGuitarGrid, &grid, sizeof grid);
+        rsxrfg::ConfigureDeferred(true);
+        rsxrfg::SetDeferredApply(&Apply);
+        rsxrfg::SetGridAllocatorForTests(&Allocate, &Construct, &Free);
         g_ctorFault = g_allocFails = false;
         g_allocations = 0;
     }
 
     ~Migration() {
-        rs7fg::SetGridAllocatorForTests(nullptr, nullptr, nullptr);
-        rs7fg::SetDeferredApply(nullptr);
-        g_rs7_native_fretgrid = sw;
-        g_rs7_fg_row = row;
+        rsxrfg::SetGridAllocatorForTests(nullptr, nullptr, nullptr);
+        rsxrfg::SetDeferredApply(nullptr);
+        g_rsxr_native_fretgrid = sw;
+        g_rsxr_fg_row = row;
     }
 
     void Update(bool skipped) {
         uint32_t stack[] = {0x12345678, uint32_t(uintptr_t(guitar))};
-        Rs7Mid::Context c = {};
+        RsxrMid::Context c = {};
 
         c.esp = uint32_t(uintptr_t(stack));
         c.jump = 0x87654321;
-        Rs7_Mid_FGHK(c);
+        Rsxr_Mid_FGHK(c);
         CHECK_EQ(c.jump, skipped ? 0x12345678u : 0x87654321u);
         CHECK_EQ(c.esp, uint32_t(uintptr_t(stack)) + (skipped ? 8u : 0u));
     }
@@ -70,7 +70,7 @@ struct Migration {
     uint8_t* Grid() const {
         uint8_t* grid;
 
-        std::memcpy(&grid, guitar + rs7::kGuitarGrid, sizeof grid);
+        std::memcpy(&grid, guitar + rsxr::kGuitarGrid, sizeof grid);
 
         return grid;
     }
@@ -83,24 +83,24 @@ TEST(fretgrid_ctor_fault_skips_update_until_migration_succeeds) {
     g_ctorFault = true;
     m.Update(true);
     CHECK(m.Grid() == g_stock);
-    CHECK_EQ(rs7fg::RowStride(), rs7fg::kRowNative);
+    CHECK_EQ(rsxrfg::RowStride(), rsxrfg::kRowNative);
     g_ctorFault = false;
     m.Update(false);
     CHECK(m.Grid() == g_fresh);
-    CHECK(!rs7fg::NeedsMigration(m.Grid()));
+    CHECK(!rsxrfg::NeedsMigration(m.Grid()));
 }
 
 TEST(fretgrid_migration_fault_skips_update_until_grid_is_readable) {
     Migration m;
-    uint8_t* unreadable = static_cast<uint8_t*>(rs7test::Must(
-        VirtualAlloc(nullptr, rs7fg::kSizeStock, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS), "VirtualAlloc"));
+    uint8_t* unreadable = static_cast<uint8_t*>(rsxrtest::Must(
+        VirtualAlloc(nullptr, rsxrfg::kSizeStock, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS), "VirtualAlloc"));
 
-    std::memcpy(m.guitar + rs7::kGuitarGrid, &unreadable, sizeof unreadable);
+    std::memcpy(m.guitar + rsxr::kGuitarGrid, &unreadable, sizeof unreadable);
     m.Update(true);  // MigrateGrid faults before the slot is replaced
     CHECK(m.Grid() == unreadable);
     uint8_t* stock = g_stock;
 
-    std::memcpy(m.guitar + rs7::kGuitarGrid, &stock, sizeof stock);
+    std::memcpy(m.guitar + rsxr::kGuitarGrid, &stock, sizeof stock);
     VirtualFree(unreadable, 0, MEM_RELEASE);
     m.Update(false);
     CHECK(m.Grid() == g_fresh);
@@ -137,9 +137,9 @@ TEST(fretgrid_allocation_failure_skips_update_and_can_retry) {
 TEST(fretgrid_registry_exhaustion_skips_stock_grids_waiting_for_migration) {
     for (bool retry : {false, true}) {
         Migration m;
-        uint8_t firstGuitar[0x40] = {}, native[rs7fg::kRegistryCapacity + 1] = {};
+        uint8_t firstGuitar[0x40] = {}, native[rsxrfg::kRegistryCapacity + 1] = {};
 
-        CHECK(rs7fg::OnGuitarUpdate(firstGuitar));  // switch layouts before this stock grid's first update
+        CHECK(rsxrfg::OnGuitarUpdate(firstGuitar));  // switch layouts before this stock grid's first update
         g_allocFails = true;
 
         if (retry) {
@@ -147,10 +147,10 @@ TEST(fretgrid_registry_exhaustion_skips_stock_grids_waiting_for_migration) {
         }
 
         for (auto& grid : native) {
-            rs7fg::OnGridCreated(&grid);
+            rsxrfg::OnGridCreated(&grid);
         }
 
-        CHECK(rs7fg::RegistryFailed());
+        CHECK(rsxrfg::RegistryFailed());
         const int allocations = g_allocations;
 
         g_allocFails = false;
@@ -159,11 +159,11 @@ TEST(fretgrid_registry_exhaustion_skips_stock_grids_waiting_for_migration) {
         CHECK_EQ(g_allocations, allocations);  // an unknown layout must not be copied or sized-freed as stock
         uint8_t* known = &native[0];
 
-        std::memcpy(m.guitar + rs7::kGuitarGrid, &known, sizeof known);
+        std::memcpy(m.guitar + rsxr::kGuitarGrid, &known, sizeof known);
         m.Update(false);  // registered native grids remain usable
-        uint8_t* unknown = &native[rs7fg::kRegistryCapacity];
+        uint8_t* unknown = &native[rsxrfg::kRegistryCapacity];
 
-        std::memcpy(m.guitar + rs7::kGuitarGrid, &unknown, sizeof unknown);
+        std::memcpy(m.guitar + rsxr::kGuitarGrid, &unknown, sizeof unknown);
         m.Update(true);  // an unregistered native grid is also skipped, never migrated as stock
     }
 }

@@ -42,10 +42,10 @@ void Split(const std::string& s, std::string* word, std::string* rest) {
 }
 
 SRWLOCK g_lock = SRWLOCK_INIT;
-std::deque<Rs7Cmd>* g_queue;  // created on the first post (pipe thread)
+std::deque<RsxrCmd>* g_queue;  // created on the first post (pipe thread)
 }  // namespace
 
-bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out) {
+bool RsxrCmd_Parse(const char* line, RsxrCmd* out) {
     if (!line || line[0] != 'o' || (line[1] != ' ' && line[1] != '\t')) {
         return false;
     }
@@ -53,18 +53,18 @@ bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out) {
     std::string verb, rest;
 
     Split(line + 2, &verb, &rest);
-    Rs7Cmd c;
+    RsxrCmd c;
 
     if (verb == "toggle" || verb == "show" || verb == "hide" || verb == "save" || verb == "status") {
         if (!rest.empty()) {
             return false;
         }
 
-        c.kind = verb == "toggle" ? Rs7CmdKind::Toggle
-                 : verb == "show" ? Rs7CmdKind::Show
-                 : verb == "hide" ? Rs7CmdKind::Hide
-                 : verb == "save" ? Rs7CmdKind::Save
-                                  : Rs7CmdKind::Status;
+        c.kind = verb == "toggle" ? RsxrCmdKind::Toggle
+                 : verb == "show" ? RsxrCmdKind::Show
+                 : verb == "hide" ? RsxrCmdKind::Hide
+                 : verb == "save" ? RsxrCmdKind::Save
+                                  : RsxrCmdKind::Status;
     } else if (verb == "tab") {
         std::string name, extra;
 
@@ -73,7 +73,7 @@ bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out) {
             return false;
         }
 
-        c.kind = Rs7CmdKind::Tab;
+        c.kind = RsxrCmdKind::Tab;
         c.key = name;
     } else if (verb == "set") {
         std::string key, value;
@@ -83,7 +83,7 @@ bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out) {
             return false;
         }
 
-        c.kind = Rs7CmdKind::Set;
+        c.kind = RsxrCmdKind::Set;
         c.key = key;
         c.value = value;
     } else {
@@ -95,11 +95,11 @@ bool Rs7Cmd_Parse(const char* line, Rs7Cmd* out) {
     return true;
 }
 
-bool Rs7Cmd_Post(const char* line) {
-    Rs7Cmd c;
+bool RsxrCmd_Post(const char* line) {
+    RsxrCmd c;
 
-    if (!Rs7Cmd_Parse(line, &c)) {
-        Rs7Log("overlay: cmd '%s' not understood", line ? line : "");
+    if (!RsxrCmd_Parse(line, &c)) {
+        RsxrLog("overlay: cmd '%s' not understood", line ? line : "");
         return false;
     }
 
@@ -110,7 +110,7 @@ bool Rs7Cmd_Post(const char* line) {
 
     try {
         if (!g_queue) {
-            g_queue = new std::deque<Rs7Cmd>();
+            g_queue = new std::deque<RsxrCmd>();
         }
 
         if (g_queue->size() < kMaxQueued) {
@@ -124,13 +124,13 @@ bool Rs7Cmd_Post(const char* line) {
 
     ReleaseSRWLockExclusive(&g_lock);
     if (!ok) {
-        Rs7Log("overlay: cmd '%s' dropped (%s)", line, oom ? "out of memory" : "queue full");
+        RsxrLog("overlay: cmd '%s' dropped (%s)", line, oom ? "out of memory" : "queue full");
     }
 
     return ok;
 }
 
-bool Rs7Cmd_Pop(Rs7Cmd* out) {
+bool RsxrCmd_Pop(RsxrCmd* out) {
     bool got = false;
 
     AcquireSRWLockExclusive(&g_lock);
@@ -150,7 +150,7 @@ bool Rs7Cmd_Pop(Rs7Cmd* out) {
     return got;
 }
 
-int Rs7_ParseHotkey(const char* text) {
+int Rsxr_ParseHotkey(const char* text) {
     if (!text) {
         return 0;
     }

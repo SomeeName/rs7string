@@ -26,7 +26,7 @@ constexpr Family kFamilies[] = {
 };
 
 struct Alternate {
-    int t[7];  // string0..5, Rs7String6
+    int t[7];  // string0..5, RsxrString6
     const char* name;
 };
 
@@ -118,22 +118,22 @@ bool IsNoteWithAccidental(const std::string& w) {
 }
 
 // A known name's display text (+ the decoration, if `decorate`); no name: empty.
-std::string Known(const char* name, const rs7tn::Config& c, const char* suffix, int cents, bool decorate) {
+std::string Known(const char* name, const rsxrtn::Config& c, const char* suffix, int cents, bool decorate) {
     if (!name) {
         return {};
     }
 
-    std::string out = rs7tn::Display(rs7tn::Compose(name, c.prefix, suffix));
+    std::string out = rsxrtn::Display(rsxrtn::Compose(name, c.prefix, suffix));
 
     if (decorate) {
-        out += rs7tn::Decoration(cents);
+        out += rsxrtn::Decoration(cents);
     }
 
     return out;
 }
 }  // namespace
 
-const char* rs7tn::Name7(const int t[7]) {
+const char* rsxrtn::Name7(const int t[7]) {
     if (!t) {
         return nullptr;
     }
@@ -153,7 +153,7 @@ const char* rs7tn::Name7(const int t[7]) {
     return FamilyName(0, t[0], t[0] - t[6]);
 }
 
-const char* rs7tn::Name8(const int t[8]) {
+const char* rsxrtn::Name8(const int t[8]) {
     if (!t) {
         return nullptr;
     }
@@ -167,11 +167,11 @@ const char* rs7tn::Name8(const int t[8]) {
     return FamilyName(1, t[0], t[0] - t[7]);
 }
 
-std::string rs7tn::KnownDisplay8(const int t[8], const Config& c, int cents, bool decorate) {
+std::string rsxrtn::KnownDisplay8(const int t[8], const Config& c, int cents, bool decorate) {
     return Known(c.on ? Name8(t) : nullptr, c, SuffixN(c.suffix, 8).c_str(), cents, decorate);
 }
 
-const char* rs7tn::NameBass(const int t[6], int strings) {
+const char* rsxrtn::NameBass(const int t[6], int strings) {
     if (strings < 5 || strings > 6) {
         return nullptr;
     }
@@ -191,7 +191,7 @@ const char* rs7tn::NameBass(const int t[6], int strings) {
     return Name7(seven);
 }
 
-std::string rs7tn::SuffixN(const char* suffix7, int strings) {
+std::string rsxrtn::SuffixN(const char* suffix7, int strings) {
     std::string s = suffix7 ? suffix7 : "";
     const size_t i = s.find('7');
     const char digit = char('0' + strings);
@@ -205,11 +205,11 @@ std::string rs7tn::SuffixN(const char* suffix7, int strings) {
     return s;
 }
 
-std::string rs7tn::KnownDisplayBass(const int t[6], int strings, const Config& c, int cents, bool decorate) {
+std::string rsxrtn::KnownDisplayBass(const int t[6], int strings, const Config& c, int cents, bool decorate) {
     return Known(c.on ? NameBass(t, strings) : nullptr, c, SuffixN(c.suffix, strings).c_str(), cents, decorate);
 }
 
-std::string rs7tn::Compose(const char* base, const char* prefix, const char* suffix) {
+std::string rsxrtn::Compose(const char* base, const char* prefix, const char* suffix) {
     std::string out;
 
     if (prefix && *prefix) {
@@ -223,7 +223,7 @@ std::string rs7tn::Compose(const char* base, const char* prefix, const char* suf
     return out;
 }
 
-std::string rs7tn::Display(const std::string& name) {
+std::string rsxrtn::Display(const std::string& name) {
     std::string out;
     size_t i = 0;
 
@@ -252,7 +252,7 @@ std::string rs7tn::Display(const std::string& name) {
     return out;
 }
 
-int rs7tn::ReferenceA(int cents) {
+int rsxrtn::ReferenceA(int cents) {
     if (!cents) {
         return 440;
     }
@@ -264,7 +264,7 @@ int rs7tn::ReferenceA(int cents) {
     return static_cast<int>(a);  // 0xF5B0D0: truncation
 }
 
-std::string rs7tn::Decoration(int cents) {
+std::string rsxrtn::Decoration(int cents) {
     if (!cents) {
         return {};
     }
@@ -276,7 +276,7 @@ std::string rs7tn::Decoration(int cents) {
     return b;
 }
 
-std::string rs7tn::MarkStock(const std::string& stock, const char* prefix, const char* suffix) {
+std::string rsxrtn::MarkStock(const std::string& stock, const char* prefix, const char* suffix) {
     // The stock decoration ": A<digits>" at the end stays at the end.
     std::string name = stock, tail;
     const size_t p = stock.rfind(": A");
@@ -307,11 +307,11 @@ std::string rs7tn::MarkStock(const std::string& stock, const char* prefix, const
     return out + tail;
 }
 
-std::string rs7tn::KnownDisplay(const int t[7], const Config& c, int cents, bool decorate) {
+std::string rsxrtn::KnownDisplay(const int t[7], const Config& c, int cents, bool decorate) {
     return Known(c.on ? Name7(t) : nullptr, c, c.suffix, cents, decorate);
 }
 
-bool Rs7_ValidNameAffix(const std::wstring& text) {
+bool Rsxr_ValidNameAffix(const std::wstring& text) {
     if (text.size() > 31) {
         return false;
     }

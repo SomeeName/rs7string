@@ -4,20 +4,20 @@
 #include <stdexcept>
 #include <utility>
 
-namespace rs7hs {
+namespace rsxrhs {
 namespace {
 constexpr size_t kLimit = 64u << 20;
 constexpr unsigned kMaxArtifacts = 64;
 
-// An artifact is written next to the DLL's headstock folder under its own name: a plain basename, rs7_*.nif or
-// rs7hs_*.dds, lower-case letters, digits and '_' only (no path, no other file types).
+// An artifact is written next to the DLL's headstock folder under its own name: a plain basename, rsxr_*.nif or
+// rsxrhs_*.dds, lower-case letters, digits and '_' only (no path, no other file types).
 bool SafeName(const std::string& n) {
     const auto ends = [&](const char* e) {
         const size_t l = std::strlen(e);
 
         return n.size() > l && n.compare(n.size() - l, l, e) == 0;
     };
-    const bool nif = n.rfind("rs7_", 0) == 0 && ends(".nif"), dds = n.rfind("rs7hs_", 0) == 0 && ends(".dds");
+    const bool nif = n.rfind("rsxr_", 0) == 0 && ends(".nif"), dds = n.rfind("rsxrhs_", 0) == 0 && ends(".dds");
 
     if (!nif && !dds) {
         return false;
@@ -128,18 +128,22 @@ std::string Hex(const uint8_t* p, size_t n) {
     throw std::runtime_error(error);
 }
 
+// The first bytes of a package file; lowercase hex digits follow.
+constexpr char kMagicText[] = "RSXRH1\n";
+constexpr size_t kMagic = sizeof kMagicText - 1;
+
 struct Reader {
     Bytes data;
     size_t pos = 0;
 
     explicit Reader(const Bytes& package) {
-        if (package.size() < 6 || package.size() > kLimit || std::memcmp(package.data(), "RS7H1\n", 6)) {
+        if (package.size() < kMagic || package.size() > kLimit || std::memcmp(package.data(), kMagicText, kMagic)) {
             Bad("package magic/size");
         }
-        if ((package.size() - 6) % 2) {
+        if ((package.size() - kMagic) % 2) {
             Bad("package hex length");
         }
-        data.reserve((package.size() - 6) / 2);
+        data.reserve((package.size() - kMagic) / 2);
         auto nibble = [](uint8_t c) -> uint8_t {
             if (c >= '0' && c <= '9') {
                 return c - '0';
@@ -151,7 +155,7 @@ struct Reader {
             Bad("package hex digit");
         };
 
-        for (size_t i = 6; i < package.size(); i += 2) {
+        for (size_t i = kMagic; i < package.size(); i += 2) {
             data.push_back(uint8_t(nibble(package[i]) * 16 + nibble(package[i + 1])));
         }
     }
@@ -359,4 +363,4 @@ bool CheckTemplates(const Bytes& guitar, const Bytes& peg, const Bytes& package,
         return false;
     }
 }
-}  // namespace rs7hs
+}  // namespace rsxrhs

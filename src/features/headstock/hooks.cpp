@@ -6,29 +6,29 @@
 // The headstock's switches, refs and state, and its startup configuration.
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_head_on = 1;
-__declspec(dllexport) uintptr_t g_rs7_native_pegset = 0;
-__declspec(dllexport) uintptr_t g_rs7_peg_load = 7;
-__declspec(dllexport) uintptr_t g_rs7_fn_euler = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_pegplace = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_peglayer = 0;
-__declspec(dllexport) uintptr_t g_rs7_pegnames = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_pegselect = 0;
+__declspec(dllexport) uintptr_t g_rsxr_head_on = 1;
+__declspec(dllexport) uintptr_t g_rsxr_native_pegset = 0;
+__declspec(dllexport) uintptr_t g_rsxr_peg_load = 7;
+__declspec(dllexport) uintptr_t g_rsxr_fn_euler = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_pegplace = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_peglayer = 0;
+__declspec(dllexport) uintptr_t g_rsxr_pegnames = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_pegselect = 0;
 }
 
-rs7head::State rs7head::g_head{};
+rsxrhead::State rsxrhead::g_head{};
 
 // The log lines of the PegSet glue (exported: the emulator tests replace it with `ret`).
-extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rs7_HeadLog(const char* fmt, const void* a,
-                                                                               const void* b, const void* c) {
+extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rsxr_HeadLog(const char* fmt, const void* a,
+                                                                                const void* b, const void* c) {
     try {
-        Rs7Log(fmt, a, b, c);
+        RsxrLog(fmt, a, b, c);
     } catch (...) {
     }
 }
 
-void Rs7Headstock_Configure(const wchar_t* iniPath) {
-    g_rs7_native_pegset = 1;  // always on
-    Rs7Head_SetIni(iniPath);
-    Rs7Asset_Configure(iniPath);
+void RsxrHeadstock_Configure(const wchar_t* iniPath) {
+    g_rsxr_native_pegset = 1;  // always on
+    RsxrHead_SetIni(iniPath);
+    RsxrAsset_Configure(iniPath);
 }

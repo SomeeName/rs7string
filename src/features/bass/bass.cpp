@@ -6,12 +6,12 @@
 #include "model/extblock.h"
 #include "model/instrument.h"
 
-namespace rs7bass {
+namespace rsxrbass {
 uint32_t SongStrings(bool hasBlock, int blockInstrument, int blockStrings, int detInstrument) {
-    if (!hasBlock || blockInstrument != rs7ext::kInstrumentBass || !rs7::IsBassKind(detInstrument)) {
+    if (!hasBlock || blockInstrument != rsxrext::kInstrumentBass || !rsxr::IsBassKind(detInstrument)) {
         return 0;
     }
-    if (blockStrings < rs7ext::kMinBassStrings || blockStrings > rs7ext::kMaxBassStrings) {
+    if (blockStrings < rsxrext::kMinBassStrings || blockStrings > rsxrext::kMaxBassStrings) {
         return 0;
     }
 
@@ -88,7 +88,7 @@ uint32_t MaxStrings(const Players& t) {
 
 bool AnyGuitar(const Players& t) {
     for (const Setup& s : t.p) {
-        if (s.det && !rs7::IsBassKind(s.instrument)) {
+        if (s.det && !rsxr::IsBassKind(s.instrument)) {
             return true;
         }
     }
@@ -137,4 +137,4 @@ bool HoldBend(BendHold& h, const void* note, bool ok, float* semis, float now) {
 
     return true;
 }
-}  // namespace rs7bass
+}  // namespace rsxrbass

@@ -9,16 +9,16 @@
 //
 // Shared tuner hooks (hooks.cpp; docs/ARCHITECTURE.md, "7th slot in game"; GitHub issues #1 and #8):
 //  - TK (Play_Tuning_ReadStringOffsets 0x5B8480 entry; its callers are the tuner menu UI_TunerMenu_Enter, the
-//    MP/pre-song tuner menu 0x742D50 (both players) and 0x5B76C0): reads the manifest keys (Rs7String6, never
-//    "string6": the song-list reader 0x56D0B0 overflows on it; Rs7String7 for the 8th string) from the target tuning
+//    MP/pre-song tuner menu 0x742D50 (both players) and 0x5B76C0): reads the manifest keys (RsxrString6, never
+//    "string6": the song-list reader 0x56D0B0 overflows on it; RsxrString7 for the 8th string) from the target tuning
 //    JSON (the game's own JSON vtable, as 0x5B84DC) and keeps them for that offset array (menu+1B8h / +1D0h). The
-//    tuning names (TN) use them too (Rs7Tuner_SevenFor).
+//    tuning names (TN) use them too (RsxrTuner_SevenFor).
 //  - TS (Play_TunerSession_ApplyTuning 0x5AF200 entry, session + that offset array): hands the session's target
-//    (6, 7 or 8 strings) to the native session (Rs7Tuner8_Apply); without the native tuner, stock.
+//    (6, 7 or 8 strings) to the native session (RsxrTuner8_Apply); without the native tuner, stock.
 //  - W (UI_PlayerTuner_CheckWrongInstrument): the low-range threshold below.
 //  - AT (UI_PlayerTuner_IsStringTuned 0x5B0C20 entry): [debug] tuner_autotune=N only (test driving without a guitar):
 //    "tuned" N seconds after the session's first query. Default off.
-// Every stub replays stock after one global read (g_rs7_tuner_any) while no native session or autotune exists.
+// Every stub replays stock after one global read (g_rsxr_tuner_any) while no native session or autotune exists.
 //
 // Native 8-slot tuner session (hooks_session.cpp, hooks_methods.cpp, hooks_copies.cpp; issue #18). Needs the
 // native strings, FretGrid and colours:
@@ -29,7 +29,7 @@
 //    capacity-8 tail below (values copied, entity pointers moved), its string count N and its tuning order (lowest
 //    string first: 7 strings = 6,0,1,2,3,4,5; 8 = 7,6,0,...,5) are stored there.
 //  - The UI_PlayerTuner methods (TS8* sites, tools/gen_tuner8s.py) run as relocated copies for a native session only:
-//    arrays from the tail, loops over N, steps through the order (Rs7Tu8_AdvanceC). Isolated reads in large functions
+//    arrays from the tail, loops over N, steps through the order (RsxrTu8_AdvanceC). Isolated reads in large functions
 //    are mid-hooks (TS8F*, TS8RS, TS8DT, TS8WR, TS8SN*). Every other session (6-string guitar, bass, no key) runs the
 //    unmodified game code.
 //  - The physical string index stays the game's (string 6 = the 7th string, its GuitarStrings slot, peg 7, FretGrid
@@ -40,7 +40,7 @@
 // Low range ([tuner] lowrange): the guitar wrong-instrument
 // test (W, UI_PlayerTuner_CheckWrongInstrument 0x5B2DDE) warns when the mean of ten detected notes is <= 34.0
 // (event 8), which trips on a correctly played A1/G1/F#1. For a 7-string tuner session the threshold becomes
-// min(34, lowest open MIDI - 1); 6-string guitar, bass and sessions without Rs7String6 keep 34.0. The detector's
+// min(34, lowest open MIDI - 1); 6-string guitar, bass and sessions without RsxrString6 keep 34.0. The detector's
 // lowest-open (+11F8h) is lowered to that lowest open note on each selection (the tuner reaches SetTuning with six
 // entries, so S3 does not). The detector floor (MIDI 24, 0x4DBF73) stays: guitar needs no change, only a 5-string
 // bass B0 does (not done: floor 22, lowest 23 and the bass expected-pitch base, docs/ARCHITECTURE.md).
@@ -49,186 +49,186 @@ extern "C" {
 // ---- shared tuner hooks (hooks.cpp)
 
 // Game data (ref, never written).
-__declspec(dllexport) extern uintptr_t g_rs7_tuner_mgr;  // X_TMGR  &0x135F5D4 (tuner sessions at +10h + slot*4)
+__declspec(dllexport) extern uintptr_t g_rsxr_tuner_mgr;  // X_TMGR  &0x135F5D4 (tuner sessions at +10h + slot*4)
 __declspec(dllexport) extern uintptr_t
-    g_rs7_fn_getdet;  // X_GETDET Play_GetDetector 0x4E8B50 (ECX input id -> detector or 0)
+    g_rsxr_fn_getdet;  // X_GETDET Play_GetDetector 0x4E8B50 (ECX input id -> detector or 0)
 
 // The threshold per live 7-string tuner session (rebuilt by every state change, so W reads plain data).
-struct Rs7WrongEnt {
+struct RsxrWrongEnt {
     uint8_t* session;
     int threshold;
 };
 
-__declspec(dllexport) extern Rs7WrongEnt g_rs7_wrong_tab[4];
-__declspec(dllexport) extern float g_rs7_wrong_thr;        // W: the session's threshold (written by Rs7_WrongThreshold)
-__declspec(dllexport) extern uintptr_t g_rs7_wrong_const;  // W: &the game's threshold (ref site X_WTHR)
+__declspec(dllexport) extern RsxrWrongEnt g_rsxr_wrong_tab[4];
+__declspec(dllexport) extern float g_rsxr_wrong_thr;  // W: the session's threshold (written by Rsxr_WrongThreshold)
+__declspec(dllexport) extern uintptr_t g_rsxr_wrong_const;  // W: &the game's threshold (ref site X_WTHR)
 
 // What the TJ / TU / TN callbacks call (cdecl).
-// W: ESI = session, x87 live (ST0 = the mean): integer/SSE only, writes g_rs7_wrong_thr.
-__declspec(dllexport) void __cdecl Rs7_WrongThreshold(uint8_t* session);
-__declspec(dllexport) void __cdecl Rs7_TunerKey(int* offs, void* holder);              // TK
-__declspec(dllexport) void __cdecl Rs7_TunerApply(uint8_t* session, const int* offs);  // TS
-__declspec(dllexport) uint32_t __cdecl Rs7_TunerAutotune(uint8_t* session);            // AT: 1 = "tuned"
+// W: ESI = session, x87 live (ST0 = the mean): integer/SSE only, writes g_rsxr_wrong_thr.
+__declspec(dllexport) void __cdecl Rsxr_WrongThreshold(uint8_t* session);
+__declspec(dllexport) void __cdecl Rsxr_TunerKey(int* offs, void* holder);              // TK
+__declspec(dllexport) void __cdecl Rsxr_TunerApply(uint8_t* session, const int* offs);  // TS
+__declspec(dllexport) uint32_t __cdecl Rsxr_TunerAutotune(uint8_t* session);            // AT: 1 = "tuned"
 // Low range for a native tuner session: the detector's lowest open lowered to lowestOpen.
-void Rs7Tuner_LowerDetectorTo(const uint8_t* session, int lowestOpen);
+void RsxrTuner_LowerDetectorTo(const uint8_t* session, int lowestOpen);
 
 // Mid-hook callbacks of the shared hooks and the tuning names (formerly hooks/mid_cold.cpp).
-__declspec(dllexport) void __cdecl Rs7_Mid_TK(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_W(Rs7Mid::Context&);  // W, full mode (x87 compare)
-__declspec(dllexport) void __cdecl Rs7_Mid_TS(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_TUT(Rs7Mid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TK(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_W(RsxrMid::Context&);  // W, full mode (x87 compare)
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TUT(RsxrMid::Context&);
 
 // ---- native session: GuitarStrings reader copies and session copies (hooks_copies.cpp)
 
-__declspec(dllexport) int __cdecl Rs7Tuner8_Use(uint32_t kind, uint8_t* reg);
-__declspec(dllexport) uintptr_t __cdecl Rs7Tuner8_Target(uint32_t kind, uint8_t* reg);
-__declspec(dllexport) void Rs7_Stub_TU8H();
-__declspec(dllexport) void Rs7_Stub_TU8C();
-__declspec(dllexport) void Rs7_Stub_TU8A();
+__declspec(dllexport) int __cdecl RsxrTuner8_Use(uint32_t kind, uint8_t* reg);
+__declspec(dllexport) uintptr_t __cdecl RsxrTuner8_Target(uint32_t kind, uint8_t* reg);
+__declspec(dllexport) void Rsxr_Stub_TU8H();
+__declspec(dllexport) void Rsxr_Stub_TU8C();
+__declspec(dllexport) void Rsxr_Stub_TU8A();
 // The entry dispatch of a copied method: spec index, the PUSHAD frame of the stub (regs[0] = EDI ... regs[7] = EAX,
 // regs[8] = the stub's slot, regs[9] = the caller's return address, regs[10] = arg 1).
-__declspec(dllexport) uintptr_t __cdecl Rs7Tuner8_SessTarget(uint32_t index, const uint32_t* regs);
+__declspec(dllexport) uintptr_t __cdecl RsxrTuner8_SessTarget(uint32_t index, const uint32_t* regs);
 
 // ---- native session: lifetime and target (hooks_session.cpp)
 
-__declspec(dllexport) void __cdecl Rs7Tuner8_InitSession(uint8_t* session);
-__declspec(dllexport) int __cdecl Rs7Tuner8_HasSession(const uint8_t* session);
-__declspec(dllexport) uint32_t __cdecl Rs7Tuner8_FreeSessionSize(uint8_t* session);
-__declspec(dllexport) void Rs7_Stub_TU8INIT();
-__declspec(dllexport) void Rs7_Stub_TU8FREE();
-__declspec(dllexport) extern uintptr_t g_rs7_resume_TU8FREE;
+__declspec(dllexport) void __cdecl RsxrTuner8_InitSession(uint8_t* session);
+__declspec(dllexport) int __cdecl RsxrTuner8_HasSession(const uint8_t* session);
+__declspec(dllexport) uint32_t __cdecl RsxrTuner8_FreeSessionSize(uint8_t* session);
+__declspec(dllexport) void Rsxr_Stub_TU8INIT();
+__declspec(dllexport) void Rsxr_Stub_TU8FREE();
+__declspec(dllexport) extern uintptr_t g_rsxr_resume_TU8FREE;
 // 1 = `session` is a registered grown session in native mode (its tail holds the arrays).
-__declspec(dllexport) int __cdecl Rs7Tuner8_IsNative(const uint8_t* session);
+__declspec(dllexport) int __cdecl RsxrTuner8_IsNative(const uint8_t* session);
 
 // ---- native session: what the copies call, and the mid-hooks (hooks_methods.cpp, hooks_callin.cpp)
 
-// Rs7Tu8_AdvanceC: (session, dir +1 / -1) -> 1 = curString moved one step along the tuning order, 0 = no further
-// string; Rs7Tu8_FirstC: (session) -> the first string of the order. The copies call them through the call-in entries
-// g_rs7_callin_Tu8Advance / _Tu8First (hooks_callin.cpp: stdcall, ECX / EDX preserved). Rs7Tu8_OnSelect: cdecl
+// RsxrTu8_AdvanceC: (session, dir +1 / -1) -> 1 = curString moved one step along the tuning order, 0 = no further
+// string; RsxrTu8_FirstC: (session) -> the first string of the order. The copies call them through the call-in entries
+// g_rsxr_callin_Tu8Advance / _Tu8First (hooks_callin.cpp: stdcall, ECX / EDX preserved). RsxrTu8_OnSelect: cdecl
 // (session, string), inside PUSHAD.
-__declspec(dllexport) void __cdecl Rs7Tu8_OnSelect(uint8_t* session, uint32_t s);
-int __stdcall Rs7Tu8_AdvanceC(uint8_t* session, int dir);
-uint32_t __stdcall Rs7Tu8_FirstC(uint8_t* session);
+__declspec(dllexport) void __cdecl RsxrTu8_OnSelect(uint8_t* session, uint32_t s);
+int __stdcall RsxrTu8_AdvanceC(uint8_t* session, int dir);
+uint32_t __stdcall RsxrTu8_FirstC(uint8_t* session);
 // The label of each string slot for the precision tuner (UI_NoteTuner_Initialize): the stock six (0x12E8644) and a
 // label for strings 6 / 7 (their open note). Rebuilt per selection.
-__declspec(dllexport) extern uintptr_t g_rs7_tu8_labels[8];
+__declspec(dllexport) extern uintptr_t g_rsxr_tu8_labels[8];
 
-// Mid-hook callbacks (Rs7Mid::Context).
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8F1(Rs7Mid::Context& c);   // 5AFB19 mode 0 entry: curString = first
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8F2(Rs7Mid::Context& c);   // 5AFD15 capo step: curString = first
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8F3(Rs7Mid::Context& c);   // 5B02A7 mode 3 entry: EDI = first
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8RS(Rs7Mid::Context& c);   // 5AE76D session reset: tail reset
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8DT(Rs7Mid::Context& c);   // 5AE360 session dtor: tail release
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8WR(Rs7Mid::Context& c);   // 5B2D88 wrong-instrument target
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8SN1(Rs7Mid::Context& c);  // 5B2E10 tuned sound entry
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8SN2(Rs7Mid::Context& c);  // 5B2EA7 tuned sound: its note
+// Mid-hook callbacks (RsxrMid::Context).
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8F1(RsxrMid::Context& c);   // 5AFB19 mode 0 entry: curString = first
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8F2(RsxrMid::Context& c);   // 5AFD15 capo step: curString = first
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8F3(RsxrMid::Context& c);   // 5B02A7 mode 3 entry: EDI = first
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8RS(RsxrMid::Context& c);   // 5AE76D session reset: tail reset
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8DT(RsxrMid::Context& c);   // 5AE360 session dtor: tail release
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8WR(RsxrMid::Context& c);   // 5B2D88 wrong-instrument target
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8SN1(RsxrMid::Context& c);  // 5B2E10 tuned sound entry
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8SN2(RsxrMid::Context& c);  // 5B2EA7 tuned sound: its note
 // 5B63E0 / 5B66AD: Play_Tuning_ApplyToDetection runs (the profile's six strings; features/pitch/pitch.h keeps the
 // song's strings 6 / 7 in the detector / matcher tails meanwhile).
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8PA(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TS8PZ(Rs7Mid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8PA(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TS8PZ(RsxrMid::Context& c);
 
 // ---- tuning names (hooks_names.cpp)
 
-// Set by Rs7_Startup before any site is patched: 0 = TJ/TU/TUT/TN replay stock without a C call.
-__declspec(dllexport) extern uintptr_t g_rs7_tn_on;
+// Set by Rsxr_Startup before any site is patched: 0 = TJ/TU/TUT/TN replay stock without a C call.
+__declspec(dllexport) extern uintptr_t g_rsxr_tn_on;
 // Game functions (callref sites, never written).
-__declspec(dllexport) extern uintptr_t g_rs7_fn_strcon;   // X_STRCON  0x4079D0
-__declspec(dllexport) extern uintptr_t g_rs7_fn_strasg;   // X_STRASG  0x407840
-__declspec(dllexport) extern uintptr_t g_rs7_fn_loc;      // X_LOC     0x7BF420 (context *0x135FBFC = X_DT)
-__declspec(dllexport) extern uintptr_t g_rs7_fn_strdtor;  // X_STRDTOR 0x85C810
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_strcon;   // X_STRCON  0x4079D0
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_strasg;   // X_STRASG  0x407840
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_loc;      // X_LOC     0x7BF420 (context *0x135FBFC = X_DT)
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_strdtor;  // X_STRDTOR 0x85C810
 
 // What the TJ / TU / TN callbacks call (cdecl).
-// TJ: 0 = not a 7-string Tuning (stock only), else a handle for Rs7_TnJsonPost.
-__declspec(dllexport) uint32_t __cdecl Rs7_TnJsonPre(void* raw, void* disp, void* json, int cents);
-__declspec(dllexport) void __cdecl Rs7_TnJsonPost(uint32_t handle);
+// TJ: 0 = not a 7-string Tuning (stock only), else a handle for Rsxr_TnJsonPost.
+__declspec(dllexport) uint32_t __cdecl Rsxr_TnJsonPre(void* raw, void* disp, void* json, int cents);
+__declspec(dllexport) void __cdecl Rsxr_TnJsonPost(uint32_t handle);
 // TU: handle (0 = off); TUT records the Tuning/Attributes for the current thread's open call.
-__declspec(dllexport) uint32_t __cdecl Rs7_TnUuidPre(void* out);
-__declspec(dllexport) void __cdecl Rs7_TnUuidTuning(void* tuning, void* attributes);
-__declspec(dllexport) void __cdecl Rs7_TnUuidPost(uint32_t handle);
+__declspec(dllexport) uint32_t __cdecl Rsxr_TnUuidPre(void* out);
+__declspec(dllexport) void __cdecl Rsxr_TnUuidTuning(void* tuning, void* attributes);
+__declspec(dllexport) void __cdecl Rsxr_TnUuidPost(uint32_t handle);
 // TN: 1 = out was constructed with the 7-string name (skip the original); 0 = run it. With 0 and *post set, call
-// Rs7_TnArrayPost after the original (mark an unknown tuning's stock name).
-__declspec(dllexport) uint32_t __cdecl Rs7_TnArrayPre(void* out, const int* offs, uint32_t* post);
-__declspec(dllexport) void __cdecl Rs7_TnArrayPost(void* out, uint32_t post);
+// Rsxr_TnArrayPost after the original (mark an unknown tuning's stock name).
+__declspec(dllexport) uint32_t __cdecl Rsxr_TnArrayPre(void* out, const int* offs, uint32_t* post);
+__declspec(dllexport) void __cdecl Rsxr_TnArrayPost(void* out, uint32_t post);
 
 // The Wrap mid-hooks of the three resolvers (hooks_wrap.cpp): before and after callbacks.
-__declspec(dllexport) void __cdecl Rs7_Mid_TJBefore(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TJ(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TUBefore(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TU(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TNBefore(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7_Mid_TN(Rs7Mid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TJBefore(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TJ(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TUBefore(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TU(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TNBefore(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl Rsxr_Mid_TN(RsxrMid::Context& c);
 }
 
 // The session copies' stdcall calls (hooks_callin.cpp).
-extern Rs7Mid::CallIn g_rs7_callin_Tu8Advance, g_rs7_callin_Tu8First;
+extern RsxrMid::CallIn g_rsxr_callin_Tu8Advance, g_rsxr_callin_Tu8First;
 
 // The resolvers' frames: TJ (Tuning JSON, CentOffset; cdecl), TU (no stack arguments), TN (output, offsets; cdecl).
-inline constexpr Rs7Mid::Wrap kRs7WrapTJ{2, Rs7Mid::Conv::Cdecl};
-inline constexpr Rs7Mid::Wrap kRs7WrapTU{0, Rs7Mid::Conv::Cdecl};
-inline constexpr Rs7Mid::Wrap kRs7WrapTN{2, Rs7Mid::Conv::Cdecl};
+inline constexpr RsxrMid::Wrap kRsxrWrapTJ{2, RsxrMid::Conv::Cdecl};
+inline constexpr RsxrMid::Wrap kRsxrWrapTU{0, RsxrMid::Conv::Cdecl};
+inline constexpr RsxrMid::Wrap kRsxrWrapTN{2, RsxrMid::Conv::Cdecl};
 
 // ---- shared tuner hooks (hooks.cpp)
 
-namespace rs7tn {
+namespace rsxrtn {
 struct Config;
 }
 
 // Rebuilds the wrong-instrument table and the stubs' fast-path flag from the native sessions.
-void Rs7Tuner_Refresh();
-// Tuning names (TN): whether `offs` is an offset array TK read Rs7String6 for (the tuner menus' +1B8h / +1D0h,
+void RsxrTuner_Refresh();
+// Tuning names (TN): whether `offs` is an offset array TK read RsxrString6 for (the tuner menus' +1B8h / +1D0h,
 // 0x5B76C0's stack array); *t6 = the 7th string's offset.
-bool Rs7Tuner_SevenFor(const int* offs, int* t6);
-// The 8th string's offset (Rs7String7) next to it: false when the arrangement has none.
-bool Rs7Tuner_EighthFor(const int* offs, int* t7);
-// TK's extended-bass count for that array: 5 / 6 (Rs7String4 / + Rs7String5), 0 = none.
-int Rs7Tuner_BassFor(const int* offs);
+bool RsxrTuner_SevenFor(const int* offs, int* t6);
+// The 8th string's offset (RsxrString7) next to it: false when the arrangement has none.
+bool RsxrTuner_EighthFor(const int* offs, int* t7);
+// TK's extended-bass count for that array: 5 / 6 (RsxrString4 / + RsxrString5), 0 = none.
+int RsxrTuner_BassFor(const int* offs);
 
 // ---- tuning names (hooks_names.cpp)
 
-void Rs7Tn_Configure(const rs7tn::Config& c);
+void RsxrTn_Configure(const rsxrtn::Config& c);
 
 // ---- native session (hooks_session.cpp)
 
 extern "C" {
-// TS (Rs7_TunerApply) in native mode: the session's target. offs = the six stock offsets, n = 6 / 7 / 8 strings,
+// TS (Rsxr_TunerApply) in native mode: the session's target. offs = the six stock offsets, n = 6 / 7 / 8 strings,
 // extra = the offsets of strings 6 / 7. False = not a native session (stock); a refused conversion keeps the full
 // target per registered session for EnsureNative to retry once its prerequisites are ready.
-// bassStrings: 5 / 6 for a song marked as extended bass (its Rs7String4 / Rs7String5 keys), else 0.
-bool Rs7Tuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2], int bassStrings = 0);
+// bassStrings: 5 / 6 for a song marked as extended bass (its RsxrString4 / RsxrString5 keys), else 0.
+bool RsxrTuner8_Apply(uint8_t* session, const int* offs, int n, const int extra[2], int bassStrings = 0);
 // The string count of the guitar bound to `session` (+2Ch Rnd_Guitar -> +24h InstrumentInfo -> +0Bh,
 // the bound every stock UI_PlayerTuner method loops to); 0 = no guitar bound yet / unreadable.
-unsigned Rs7Tuner8_GuitarCount(const uint8_t* session);
+unsigned RsxrTuner8_GuitarCount(const uint8_t* session);
 // First retries any deferred target, including extended bass, restarting an active stock pass at the lowest string.
 // Otherwise a registered grown session that is still
 // stock while its guitar is built with 7/8 strings becomes a
-// native session with its own six offsets (+50h) as a 6-string target (Rs7Tuner8_Apply n = 6). The stock methods would
+// native session with its own six offsets (+50h) as a 6-string target (RsxrTuner8_Apply n = 6). The stock methods would
 // index the six-slot arrays with string 6 (CONFIRMED crash tests/owner-crash1: UI_PlayerTuner_SetupPicks 0x5B1E50 at
-// 0x5B1EF5, +144h[6] = the fret byte +15Ch -> AV reading 0x1). Called by the copy dispatch (Rs7Tuner8_SessTarget)
+// 0x5B1EF5, +144h[6] = the fret byte +15Ch -> AV reading 0x1). Called by the copy dispatch (RsxrTuner8_SessTarget)
 // before every session method that has a native copy. True = the session is native now (or was).
-bool Rs7Tuner8_EnsureNative(uint8_t* session, const char* where);
+bool RsxrTuner8_EnsureNative(uint8_t* session, const char* where);
 }
-// Rs7Tuner_Refresh: the wrong-instrument thresholds of the native sessions (up to max entries).
-int Rs7Tuner8_WrongEntries(Rs7WrongEnt* out, int max);
+// RsxrTuner_Refresh: the wrong-instrument thresholds of the native sessions (up to max entries).
+int RsxrTuner8_WrongEntries(RsxrWrongEnt* out, int max);
 
-namespace rs7tuner {
+namespace rsxrtuner {
 // A native session's string count N (hooks_session.cpp).
 uint8_t Count(const uint8_t* session);
 // The lowest open MIDI of a native session's strings (hooks_session.cpp).
 int LowestOpen(const uint8_t* session);
-// The precision tuner's labels of strings 6 / 7 (g_rs7_tu8_labels) from the session's open notes (hooks_session.cpp).
+// The precision tuner's labels of strings 6 / 7 (g_rsxr_tu8_labels) from the session's open notes (hooks_session.cpp).
 void SetLabels(const uint8_t* session);
 // The native session's log, at most 300 lines (hooks_session.cpp).
 void Log(const char* fmt, const uint8_t* session, int a = 0, int b = 0, int c = 0);
 
-using Rs7Mid::Dword;  // platform/midhook.h
+using RsxrMid::Dword;  // platform/midhook.h
 
-using rs7mem::UncheckedRead;
+using rsxrmem::UncheckedRead;
 
-using rs7mem::UncheckedField;
-}  // namespace rs7tuner
+using rsxrmem::UncheckedField;
+}  // namespace rsxrtuner
 
 // UI_PlayerTuner (stock 278h bytes, docs/ARCHITECTURE.md "Session state machine") and the native tail.
-namespace rs7tu {
+namespace rsxrtu {
 constexpr uint32_t kStockSize = 0x278, kSessionSize = 0x380;
 constexpr uint32_t kMagicOff = 0x278, kMagic = 0x38545552;  // 'RUT8'
 constexpr uint32_t kOpen = 0x280, kOffsets = 0x2A0, kPeaks = 0x2C8;
@@ -243,8 +243,8 @@ constexpr uint32_t kStockLetters = 0x114, kStockPicks = 0x144, kStockLast = 0x16
 constexpr uint32_t kMode = 0x18;          // current tuner mode (active string tuning: 0..3)
 constexpr uint32_t kDetectorId = 0x0C;    // u32 the session's pitch detector id (GetDetector)
 constexpr uint32_t kReversePass = 0x22D;  // u8 non-zero = mode 3's reverse pass (5B02A7: the last string first)
-// The session's Rnd_Guitar (+2Ch; the play session's is rs7::kSessionGuitar), its InstrumentInfo and string count.
+// The session's Rnd_Guitar (+2Ch; the play session's is rsxr::kSessionGuitar), its InstrumentInfo and string count.
 constexpr uint32_t kGuitar = 0x2C;
-using rs7::kGuitarInfo;
-using rs7::kInfoStrings;
-}  // namespace rs7tu
+using rsxr::kGuitarInfo;
+using rsxr::kInfoStrings;
+}  // namespace rsxrtu

@@ -20,12 +20,12 @@
 #include "platform/midhook.h"
 #include "platform/patch.h"
 
-using Rs7Mid::Context;
-using Rs7Mid::Dword;
-using namespace rs7menu;
-using rs7arr::PageState;
+using RsxrMid::Context;
+using RsxrMid::Dword;
+using namespace rsxrmenu;
+using rsxrarr::PageState;
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_COAT = 0, g_rs7_resume_COAS = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_COAT = 0, g_rsxr_resume_COAS = 0;
 
 namespace {
 constexpr uint32_t kPageVtable = 0x011B4DD0;  // the co-op arrangement list page (constructor 0x645D73)
@@ -40,7 +40,7 @@ constexpr double kHiddenRow = 100;       // rows from here on are below the pane
 // One window per list page: in co-op each player has a page of their own, so the last page built must not take over
 // the other one's scrolling.
 struct State {
-    rs7arr::PageStates states;
+    rsxrarr::PageStates states;
     bool rebuilding = false;
     bool focusHooked = false;
     bool lifetimeHooked = false;
@@ -66,7 +66,7 @@ uint32_t Count(uint32_t page) {
 }
 
 bool Windowed(uint32_t count) {
-    return count > rs7arr::kCoopRows;
+    return count > rsxrarr::kCoopRows;
 }
 
 // Re-runs the builder with the window at st.offset. The page keeps its focus lists (SwapFocusLists).
@@ -89,7 +89,7 @@ int ListPosition(uint32_t page, uint32_t record) {
 
     for (uint32_t s = begin; s < end; s += kStringSize) {
         ReadString(s, id, sizeof id);
-        if (rs7arr::CoopFocusIndex(id) == int(record)) {
+        if (rsxrarr::CoopFocusIndex(id) == int(record)) {
             return int((s - begin) / kStringSize);
         }
     }
@@ -106,19 +106,19 @@ void Step(uint32_t page, int steps) {
 
     ReadFocus(page, focus, sizeof focus);
 
-    const int index = rs7arr::CoopFocusIndex(focus);
+    const int index = rsxrarr::CoopFocusIndex(focus);
     const uint32_t count = Count(page);
     PageState* st = Find(page);
     int moves = steps;
 
     if (st && Windowed(count) && index >= 0 && uint32_t(index) < count) {
-        const uint32_t target = rs7arr::CoopStep(uint32_t(index), count, steps);
-        const uint32_t offset = rs7arr::CoopWindowFor(st->offset, count, target);
+        const uint32_t target = rsxrarr::CoopStep(uint32_t(index), count, steps);
+        const uint32_t offset = rsxrarr::CoopWindowFor(st->offset, count, target);
         const int from = ListPosition(page, uint32_t(index));
         const int to = ListPosition(page, target);
 
         if (offset != st->offset) {
-            Rs7Log("arrangements: co-op list %08X scrolled to %u of %u", page, offset, count);
+            RsxrLog("arrangements: co-op list %08X scrolled to %u of %u", page, offset, count);
             st->offset = offset;
             Rebuild(*st);
         }
@@ -146,7 +146,7 @@ void __fastcall FocusDown(uint32_t page, void*, int steps) {
 void HookFocus() {
     if (!g_coop.lifetimeHooked) {
         g_coop.lifetimeHooked =
-            Dword(kPageVtable) == kDestroy && Rs7_WritePtrAtomic(kPageVtable, uintptr_t(&Destroy), nullptr);
+            Dword(kPageVtable) == kDestroy && Rsxr_WritePtrAtomic(kPageVtable, uintptr_t(&Destroy), nullptr);
     }
 
     if (g_coop.focusHooked) {
@@ -155,8 +155,8 @@ void HookFocus() {
 
     g_coop.focusHooked = true;
     if (!HookFocusSteps(kPageVtable, uintptr_t(&FocusUp), uintptr_t(&FocusDown))) {
-        Rs7Log("arrangements: co-op focus steps not hooked (vtable +DCh %08X, +E0h %08X)",
-               Dword(kPageVtable + kFocusUp), Dword(kPageVtable + kFocusDown));
+        RsxrLog("arrangements: co-op focus steps not hooked (vtable +DCh %08X, +E0h %08X)",
+                Dword(kPageVtable + kFocusUp), Dword(kPageVtable + kFocusDown));
     }
 }
 }  // namespace
@@ -164,7 +164,7 @@ void HookFocus() {
 // COAT - 0x64637C, after the FILD of the entry's SortOrder (the record index): a build the game starts itself (page
 // entry) places the window over the selected record; records in the window get their row, the others a row below
 // the panel.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_COAT(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_COAT(Context& c) {
     const uint32_t page = Dword(c.esp + kPage);
     const uint32_t index = Dword(c.esp + kRecordIndex);
     const uint32_t count = Count(page);
@@ -173,7 +173,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_COAT(Context& c) {
 
     if (index == 0 && !g_coop.rebuilding && g_coop.lifetimeHooked) {
         if (PageState* st = g_coop.states.Claim(page)) {
-            st->offset = rs7arr::CoopWindowFor(0, count, Dword(page + kSelected));
+            st->offset = rsxrarr::CoopWindowFor(0, count, Dword(page + kSelected));
         }
     }
 
@@ -183,23 +183,24 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_COAT(Context& c) {
         return;
     }
 
-    const double row = rs7arr::CoopInWindow(index, count, st->offset) ? double(index - st->offset) : kHiddenRow + index;
+    const double row =
+        rsxrarr::CoopInWindow(index, count, st->offset) ? double(index - st->offset) : kHiddenRow + index;
 
     if (!c.SetSt0(row)) {
-        Rs7Log("arrangements: co-op SortOrder of record %u not set (no ST0)", index);
+        RsxrLog("arrangements: co-op SortOrder of record %u not set (no ST0)", index);
     }
 }
 
 // COAS - 0x6474DF, the select handler's store of the selected record: the record named by the focused entry.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_COAS(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_COAS(Context& c) {
     char focus[64];
 
     ReadFocus(c.ebx, focus, sizeof focus);
 
-    const int index = rs7arr::CoopFocusIndex(focus);
+    const int index = rsxrarr::CoopFocusIndex(focus);
 
     if (index >= 0 && uint32_t(index) < Count(c.ebx) && uint32_t(index) != c.ecx) {
-        Rs7Log("arrangements: co-op select %s -> record %d (list position gave %u)", focus, index, c.ecx);
+        RsxrLog("arrangements: co-op select %s -> record %d (list position gave %u)", focus, index, c.ecx);
         c.ecx = uint32_t(index);
     }
 }

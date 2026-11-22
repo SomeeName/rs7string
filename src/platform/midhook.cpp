@@ -14,7 +14,7 @@ struct Instruction {
     bool ret = false;
 };
 
-using Rs7MidEmit::Dword;
+using RsxrMidEmit::Dword;
 
 uint32_t ReadDword(const uint8_t* p) {
     return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
@@ -306,12 +306,12 @@ static size_t RelocateImpl(uint8_t* out, size_t capacity, const uint8_t* source,
     return output;
 }
 
-extern "C" size_t __cdecl Rs7Mid_Relocate(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
-                                          size_t length, uintptr_t destVa) {
+extern "C" size_t __cdecl RsxrMid_Relocate(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
+                                           size_t length, uintptr_t destVa) {
     return RelocateImpl(out, capacity, source, sourceVa, length, destVa, nullptr);
 }
 
-using Rs7MidEmit::Entry;
+using RsxrMidEmit::Entry;
 
 static size_t BuildImpl(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa, size_t length,
                         uintptr_t destVa, uintptr_t callback, void (*thunk)()) {
@@ -339,27 +339,27 @@ static size_t BuildImpl(uint8_t* out, size_t capacity, const uint8_t* source, ui
     return entry + replay + 5;
 }
 
-extern "C" size_t __cdecl Rs7Mid_Build(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
-                                       size_t length, uintptr_t destVa, uintptr_t callback) {
-    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &Rs7Mid_Thunk);
+extern "C" size_t __cdecl RsxrMid_Build(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
+                                        size_t length, uintptr_t destVa, uintptr_t callback) {
+    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &RsxrMid_Thunk);
 }
 
-extern "C" size_t __cdecl Rs7Mid_BuildLight(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
-                                            size_t length, uintptr_t destVa, uintptr_t callback) {
-    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &Rs7Mid_ThunkLight);
+extern "C" size_t __cdecl RsxrMid_BuildLight(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
+                                             size_t length, uintptr_t destVa, uintptr_t callback) {
+    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &RsxrMid_ThunkLight);
 }
 
-extern "C" size_t __cdecl Rs7Mid_BuildSse(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
-                                          size_t length, uintptr_t destVa, uintptr_t callback) {
-    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &Rs7Mid_ThunkSse);
+extern "C" size_t __cdecl RsxrMid_BuildSse(uint8_t* out, size_t capacity, const uint8_t* source, uintptr_t sourceVa,
+                                           size_t length, uintptr_t destVa, uintptr_t callback) {
+    return BuildImpl(out, capacity, source, sourceVa, length, destVa, callback, &RsxrMid_ThunkSse);
 }
 
 // Call site entry (ARCHITECTURE.md section 14, "Call sites"). Before: the game's `call` lands on the entry, the
 // continuation is the callee. After: the entry calls the callee itself and continues at the site's return address.
-extern "C" size_t __cdecl Rs7Mid_BuildCall(uint8_t* out, size_t capacity, uintptr_t sourceVa, uintptr_t callee,
-                                           uintptr_t destVa, uintptr_t callback, int mode, int after) {
+extern "C" size_t __cdecl RsxrMid_BuildCall(uint8_t* out, size_t capacity, uintptr_t sourceVa, uintptr_t callee,
+                                            uintptr_t destVa, uintptr_t callback, int mode, int after) {
     const size_t call = after ? 9 : 0;
-    void (*const thunk)() = Rs7MidEmit::ThunkFor(mode);
+    void (*const thunk)() = RsxrMidEmit::ThunkFor(mode);
     if (!out || !callee || !callback || !thunk || capacity < call + 15) {
         return 0;
     }
@@ -384,11 +384,11 @@ extern "C" size_t __cdecl Rs7Mid_BuildCall(uint8_t* out, size_t capacity, uintpt
 
 // Call-in entry (ARCHITECTURE.md section 14, "Call-in entries"): the call entry with no callee, its continuation the
 // `ret` / `ret N` right after it.
-extern "C" size_t __cdecl Rs7Mid_BuildCallIn(uint8_t* out, size_t capacity, uintptr_t destVa, uintptr_t callback,
-                                             int mode, uint32_t argBytes) {
+extern "C" size_t __cdecl RsxrMid_BuildCallIn(uint8_t* out, size_t capacity, uintptr_t destVa, uintptr_t callback,
+                                              int mode, uint32_t argBytes) {
     const size_t ret = argBytes ? 3 : 1;
     if (capacity < 15 + ret || argBytes > 0xfffc || argBytes % 4 ||
-        !Rs7Mid_BuildCall(out, capacity, 0, destVa + 15, destVa, callback, mode, 0)) {
+        !RsxrMid_BuildCall(out, capacity, 0, destVa + 15, destVa, callback, mode, 0)) {
         return 0;
     }
 
@@ -402,18 +402,18 @@ extern "C" size_t __cdecl Rs7Mid_BuildCallIn(uint8_t* out, size_t capacity, uint
     return 15 + ret;
 }
 
-// Rs7Mid_Thunk, Rs7Mid_ThunkLight and Rs7Mid_ThunkSse, the shared thunks every entry above jumps to, are in
-// midhook_thunks.asm. They call the callback through Rs7Mid_Guard.
+// RsxrMid_Thunk, RsxrMid_ThunkLight and RsxrMid_ThunkSse, the shared thunks every entry above jumps to, are in
+// midhook_thunks.asm. They call the callback through RsxrMid_Guard.
 
 namespace {
 volatile long g_faults = 0;
-Rs7MidFaultLog g_faultLog = nullptr;
+RsxrMidFaultLog g_faultLog = nullptr;
 
 // The fault logger formats and writes a file line, which may use x87 and XMM registers. The light and SSE thunks save
 // neither (a full-mode thunk restores its FXSAVE image after the guard), so for them the logger runs between an
 // FXSAVE and FXRSTOR of its own. Only on a fault: the normal path never gets here.
 __declspec(noinline) void ReportFault(uintptr_t callback, unsigned long code, long n, bool keepFpu) {
-    const Rs7MidFaultLog log = g_faultLog;
+    const RsxrMidFaultLog log = g_faultLog;
     alignas(16) unsigned char state[512];
 
     if (!log) {
@@ -437,8 +437,8 @@ __declspec(noinline) void ReportFault(uintptr_t callback, unsigned long code, lo
 // back (so `jump` replays the displaced instructions again), an SSE-mode load is dropped (else the thunk's `fld` would
 // come on top of the replayed one) and a full-mode FXSAVE image gets back its control words and x87 registers (the
 // St0 edits, midhook.h).
-extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context* c) {
-    constexpr size_t kDwords = sizeof(Rs7Mid::Context) / 4;
+extern "C" void __cdecl RsxrMid_Guard(RsxrMid::Callback callback, RsxrMid::Context* c) {
+    constexpr size_t kDwords = sizeof(RsxrMid::Context) / 4;
     constexpr size_t kFpuDwords = 160 / 4;  // FXSAVE: FCW/FSW/FTW/... (32 bytes) and ST0-ST7 (8 x 16 bytes)
     unsigned long saved[kDwords];
     unsigned long savedFpu[kFpuDwords];
@@ -453,13 +453,13 @@ extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context*
 
     __try {
         callback(*c);
-    } __except (Rs7_FaultFilter(code = GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(code = GetExceptionCode())) {
         __movsd(reinterpret_cast<unsigned long*>(c), saved, kDwords);
 
         if (image) {
             __movsd(image, savedFpu, kFpuDwords);
         } else if (c->fpu & 1) {
-            reinterpret_cast<Rs7Mid::SseResult*>(c->fpu & ~uint32_t(1))->load = 0;
+            reinterpret_cast<RsxrMid::SseResult*>(c->fpu & ~uint32_t(1))->load = 0;
         }
 
         const long n = InterlockedIncrement(&g_faults);
@@ -468,22 +468,22 @@ extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context*
     }
 }
 
-void Rs7Mid_SetFaultLog(Rs7MidFaultLog log) {
+void RsxrMid_SetFaultLog(RsxrMidFaultLog log) {
     g_faultLog = log;
 }
 
-long Rs7Mid_FaultCount() {
+long RsxrMid_FaultCount() {
     return g_faults;
 }
 
-Rs7Mid::Hook::~Hook() {
+RsxrMid::Hook::~Hook() {
     if (code_) {
         VirtualFree(code_, 0, MEM_RELEASE);
     }
 }
 
 template <class Build>
-bool Rs7Mid::Hook::Emit(Build build) {
+bool RsxrMid::Hook::Emit(Build build) {
     if (code_) {
         return false;
     }
@@ -507,15 +507,17 @@ bool Rs7Mid::Hook::Emit(Build build) {
     return true;
 }
 
-bool Rs7Mid::Hook::Prepare(uintptr_t site, const uint8_t* bytes, size_t length, Callback callback, Mode mode) {
-    const auto build = mode == Mode::Light ? &Rs7Mid_BuildLight : mode == Mode::Sse ? &Rs7Mid_BuildSse : &Rs7Mid_Build;
+bool RsxrMid::Hook::Prepare(uintptr_t site, const uint8_t* bytes, size_t length, Callback callback, Mode mode) {
+    const auto build = mode == Mode::Light ? &RsxrMid_BuildLight
+                       : mode == Mode::Sse ? &RsxrMid_BuildSse
+                                           : &RsxrMid_Build;
 
     return Emit(
         [&](uint8_t* code) { return build(code, 256, bytes, site, length, uintptr_t(code), uintptr_t(callback)); });
 }
 
-bool Rs7Mid::Hook::PrepareCall(uintptr_t site, const uint8_t* bytes, size_t length, Callback callback, Mode mode,
-                               Call placement) {
+bool RsxrMid::Hook::PrepareCall(uintptr_t site, const uint8_t* bytes, size_t length, Callback callback, Mode mode,
+                                Call placement) {
     if (!bytes || length != 5 || bytes[0] != 0xe8) {
         return false;
     }
@@ -523,18 +525,18 @@ bool Rs7Mid::Hook::PrepareCall(uintptr_t site, const uint8_t* bytes, size_t leng
     const uintptr_t callee = site + 5 + int32_t(ReadDword(bytes + 1));
 
     return Emit([&](uint8_t* code) {
-        return Rs7Mid_BuildCall(code, 256, site, callee, uintptr_t(code), uintptr_t(callback), int(mode),
-                                placement == Call::After);
+        return RsxrMid_BuildCall(code, 256, site, callee, uintptr_t(code), uintptr_t(callback), int(mode),
+                                 placement == Call::After);
     });
 }
 
-bool Rs7Mid::Hook::PrepareCallIn(Callback callback, Mode mode, uint16_t argBytes) {
+bool RsxrMid::Hook::PrepareCallIn(Callback callback, Mode mode, uint16_t argBytes) {
     return Emit([&](uint8_t* code) {
-        return Rs7Mid_BuildCallIn(code, 256, uintptr_t(code), uintptr_t(callback), int(mode), argBytes);
+        return RsxrMid_BuildCallIn(code, 256, uintptr_t(code), uintptr_t(callback), int(mode), argBytes);
     });
 }
 
-uintptr_t Rs7Mid::CallIn::Entry() {
+uintptr_t RsxrMid::CallIn::Entry() {
     if (!hook_.Entry() && !hook_.PrepareCallIn(callback_, mode_, argBytes_)) {
         return 0;
     }
@@ -542,8 +544,8 @@ uintptr_t Rs7Mid::CallIn::Entry() {
     return hook_.Entry();
 }
 
-bool Rs7Mid::Hook::PrepareWrap(uintptr_t site, const uint8_t* bytes, size_t length, bool callSite, const Wrap& wrap,
-                               Callback before, Callback after, Mode mode) {
+bool RsxrMid::Hook::PrepareWrap(uintptr_t site, const uint8_t* bytes, size_t length, bool callSite, const Wrap& wrap,
+                                Callback before, Callback after, Mode mode) {
     if (!bytes || (callSite && (length != 5 || bytes[0] != 0xe8))) {
         return false;
     }
@@ -551,9 +553,9 @@ bool Rs7Mid::Hook::PrepareWrap(uintptr_t site, const uint8_t* bytes, size_t leng
     const uintptr_t callee = callSite ? site + 5 + int32_t(ReadDword(bytes + 1)) : 0;
 
     return Emit([&](uint8_t* code) {
-        return Rs7Mid_BuildWrap(code, 256, uintptr_t(code), callee, callSite ? nullptr : bytes, site, length,
-                                uintptr_t(before), uintptr_t(after), wrap.args, wrap.PopBytes(), wrap.locals,
-                                int(mode));
+        return RsxrMid_BuildWrap(code, 256, uintptr_t(code), callee, callSite ? nullptr : bytes, site, length,
+                                 uintptr_t(before), uintptr_t(after), wrap.args, wrap.PopBytes(), wrap.locals,
+                                 int(mode));
     });
 }
 
@@ -671,7 +673,7 @@ double FromExtended(const uint8_t* extended) {
 }
 }  // namespace
 
-unsigned Rs7Mid::Context::FpuDepth() const {
+unsigned RsxrMid::Context::FpuDepth() const {
     unsigned depth = 0;
 
     for (unsigned tags = Image(fpu) ? Image(fpu)[kTag] : 0u; tags; tags &= tags - 1) {
@@ -681,11 +683,11 @@ unsigned Rs7Mid::Context::FpuDepth() const {
     return depth;
 }
 
-bool Rs7Mid::Context::HasSt0() const {
+bool RsxrMid::Context::HasSt0() const {
     return Image(fpu) && Valid(Image(fpu), 0);
 }
 
-double Rs7Mid::Context::St0() const {
+double RsxrMid::Context::St0() const {
     if (!HasSt0()) {
         const uint8_t quietNan[10] = {0, 0, 0, 0, 0, 0, 0, 0xc0, 0xff, 0x7f};
 
@@ -695,7 +697,7 @@ double Rs7Mid::Context::St0() const {
     return FromExtended(reinterpret_cast<const uint8_t*>(fpu) + kSt);
 }
 
-bool Rs7Mid::Context::SetSt0(double value) {
+bool RsxrMid::Context::SetSt0(double value) {
     if (!HasSt0()) {
         return false;
     }
@@ -705,7 +707,7 @@ bool Rs7Mid::Context::SetSt0(double value) {
     return true;
 }
 
-bool Rs7Mid::Context::PushSt0(double value) {
+bool RsxrMid::Context::PushSt0(double value) {
     auto* image = const_cast<uint8_t*>(Image(fpu));
     if (!image || Valid(image, 7)) {
         return false;  // no image, or ST7 is in use: `fld` would overflow the stack
@@ -757,7 +759,7 @@ bool Magnitude(const uint8_t* extended, uint16_t& exponent, uint64_t& mantissa, 
 }
 }  // namespace
 
-int Rs7Mid::Context::CompareSt0(float rhs) const {
+int RsxrMid::Context::CompareSt0(float rhs) const {
     if (!HasSt0()) {
         return 2;
     }

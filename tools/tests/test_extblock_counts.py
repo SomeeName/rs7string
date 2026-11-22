@@ -1,4 +1,4 @@
-"""Malformed RS7X counts exercised against the real Win32 parser."""
+"""Malformed extension block counts exercised against the real Win32 parser."""
 
 from native_harness import ROOT, compile_harness, run_harness
 

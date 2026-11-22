@@ -2,7 +2,7 @@
 #include "features/pitch/pitch.h"
 #include "model/slots.h"
 
-namespace rs7p {
+namespace rsxrp {
 void FillTuning(const int16_t* v, size_t n, int16_t out[8]) {
     for (size_t i = 0; i < 8; ++i) {
         out[i] = i < n ? v[i] : int16_t(0);
@@ -11,7 +11,7 @@ void FillTuning(const int16_t* v, size_t n, int16_t out[8]) {
 
 void FillOpen(const int16_t t[8], bool bass, int16_t out[8]) {
     for (int i = 0; i < 8; ++i) {
-        const int base = bass ? (i < 4 ? g_rs7_pitch_bbase[i] : 0) : g_rs7_pitch_gbase[i];
+        const int base = bass ? (i < 4 ? g_rsxr_pitch_bbase[i] : 0) : g_rsxr_pitch_gbase[i];
 
         out[i] = static_cast<int16_t>(static_cast<uint16_t>(static_cast<uint16_t>(t[i]) + base));
     }
@@ -26,7 +26,7 @@ int Lowest(int stock, const int16_t t[8], size_t n, bool bass) {
     int low = stock;
 
     for (size_t s = 6; s < end; ++s) {
-        const int v = g_rs7_pitch_gbase[s] + t[s];
+        const int v = g_rsxr_pitch_gbase[s] + t[s];
 
         if (v < low) {
             low = v;
@@ -47,15 +47,15 @@ int Floor(int reset, int lowest) {
 }
 
 uint32_t ExpectedPitch8(const int16_t tuning8[8], uint32_t instrument, uint32_t string, uint32_t fret) {
-    const bool bass = rs7::IsBassKind(int(instrument));
+    const bool bass = rsxr::IsBassKind(int(instrument));
 
-    // Bass stays at its stock strings here: the extra bass bases come from rs7bass::ExtraBase.
-    if (string >= (bass ? rs7::kStockBassStrings : rs7::kMaxGuitarSlots)) {
+    // Bass stays at its stock strings here: the extra bass bases come from rsxrbass::ExtraBase.
+    if (string >= (bass ? rsxr::kStockBassStrings : rsxr::kMaxGuitarSlots)) {
         return fret - 1;
     }
 
-    const int32_t base = bass ? g_rs7_pitch_bbase[string] : g_rs7_pitch_gbase[string];
+    const int32_t base = bass ? g_rsxr_pitch_bbase[string] : g_rsxr_pitch_gbase[string];
 
     return uint32_t(int32_t(tuning8[string])) + uint32_t(base) + fret;
 }
-}  // namespace rs7p
+}  // namespace rsxrp

@@ -1,20 +1,20 @@
-// The diagnostics' hooks (group Diag), looked up by src/registry.cpp (Rs7_FindHook): D2 D3 D5 are written only with
-// [debug] diagnostics=1 (Rs7_ShouldPatch, the rows' diagOnly).
+// The diagnostics' hooks (group Diag), looked up by src/registry.cpp (Rsxr_FindHook): D2 D3 D5 are written only with
+// [debug] diagnostics=1 (Rsxr_ShouldPatch, the rows' diagOnly).
 #include "features/diag/diag.h"
 #include "model/groups.h"
 
 extern "C" {
-void Rs7_Mid_D2(Rs7Mid::Context&);  // hooks.cpp
-void Rs7_Mid_D3(Rs7Mid::Context&);
-void Rs7_Mid_D5(Rs7Mid::Context&);
+void Rsxr_Mid_D2(RsxrMid::Context&);  // hooks.cpp
+void Rsxr_Mid_D3(RsxrMid::Context&);
+void Rsxr_Mid_D5(RsxrMid::Context&);
 }
 
 namespace {
-const Rs7Hook kHooks[] = {
-    Rs7_Mid("D2", &Rs7_Mid_D2).Diag(),
-    Rs7_Mid("D3", &Rs7_Mid_D3).Diag(),
-    Rs7_Mid("D5", &Rs7_Mid_D5).Diag(),
+const RsxrHook kHooks[] = {
+    Rsxr_Mid("D2", &Rsxr_Mid_D2).Diag(),
+    Rsxr_Mid("D3", &Rsxr_Mid_D3).Diag(),
+    Rsxr_Mid("D5", &Rsxr_Mid_D5).Diag(),
 };
 }  // namespace
 
-extern const Rs7HookTable kRs7DiagHooks = {Rs7_Group(Rs7Feature::Diag), kHooks, sizeof kHooks / sizeof kHooks[0]};
+extern const RsxrHookTable kRsxrDiagHooks = {Rsxr_Group(RsxrFeature::Diag), kHooks, sizeof kHooks / sizeof kHooks[0]};

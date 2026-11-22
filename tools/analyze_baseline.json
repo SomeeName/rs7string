@@ -1,5 +1,5 @@
 {
-  "src/platform/fncopy.cpp::Rs7Fn_Build::C6385": {
+  "src/platform/fncopy.cpp::RsxrFn_Build::C6385": {
     "count": 1,
     "note": "the analyser only counts memcpy(t, src, entry) as initialising t; t[entry] and Rel32's 4 bytes complete the entry + 5 bytes FlushInstructionCache reads (it ignores writes through the unannotated Rel32; building the trampoline in a local buffer reports the same)"
   },

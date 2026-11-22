@@ -19,22 +19,22 @@
 // paths as-is. The table lock is a spinlock on intrinsics; game functions are never called while it is held.
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_alloc = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_strctor = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_shape = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_show = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_detach = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_setpos = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_setrot = 0;
-__declspec(dllexport) uintptr_t g_rs7_frame_global = 0;
-__declspec(dllexport) uintptr_t g_rs7_s7_on = 1;
-__declspec(dllexport) volatile long g_rs7_any7 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_alloc = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_strctor = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_shape = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_show = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_detach = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_setpos = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_setrot = 0;
+__declspec(dllexport) uintptr_t g_rsxr_frame_global = 0;
+__declspec(dllexport) uintptr_t g_rsxr_s7_on = 1;
+__declspec(dllexport) volatile long g_rsxr_any7 = 0;
 // The native copy of the pluck function (features/strings/hooks_copies.cpp), 0 when not built.
-extern __declspec(dllexport) uintptr_t g_rs7_fncopy_GSPK;
+extern __declspec(dllexport) uintptr_t g_rsxr_fncopy_GSPK;
 }
 
 namespace {
-using namespace rs7s7;
+using namespace rsxrs7;
 
 constexpr uint32_t kDimOn = 0x70;  // string object byte: section dimming active (song running; 0x7DFB50 / 0x7E0040)
 // GuitarStrings: +38h "faded out" / +39h "faded in" (set by Rnd_GuitarStrings_FadeOut 0x59A720 /
@@ -61,22 +61,22 @@ struct Entry {
 Entry g_tab[kMaxGuitars];
 
 // S4: which guitars (Rnd_Guitar*, session+37Ch) play a 7-string arrangement; armed = set up for it
-// and its song not over yet (Rs7S7_Visibility).
+// and its song not over yet (RsxrS7_Visibility).
 // A full table replaces its entries in turn.
 struct GuitarMode {
     bool seven;
     bool armed;
 };
 
-rs7::ObjTable<const void*, GuitarMode, kMaxGuitars> g_modes;
+rsxr::ObjTable<const void*, GuitarMode, kMaxGuitars> g_modes;
 volatile long g_spin = 0;
 
 void Lock() {
-    Rs7Spin_Lock(&g_spin);
+    RsxrSpin_Lock(&g_spin);
 }
 
 void Unlock() {
-    Rs7Spin_Unlock(&g_spin);
+    RsxrSpin_Unlock(&g_spin);
 }
 
 Entry* Find(const void* gs) {  // caller holds the lock
@@ -95,22 +95,22 @@ volatile long g_logMask = 0, g_logDisarm = 0, g_logBend = 0, g_logEdge = 0;
 
 // Issue #27: N5's clock (ms). Exported so the emulator tests can replace it (returns 0 there: no
 // clock, the time-based rules are skipped).
-extern "C" __declspec(dllexport) __declspec(noinline) uint32_t __cdecl Rs7_S7Now() {
+extern "C" __declspec(dllexport) __declspec(noinline) uint32_t __cdecl Rsxr_S7Now() {
     const uint32_t t = GetTickCount();
 
     return t ? t : 1;
 }
 
 namespace {
-using namespace rs7s7;
+using namespace rsxrs7;
 
 __declspec(noinline) void S7LogDisarm(const void* guitar, Disarm why) {
     try {
-        Rs7Log("string7: S4 arm of guitar %p ended: %s; S7 from now only while a song runs on it (string 0 +70h)",
-               guitar,
-               why == Disarm::Unseen ? "the guitar was not updated (its scene was gone) and no song runs"
-                                     : "the stock strings faded out while no song runs (GuitarStrings +38h "
-                                       "rose and the fade finished, or was set when the song ended)");
+        RsxrLog("string7: S4 arm of guitar %p ended: %s; S7 from now only while a song runs on it (string 0 +70h)",
+                guitar,
+                why == Disarm::Unseen ? "the guitar was not updated (its scene was gone) and no song runs"
+                                      : "the stock strings faded out while no song runs (GuitarStrings +38h "
+                                        "rose and the fade finished, or was set when the song ended)");
     } catch (...) {
     }
 }
@@ -120,9 +120,9 @@ __declspec(noinline) void S7LogDisarm(const void* guitar, Disarm why) {
 __declspec(noinline) void S7LogEdge(const void* guitar, int song, int fadedOut, int fadedIn, uint32_t gapMs, bool armed,
                                     bool want) {
     try {
-        Rs7Log("string7: edge guitar %p: string 0 +70h song=%d, GuitarStrings +38h faded-out=%d +39h faded-in=%d, "
-               "%u ms since its last frame -> armed=%d, 7-string look %s",
-               guitar, song, fadedOut, fadedIn, gapMs, armed ? 1 : 0, want ? "on" : "off");
+        RsxrLog("string7: edge guitar %p: string 0 +70h song=%d, GuitarStrings +38h faded-out=%d +39h faded-in=%d, "
+                "%u ms since its last frame -> armed=%d, 7-string look %s",
+                guitar, song, fadedOut, fadedIn, gapMs, armed ? 1 : 0, want ? "on" : "off");
     } catch (...) {
     }
 }
@@ -132,7 +132,7 @@ __declspec(noinline) void S7LogBend(uint32_t fret, uint32_t amountBits, const ui
         float amount;
 
         memcpy(&amount, &amountBits, 4);
-        Rs7Log(
+        RsxrLog(
             "string7 bend: string-6 bend on the 7th string (fret %u, amount %.3f, string %p; stock SetBend 0x598910; "
             "first this song)",
             fret & 0xFF, amount, obj);
@@ -150,17 +150,17 @@ void GuitarModeSet(void* guitar, bool seven) {  // caller holds the lock
 }  // namespace
 
 // N13's once-per-song line (exported so the emulator tests can neutralise it).
-extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rs7_S7LogMask(uint32_t level, int used, int added,
-                                                                                 int sections) {
+extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rsxr_S7LogMask(uint32_t level, int used, int added,
+                                                                                  int sections) {
     try {
-        Rs7Log("string7 highlight: SNG string mask bit 6 (N12/N13): string 6 used in %d of %d sections at level %u "
-               "(%d lit one section early by the back-fill)",
-               used, sections, level, added);
+        RsxrLog("string7 highlight: SNG string mask bit 6 (N12/N13): string 6 used in %d of %d sections at level %u "
+                "(%d lit one section early by the back-fill)",
+                used, sections, level, added);
     } catch (...) {
     }
 }
 
-void Rs7S7_SetGuitarMode(void* guitar, bool seven) {
+void RsxrS7_SetGuitarMode(void* guitar, bool seven) {
     if (!guitar) {
         return;
     }
@@ -170,77 +170,77 @@ void Rs7S7_SetGuitarMode(void* guitar, bool seven) {
     Unlock();
 }
 
-uint8_t* Rs7S7_ObjectOf(void* guitar) {
-    if (!g_rs7_s7_on || !guitar) {
+uint8_t* RsxrS7_ObjectOf(void* guitar) {
+    if (!g_rsxr_s7_on || !guitar) {
         return nullptr;
     }
 
-    return Rs7_S7DimTarget(Rs7_SafeRead<uint8_t*>(static_cast<const uint8_t*>(guitar), rs7::kGuitarStrings));
+    return Rsxr_S7DimTarget(Rsxr_SafeRead<uint8_t*>(static_cast<const uint8_t*>(guitar), rsxr::kGuitarStrings));
 }
 
-extern "C" void __cdecl Rs7_S7MaskBackfill(uint8_t* song, uint32_t level) {
-    if (!g_rs7_s7_on || !song || level >= 32) {
+extern "C" void __cdecl Rsxr_S7MaskBackfill(uint8_t* song, uint32_t level) {
+    if (!g_rsxr_s7_on || !song || level >= 32) {
         return;
     }
 
-    uint8_t* b = Rs7_SafeRead<uint8_t*>(song, 0xF4);
-    uint8_t* e = Rs7_SafeRead<uint8_t*>(song, 0xF8);
+    uint8_t* b = Rsxr_SafeRead<uint8_t*>(song, 0xF4);
+    uint8_t* e = Rsxr_SafeRead<uint8_t*>(song, 0xF8);
     if (!b || e <= b) {
         return;
     }
 
     const int n = int(uint32_t(e - b) / 0x58u);
     int added = 0;
-    int used = Rs7S7_BackfillBit(b, n, level, 0x40, &added);
+    int used = RsxrS7_BackfillBit(b, n, level, 0x40, &added);
 
     int added7 = 0;  // string 7 (the eighth string): bit 7
 
-    used += Rs7S7_BackfillBit(b, n, level, 0x80, &added7);
+    used += RsxrS7_BackfillBit(b, n, level, 0x80, &added7);
     added += added7;
 
     // Stock songs (no string-6 notes) return here: no Win32 call on their path.
-    if (used && Rs7Log_Upto(&g_logMask, 1)) {
-        Rs7_S7LogMask(level, used, added, n);
+    if (used && RsxrLog_Upto(&g_logMask, 1)) {
+        Rsxr_S7LogMask(level, used, added, n);
     }
 }
 
-extern "C" uint8_t* __cdecl Rs7_S7DimTarget(void* gs) {
-    if (!g_rs7_s7_on || !gs || !g_rs7_native_strings || !rs7gs::IsNative(static_cast<uint8_t*>(gs))) {
+extern "C" uint8_t* __cdecl Rsxr_S7DimTarget(void* gs) {
+    if (!g_rsxr_s7_on || !gs || !g_rsxr_native_strings || !rsxrgs::IsNative(static_cast<uint8_t*>(gs))) {
         return nullptr;
     }
 
-    return Rs7Gs_Active(static_cast<uint8_t*>(gs), 6, false);  // the native string 6 (features/strings/strings.h)
+    return RsxrGs_Active(static_cast<uint8_t*>(gs), 6, false);  // the native string 6 (features/strings/strings.h)
 }
 
-// Not inlined into Rs7_S7BendTarget: the emulator oracle (test_midhook_cold.py) records both stubs' calls of it.
-extern "C" __declspec(noinline) uint8_t* __cdecl Rs7_S7BendObject(void* gs, uint32_t ghost) {
+// Not inlined into Rsxr_S7BendTarget: the emulator oracle (test_midhook_cold.py) records both stubs' calls of it.
+extern "C" __declspec(noinline) uint8_t* __cdecl Rsxr_S7BendObject(void* gs, uint32_t ghost) {
     // N18-N21 extend the stock bound to string 6 of a native GuitarStrings' own arrays.
-    if (!gs || !g_rs7_native_strings || !rs7gs::IsNative(static_cast<uint8_t*>(gs))) {
+    if (!gs || !g_rsxr_native_strings || !rsxrgs::IsNative(static_cast<uint8_t*>(gs))) {
         return nullptr;
     }
 
-    return Rs7Gs_Active(static_cast<uint8_t*>(gs), 6, ghost != 0);
+    return RsxrGs_Active(static_cast<uint8_t*>(gs), 6, ghost != 0);
 }
 
-extern "C" uint8_t* __cdecl Rs7_S7BendTarget(void* gs, uint32_t kind, uint32_t fret, uint32_t amountBits) {
-    uint8_t* obj = Rs7_S7BendObject(gs, 0);
+extern "C" uint8_t* __cdecl Rsxr_S7BendTarget(void* gs, uint32_t kind, uint32_t fret, uint32_t amountBits) {
+    uint8_t* obj = Rsxr_S7BendObject(gs, 0);
 
-    if (obj && kind == 0 && Rs7Log_Once(&g_logBend)) {
+    if (obj && kind == 0 && RsxrLog_Once(&g_logBend)) {
         S7LogBend(fret, amountBits, obj);
     }
 
     return obj;
 }
 
-void Rs7S7_ResetLog() {
+void RsxrS7_ResetLog() {
     _InterlockedExchange(&g_logMask, 0);
     _InterlockedExchange(&g_logDisarm, 0);
     _InterlockedExchange(&g_logEdge, 0);
     _InterlockedExchange(&g_logBend, 0);
 }
 
-extern "C" void __cdecl Rs7_S7Record(void* gs) {
-    if (!g_rs7_s7_on || !gs) {
+extern "C" void __cdecl Rsxr_S7Record(void* gs) {
+    if (!g_rsxr_s7_on || !gs) {
         return;
     }
 
@@ -266,34 +266,34 @@ extern "C" void __cdecl Rs7_S7Record(void* gs) {
 // guitar. Game thread (N5).
 namespace {
 void NativeFrame(uint8_t* guitar, uint8_t* gs) {
-    uint8_t* info = Rs7_SafeRead<uint8_t*>(gs, rs7gs::kInfo);
-    const uint8_t n = Rs7Gs_InfoNative(info) ? Rs7_SafeRead<uint8_t>(info, rs7::kInfoStrings) : 0;
-    const bool bass = Rs7Gs_InfoNative(info) && rs7::IsBassKind(Rs7_SafeRead<uint8_t>(info, rs7::kInfoKind));
-    const bool want = !bass && rs7::IsExtendedGuitar(n);
-    const bool extended = want || (bass && rs7::IsExtendedBass(n));  // an extended bass: lower floor, edited headstock
+    uint8_t* info = Rsxr_SafeRead<uint8_t*>(gs, rsxrgs::kInfo);
+    const uint8_t n = RsxrGs_InfoNative(info) ? Rsxr_SafeRead<uint8_t>(info, rsxr::kInfoStrings) : 0;
+    const bool bass = RsxrGs_InfoNative(info) && rsxr::IsBassKind(Rsxr_SafeRead<uint8_t>(info, rsxr::kInfoKind));
+    const bool want = !bass && rsxr::IsExtendedGuitar(n);
+    const bool extended = want || (bass && rsxr::IsExtendedBass(n));  // an extended bass: lower floor, edited headstock
 
-    Rs7Frets_Frame(guitar, extended);      // frets.h: F2 (the stock bars of a 6-string guitar are never touched)
-    Rs7Asset_HeadFrame(guitar, extended);  // the edited headstock model (assetload.h), before the 7th peg reads
-                                           // the (then moved) peg locators
-    Rs7Head_Width(guitar, extended);       // [neck] spacing_*: the headstock frame as narrow as the strings
-    Rs7Head_Frame(guitar, want);           // the 7th tuning peg (headstock.h)
-    Rs7Gs_Frame(guitar, gs, want);         // the 7th / 8th string objects (features/strings/strings.h)
+    RsxrFrets_Frame(guitar, extended);      // frets.h: F2 (the stock bars of a 6-string guitar are never touched)
+    RsxrAsset_HeadFrame(guitar, extended);  // the edited headstock model (assetload.h), before the 7th peg reads
+                                            // the (then moved) peg locators
+    RsxrHead_Width(guitar, extended);       // [neck] spacing_*: the headstock frame as narrow as the strings
+    RsxrHead_Frame(guitar, want);           // the 7th tuning peg (headstock.h)
+    RsxrGs_Frame(guitar, gs, want);         // the 7th / 8th string objects (features/strings/strings.h)
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7_S7Update(uint8_t* guitar) {
+extern "C" void __cdecl Rsxr_S7Update(uint8_t* guitar) {
     if (!guitar) {
         return;
     }
 
-    uint8_t* const nativeGs = Rs7_SafeRead<uint8_t*>(guitar, rs7::kGuitarStrings);
+    uint8_t* const nativeGs = Rsxr_SafeRead<uint8_t*>(guitar, rsxr::kGuitarStrings);
 
-    if (g_rs7_native_publish && nativeGs && rs7gs::IsNative(nativeGs)) {
+    if (g_rsxr_native_publish && nativeGs && rsxrgs::IsNative(nativeGs)) {
         NativeFrame(guitar, nativeGs);
         return;
     }
 
-    if (!g_rs7_s7_on) {
+    if (!g_rsxr_s7_on) {
         return;
     }
 
@@ -314,24 +314,24 @@ extern "C" void __cdecl Rs7_S7Update(uint8_t* guitar) {
     // song load, so string 6 is there for the stock intro fade-in, issue #6) or its song runs (stock string 0's
     // +70h: set at song start 0x7DFB50, cleared at the song end 0x7E0040). The arm outlives the song
     // (outro, issue #27) and ends, while no song runs, when the stock strings fade out or the guitar
-    // was not updated for kUnseenMs (Rs7S7_Visibility). The tuner, menus and
+    // was not updated for kUnseenMs (RsxrS7_Visibility). The tuner, menus and
     // 6-string/bass songs have no mark, or an arm that ended with the previous song, and no +70h.
     // Per guitar, so another player's 7-string song does not show it here.
-    uint8_t* obj0 = Rs7_SafeRead<uint8_t*>(gs, 4);
-    const bool song = Rs7_SafeRead<uint8_t>(obj0, kDimOn) != 0;
+    uint8_t* obj0 = Rsxr_SafeRead<uint8_t*>(gs, 4);
+    const bool song = Rsxr_SafeRead<uint8_t>(obj0, kDimOn) != 0;
     // The mark itself stays until the next S4 of this guitar overwrites it (a restarted song may not
     // run S4 again); "song running" is re-derived every frame.
     const bool songEnded = e->song && !song;
 
     e->song = song;
-    const int fadedOut = Rs7_SafeRead<uint8_t>(gs, kGsFadedOut) != 0 ? 1 : 0;
-    const int fadedIn = Rs7_SafeRead<uint8_t>(gs, kGsFadedIn) != 0 ? 1 : 0;
+    const int fadedOut = Rsxr_SafeRead<uint8_t>(gs, kGsFadedOut) != 0 ? 1 : 0;
+    const int fadedIn = Rsxr_SafeRead<uint8_t>(gs, kGsFadedIn) != 0 ? 1 : 0;
     const bool fadeOutStarted = e->fadedOut == 0 && fadedOut == 1;
     const bool fadeEdge = e->fadedOut != fadedOut || e->fadedIn != fadedIn;
 
     e->fadedOut = fadedOut;
     e->fadedIn = fadedIn;
-    const uint32_t now = Rs7_S7Now();  // 0 = no clock (emulator tests)
+    const uint32_t now = Rsxr_S7Now();  // 0 = no clock (emulator tests)
     const uint32_t gapMs = now && e->lastTick ? now - e->lastTick : 0;
 
     e->lastTick = now;
@@ -348,7 +348,7 @@ extern "C" void __cdecl Rs7_S7Update(uint8_t* guitar) {
     const uint32_t fadeOutMs = e->fadeOutTick && now ? now - e->fadeOutTick : 0;
     const bool fadeOutDone = e->fadeOutTick && fadeOutMs >= g_fadeHoldMs;
     const Visibility vis =
-        Rs7S7_Visibility(mode && mode->seven, armed, song, songEnded, fadedOut != 0, fadeOutDone, gapMs >= kUnseenMs);
+        RsxrS7_Visibility(mode && mode->seven, armed, song, songEnded, fadedOut != 0, fadeOutDone, gapMs >= kUnseenMs);
 
     if (mode) {
         mode->armed = armed;
@@ -358,41 +358,41 @@ extern "C" void __cdecl Rs7_S7Update(uint8_t* guitar) {
     const bool want = vis.want;
 
     Unlock();
-    if (edge && Rs7Log_Upto(&g_logEdge, kEdgeLogCap)) {
+    if (edge && RsxrLog_Upto(&g_logEdge, kEdgeLogCap)) {
         S7LogEdge(guitar, song, fadedOut, fadedIn, gapMs, armed, want);
     }
-    if (vis.disarmed != Disarm::None && Rs7Log_Once(&g_logDisarm)) {
+    if (vis.disarmed != Disarm::None && RsxrLog_Once(&g_logDisarm)) {
         S7LogDisarm(guitar, vis.disarmed);
     }
     // F2: the fret bars follow the same per-guitar 7-string visibility (frets.h).
-    Rs7Frets_Frame(guitar, want);
-    Rs7Asset_HeadFrame(guitar, want);  // the edited headstock model (assetload.h), before the 7th peg reads
-                                       // the (then moved) peg locators
-    Rs7Head_Frame(guitar, want);       // the 7th tuning peg (headstock.h)
+    RsxrFrets_Frame(guitar, want);
+    RsxrAsset_HeadFrame(guitar, want);  // the edited headstock model (assetload.h), before the 7th peg reads
+                                        // the (then moved) peg locators
+    RsxrHead_Frame(guitar, want);       // the 7th tuning peg (headstock.h)
     // String 6 is a stock object of the native GuitarStrings (features/strings/strings.h); the per-guitar rule above
     // only raises / lowers its active count.
-    Rs7Gs_Frame(guitar, gs, want);
+    RsxrGs_Frame(guitar, gs, want);
 }
 
-extern "C" int __cdecl Rs7_S7Pluck(void* gs, uint32_t sngFret, uint32_t fret) {
-    return Rs7_S7PluckString(gs, 6, sngFret, fret);
+extern "C" int __cdecl Rsxr_S7Pluck(void* gs, uint32_t sngFret, uint32_t fret) {
+    return Rsxr_S7PluckString(gs, 6, sngFret, fret);
 }
 
-extern "C" int __cdecl Rs7_S7PluckString(void* gs, uint32_t string, uint32_t sngFret, uint32_t fret) {
-    if (!g_rs7_s7_on || !gs || (string != 6 && string != 7)) {
+extern "C" int __cdecl Rsxr_S7PluckString(void* gs, uint32_t string, uint32_t sngFret, uint32_t fret) {
+    if (!g_rsxr_s7_on || !gs || (string != 6 && string != 7)) {
         return 0;
     }
 
-    if (g_rs7_native_strings && rs7gs::IsNative(static_cast<uint8_t*>(gs))) {
+    if (g_rsxr_native_strings && rsxrgs::IsNative(static_cast<uint8_t*>(gs))) {
         // PL1 (chord strings 6 / 7): the pluck function's entry dispatch (GSPK), i.e. the native copy (checks the
         // active count); asm, as it takes AL / EDX + stack arguments. (`gs` must not be an asm operand: it is the GS
         // register, `push gs` pushed 2Bh.) Only the native copy may run: when the dispatch refuses it answers the
         // stock trampoline, which knows only strings 0-5.
         const void* const strings = gs;
         const uint8_t s = uint8_t(string);
-        const uintptr_t pluck = Rs7Gs_Target(kGsPluck, static_cast<uint8_t*>(gs), uint32_t(uintptr_t(gs)), fret);
+        const uintptr_t pluck = RsxrGs_Target(kGsPluck, static_cast<uint8_t*>(gs), uint32_t(uintptr_t(gs)), fret);
 
-        if (!pluck || pluck != g_rs7_fncopy_GSPK) {
+        if (!pluck || pluck != g_rsxr_fncopy_GSPK) {
             return 0;
         }
 
@@ -416,27 +416,27 @@ extern "C" int __cdecl Rs7_S7PluckString(void* gs, uint32_t string, uint32_t sng
     return 0;
 }
 
-void Rs7_GuitarGone(void* guitar) {
+void Rsxr_GuitarGone(void* guitar) {
     if (!guitar) {
         return;
     }
 
     const uint8_t* g = static_cast<const uint8_t*>(guitar);
 
-    Rs7Asset_ForgetGuitar(g);
-    Rs7Frets_Forget(g);
-    Rs7Publish_GridForget(g);
+    RsxrAsset_ForgetGuitar(g);
+    RsxrFrets_Forget(g);
+    RsxrPublish_GridForget(g);
     Lock();
     g_modes.Erase(guitar);
     Unlock();
 }
 
-extern "C" void __cdecl Rs7_S7Free(void* gs) {
+extern "C" void __cdecl Rsxr_S7Free(void* gs) {
     if (!gs) {
         return;
     }
 
-    Rs7Asset_ForgetStrings(static_cast<const uint8_t*>(gs));  // the guitar's headstock-model slot (leak audit)
+    RsxrAsset_ForgetStrings(static_cast<const uint8_t*>(gs));  // the guitar's headstock-model slot (leak audit)
     Lock();
 
     if (Entry* e = Find(gs)) {
@@ -450,12 +450,12 @@ extern "C" void __cdecl Rs7_S7Free(void* gs) {
     // cannot inherit them and the slots are free again (leaks2).
     void* guitar = nullptr;
 
-    Rs7_SafeCopyZero(&guitar, gs, sizeof guitar);
-    Rs7_GuitarGone(guitar);
+    Rsxr_SafeCopyZero(&guitar, gs, sizeof guitar);
+    Rsxr_GuitarGone(guitar);
 }
 
-void Rs7S7_Stats(Rs7S7Stats* out) {
-    Rs7S7Stats st{};
+void RsxrS7_Stats(RsxrS7Stats* out) {
+    RsxrS7Stats st{};
 
     Lock();
 

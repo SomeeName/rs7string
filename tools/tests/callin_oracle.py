@@ -1,9 +1,9 @@
-"""Old-vs-new and stock oracle of the calls written into relocated function copies (call-in entries, Rs7Mid::CallIn).
+"""Old-vs-new and stock oracle of the calls written into relocated function copies (call-in entries, RsxrMid::CallIn).
 
 A copy's call edit replaces `length` stock bytes with `call <target>` + NOPs (platform/fncopy.h). Each run places one of
 three variants at the same address and runs it to the end of the edit:
 - old: `call <the frozen naked helper>` (tools/freeze_stubs.py fixture, midhook_oracle.FROZEN),
-- new: `call <the entry Rs7Mid_BuildCallIn built for the C++ callback>`,
+- new: `call <the entry RsxrMid_BuildCallIn built for the C++ callback>`,
 - stock: the stock bytes from the game image (a rel32 call retargeted to its original callee).
 Compared: the eight GPRs (but `clobbers`), the arithmetic flags and DF (`flags`), x87 status / control / tag words,
 XMM0 / XMM7, the live stack from the final ESP up, every other write, and each helper call's arguments. Helpers (DLL C
@@ -57,7 +57,7 @@ GAME_FCW, FCW_AT = 0x27F, CODE + 0x6100  # the game's x87 control word in every 
 
 
 def build_callin(emu: Emu, name: str, at: int = ENTRY_AT) -> int:
-    """Run the DLL's Rs7Mid_BuildCallIn: the entry of the call-in `name` (CALLINS) at `at`."""
+    """Run the DLL's RsxrMid_BuildCallIn: the entry of the call-in `name` (CALLINS) at `at`."""
     return callin_entry(emu.uc, emu.exports, name, at, ARGS_AT, RET_MAGIC)
 
 
@@ -78,7 +78,7 @@ def local_callee(emu: Emu, callback: str) -> int:
 
 @dataclass
 class Spec:
-    name: str  # the copy's call-in object minus g_rs7_callin_
+    name: str  # the copy's call-in object minus g_rsxr_callin_
     old: str  # the frozen helper
     stock_va: int  # the edit's stock address (game image); 0: a synthetic call (no stock bytes)
     length: int
@@ -92,7 +92,7 @@ class Spec:
     entries: dict = field(default_factory=dict)  # exported dword -> the call-in (CALLINS name) whose entry it holds
     frozen: tuple = ()  # frozen functions the old helper calls ("@NAME" fixups)
     # helpers that run game code: their record includes the x87 control word they are called with (the game's,
-    # GAME_FCW, as under the old helper: Rs7Mid::GameFcw)
+    # GAME_FCW, as under the old helper: RsxrMid::GameFcw)
     game_fcw: tuple = ()
     # helpers the DLL does not export (the frozen fixups name them, freeze_stubs.py --map/--local): name -> the callback
     # whose one direct call to a non-exported function is it

@@ -9,13 +9,13 @@ from pathlib import Path
 from sitetable import Site, load
 
 KIND_CPP = {
-    "jmp": "Rs7Kind::Jmp",
-    "jmp_atomic8": "Rs7Kind::JmpAtomic8",
-    "rel32": "Rs7Kind::Rel32",
-    "call": "Rs7Kind::Call",
-    "ref": "Rs7Kind::Ref",
-    "callref": "Rs7Kind::CallRef",
-    "bytes": "Rs7Kind::Bytes",
+    "jmp": "RsxrKind::Jmp",
+    "jmp_atomic8": "RsxrKind::JmpAtomic8",
+    "rel32": "RsxrKind::Rel32",
+    "call": "RsxrKind::Call",
+    "ref": "RsxrKind::Ref",
+    "callref": "RsxrKind::CallRef",
+    "bytes": "RsxrKind::Bytes",
 }
 
 
@@ -25,8 +25,8 @@ def render(checksum: int, sites: list[Site]) -> str:
         "#pragma once",
         '#include "platform/sites.h"',
         "",
-        f"static const unsigned kRs7PeChecksum = 0x{checksum:08X}u;",
-        "static const Rs7Site kRs7Sites[] = {",
+        f"static const unsigned kRsxrPeChecksum = 0x{checksum:08X}u;",
+        "static const RsxrSite kRsxrSites[] = {",
     ]
 
     def row(s: Site) -> str:
@@ -43,20 +43,20 @@ def render(checksum: int, sites: list[Site]) -> str:
     lines += [row(s) for s in main]
     lines += [
         "};",
-        f"static const int kRs7SiteCount = {len(main)};",
+        f"static const int kRsxrSiteCount = {len(main)};",
         "",
         "// The plain-PSARC unit (features/psarc/psarc.h): resolved and written early, on their own.",
-        "static const Rs7Site kRs7PsarcSites[] = {",
+        "static const RsxrSite kRsxrPsarcSites[] = {",
     ]
     lines += [row(s) for s in psarc]
-    lines += ["};", f"static const int kRs7PsarcSiteCount = {len(psarc)};", ""]
+    lines += ["};", f"static const int kRsxrPsarcSiteCount = {len(psarc)};", ""]
     fast = [s for s in sites if s.group == "fast"]
     lines += [
         "// [test] fast (features/testdrive/testdrive.h): resolved and written early, on their own.",
-        "static const Rs7Site kRs7FastSites[] = {",
+        "static const RsxrSite kRsxrFastSites[] = {",
     ]
     lines += [row(s) for s in fast]
-    lines += ["};", f"static const int kRs7FastSiteCount = {len(fast)};", ""]
+    lines += ["};", f"static const int kRsxrFastSiteCount = {len(fast)};", ""]
     return "\n".join(lines)
 
 

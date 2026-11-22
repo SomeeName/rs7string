@@ -4,10 +4,10 @@
 
 #include "model/instrument.h"
 
-struct Rs7HookTable;
-struct Rs7SetTable;
+struct RsxrHookTable;
+struct RsxrSetTable;
 // The fret bars' hooks (group Core): F1, IN1 and the X_SETSCALE ref.
-extern const Rs7HookTable kRs7FretHooks;
+extern const RsxrHookTable kRsxrFretHooks;
 
 // Fret wires across the extra strings (docs/ARCHITECTURE.md).
 //
@@ -36,30 +36,30 @@ extern const Rs7HookTable kRs7FretHooks;
 //  - F1 (0x58FB20 entry): the stock body runs first; then, for a guitar built with 7/8 strings, the
 //    bars are re-placed (the stock body has just put them back on the midpoint).
 //  - F2 (in N5, per frame): applies when F1 could not (no attach points yet) and follows the live
-//    the fret state (g_rs7_frets_on, g_rs7_fret_halflen). Nothing is switched per song, tuner or menu.
+//    the fret state (g_rsxr_frets_on, g_rsxr_fret_halflen). Nothing is switched per song, tuner or menu.
 // Logs once per run: the applied numbers and a read-back of the bar nodes 30 frames later.
 // Logic: frets.cpp (Compute, FloorShift, ChordFrame). Glue: hooks.cpp (F1 / F2, the floor, IN1, the
 // chord-frame geometry, the per-guitar state), hooks_log.cpp (the log lines), hooks_wrap.cpp (F1, IN1, Wrap mid-hooks),
-// registration.cpp (kRs7FretHooks).
+// registration.cpp (kRsxrFretHooks).
 
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_fn_setscale;  // X_SETSCALE 0x7AE2C0 EAX = entity, cdecl(float)
-__declspec(dllexport) extern uintptr_t g_rs7_frets_on;     // 1 (0 only in the emulator tests)
-__declspec(dllexport) extern float g_rs7_fret_halflen;     // kDefaultHalfLen
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_setscale;  // X_SETSCALE 0x7AE2C0 EAX = entity, cdecl(float)
+__declspec(dllexport) extern uintptr_t g_rsxr_frets_on;     // 1 (0 only in the emulator tests)
+__declspec(dllexport) extern float g_rsxr_fret_halflen;     // kDefaultHalfLen
 // F1, after the stock body of 0x58FB20 (cdecl, inside pushad). grid = the FretGrid (stock EAX).
 // Returns at once (no Win32 call) unless the grid belongs to a guitar built with 7 or 8 strings.
-__declspec(dllexport) void __cdecl Rs7_FretsAfterApply(uint8_t* grid);
+__declspec(dllexport) void __cdecl Rsxr_FretsAfterApply(uint8_t* grid);
 // IN1, after Rnd_Inlays_ApplyTransforms 0x59BA80 (which puts the inlay entity at the frame entity's translation;
 // the dots are authored centred on strings 0-5): a guitar built with 7/8 strings gets the entity at that
 // translation + (attach0 - attach1) / 2, the centre of 7 strings, in either string order. Part of fret_extend.
-__declspec(dllexport) void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays);
+__declspec(dllexport) void __cdecl Rsxr_InlaysAfter(uint8_t* guitar, uint8_t* inlays);
 }
 
-namespace rs7frets {
+namespace rsxrfrets {
 constexpr float kDefaultHalfLen = 4.61f;  // half bar length estimate (bound radius 4.638, see the note)
-using rs7::kGuitarGrid;                   // FretGrid* (0x593043: EAX = [edi+10h])
-using rs7::kGuitarStrings;
-constexpr uint32_t kBars = rs7::kGridTail;  // FretGrid: fretBar[26] x 0x38
+using rsxr::kGuitarGrid;                  // FretGrid* (0x593043: EAX = [edi+10h])
+using rsxr::kGuitarStrings;
+constexpr uint32_t kBars = rsxr::kGridTail;  // FretGrid: fretBar[26] x 0x38
 constexpr uint32_t kBarStride = 0x38;
 constexpr uint32_t kBarALocal = 0x04;  // the fretbar locators as read (0x58F7F0)
 constexpr uint32_t kBarBLocal = 0x10;
@@ -67,7 +67,7 @@ constexpr uint32_t kBarAWorld = 0x1C;
 constexpr uint32_t kBarBWorld = 0x28;
 constexpr uint32_t kBarEntity = 0x34;
 constexpr int kMaxBars = 26;
-using rs7::kMaxGuitars;
+using rsxr::kMaxGuitars;
 constexpr int kVerifyFrames = 30;  // N5 frames after an apply before the node read-back
 
 struct Extend {
@@ -132,7 +132,7 @@ struct FrameFit {
                     // string 6)
     float margin;   // m
     float spacing;  // d
-    float bLocal[3], bWorld[3], a0[3];  // diagnostics, set by Rs7Frets_ChordFrame: bar 0 locator B (local / the world
+    float bLocal[3], bWorld[3], a0[3];  // diagnostics, set by RsxrFrets_ChordFrame: bar 0 locator B (local / the world
                                         // end as placed now), string 0 attach
 };
 
@@ -140,30 +140,30 @@ struct FrameFit {
 // 6-string bass's high C). A 5/6-string bass passes top 6: its low B lies one lane beyond string 0, like a 7th string.
 bool ChordFrame(const float a0[3], const float a1[3], const float b[3], int floorLanes, int top, FrameFit* out,
                 int far = 5, int farLanes = 0);
-}  // namespace rs7frets
+}  // namespace rsxrfrets
 
 // B2: ChordFrame for the guitar `guitar` (Rnd_Guitar*): reads its attach points and bar 0, and whether F1 moved its
 // floor. False when the guitar's strings / bars are not there or the geometry is degenerate.
-bool Rs7Frets_ChordFrame(const uint8_t* guitar, int top, rs7frets::FrameFit* out);
+bool RsxrFrets_ChordFrame(const uint8_t* guitar, int top, rsxrfrets::FrameFit* out);
 
-// F2, from N5 (Rs7_S7Update) every frame for its guitar: want = the guitar was built with 7/8 strings.
-// With g_rs7_frets_on = 0 (tests) an applied guitar is restored at its next frame and nothing else is touched; a new
-// g_rs7_fret_halflen is applied again at the next frame.
-void Rs7Frets_Frame(uint8_t* guitar, bool want);
+// F2, from N5 (Rsxr_S7Update) every frame for its guitar: want = the guitar was built with 7/8 strings.
+// With g_rsxr_frets_on = 0 (tests) an applied guitar is restored at its next frame and nothing else is touched; a new
+// g_rsxr_fret_halflen is applied again at the next frame.
+void RsxrFrets_Frame(uint8_t* guitar, bool want);
 // The guitar is being destroyed (its GuitarStrings are freed): drop its state slot.
-void Rs7Frets_Forget(const uint8_t* guitar);
+void RsxrFrets_Forget(const uint8_t* guitar);
 // Song setup: the frets log lines may appear again; drops the glow bars FRG2 has not scaled yet.
-void Rs7Frets_ResetLog();
+void RsxrFrets_ResetLog();
 
 // Overlay status: guitars with frets state, guitars whose bars are applied now.
-struct Rs7FretsStats {
+struct RsxrFretsStats {
     int guitars, applied;
 };
 
-void Rs7Frets_Stats(Rs7FretsStats* out);
+void RsxrFrets_Stats(RsxrFretsStats* out);
 
 // ---- overlay (settings.cpp)
 
 // The fret extend status row (platform/uilayout.h).
-struct Rs7UiTable;
-extern const Rs7UiTable kRs7FretUi;
+struct RsxrUiTable;
+extern const RsxrUiTable kRsxrFretUi;

@@ -1,5 +1,5 @@
 // Chord-diagram movie logic: swaps the one DoInitAction tag of an owner movie for the recipe's, hash-checked
-// before and after (R7DA recipes from tools/diagram_patch.py).
+// before and after (RXDA recipes from tools/diagram_patch.py).
 #include "features/diagrams/diagrams.h"
 #include <windows.h>
 #include <algorithm>
@@ -9,7 +9,7 @@
 #pragma comment(lib, "bcrypt.lib")
 
 namespace {
-constexpr size_t kLimit = rs7diagram::kMovieLimit;
+constexpr size_t kLimit = rsxrdiagram::kMovieLimit;
 
 uint32_t U32(const uint8_t* p) {
     uint32_t v;
@@ -29,7 +29,7 @@ uint16_t U16(const uint8_t* p) {
 
 bool Hash(const uint8_t* p, size_t n, const uint8_t* expected) {
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    // fuzz/rs7string_fuzz.vcxproj only: a fuzzer cannot forge SHA-256, so the recipe's ops would never run.
+    // fuzz/rsxr_fuzz.vcxproj only: a fuzzer cannot forge SHA-256, so the recipe's ops would never run.
     (void)p;
     (void)expected;
 
@@ -98,7 +98,7 @@ bool Span(const uint8_t* p, size_t n, uint16_t sprite, size_t* a, size_t* b) {
 
 }  // namespace
 
-namespace rs7diagram {
+namespace rsxrdiagram {
 int MovieTarget(const char* name) {
     if (!name) {
         return -1;
@@ -125,7 +125,7 @@ int MovieTarget(const char* name) {
 
 bool SwapMovie(const uint8_t* p, size_t n, const uint8_t* r, size_t rn, uint16_t sprite, std::vector<uint8_t>* out) {
     size_t a = 0, b = 0;
-    if (!out || !r || rn < 84 || rn > kLimit || std::memcmp(r, "R7DA\x01\0\0\0", 8) || !Span(p, n, sprite, &a, &b)) {
+    if (!out || !r || rn < 84 || rn > kLimit || std::memcmp(r, "RXDA\x01\0\0\0", 8) || !Span(p, n, sprite, &a, &b)) {
         return false;
     }
 
@@ -198,4 +198,4 @@ bool SwapMovie(const uint8_t* p, size_t n, const uint8_t* r, size_t rn, uint16_t
 
     return true;
 }
-}  // namespace rs7diagram
+}  // namespace rsxrdiagram

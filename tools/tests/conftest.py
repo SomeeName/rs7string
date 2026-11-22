@@ -14,15 +14,15 @@ from nextgrid_harness import Machine
 
 def _game_files_status() -> list[str]:
     found = lambda p: "found" if p.exists() else "MISSING (its tests skip)"
-    source = "RS7_GAME_FILES" if game_files.FROM_ENV else "default"
+    source = "RSXR_GAME_FILES" if game_files.FROM_ENV else "default"
     return [
-        f"rs7 game files: {game_files.ROOT} ({source})",
+        f"rsxr game files: {game_files.ROOT} ({source})",
         f"  unpacked exe: {found(game_files.UNPACKED_EXE)}; snapshot: {found(game_files.SNAPSHOT / 'memory.bin')}",
     ]
 
 
 def pytest_report_header(config):
-    """Where the game files are looked up and what was found: a leftover RS7_GAME_FILES cannot skip tests silently."""
+    """Where the game files are looked up and what was found: a leftover RSXR_GAME_FILES cannot skip tests silently."""
     return _game_files_status()
 
 
@@ -52,7 +52,7 @@ def emus():
 
 @pytest.fixture(params=[1, 0], ids=["diag", "nodiag"])
 def diag(request, emus):
-    """rs7string.ini [debug] diagnostics: 1 = R2/R1 call the D1/D4 loggers, 0 = they do not."""
+    """rsxr.ini [debug] diagnostics: 1 = R2/R1 call the D1/D4 loggers, 0 = they do not."""
     _, patched = emus
     patched.set_diag(request.param)
     yield request.param
@@ -61,7 +61,7 @@ def diag(request, emus):
 
 @pytest.fixture(params=[(1, 0), (1, 1), (0, 1)], ids=["on-mode-off", "on-mode-on", "switch-off"])
 def s7_state(request, emus):
-    """(g_rs7_s7_on, g_rs7_any7): switch on without / with 7-string mode, and the switch off."""
+    """(g_rsxr_s7_on, g_rsxr_any7): switch on without / with 7-string mode, and the switch off."""
     _, patched = emus
     set_s7(patched, *request.param)
     yield request.param

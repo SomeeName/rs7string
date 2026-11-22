@@ -1,5 +1,5 @@
 // Context::St0 / SetSt0 / PushSt0 / FpuDepth: the saved x87 stack of a full-mode mid-hook (ARCHITECTURE.md section 14,
-// "x87 ST0"). Each test runs a real entry (Rs7Mid_Build / Rs7Mid_BuildLight) over a `nop x5; ret` site, called from a
+// "x87 ST0"). Each test runs a real entry (RsxrMid_Build / RsxrMid_BuildLight) over a `nop x5; ret` site, called from a
 // small machine-code driver that sets up the x87 stack and records it around the call.
 #include "platform/midhook.h"
 #include "test.h"
@@ -47,7 +47,7 @@ Seen g_seen;
 double g_value = 0;
 int g_pushes = 0;
 
-void __cdecl Replace(Rs7Mid::Context& c) {
+void __cdecl Replace(RsxrMid::Context& c) {
     g_seen.fpu = c.fpu;
     g_seen.depth = c.FpuDepth();
     g_seen.has = c.HasSt0();
@@ -56,13 +56,13 @@ void __cdecl Replace(Rs7Mid::Context& c) {
 }
 
 // Light mode: integer only (no double arguments or results, which would use the game's x87 / SSE registers).
-void __cdecl LightProbe(Rs7Mid::Context& c) {
+void __cdecl LightProbe(RsxrMid::Context& c) {
     g_seen.fpu = c.fpu;
     g_seen.depth = c.FpuDepth();
     g_seen.has = c.HasSt0();
 }
 
-void __cdecl Push(Rs7Mid::Context& c) {
+void __cdecl Push(RsxrMid::Context& c) {
     g_seen.fpu = c.fpu;
 
     for (int i = 0; i < g_pushes; ++i) {
@@ -89,14 +89,14 @@ struct alignas(16) Record {
 // (fld qword) or an x87 constant opcode pair (fld1 D9 E8, fldpi D9 EB).
 class Site {
 public:
-    explicit Site(Rs7Mid::Callback callback, bool light = false) {
+    explicit Site(RsxrMid::Callback callback, bool light = false) {
         page_ = static_cast<uint8_t*>(VirtualAlloc(nullptr, 8192, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
         if (!page_) {
             return;
         }
 
         const uint8_t raw[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0xc3};
-        const auto build = light ? &Rs7Mid_BuildLight : &Rs7Mid_Build;
+        const auto build = light ? &RsxrMid_BuildLight : &RsxrMid_Build;
 
         std::memcpy(page_, raw, sizeof raw);
         ok_ = build(page_ + 64, 256, page_, uintptr_t(page_), 5, uintptr_t(page_ + 64), uintptr_t(callback)) > 0;
@@ -258,7 +258,7 @@ TEST(midhook_st0_rounds_an_extended_value) {
         {0x8000000000000401ull, 0x3ff0000000000001ull},  // above half
         {0xfffffffffffffc00ull, 0x4000000000000000ull},  // carry into the exponent
     };
-    Rs7Mid::Context c{};
+    RsxrMid::Context c{};
     alignas(16) uint8_t image[512]{};
 
     c.fpu = uint32_t(uintptr_t(image));
@@ -364,7 +364,7 @@ TEST(midhook_light_mode_has_no_fpu_image) {
 TEST(midhook_push_st0_wraps_top_and_starts_an_empty_stack) {
     for (const uint8_t tags : {uint8_t(0x00), uint8_t(0x01)}) {
         alignas(16) uint8_t image[512]{};
-        Rs7Mid::Context c{};
+        RsxrMid::Context c{};
 
         c.fpu = uint32_t(uintptr_t(image));
         image[2] = 0x7f, image[3] = 0x02;  // FSW: TOP 0, C1 set, exception bits set

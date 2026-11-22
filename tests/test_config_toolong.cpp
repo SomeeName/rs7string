@@ -1,4 +1,4 @@
-// Rs7Config_ReadString's tooLong flag at the kRs7IniValueMax limit (platform/config.h).
+// RsxrConfig_ReadString's tooLong flag at the kRsxrIniValueMax limit (platform/config.h).
 #include "platform/config.h"
 #include "tempfile.h"
 #include "test.h"
@@ -6,13 +6,13 @@
 #include <string>
 
 namespace {
-constexpr size_t kMax = size_t(kRs7IniValueMax);
+constexpr size_t kMax = size_t(kRsxrIniValueMax);
 
 bool TooLongFor(size_t len, size_t* got) {
     const std::string content = "[S]\nk=" + std::string(len, 'a') + "\n";
-    const std::wstring ini = rs7test::TempIni(L"toolong", content.c_str());
+    const std::wstring ini = rsxrtest::TempIni(L"toolong", content.c_str());
     bool tooLong = false;
-    const std::wstring v = Rs7Config_ReadString(L"S", L"k", ini.c_str(), &tooLong);
+    const std::wstring v = RsxrConfig_ReadString(L"S", L"k", ini.c_str(), &tooLong);
 
     DeleteFileW(ini.c_str());
     *got = v.size();
@@ -42,5 +42,5 @@ TEST(config_readstring_values_over_the_limit_are_flagged) {
 
 // The settings store's Text buffer holds exactly the longest ini value and its terminator, so both readers agree.
 TEST(config_and_settings_share_one_length_limit) {
-    CHECK_EQ(kRs7IniValueMax, 259);
+    CHECK_EQ(kRsxrIniValueMax, 259);
 }

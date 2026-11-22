@@ -14,24 +14,24 @@
 #include <cstring>
 #include <vector>
 
-namespace rs7swap {
+namespace rsxrswap {
 RampState g_ramp;
-}  // namespace rs7swap
+}  // namespace rsxrswap
 
 namespace {
-using rs7d3d::FamilyName;
-using rs7d3d::LogQuiet;
-using namespace rs7swap;
+using rsxrd3d::FamilyName;
+using rsxrd3d::LogQuiet;
+using namespace rsxrswap;
 constexpr unsigned kMaxRetries = 5, kRetryMs = 2000;
 enum class Step { Ok, Refuse, Retry };
 
 // A candidate's family and path, copied before its state is stored (the worker may reuse the entry after that).
 struct CandName {
-    Rs7Family family;
-    char path[sizeof(Rs7Cand::path)];
+    RsxrFamily family;
+    char path[sizeof(RsxrCand::path)];
 };
 
-CandName NameOf(const Rs7Cand& c) {
+CandName NameOf(const RsxrCand& c) {
     CandName n{c.family, {}};
 
     std::memcpy(n.path, c.path, sizeof n.path - 1);
@@ -44,12 +44,12 @@ void UpdateV6For(const CandName& n, const char* what) {
     char r[160];
 
     std::snprintf(r, sizeof r, "%s '%s' %s", FamilyName(n.family), n.path, what);
-    Rs7Swap_UpdateV6(r);
+    RsxrSwap_UpdateV6(r);
 }
 
 // ---- revalidation: under the game's list lock, re-check the candidate, then take the
 // reference while the engine cannot free the texture. No C++ objects here (SEH).
-int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
+int EngineAcquire(const RsxrCand& c, IDirect3DTexture9** out) {
     CRITICAL_SECTION* cs = g_ramp.listLock;
     if (!cs || !TryEnterCriticalSection(cs)) {
         return -1;  // never wait on the render thread
@@ -58,13 +58,13 @@ int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
     int r = 0;
 
     __try {
-        if (Rs7Tex_Revalidate(g_hook.mem, c.obj, reinterpret_cast<uintptr_t>(c.d3d), c.family, g_ramp.d3d9Lo,
-                              g_ramp.d3d9Hi)) {
+        if (RsxrTex_Revalidate(g_hook.mem, c.obj, reinterpret_cast<uintptr_t>(c.d3d), c.family, g_ramp.d3d9Lo,
+                               g_ramp.d3d9Hi)) {
             auto* base = static_cast<IDirect3DBaseTexture9*>(c.d3d);
 
-            r = SUCCEEDED(base->QueryInterface(kRs7IID_Texture9, reinterpret_cast<void**>(out))) && *out ? 1 : 2;
+            r = SUCCEEDED(base->QueryInterface(kRsxrIID_Texture9, reinterpret_cast<void**>(out))) && *out ? 1 : 2;
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         r = 0;
     }
 
@@ -74,15 +74,15 @@ int EngineAcquire(const Rs7Cand& c, IDirect3DTexture9** out) {
 }
 
 // ---- terminal states: set the state last, then apply the V6 rule (both after stock/ours are final).
-void Refuse(Rs7Cand& c, const char* why) {
+void Refuse(RsxrCand& c, const char* why) {
     const CandName name = NameOf(c);
 
     LogQuiet("ramp: refuse %s d3d=%p '%s': %s", FamilyName(name.family), c.d3d, name.path, why);
-    c.state = Rs7CandState::Refused;
+    c.state = RsxrCandState::Refused;
     UpdateV6For(name, "refused");
 }
 
-void RetryLater(Rs7Cand& c, const char* why) {
+void RetryLater(RsxrCand& c, const char* why) {
     if (++c.retries >= kMaxRetries) {
         char w[160];
 
@@ -96,7 +96,7 @@ void RetryLater(Rs7Cand& c, const char* why) {
     LogQuiet("ramp: retry %s d3d=%p '%s' in %u ms (%u/%u): %s", FamilyName(name.family), c.d3d, name.path, kRetryMs,
              c.retries, kMaxRetries, why);
     c.retryAtMs = GetTickCount() + kRetryMs;
-    c.state = Rs7CandState::Retry;
+    c.state = RsxrCandState::Retry;
     UpdateV6For(name, "retrying");
 }
 
@@ -128,10 +128,10 @@ void ReleaseBoth(void* ours, void* stock) {
 struct Plan {
     D3DSURFACE_DESC d;
     unsigned levels;
-    Rs7RampPlan plan;
+    RsxrRampPlan plan;
 };
 
-Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>& stock, uint64_t hash,
+Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<RsxrImage>& stock, uint64_t hash,
               IDirect3DTexture9** ours, char* why, size_t whyLen) {
     CheckedBuild cb;
 
@@ -158,7 +158,7 @@ Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>&
                  p.levels - 1);
     }
 
-    if (g_ramp.copyCount < kRs7MaxCands) {
+    if (g_ramp.copyCount < kRsxrMaxCands) {
         (*ours)->AddRef();  // the copies table keeps its own reference (sharing after a retire)
         g_ramp.copies[g_ramp.copyCount++] = {hash, uint32_t(p.d.Format), *ours, g_ramp.colourGeneration};
     }
@@ -166,7 +166,7 @@ Step BuildNew(IDirect3DDevice9* dev, const Plan& p, const std::vector<Rs7Image>&
     return Step::Ok;
 }
 
-Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, IDirect3DTexture9** ours,
+Step PrepareCopy(IDirect3DDevice9* dev, const RsxrCand& c, IDirect3DTexture9* t, IDirect3DTexture9** ours,
                  uint64_t* hash, char* why, size_t whyLen) {
     Plan p{};
 
@@ -178,24 +178,24 @@ Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, 
     const D3DSURFACE_DESC& d = p.d;
 
     p.levels = t->GetLevelCount();
-    p.plan = Rs7Ramp_Plan({uint32_t(d.Format), d.Width, d.Height, p.levels, uint32_t(d.Pool), d.Usage});
+    p.plan = RsxrRamp_Plan({uint32_t(d.Format), d.Width, d.Height, p.levels, uint32_t(d.Pool), d.Usage});
 
-    if (p.plan.verdict == Rs7RampVerdict::Refuse) {
+    if (p.plan.verdict == RsxrRampVerdict::Refuse) {
         std::snprintf(why, whyLen, "%s (fmt=%u %ux%u levels=%u pool=%u usage=%08lX)", p.plan.why, unsigned(d.Format),
                       d.Width, d.Height, p.levels, unsigned(d.Pool), d.Usage);
         return Step::Refuse;
     }
 
-    std::vector<Rs7Image> stock(p.levels);
+    std::vector<RsxrImage> stock(p.levels);
 
     if (!ReadLevels(t, stock, why, whyLen)) {
         return Step::Refuse;
     }
 
-    *hash = Rs7Ramp_Hash(stock);
-    const Rs7RowStats rs = Rs7Ramp_RowStats(stock[0]);
+    *hash = RsxrRamp_Hash(stock);
+    const RsxrRowStats rs = RsxrRamp_RowStats(stock[0]);
 
-    if (c.family == Rs7Family::Embedded && (rs.nonUniformRows || !rs.grey7 || !rs.grey15)) {
+    if (c.family == RsxrFamily::Embedded && (rs.nonUniformRows || !rs.grey7 || !rs.grey15)) {
         std::snprintf(why, whyLen, "not a colour ramp (non-uniform-rows=%u grey7=%d grey15=%d)", rs.nonUniformRows,
                       int(rs.grey7), int(rs.grey15));
         return Step::Refuse;
@@ -218,7 +218,7 @@ Step PrepareCopy(IDirect3DDevice9* dev, const Rs7Cand& c, IDirect3DTexture9* t, 
 }
 
 // Render thread; c is Busy (claimed). Ends in Active, Refused, Retry, Retired or back in `prev`.
-void Process(IDirect3DDevice9* dev, Rs7Cand& c, Rs7CandState prev) {
+void Process(IDirect3DDevice9* dev, RsxrCand& c, RsxrCandState prev) {
     if (g_ramp.injectFault) {
         RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);  // a simulated fault (tests)
     }
@@ -233,8 +233,8 @@ void Process(IDirect3DDevice9* dev, Rs7Cand& c, Rs7CandState prev) {
 
     if (v == 0) {
         LogQuiet("ramp: drop stale %s d3d=%p '%s': no longer that engine texture", FamilyName(c.family), c.d3d, c.path);
-        Rs7Cand_Retire(&c, c.d3d, true);
-        Rs7Swap_UpdateV6("stale candidate dropped");
+        RsxrCand_Retire(&c, c.d3d, true);
+        RsxrSwap_UpdateV6("stale candidate dropped");
         return;
     }
 
@@ -267,7 +267,7 @@ void Process(IDirect3DDevice9* dev, Rs7Cand& c, Rs7CandState prev) {
     const CandName name = NameOf(c);
     void* const d3d = c.d3d;
 
-    c.state = Rs7CandState::Active;  // last: stock/ours are complete
+    c.state = RsxrCandState::Active;  // last: stock/ours are complete
     LogQuiet("ramp: active %s d3d=%p '%s' -> copy %p", FamilyName(name.family), d3d, name.path,
              static_cast<void*>(ours));
     UpdateV6For(name, "active");
@@ -278,9 +278,9 @@ void RetireGone() {
     InterlockedExchange(&g_ramp.retireReq, 0);
     bool any = false;
 
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        Rs7Cand* c = Rs7Cand_At(i);
-        if (!c || c->state != Rs7CandState::Active || c->gone < 2) {
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        RsxrCand* c = RsxrCand_At(i);
+        if (!c || c->state != RsxrCandState::Active || c->gone < 2) {
             continue;
         }
 
@@ -296,14 +296,14 @@ void RetireGone() {
 
         LogQuiet("ramp: release %s d3d=%p '%s': gone from the engine list", FamilyName(c->family), d3d, c->path);
 
-        if (Rs7Cand_Retire(c, d3d, true)) {
+        if (RsxrCand_Retire(c, d3d, true)) {
             ReleaseBoth(ours, stock);
             any = true;
         }
     }
 
     if (any) {
-        Rs7Swap_UpdateV6("gone textures released");
+        RsxrSwap_UpdateV6("gone textures released");
     }
 }
 
@@ -316,7 +316,7 @@ bool Repaint(IDirect3DTexture9* stock, IDirect3DTexture9* ours, const uint32_t r
         return false;
     }
 
-    std::vector<Rs7Image> lv(stock->GetLevelCount());
+    std::vector<RsxrImage> lv(stock->GetLevelCount());
 
     if (!ReadLevels(stock, lv, why, whyLen)) {
         return false;
@@ -329,7 +329,7 @@ bool Repaint(IDirect3DTexture9* stock, IDirect3DTexture9* ours, const uint32_t r
 
 // Publish a generation only after every level was written and checked. Shared candidates and the cache
 // must agree: a failed copy cannot be handed to another candidate as if it had the requested colours.
-bool RecolourCopy(Rs7Cand& c, const uint32_t rgb[2]) {
+bool RecolourCopy(RsxrCand& c, const uint32_t rgb[2]) {
     if (c.colourGeneration == g_ramp.colourGeneration) {
         return true;
     }
@@ -342,10 +342,10 @@ bool RecolourCopy(Rs7Cand& c, const uint32_t rgb[2]) {
         return false;
     }
 
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        Rs7Cand* shared = Rs7Cand_At(i);
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        RsxrCand* shared = RsxrCand_At(i);
 
-        if (shared && shared->state == Rs7CandState::Active && shared->ours == ours) {
+        if (shared && shared->state == RsxrCandState::Active && shared->ours == ours) {
             shared->colourGeneration = g_ramp.colourGeneration;
         }
     }
@@ -366,7 +366,7 @@ bool RecolourCopy(Rs7Cand& c, const uint32_t rgb[2]) {
 void Recolour() {
     InterlockedExchange(&g_ramp.recolourReq, 0);
     const uint32_t rgb[2] = {uint32_t(g_ramp.recolourRgb[0]) & 0xFFFFFF, uint32_t(g_ramp.recolourRgb[1]) & 0xFFFFFF};
-    const uint32_t rgb8[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};  // BuildChecked paints the V7 band
+    const uint32_t rgb8[2] = {rsxrcolour::Colour8(0), rsxrcolour::Colour8(1)};  // BuildChecked paints the V7 band
     const bool changed = rgb[0] != g_ramp.cfg.rgb[0] || rgb[1] != g_ramp.cfg.rgb[1] || rgb8[0] != g_ramp.rgb8[0] ||
                          rgb8[1] != g_ramp.rgb8[1];
     if (!changed && !g_ramp.recolourFailed) {
@@ -382,12 +382,12 @@ void Recolour() {
         ResetForeign();  // RSMods ramps rebuild with the new colours at their next bind
     }
 
-    IDirect3DTexture9* done[kRs7MaxCands] = {};
+    IDirect3DTexture9* done[kRsxrMaxCands] = {};
     unsigned nDone = 0, failed = 0;
 
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        Rs7Cand* c = Rs7Cand_At(i);
-        if (!c || c->state != Rs7CandState::Active || !c->stock || !c->ours) {
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        RsxrCand* c = RsxrCand_At(i);
+        if (!c || c->state != RsxrCandState::Active || !c->stock || !c->ours) {
             continue;
         }
 
@@ -406,7 +406,7 @@ void Recolour() {
             ++failed;
         }
 
-        if (nDone < kRs7MaxCands) {
+        if (nDone < kRsxrMaxCands) {
             done[nDone++] = ours;
         }
     }
@@ -437,7 +437,7 @@ void Recolour() {
 }
 }  // namespace
 
-namespace rs7swap {
+namespace rsxrswap {
 IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex) {
     if (dev == g_hook.dev && g_hook.overlayDrawing) {
         return tex;
@@ -453,13 +453,13 @@ IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTe
         (g_ramp.recolourReq || (g_ramp.recolourFailed && int32_t(GetTickCount() - g_ramp.recolourRetryAtMs) >= 0))) {
         Recolour();
     }
-    rs7colour::DrainPending();  // publishes only if this is the manager's (CMBUILD) thread
+    rsxrcolour::DrainPending();  // publishes only if this is the manager's (CMBUILD) thread
     // Stages >= kStages (the vertex samplers) are not tracked in bound[]: never swapped there.
-    if (!tex || stage >= kStages || !Rs7Cand_Count()) {
+    if (!tex || stage >= kStages || !RsxrCand_Count()) {
         return tex;
     }
 
-    Rs7Cand* c = Rs7Cand_Find(tex);
+    RsxrCand* c = RsxrCand_Find(tex);
     if (!c) {
         return OnForeign(dev, stage, tex);
     }
@@ -471,20 +471,20 @@ IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTe
                      static_cast<void*>(dev), static_cast<void*>(g_hook.dev));
         }
 
-        Rs7Swap_UpdateV6("SetTexture on another device");
+        RsxrSwap_UpdateV6("SetTexture on another device");
         return tex;
     }
 
-    const Rs7CandState s = c->state;
+    const RsxrCandState s = c->state;
 
-    if ((s == Rs7CandState::Pending || (s == Rs7CandState::Retry && int32_t(GetTickCount() - c->retryAtMs) >= 0)) &&
-        Rs7Cand_Claim(c, tex)) {
+    if ((s == RsxrCandState::Pending || (s == RsxrCandState::Retry && int32_t(GetTickCount() - c->retryAtMs) >= 0)) &&
+        RsxrCand_Claim(c, tex)) {
         g_ramp.processing = c;
         Process(dev, *c, s);  // render thread, the game is binding it now
         g_ramp.processing = nullptr;
     }
 
-    if (c->state != Rs7CandState::Active || c->d3d != tex) {
+    if (c->state != RsxrCandState::Active || c->d3d != tex) {
         return tex;
     }
 
@@ -493,32 +493,32 @@ IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTe
     if (stage < kStages) {  // always true here; kept for /analyze
         g_hook.bound[stage] = {tex, ours};
     }
-    Rs7Ramp_CountSwap();
+    RsxrRamp_CountSwap();
 
     return ours;
 }
 
 void AfterFault() {
-    Rs7Ramp_CountFault();
+    RsxrRamp_CountFault();
     UnlockAfterFault();
-    Rs7Cand* c = g_ramp.processing;
+    RsxrCand* c = g_ramp.processing;
 
     g_ramp.processing = nullptr;
-    if (c && c->state == Rs7CandState::Busy) {
+    if (c && c->state == RsxrCandState::Busy) {
         Refuse(*c, "fault while processing");
     }
 }
 
 void ResetRamp() {
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        Rs7Cand* c = Rs7Cand_At(i);
-        if (!c || c->state != Rs7CandState::Active) {
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        RsxrCand* c = RsxrCand_At(i);
+        if (!c || c->state != RsxrCandState::Active) {
             continue;
         }
 
         ReleaseBoth(c->ours, c->stock);
         c->ours = c->stock = nullptr;
-        c->state = Rs7CandState::Refused;
+        c->state = RsxrCandState::Refused;
     }
 
     for (unsigned i = 0; i < g_ramp.copyCount; ++i) {
@@ -536,36 +536,36 @@ void ResetRamp() {
     g_ramp.processing = nullptr;
     ForgetLocked();
 }
-}  // namespace rs7swap
+}  // namespace rsxrswap
 
-void Rs7Swap_Configure(const Rs7SwapCfg& c) {
+void RsxrSwap_Configure(const RsxrSwapCfg& c) {
     g_ramp.cfg = c;
     InterlockedExchange(&g_ramp.recolourRgb[0], LONG(c.rgb[0]));
     InterlockedExchange(&g_ramp.recolourRgb[1], LONG(c.rgb[1]));
 }
 
-void Rs7Swap_RequestRecolour(const uint32_t rgb[2]) {
+void RsxrSwap_RequestRecolour(const uint32_t rgb[2]) {
     InterlockedExchange(&g_ramp.recolourRgb[0], LONG(rgb[0] & 0xFFFFFF));
     InterlockedExchange(&g_ramp.recolourRgb[1], LONG(rgb[1] & 0xFFFFFF));
     InterlockedExchange(&g_ramp.recolourReq, 1);  // last: the render thread reads the colours after it
 }
 
-void Rs7Swap_RequestRetire() {
+void RsxrSwap_RequestRetire() {
     InterlockedExchange(&g_ramp.retireReq, 1);
 }
 
-void Rs7Swap_SetEngine(CRITICAL_SECTION* listLock, uintptr_t lo, uintptr_t hi) {
+void RsxrSwap_SetEngine(CRITICAL_SECTION* listLock, uintptr_t lo, uintptr_t hi) {
     g_ramp.d3d9Lo = lo;
     g_ramp.d3d9Hi = hi;
     g_ramp.listLock = listLock;
 }
 
-void Rs7Swap_UpdateV6(const char* reason) {
-    Rs7Ramp_UpdateV6(g_hook.installed, g_hook.deviceOk, reason);
+void RsxrSwap_UpdateV6(const char* reason) {
+    RsxrRamp_UpdateV6(g_hook.installed, g_hook.deviceOk, reason);
 }
 
-void Rs7Swap_Stats(Rs7SwapStats* out) {
-    Rs7SwapStats st{};
+void RsxrSwap_Stats(RsxrSwapStats* out) {
+    RsxrSwapStats st{};
 
     st.installed = g_hook.installed;
     st.deviceOk = g_hook.deviceOk;
@@ -573,20 +573,20 @@ void Rs7Swap_Stats(Rs7SwapStats* out) {
     st.rgb[0] = g_ramp.cfg.rgb[0];
     st.rgb[1] = g_ramp.cfg.rgb[1];
 
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        const Rs7Cand* c = Rs7Cand_At(i);
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        const RsxrCand* c = RsxrCand_At(i);
         if (!c || !c->d3d) {
             continue;
         }
 
         switch (c->state) {
-            case Rs7CandState::Active:
+            case RsxrCandState::Active:
                 ++st.active;
                 break;
-            case Rs7CandState::Refused:
+            case RsxrCandState::Refused:
                 ++st.refused;
                 break;
-            case Rs7CandState::Retry:
+            case RsxrCandState::Retry:
                 ++st.retry;
                 break;
             default:
@@ -598,10 +598,10 @@ void Rs7Swap_Stats(Rs7SwapStats* out) {
     *out = st;
 }
 
-void Rs7Swap_InjectFaultForTests(bool on) {
+void RsxrSwap_InjectFaultForTests(bool on) {
     g_ramp.injectFault = on;
 }
 
-void Rs7Swap_SetValidatorForTests(Rs7SwapValidator v) {
+void RsxrSwap_SetValidatorForTests(RsxrSwapValidator v) {
     g_ramp.validator = v;
 }

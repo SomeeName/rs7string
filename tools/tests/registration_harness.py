@@ -9,7 +9,7 @@ def registered_rows(tmp_path):
     sources = sorted((ROOT / "src/features").glob("*/registration.cpp"))
     assert sources, "no registration sources found"
     source = preprocess_sources(sources, tmp_path)
-    arrays = re.findall(r"\bconst(?:expr)? Rs7Hook \w+\[\]\s*=\s*\{(.*?)\};", source, re.S)
+    arrays = re.findall(r"\bconst(?:expr)? RsxrHook \w+\[\]\s*=\s*\{(.*?)\};", source, re.S)
     assert arrays, "no hook arrays found in preprocessed registrations"
     rows = {}
     for array in arrays:
@@ -22,7 +22,7 @@ def registered_rows(tmp_path):
             start = i + 1
             if not row:
                 continue
-            match = re.search(r'(?:Rs7_(?:Site|Mid|Stub|Ref)|NgHook)\(\s*((?:"\w+"\s*)+)', row)
+            match = re.search(r'(?:Rsxr_(?:Site|Mid|Stub|Ref)|NgHook)\(\s*((?:"\w+"\s*)+)', row)
             assert match, f"unrecognised hook row: {row}"
             sid = "".join(re.findall(r'"(\w+)"', match[1]))
             assert sid not in rows, f"duplicate registration: {sid}"

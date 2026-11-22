@@ -21,7 +21,7 @@ TEMPLATES_BASS = BASE / "base/dependency_guitarbassinlinedrh.psarc/assets/gamepl
 TEMPLATES_BASS_LH = BASE / "base/dependency_guitarbassinlinedlh.psarc/assets/gameplay/guitar_bass_inline"
 OUTPUTS = BASE / "edited/own"
 DEST = Path(__file__).resolve().parents[1] / "data/headstock"
-PREFIX = b"RS7H1\n"
+PREFIX = b"RSXRH1\n"
 TEXTURES = ("env", "flat_n", "hardware", "hardware_gloss", "wood", "wood_gloss")
 
 
@@ -246,28 +246,28 @@ def nif_artifact(name, templates, tid, outputs_dir, index):
 
 
 LH_NAMES = ("epi_whilshire_cherry_lh.nif", "epi_whilshire_peg.nif")
-# The packages built from one template pair besides the right-handed guitar one (hsbuild_io.h Rs7HsKit): template 0 =
+# The packages built from one template pair besides the right-handed guitar one (hsbuild_io.h RsxrHsKit): template 0 =
 # the frame, template 1 = its peg, both from the user's own archive; the textures are the right-handed package's.
 KITS = {
     "lh": dict(
         templates=TEMPLATES_LH,
         names=LH_NAMES,
-        nifs=("rs7_inline7_lh.nif", "rs7_inline8_lh.nif"),
-        bin="rs7string_headstock_lh.bin",
+        nifs=("rsxr_inline7_lh.nif", "rsxr_inline8_lh.nif"),
+        bin="rsxr_headstock_lh.bin",
         audit="audit_lh.json",
     ),
     "bass": dict(
         templates=TEMPLATES_BASS,
         names=("bass_thunder.nif", "peg_2clove.nif"),
-        nifs=("rs7_bass5.nif", "rs7_bass6.nif"),
-        bin="rs7string_headstock_bass.bin",
+        nifs=("rsxr_bass5.nif", "rsxr_bass6.nif"),
+        bin="rsxr_headstock_bass.bin",
         audit="audit_bass.json",
     ),
     "bass_lh": dict(
         templates=TEMPLATES_BASS_LH,
         names=("bass_thunder_lh.nif", "peg_2clove.nif"),
-        nifs=("rs7_bass5_lh.nif", "rs7_bass6_lh.nif"),
-        bin="rs7string_headstock_bass_lh.bin",
+        nifs=("rsxr_bass5_lh.nif", "rsxr_bass6_lh.nif"),
+        bin="rsxr_headstock_bass_lh.bin",
         audit="audit_bass_lh.json",
     ),
 }
@@ -307,12 +307,12 @@ def generate(templates_dir, outputs_dir, dest):
     index = windows(templates)
     artifacts, audit = [], {}
     for model, tid in (("inline7", 0), ("inline8", 0), ("peg", 1)):
-        name = f"rs7_{model}.nif"
+        name = f"rsxr_{model}.nif"
         data, ops, info = nif_artifact(name, templates, tid, outputs_dir, index)
         artifacts.append((name, data, ops))
         audit[name] = info
     for texture in TEXTURES:
-        name = f"rs7hs_{texture}.dds"
+        name = f"rsxrhs_{texture}.dds"
         data = (outputs_dir / name).read_bytes()
         artifacts.append((name, data, [(0, data)]))
         audit[name] = dict(
@@ -322,7 +322,7 @@ def generate(templates_dir, outputs_dir, dest):
     audit_runs(encoded, templates, index)
     assert unpack(encoded, templates) == {n: d for n, d, _ in artifacts}
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "rs7string_headstock.bin").write_bytes(encoded)
+    (dest / "rsxr_headstock.bin").write_bytes(encoded)
     for n, d, _ in artifacts:
         if n.endswith(".dds"):
             (dest / n).write_bytes(d)

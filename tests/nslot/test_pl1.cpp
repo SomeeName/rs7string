@@ -4,7 +4,7 @@
 #include "test.h"
 #include <cstdint>
 
-extern "C" void __cdecl Rs7_Mid_PL1(Rs7Mid::Context&);
+extern "C" void __cdecl Rsxr_Mid_PL1(RsxrMid::Context&);
 
 namespace {
 uint32_t Addr(const void* p) {
@@ -13,7 +13,7 @@ uint32_t Addr(const void* p) {
 
 // One PL1 hit on a T8 whose string-6 fret is `fret`: EDI = T8 + 0Ah, [EBP+8] = a session whose GuitarStrings
 // (session+37Ch -> +0Ch) is null, so the pluck helper returns without touching the game.
-Rs7Mid::Context Hit(uint8_t fret) {
+RsxrMid::Context Hit(uint8_t fret) {
     static uint8_t t8[0x80];
     static uint8_t guitar[0x10];
     static uint8_t session[0x380];
@@ -22,13 +22,13 @@ Rs7Mid::Context Hit(uint8_t fret) {
     t8[0x0A + 0x44] = fret;
     *reinterpret_cast<uint32_t*>(session + 0x37C) = Addr(guitar);
     frame[2] = Addr(session);
-    Rs7Mid::Context c{};
+    RsxrMid::Context c{};
 
     c.edi = Addr(t8 + 0x0A);
     c.ebp = Addr(frame);
     c.eax = 0xA5A5A507;
     c.jump = 0x1234;
-    Rs7_Mid_PL1(c);
+    Rsxr_Mid_PL1(c);
 
     return c;
 }
@@ -36,7 +36,7 @@ Rs7Mid::Context Hit(uint8_t fret) {
 
 TEST(nslot_pl1_keeps_eax_and_the_replay) {
     for (const uint8_t fret : {uint8_t(0xFF), uint8_t(0), uint8_t(5)}) {
-        const Rs7Mid::Context c = Hit(fret);
+        const RsxrMid::Context c = Hit(fret);
 
         CHECK(c.eax == 0xA5A5A507);
         CHECK(c.jump == 0x1234);

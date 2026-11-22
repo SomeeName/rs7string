@@ -5,13 +5,13 @@
 #include <cstdint>
 #include <memory>
 
-struct Rs7HookTable;
+struct RsxrHookTable;
 // The N-slot chord sites (stubs, byte patches and the matcher / tracker references; group Core): registration.cpp.
-extern const Rs7HookTable kRs7NslotHooks;
+extern const RsxrHookTable kRsxrNslotHooks;
 // Eight strings: the E8* byte patches (group Core), the eight-slot bounds of 24 N-slot loops (render, fingers, section
 // masks, tracker; docs/ARCHITECTURE.md section 12). Always written. Every record they index holds eight slots (T8 frets
 // / fingers / midi, C8 mask / slideTo / slideUnpitchTo / bends), so a 6- or 7-string song sees empty slots there.
-extern const Rs7HookTable kRs7NslotEightHooks;
+extern const RsxrHookTable kRsxrNslotEightHooks;
 
 // Native N-slot chord data. The SNG's chord templates (0x48 bytes, six string
 // slots) and ChordNotes records (0x948 bytes, six string slots) are converted once per song into
@@ -32,14 +32,14 @@ extern const Rs7HookTable kRs7NslotEightHooks;
 //   +0x948 u32 mask[8]  +0x968 int8 slideTo[8]  +0x970 int8 slideUnpitchTo[8]  +0x978 int16 vibrato[8]
 //   +0x988 BendData32 bends[8]
 // Slots 0-5 of the N-slot arrays are copies of the stock columns; slots 6 and 7 (7th / 8th string)
-// come from the RS7X block (model/extblock.h, kept per song by hooks_extblock.cpp) or, for packages built before the
-// block, from the old name[31] byte of the template (7-string arrangements only).
-namespace rs7ns {
+// come from the extension block (model/extblock.h, kept per song by hooks_extblock.cpp). Without a block,
+// those slots are empty.
+namespace rsxrns {
 
 constexpr int kSlots = 8;   // record slots: strings 0..7
 constexpr int kNative = 7;  // strings the widened gameplay loops cover (0..6)
                             // diagrams7 additionally populates both tails for 8-string diagrams
-constexpr uint32_t kTplSize = rs7ext::kTemplateSize;
+constexpr uint32_t kTplSize = rsxrext::kTemplateSize;
 constexpr uint32_t kTplFrets = 0x04, kTplFingers = 0x0A, kTplMidi = 0x10, kTplName = 0x28;  // stock template
 constexpr uint32_t kT8Size = 0x80;
 constexpr uint32_t kT8Frets = 0x48, kT8Fingers = 0x50, kT8Midi = 0x58, kT8Slots = 0x78, kT8Used = 0x79;
@@ -66,10 +66,6 @@ struct Tech {
     int bendCount = 0;
 };
 
-// Old format (before the RS7X block): name[31] = ((finger + 1) << 5) | (fret + 1), read only when the name's NUL lies
-// in name[0..30]. False: no string-6 column.
-bool DecodeName31(const uint8_t* tpl, Col* out);
-
 // Builds one T8 from a stock template. ext[0..1] = strings 6 and 7 (fret -1: none); tuning = the
 // SNG MetaData tuning (int16 offsets, n entries); capo = SNG capo byte (PostProcessNotes 0x55B4A2
 // turns every fret equal to it into 0: applied to the extended frets the same way).
@@ -84,10 +80,10 @@ uint32_t SynthMask(uint32_t noteMask, int fret, uint8_t capo);
 // `string` has no mask slot (>= 8); else true and *bits = mask[string] & flag (the string is set when *bits != 0).
 bool StringMask8(const uint8_t* c8, uint32_t string, uint32_t flag, uint32_t* bits);
 
-// SNG_Song_PostProcessNotes' double-stop count (DS1): the frets the count loop reads. `record` = Rs7Ns_TplRecord(begin,
-// id). A T8 record: its frets[8] over all eight slots (an 8-string chord on the low F# + B + one stock string is three
-// notes, not a double stop). A stock record passed directly uses frets[6] at +4 over 6 strings;
-// redirects of unregistered vectors / invalid ids instead supply an empty T8.
+// SNG_Song_PostProcessNotes' double-stop count (DS1): the frets the count loop reads. `record` =
+// RsxrNs_TplRecord(begin, id). A T8 record: its frets[8] over all eight slots (an 8-string chord on the low F# + B +
+// one stock string is three notes, not a double stop). A stock record passed directly uses frets[6] at +4 over 6
+// strings; redirects of unregistered vectors / invalid ids instead supply an empty T8.
 struct FretSpan {
     uint32_t frets;  // address of the first fret
     uint32_t count;  // frets the loop reads
@@ -95,11 +91,11 @@ struct FretSpan {
 
 FretSpan DoubleStopSpan(uint32_t begin, uint32_t id, uint32_t record);
 
-}  // namespace rs7ns
+}  // namespace rsxrns
 
 // Registry read by the redirect stubs (asm, lock-free): stock vector begin -> superset array.
 // Published fields are written last (tplBegin / cnBegin); a free slot has song == 0.
-struct Rs7NsEntry {
+struct RsxrNsEntry {
     uintptr_t tplBegin;  // +0  stock template vector begin (song +94h), 0 = none
     uint32_t tplCount;   // +4
     uintptr_t t8;        // +8
@@ -110,37 +106,37 @@ struct Rs7NsEntry {
     uint32_t origCn;     // +1C ChordNotes count at load (before Fixup appended synthesized records)
 };
 
-constexpr int kRs7NsEntries = 64;  // the lookups (Rs7Ns_TplRecord, Rs7Ns_CnRecord) scan all of them
-extern "C" __declspec(dllexport) Rs7NsEntry g_rs7_ns[kRs7NsEntries];
+constexpr int kRsxrNsEntries = 64;  // the lookups (RsxrNs_TplRecord, RsxrNs_CnRecord) scan all of them
+extern "C" __declspec(dllexport) RsxrNsEntry g_rsxr_ns[kRsxrNsEntries];
 
-// XB1 (loader thread, end of SNG_Song_Load, after Rs7Ext_OnSngLoaded): builds the song's T8 array.
-void Rs7Ns_OnSngLoaded(void* song);
+// XB1 (loader thread, end of SNG_Song_Load, after RsxrExt_OnSngLoaded): builds the song's T8 array.
+void RsxrNs_OnSngLoaded(void* song);
 // PP1 (loader thread, after SNG_Song_PostProcess): re-syncs the T8 prefixes, builds the C8 array.
-extern "C" __declspec(dllexport) void __cdecl Rs7Ns_OnPostProcessed(void* song);
+extern "C" __declspec(dllexport) void __cdecl RsxrNs_OnPostProcessed(void* song);
 // SF1 (song destructor 0x558680, before the stock body): drops the song's arrays.
-extern "C" __declspec(dllexport) void __cdecl Rs7Ns_OnSongFree(void* song);
+extern "C" __declspec(dllexport) void __cdecl RsxrNs_OnSongFree(void* song);
 // C++ users (tests): the T8 record a template pointer points at (nullptr if the
 // pointer is neither inside a registered T8 array nor the process-lived empty fallback).
-const uint8_t* Rs7Ns_AsT8(const void* tpl);
-const uint8_t* Rs7Ns_AsC8(const void* cn);
+const uint8_t* RsxrNs_AsT8(const void* tpl);
+const uint8_t* RsxrNs_AsC8(const void* cn);
 // Registered T8 lookup, or 0 on a miss. TP13 keeps the stock pointer on a miss; DGS validates membership
-// before reading widened fields. Gameplay readers must use Rs7Ns_TplRecord's empty widened fallback instead.
-uint32_t Rs7Ns_FindTplRecord(uint32_t begin, uint32_t id);
+// before reading widened fields. Gameplay readers must use RsxrNs_TplRecord's empty widened fallback instead.
+uint32_t RsxrNs_FindTplRecord(uint32_t begin, uint32_t id);
 // The gameplay TP* / CP* stride redirects (lock-free, integer only: light mid-hooks call them): the song's T8 / C8
 // record for template / ChordNotes `id` of the stock vector `begin`, or an immutable, allocation-free empty T8 / C8
 // when the vector is not registered or the id is out of range. Widened readers must never receive a stock-sized record.
 // Failure omits chord contents (including stock strings); single notes continue. Slots 6/7 are always unused.
-uint32_t Rs7Ns_TplRecord(uint32_t begin, uint32_t id);
-uint32_t Rs7Ns_CnRecord(uint32_t begin, uint32_t id);
+uint32_t RsxrNs_TplRecord(uint32_t begin, uint32_t id);
+uint32_t RsxrNs_CnRecord(uint32_t begin, uint32_t id);
 // TP2's redirect for the GSDM copy's call (a call-in entry the strings feature builds; hooks_records.cpp).
-extern "C" __declspec(dllexport) void __cdecl Rs7_CallIn_TP2(Rs7Mid::Context& c);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_CallIn_TP2(RsxrMid::Context& c);
 // Logging of the last builds (overlay status line).
-int Rs7Ns_LiveSongs();
+int RsxrNs_LiveSongs();
 
 // ---- the tracker's Play_NoteEval (0xC28 bytes, 100 inline slots: it cannot grow). Its template copy
 // (+274h) keeps midi[6] at +284h; the copy's name (+29Ch..+2BBh) has no reader once copied, so the
 // N-slot tails live there and +284h is a contiguous int32 midi[8]:
-namespace rs7ns {
+namespace rsxrns {
 constexpr uint32_t kEvMidi6 = 0x2C;      // int32 midi[6]: the stock target array the matcher wrappers get
 constexpr uint32_t kEvMidi8 = 0x284;     // int32 midi[8]: [0..5] the template copy, [6..7] the tails
 constexpr uint32_t kEvMidi67 = 0x29C;    // int32 midi[6], midi[7]
@@ -155,40 +151,40 @@ constexpr uint32_t kEvChild67 = 0xC1E;   // u8 child eval slot of strings 6, 7 (
 void WriteEvalTails(uint8_t* eval, const uint8_t* t8, const uint8_t* c8);
 // The empty tails (WriteEvalTails' first step; CS1 in Play_Eval_ClearState clears them in place, hooks_eval.cpp).
 void ClearEvalTails(uint8_t* eval);
-}  // namespace rs7ns
+}  // namespace rsxrns
 
 // BT1: Play_Eval_Build 0x874180 copied the template / ChordNotes (T8 / C8 or nullptr) into `eval`.
-extern "C" __declspec(dllexport) void __cdecl Rs7Ns_OnEvalBuilt(uint8_t* eval, const uint8_t* tpl, const uint8_t* cn);
+extern "C" __declspec(dllexport) void __cdecl RsxrNs_OnEvalBuilt(uint8_t* eval, const uint8_t* tpl, const uint8_t* cn);
 // AM1: Play_AnalyzeChordMistake 0x8755C0 tries the chord shifted by `shift` semitones: its six shifted
 // targets (arr6) plus the shifted strings 6/7 of the template (T8) -> out8.
-extern "C" __declspec(dllexport) void __cdecl Rs7Ns_Shift8(int32_t* out8, const int32_t* arr6, const uint8_t* tpl,
-                                                           int shift);
+extern "C" __declspec(dllexport) void __cdecl RsxrNs_Shift8(int32_t* out8, const int32_t* arr6, const uint8_t* tpl,
+                                                            int shift);
 
 // ---- chord detection over eight targets (match.cpp, internals in match.h) ----
 // [chords] wide_misses (0..2, default 2): how many notes of a seven/eight-note chord may be missing
 // (stock: 5/6-note chords one, 2-4-note chords none - unchanged). Set at startup.
-extern "C" __declspec(dllexport) uintptr_t g_rs7_match_misses;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_match_misses;
 
 // Diagnostics (overlay / log): how many requests went each way since the last song start.
-struct Rs7MatchStats {
+struct RsxrMatchStats {
     long stock6 = 0;  // compacted, stock body
     long portN = 0;   // seven or eight targets, the port
     long portHits = 0;
 };
 
-Rs7MatchStats Rs7Ns_MatchStats(bool reset);
+RsxrMatchStats RsxrNs_MatchStats(bool reset);
 
-// ---- the RS7X block per loaded song (hooks_extblock.cpp; the format and its parser: model/extblock.h) ----
+// ---- the extension block per loaded song (hooks_extblock.cpp; the format and its parser: model/extblock.h) ----
 // XB1 (loader thread): end of SNG_Song_Load, stock sections read, body still allocated. `song` =
 // SNG_Song (templates +94h, ChordNotes +0ACh, tuning +110h), `stream` = the body's memory stream
 // (+10h buffer, +14h position, +18h size).
-extern "C" __declspec(dllexport) void __cdecl Rs7Ext_OnSngLoaded(void* song, const void* stream);
+extern "C" __declspec(dllexport) void __cdecl RsxrExt_OnSngLoaded(void* song, const void* stream);
 // The parsed block of a loaded SNG_Song (nullptr: none or not valid). Keeps the last few songs.
-std::shared_ptr<const rs7ext::Block> Rs7Ext_Find(const void* song);
+std::shared_ptr<const rsxrext::Block> RsxrExt_Find(const void* song);
 // Leak audit: parsed blocks kept now (at most 8; the oldest goes when a ninth arrives).
-int Rs7Ext_StoredBlocks();
-// The store behind Rs7Ext_OnSngLoaded (exposed for tests): `b` = nullptr forgets `song`; otherwise
+int RsxrExt_StoredBlocks();
+// The store behind RsxrExt_OnSngLoaded (exposed for tests): `b` = nullptr forgets `song`; otherwise
 // `song` becomes the newest entry and, at the cap of 8, the oldest entry goes. The just-loaded song is
 // always the newest entry, so it is never the one dropped.
-void Rs7Ext_Store(const void* song, std::shared_ptr<const rs7ext::Block> b);
-constexpr int kRs7ExtKeep = 8;
+void RsxrExt_Store(const void* song, std::shared_ptr<const rsxrext::Block> b);
+constexpr int kRsxrExtKeep = 8;

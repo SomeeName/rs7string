@@ -1,4 +1,4 @@
-"""Native N-slot chord matcher: Rs7Ns_MatchPort against the stock 0x4E7B30, MD1, EV1-EV5, CS1, BT1, LU3."""
+"""Native N-slot chord matcher: RsxrNs_MatchPort against the stock 0x4E7B30, MD1, EV1-EV5, CS1, BT1, LU3."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from emu_harness import (
 pytestmark = needs_emu
 
 
-# ---- native N-slot chord matcher: the port (Rs7Ns_MatchPort) against the stock 0x4E7B30 ---------
+# ---- native N-slot chord matcher: the port (RsxrNs_MatchPort) against the stock 0x4E7B30 ---------
 
 MATCH_FN = 0x4E7B30
 MT = DATA + 0x30000  # matcher, input, history, detector, frame, targets
@@ -120,7 +120,7 @@ def port_match(emu: Emu, targets: list[int], tol: int = 0, hist: int = 0) -> int
     emu.uc.mem_write(tg, struct.pack("<8i", *t8))
     esp = STACK + 0x80000
     emu.uc.mem_write(esp, struct.pack("<IIIiII", RET_MAGIC, MT, tg, 8, tol, hist))
-    return run_long(emu, emu.exports["Rs7Ns_MatchPort"], esp)
+    return run_long(emu, emu.exports["RsxrNs_MatchPort"], esp)
 
 
 def harmonics(midi: int, strength: float) -> list[tuple[int, float]]:
@@ -192,7 +192,7 @@ def test_matcher_port_wide_misses_setting(emus):
         for b, s in harmonics(t_, 1.0)[:2]:
             peaks[b] = peaks.get(b, 0.0) + s
     del peaks[35]  # the low B's fundamental missing (its octave 47 is also the chord's B2)
-    var = patched.exports["g_rs7_match_misses"]
+    var = patched.exports["g_rsxr_match_misses"]
     try:
         patched.uc.mem_write(var, struct.pack("<I", 0))  # every note required
         matcher_setup(patched, list(peaks.items()))

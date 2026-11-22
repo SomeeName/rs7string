@@ -13,36 +13,36 @@
 namespace {
 struct Batch {
     static constexpr size_t kAlloc = 1 + (0x518AC4 - 0x5184F6);
-    rs7test::Restore<uintptr_t> colours{g_rs7_native_colours};
-    rs7test::Restore<uintptr_t> managerRef{g_rs7_colormgr};
+    rsxrtest::Restore<uintptr_t> colours{g_rsxr_native_colours};
+    rsxrtest::Restore<uintptr_t> managerRef{g_rsxr_colormgr};
     void* manager = nullptr;
     uint8_t bytes[kAlloc + 1] = {};
-    const Rs7Hook core = Rs7_Site("batch-core");
-    const Rs7Site sites[3] = {
-        {"batch-core", "", 0, "00", Rs7Kind::Bytes, 1, -1, 0, 0, "01"},
-        {"CM5184F6", "", 0, "00", Rs7Kind::Bytes, 1, -1, 0, 0, "01"},
-        {"CM518AC4", "", 0, "00", Rs7Kind::Bytes, 1, -1, 0, 0, "01"},
+    const RsxrHook core = Rsxr_Site("batch-core");
+    const RsxrSite sites[3] = {
+        {"batch-core", "", 0, "00", RsxrKind::Bytes, 1, -1, 0, 0, "01"},
+        {"CM5184F6", "", 0, "00", RsxrKind::Bytes, 1, -1, 0, 0, "01"},
+        {"CM518AC4", "", 0, "00", RsxrKind::Bytes, 1, -1, 0, 0, "01"},
     };
-    Rs7ResolveResult resolved{};
-    std::vector<const Rs7Hook*> hooks;
+    RsxrResolveResult resolved{};
+    std::vector<const RsxrHook*> hooks;
     std::vector<size_t> written;
 
     Batch() {
-        Rs7_ResetFeatureFailures();
-        g_rs7_native_colours = 1;
-        g_rs7_colormgr = reinterpret_cast<uintptr_t>(&manager);
+        Rsxr_ResetFeatureFailures();
+        g_rsxr_native_colours = 1;
+        g_rsxr_colormgr = reinterpret_cast<uintptr_t>(&manager);
 
         for (size_t i = 0; i < 3; ++i) {
             const size_t offset = i == 2 ? kAlloc : i;
 
             resolved.sites.push_back({&sites[i], reinterpret_cast<uintptr_t>(&bytes[offset]), 0, {0}});
-            hooks.push_back(i == 0 ? &core : Rs7_FindHook(sites[i].id));
+            hooks.push_back(i == 0 ? &core : Rsxr_FindHook(sites[i].id));
         }
     }
 
-    ~Batch() { Rs7_ResetFeatureFailures(); }
+    ~Batch() { Rsxr_ResetFeatureFailures(); }
 
-    Rs7PatchResult Write() { return Rs7Startup_WriteSites(resolved, hooks, ",", written); }
+    RsxrPatchResult Write() { return RsxrStartup_WriteSites(resolved, hooks, ",", written); }
 };
 
 DWORD g_targetTid = 0;
@@ -92,9 +92,9 @@ DWORD WINAPI WaitForRelease(void* event) {
 struct FrozenCallee {
     static constexpr size_t kStackBytes = 128 * 1024;
     uintptr_t* stack = nullptr;
-    HANDLE event = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "callee event");
-    HANDLE ready = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "callee ready");
-    HANDLE thread = rs7test::Must(CreateThread(nullptr, 0, Run, this, 0, &g_targetTid), "callee thread");
+    HANDLE event = rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "callee event");
+    HANDLE ready = rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "callee ready");
+    HANDLE thread = rsxrtest::Must(CreateThread(nullptr, 0, Run, this, 0, &g_targetTid), "callee thread");
 
     // The words are deliberately on this thread's real stack: the scan must walk past 64 KiB of it.
 #pragma warning(push)
@@ -114,22 +114,22 @@ struct FrozenCallee {
 #pragma warning(pop)
 
     FrozenCallee() {
-        rs7test::Must(WaitForSingleObject(ready, 5000) == WAIT_OBJECT_0 ? stack : nullptr, "callee stack");
+        rsxrtest::Must(WaitForSingleObject(ready, 5000) == WAIT_OBJECT_0 ? stack : nullptr, "callee stack");
         // A callee outside both creation ranges, with a clean buffer on its real stack.
         g_targetEip = reinterpret_cast<uintptr_t>(&WaitForRelease);
         g_targetEsp = reinterpret_cast<uintptr_t>(stack);
         g_targetThread = thread;
-        Rs7_FreezeSetTestHooks(nullptr, &ConstructorContext);
+        Rsxr_FreezeSetTestHooks(nullptr, &ConstructorContext);
     }
 
     ~FrozenCallee() {
-        Rs7_FreezeSetTestHooks(nullptr, nullptr);
+        Rsxr_FreezeSetTestHooks(nullptr, nullptr);
         g_targetEsp = 0;
         g_unknownStack = false;
         g_dirtyFs = false;
         g_exitTarget = false;
         SetEvent(event);
-        rs7test::Join(thread, 5000);
+        rsxrtest::Join(thread, 5000);
         CloseHandle(event);
         CloseHandle(ready);
     }
@@ -139,27 +139,27 @@ struct FrozenCallee {
 TIMING_TEST(colour_startup_rechecks_manager_after_early_check_before_any_write) {
     Batch batch;
 
-    Rs7Colour_CheckManager(GetTickCount());
-    CHECK_EQ(g_rs7_native_colours, 1u);
+    RsxrColour_CheckManager(GetTickCount());
+    CHECK_EQ(g_rsxr_native_colours, 1u);
     int stock = 0;
 
     batch.manager = &stock;
-    CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+    CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
     CHECK(batch.written.empty());
     CHECK_EQ(batch.bytes[0], 0u);
     CHECK_EQ(batch.bytes[1], 0u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 0u);
-    CHECK_EQ(g_rs7_native_colours, 0u);
-    CHECK(std::strcmp(rs7colour::g_colour.patchReason, "manager-non-null") == 0);
-    CHECK(rs7colour::g_colour.patchRefusal.address == reinterpret_cast<uintptr_t>(&batch.manager));
-    CHECK(rs7colour::g_colour.patchRefusal.value == reinterpret_cast<uintptr_t>(&stock));
+    CHECK_EQ(g_rsxr_native_colours, 0u);
+    CHECK(std::strcmp(rsxrcolour::g_colour.patchReason, "manager-non-null") == 0);
+    CHECK(rsxrcolour::g_colour.patchRefusal.address == reinterpret_cast<uintptr_t>(&batch.manager));
+    CHECK(rsxrcolour::g_colour.patchRefusal.value == reinterpret_cast<uintptr_t>(&stock));
 }
 
 TIMING_TEST(colour_startup_writes_when_manager_is_still_absent) {
     Batch batch;
 
-    Rs7Colour_CheckManager(GetTickCount());
-    CHECK(batch.Write() == Rs7PatchResult::Ok);
+    RsxrColour_CheckManager(GetTickCount());
+    CHECK(batch.Write() == RsxrPatchResult::Ok);
     CHECK_EQ(batch.written.size(), 3u);
     CHECK_EQ(batch.bytes[0], 1u);
     CHECK_EQ(batch.bytes[1], 1u);
@@ -184,25 +184,25 @@ TIMING_TEST(colour_startup_refuses_frozen_constructor_and_allocation_eips) {
         return;
     }
 
-    Rs7Colour_CheckManager(GetTickCount());
-    Rs7_FreezeSetTestHooks(nullptr, &ConstructorContext);
+    RsxrColour_CheckManager(GetTickCount());
+    Rsxr_FreezeSetTestHooks(nullptr, &ConstructorContext);
 
     // The entry points and a point past the patched allocation immediate must all be refused.
     for (uintptr_t eip : {reinterpret_cast<uintptr_t>(&batch.bytes[1]) - (0x5184F6 - 0x517F70),
                           reinterpret_cast<uintptr_t>(&batch.bytes[Batch::kAlloc]) - 4,
                           reinterpret_cast<uintptr_t>(&batch.bytes[Batch::kAlloc]) + 8}) {
-        g_rs7_native_colours = 1;
+        g_rsxr_native_colours = 1;
         g_targetEip = eip;
-        CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+        CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
         CHECK(batch.written.empty());
         CHECK_EQ(batch.bytes[0], 0u);
         CHECK_EQ(batch.bytes[1], 0u);
         CHECK_EQ(batch.bytes[Batch::kAlloc], 0u);
     }
 
-    Rs7_FreezeSetTestHooks(nullptr, nullptr);
+    Rsxr_FreezeSetTestHooks(nullptr, nullptr);
     SetEvent(event);
-    rs7test::Join(thread, 5000);
+    rsxrtest::Join(thread, 5000);
     CloseHandle(event);
 }
 
@@ -213,20 +213,20 @@ TIMING_TEST(colour_startup_refuses_allocator_return_into_creation_before_any_wri
     Batch& batch = *owned;
     FrozenCallee& callee = *calleeOwned;
 
-    Rs7Colour_CheckManager(GetTickCount());
+    RsxrColour_CheckManager(GetTickCount());
     // Model the allocator's return into creation beyond the former 64 KiB scan budget.
     callee.stack[FrozenCallee::kStackBytes / sizeof(uintptr_t) - 1] =
         reinterpret_cast<uintptr_t>(&batch.bytes[Batch::kAlloc]) + 10;
     CHECK(batch.manager == nullptr);
-    CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+    CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
     CHECK(batch.written.empty());
     CHECK_EQ(batch.bytes[0], 0u);
     CHECK_EQ(batch.bytes[1], 0u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 0u);
-    CHECK_EQ(g_rs7_native_colours, 0u);
-    CHECK(rs7colour::g_colour.patchRefusal.reason == Rs7FrozenReason::ReturnAddress);
-    CHECK(rs7colour::g_colour.patchRefusal.tid == g_targetTid);
-    CHECK(rs7colour::g_colour.patchRefusal.value == reinterpret_cast<uintptr_t>(&batch.bytes[Batch::kAlloc]) + 10);
+    CHECK_EQ(g_rsxr_native_colours, 0u);
+    CHECK(rsxrcolour::g_colour.patchRefusal.reason == RsxrFrozenReason::ReturnAddress);
+    CHECK(rsxrcolour::g_colour.patchRefusal.tid == g_targetTid);
+    CHECK(rsxrcolour::g_colour.patchRefusal.value == reinterpret_cast<uintptr_t>(&batch.bytes[Batch::kAlloc]) + 10);
 }
 
 TIMING_TEST(colour_startup_writes_with_clean_callee_stack) {
@@ -236,9 +236,9 @@ TIMING_TEST(colour_startup_writes_with_clean_callee_stack) {
     const auto calleeOwned = std::make_unique<FrozenCallee>();
     Batch& batch = *owned;
 
-    Rs7Colour_CheckManager(GetTickCount());
+    RsxrColour_CheckManager(GetTickCount());
     CHECK(batch.manager == nullptr);
-    CHECK(batch.Write() == Rs7PatchResult::Ok);
+    CHECK(batch.Write() == RsxrPatchResult::Ok);
     CHECK_EQ(batch.written.size(), 3u);
     CHECK_EQ(batch.bytes[0], 1u);
     CHECK_EQ(batch.bytes[1], 1u);
@@ -251,7 +251,7 @@ TIMING_TEST(colour_startup_refuses_callee_return_into_constructor_before_any_wri
 
     callee.stack[8] = reinterpret_cast<uintptr_t>(&batch.bytes[1]) - (0x5184F6 - 0x517F90);
     CHECK(batch.manager == nullptr);
-    CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+    CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
     CHECK(batch.written.empty());
     CHECK_EQ(batch.bytes[0], 0u);
     CHECK_EQ(batch.bytes[1], 0u);
@@ -273,15 +273,15 @@ TIMING_TEST(colour_startup_refuses_unreadable_callee_stack_before_any_write) {
     DWORD old = 0;
 
     CHECK(VirtualProtect(guard, page, PAGE_READWRITE | PAGE_GUARD, &old));
-    CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+    CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
     CHECK(batch.written.empty());
     CHECK_EQ(batch.bytes[0], 0u);
     CHECK_EQ(batch.bytes[1], 0u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 0u);
-    CHECK(rs7colour::g_colour.patchRefusal.reason == Rs7FrozenReason::GuardPage);
-    CHECK(rs7colour::g_colour.patchRefusal.tid == g_targetTid);
-    CHECK(rs7colour::g_colour.patchRefusal.address == address);
-    CHECK((rs7colour::g_colour.patchRefusal.protect & PAGE_GUARD) != 0);
+    CHECK(rsxrcolour::g_colour.patchRefusal.reason == RsxrFrozenReason::GuardPage);
+    CHECK(rsxrcolour::g_colour.patchRefusal.tid == g_targetTid);
+    CHECK(rsxrcolour::g_colour.patchRefusal.address == address);
+    CHECK((rsxrcolour::g_colour.patchRefusal.protect & PAGE_GUARD) != 0);
     MEMORY_BASIC_INFORMATION memory{};
 
     CHECK(VirtualQuery(guard, &memory, sizeof memory) != 0);
@@ -294,13 +294,13 @@ TIMING_TEST(colour_startup_refuses_unknown_stack_base_before_any_write) {
     FrozenCallee callee;
 
     g_unknownStack = true;
-    CHECK(batch.Write() == Rs7PatchResult::PreconditionFailed);
+    CHECK(batch.Write() == RsxrPatchResult::PreconditionFailed);
     CHECK(batch.written.empty());
     CHECK_EQ(batch.bytes[0], 0u);
     CHECK_EQ(batch.bytes[1], 0u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 0u);
-    CHECK(rs7colour::g_colour.patchRefusal.reason == Rs7FrozenReason::NoFs);
-    CHECK(rs7colour::g_colour.patchRefusal.tid == g_targetTid);
+    CHECK(rsxrcolour::g_colour.patchRefusal.reason == RsxrFrozenReason::NoFs);
+    CHECK(rsxrcolour::g_colour.patchRefusal.tid == g_targetTid);
 }
 
 TIMING_TEST(colour_startup_ignores_a_confirmed_exited_thread) {
@@ -310,8 +310,8 @@ TIMING_TEST(colour_startup_ignores_a_confirmed_exited_thread) {
 
     // Its context cannot be read, but it has exited: it runs no game code, so it must not refuse the batch.
     g_exitTarget = true;
-    Rs7Colour_CheckManager(GetTickCount());
-    CHECK(batch.Write() == Rs7PatchResult::Ok);
+    RsxrColour_CheckManager(GetTickCount());
+    CHECK(batch.Write() == RsxrPatchResult::Ok);
     CHECK_EQ(batch.written.size(), 3u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 1u);
 }
@@ -322,8 +322,8 @@ TIMING_TEST(colour_startup_uses_only_the_low_16_bits_of_segfs) {
     Batch& batch = *owned;
 
     g_dirtyFs = true;
-    Rs7Colour_CheckManager(GetTickCount());
-    CHECK(batch.Write() == Rs7PatchResult::Ok);
+    RsxrColour_CheckManager(GetTickCount());
+    CHECK(batch.Write() == RsxrPatchResult::Ok);
     CHECK_EQ(batch.written.size(), 3u);
     CHECK_EQ(batch.bytes[Batch::kAlloc], 1u);
 }

@@ -5,30 +5,30 @@
 #include <cstring>
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_fixstr = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_fixstr = 0;
 }
 
-namespace rs7asset {
+namespace rsxrasset {
 uint8_t* TopObject(const void* res) {
-    uint8_t* stream = Rs7_SafeRead<uint8_t*>(res, kResStream);
-    if (!stream || Rs7_SafeRead<uint32_t>(stream, kStreamTopCount) < 1) {
+    uint8_t* stream = Rsxr_SafeRead<uint8_t*>(res, kResStream);
+    if (!stream || Rsxr_SafeRead<uint32_t>(stream, kStreamTopCount) < 1) {
         return nullptr;
     }
 
-    uint8_t** base = Rs7_SafeRead<uint8_t**>(stream, kStreamTop);
+    uint8_t** base = Rsxr_SafeRead<uint8_t**>(stream, kStreamTop);
 
-    return base ? Rs7_SafeRead<uint8_t*>(base, 0) : nullptr;
+    return base ? Rsxr_SafeRead<uint8_t*>(base, 0) : nullptr;
 }
 
 // Game calls, each SEH-guarded (a fault leaves the stock model alone).
 const char* MakeFixedString(const char* text) {  // 0x91CBF0, cdecl(const char*) -> handle (+1 ref)
-    if (!g_rs7_fn_fixstr) {
+    if (!g_rsxr_fn_fixstr) {
         return nullptr;
     }
 
     __try {
-        return reinterpret_cast<const char*(__cdecl*)(const char*)>(g_rs7_fn_fixstr)(text);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return reinterpret_cast<const char*(__cdecl*)(const char*)>(g_rsxr_fn_fixstr)(text);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -39,7 +39,7 @@ void Rename(uint8_t* node, const char* to) {
     }
 
     if (const char* fs = MakeFixedString(to)) {
-        Rs7_SafeStore(node + kName, &fs, sizeof fs);
+        Rsxr_SafeStore(node + kName, &fs, sizeof fs);
     }
 }
 
@@ -54,7 +54,7 @@ uint8_t* FindAlt(uint8_t* root, const char* altName) {  // breadth-first, first 
 
         for (; head < end; ++head) {
             uint8_t* n = q[head];
-            if (!rs7s7d::IsKindOf(n, "NiNode")) {
+            if (!rsxrs7d::IsKindOf(n, "NiNode")) {
                 continue;
             }
 
@@ -63,7 +63,7 @@ uint8_t* FindAlt(uint8_t* root, const char* altName) {  // breadth-first, first 
             EachChild(n, [&](uint8_t* c) {
                 char name[16] = {};
 
-                rs7s7d::NameOfNode(c, name, sizeof name);
+                rsxrs7d::NameOfNode(c, name, sizeof name);
 
                 if (!std::strcmp(name, altName)) {
                     found = c;
@@ -96,19 +96,19 @@ uint8_t* FindByName(uint8_t* root, const char* want) {  // depth-first, at most 
         uint8_t* n = stack[--sp];
         char name[48] = {};
 
-        rs7s7d::NameOfNode(n, name, sizeof name);
+        rsxrs7d::NameOfNode(n, name, sizeof name);
         if (!std::strcmp(name, want)) {
             return n;
         }
-        if (!rs7s7d::IsKindOf(n, "NiNode")) {
+        if (!rsxrs7d::IsKindOf(n, "NiNode")) {
             continue;
         }
 
-        const unsigned slots = Rs7_SafeRead<uint16_t>(n, kChildSlots);
-        uint8_t** kids = Rs7_SafeRead<uint8_t**>(n, kChildren);
+        const unsigned slots = Rsxr_SafeRead<uint16_t>(n, kChildSlots);
+        uint8_t** kids = Rsxr_SafeRead<uint8_t**>(n, kChildren);
 
         for (int i = int(slots < 48 ? slots : 48) - 1; kids && i >= 0; --i) {
-            uint8_t* c = Rs7_SafeRead<uint8_t*>(kids, 4 * uint32_t(i));
+            uint8_t* c = Rsxr_SafeRead<uint8_t*>(kids, 4 * uint32_t(i));
 
             if (c && sp < 64) {
                 stack[sp++] = c;
@@ -118,9 +118,9 @@ uint8_t* FindByName(uint8_t* root, const char* want) {  // depth-first, at most 
 
     return nullptr;
 }
-}  // namespace rs7asset
+}  // namespace rsxrasset
 
-int rs7asset::GamePropType(const uint8_t* prop) {
+int rsxrasset::GamePropType(const uint8_t* prop) {
     if (!prop) {
         return -1;
     }
@@ -131,12 +131,12 @@ int rs7asset::GamePropType(const uint8_t* prop) {
         const uintptr_t vt = *reinterpret_cast<const uintptr_t*>(prop);
 
         return (*reinterpret_cast<const TypeFn*>(vt + 0x48))(prop);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return -1;
     }
 }
 
-uint8_t* rs7asset::FindProperty(const uint8_t* obj, int type, PropTypeFn typeOf) {
+uint8_t* rsxrasset::FindProperty(const uint8_t* obj, int type, PropTypeFn typeOf) {
     if (!obj || !typeOf) {
         return nullptr;
     }
@@ -152,30 +152,30 @@ uint8_t* rs7asset::FindProperty(const uint8_t* obj, int type, PropTypeFn typeOf)
 
             node = *reinterpret_cast<const uint8_t* const*>(node);
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 
     return nullptr;
 }
 
-int rs7asset::CopyLayer(const uint8_t* from, uint8_t* to, PropTypeFn typeOf, uint16_t* value, uint16_t* was) {
+int rsxrasset::CopyLayer(const uint8_t* from, uint8_t* to, PropTypeFn typeOf, uint16_t* value, uint16_t* was) {
     const uint8_t* src = FindProperty(from, kLayerType, typeOf);
     uint8_t* dst = FindProperty(to, kLayerType, typeOf);
     uint16_t v = 0, old = 0;
 
-    if (src && !Rs7_SafeCopyZero(&v, src + kLayerValue, sizeof v)) {
+    if (src && !Rsxr_SafeCopyZero(&v, src + kLayerValue, sizeof v)) {
         src = nullptr;
     }
     if (src && value) {
         *value = v;
     }
-    if (!src || !dst || !Rs7_SafeCopyZero(&old, dst + kLayerValue, sizeof old)) {
+    if (!src || !dst || !Rsxr_SafeCopyZero(&old, dst + kLayerValue, sizeof old)) {
         return -1;
     }
     if (old == v) {
         return 0;
     }
-    if (!Rs7_SafeStore(dst + kLayerValue, &v, sizeof v)) {
+    if (!Rsxr_SafeStore(dst + kLayerValue, &v, sizeof v)) {
         return -1;
     }
 

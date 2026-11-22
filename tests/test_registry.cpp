@@ -17,16 +17,16 @@
 #include <cstring>
 
 TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Site& s = kRs7Sites[i];
-        const Rs7Hook* h = Rs7_FindHook(s.id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrSite& s = kRsxrSites[i];
+        const RsxrHook* h = Rsxr_FindHook(s.id);
 
         CHECK(h != nullptr);
         if (!h) {
             continue;
         }
 
-        if (s.kind == Rs7Kind::Ref || s.kind == Rs7Kind::CallRef) {
+        if (s.kind == RsxrKind::Ref || s.kind == RsxrKind::CallRef) {
             CHECK(h->stub == nullptr);
             CHECK(h->target != nullptr);
             CHECK(h->ref);
@@ -35,41 +35,41 @@ TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
 
         CHECK(!h->ref);
 
-        if (s.kind == Rs7Kind::Bytes) {  // in-place byte patch: no stub, nothing to bind
+        if (s.kind == RsxrKind::Bytes) {  // in-place byte patch: no stub, nothing to bind
             CHECK(h->stub == nullptr && h->resume == nullptr && h->target == nullptr);
             CHECK(s.write && std::strlen(s.write) == std::strlen(s.expect));
             continue;
         }
 
-        const bool wrap = h->midCall == Rs7Mid::Call::Wrap;
+        const bool wrap = h->midCall == RsxrMid::Call::Wrap;
 
-        CHECK(s.kind == Rs7Kind::Call || h->midCall == Rs7Mid::Call::Before ||
-              (wrap && s.kind == Rs7Kind::Jmp));  // a Wrap on a jmp site wraps the function it enters
+        CHECK(s.kind == RsxrKind::Call || h->midCall == RsxrMid::Call::Before ||
+              (wrap && s.kind == RsxrKind::Jmp));  // a Wrap on a jmp site wraps the function it enters
         CHECK(wrap || h->midBefore == nullptr);
 
         if (h->IsMid()) {
-            CHECK(s.kind == Rs7Kind::Jmp || s.kind == Rs7Kind::JmpAtomic8 || s.kind == Rs7Kind::Call);
+            CHECK(s.kind == RsxrKind::Jmp || s.kind == RsxrKind::JmpAtomic8 || s.kind == RsxrKind::Call);
             CHECK(h->stub == nullptr);  // resume / target stay bound for callbacks that set ctx.jump
-            CHECK(s.kind != Rs7Kind::Call || wrap || h->target != nullptr);  // the callee (a Wrap entry calls it)
+            CHECK(s.kind != RsxrKind::Call || wrap || h->target != nullptr);  // the callee (a Wrap entry calls it)
             continue;
         }
 
         CHECK(h->stub != nullptr);
-        if ((h->gates & kRs7GatePublish) && h->resume == nullptr) {
+        if ((h->gates & kRsxrGatePublish) && h->resume == nullptr) {
             continue;  // copied entries / fixed-ABI tail wrappers
         }
 
         // TA ends SelectString itself (`mov esp,ebp; pop ebp; ret`): no resume.
         // GS* entries of the copied functions (features/strings/strings.h) jump to their copy or trampoline instead.
-        const bool gsEntry = (h->gates & kRs7GateStrings) != 0 && h->resume == nullptr;
-        if (h->gates & kRs7GateTuner) {
+        const bool gsEntry = (h->gates & kRsxrGateStrings) != 0 && h->resume == nullptr;
+        if (h->gates & kRsxrGateTuner) {
             continue;  // whole-function copy, no resume variable
         }
 
-        if (s.kind == Rs7Kind::Jmp && std::strcmp(s.id, "TA") != 0 && std::strcmp(s.id, "PE") != 0 && !gsEntry) {
+        if (s.kind == RsxrKind::Jmp && std::strcmp(s.id, "TA") != 0 && std::strcmp(s.id, "PE") != 0 && !gsEntry) {
             CHECK(h->resume != nullptr);
         }
-        if (s.kind == Rs7Kind::Rel32 || s.kind == Rs7Kind::Call || s.targetRelAt >= 0) {
+        if (s.kind == RsxrKind::Rel32 || s.kind == RsxrKind::Call || s.targetRelAt >= 0) {
             CHECK(h->target != nullptr);
         }
     }
@@ -78,25 +78,25 @@ TEST(every_site_has_a_hook_with_the_variables_its_kind_needs) {
 TEST(ref_sites_are_never_written) {
     int refs = 0, callRefs = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Kind k = kRs7Sites[i].kind;
-        if (k != Rs7Kind::Ref && k != Rs7Kind::CallRef) {
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrKind k = kRsxrSites[i].kind;
+        if (k != RsxrKind::Ref && k != RsxrKind::CallRef) {
             continue;
         }
 
-        (k == Rs7Kind::Ref ? refs : callRefs) += 1;
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+        (k == RsxrKind::Ref ? refs : callRefs) += 1;
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
 
-        CHECK(h && !Rs7_ShouldPatch(*h, true) && !Rs7_ShouldPatch(*h, false));
+        CHECK(h && !Rsxr_ShouldPatch(*h, true) && !Rsxr_ShouldPatch(*h, false));
     }
 
     CHECK_EQ(refs,
-             12 + kRs7PrivateRefSites);  // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
-                                         // + the private extras' refs (src/features/extras/extras.h)
-                                         // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
-                                         // + X_DDSH (the 7-string model's textures)
-                                         // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
-                                         // + X_TBASS (the tuner's bass open MIDI table, extended bass)
+             12 + kRsxrPrivateRefSites);  // X_CM, X_TCS, X_THEAD, X_DT (7th string line), X_WTHR (W's threshold)
+                                          // + the private extras' refs (src/features/extras/extras.h)
+                                          // + X_TMGR, X_FADEMGR (tuner; the B-phase refs went in 1.0)
+                                          // + X_DDSH (the 7-string model's textures)
+                                          // + X_MCMP, X_MTAB (the N-slot chord matcher) + X_PEGNAMES (N-slot PegSet)
+                                          // + X_TBASS (the tuner's bass open MIDI table, extended bass)
     CHECK_EQ(callRefs, 38);  // MenuMovieRequest (menu loading retry) + X_SPAWN, X_ADV3 (neck targets, N9) + the string
                              // object calls the native strings use
                              // + X_WORLD, X_ROOT (entity root nodes, features/scene)
@@ -114,58 +114,58 @@ TEST(ref_sites_are_never_written) {
 }
 
 TEST(r7_r7b_n9_are_gone_the_native_grid_replaces_them) {
-    CHECK(Rs7_FindHook("R7") == nullptr);
-    CHECK(Rs7_FindHook("R7b") == nullptr && Rs7_FindHook("N9") == nullptr);  // 1.0
-    CHECK(Rs7_FindHook("NG9") != nullptr);
+    CHECK(Rsxr_FindHook("R7") == nullptr);
+    CHECK(Rsxr_FindHook("R7b") == nullptr && Rsxr_FindHook("N9") == nullptr);  // 1.0
+    CHECK(Rsxr_FindHook("NG9") != nullptr);
 }
 
 TEST(unknown_id_has_no_hook) {
-    CHECK(Rs7_FindHook("nope") == nullptr);
+    CHECK(Rsxr_FindHook("nope") == nullptr);
 }
 
 TEST(diagnostics_only_hooks_are_d2_d3_d5) {
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
-    g_rs7_diagrams = 1;
+    g_rsxr_diagrams = 1;
     int diagOnly = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        if (kRs7Sites[i].kind == Rs7Kind::Ref || kRs7Sites[i].kind == Rs7Kind::CallRef) {
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        if (kRsxrSites[i].kind == RsxrKind::Ref || kRsxrSites[i].kind == RsxrKind::CallRef) {
             continue;
         }
 
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
         if (!h) {
             continue;
         }
-        if (h->gates & kRs7GatePublish) {
+        if (h->gates & kRsxrGatePublish) {
             continue;
         }
         if (h->privateOnly) {
             continue;  // the private extras test their own sites
         }
-        if (h->gates & kRs7GatePegs) {
+        if (h->gates & kRsxrGatePegs) {
             continue;  // peg_hooks_follow_native_pegset
         }
-        if (h->gates & kRs7GateStrings) {
+        if (h->gates & kRsxrGateStrings) {
             continue;  // string_hooks_follow_native_strings
         }
-        if (h->gates & kRs7GateFretgrid) {
+        if (h->gates & kRsxrGateFretgrid) {
             continue;  // fretgrid_hooks_follow_native_fretgrid
         }
         if (!std::strncmp(h->id, "CM", 2) || !std::strncmp(h->id, "CB", 2)) {
             continue;  // colour_hooks_are_the_cm_ports_and_the_cb_getters (tests/colours)
         }
-        if (h->gates & kRs7GatePitch) {
+        if (h->gates & kRsxrGatePitch) {
             continue;  // pitch_hooks_follow_native_pitch
         }
-        if (h->gates & kRs7GateNextgrid) {
+        if (h->gates & kRsxrGateNextgrid) {
             continue;  // nextgrid_hooks_follow_native_nextgrid
         }
         if (!std::strncmp(h->id, "CL", 2)) {
             continue;  // chordloops_require_native_strings
         }
-        if (h->gates & kRs7GateTuner) {
+        if (h->gates & kRsxrGateTuner) {
             continue;  // tuner8_sites_are_on_by_default_and_require_native_strings
         }
         if (!std::strncmp(h->id, "LS", 2)) {
@@ -189,75 +189,75 @@ TEST(diagnostics_only_hooks_are_d2_d3_d5) {
 
         diagOnly += h->diagOnly ? 1 : 0;
         CHECK_EQ(h->diagOnly, diag);
-        CHECK(Rs7_ShouldPatch(*h, true));             // diagnostics=1: every site is written
-        CHECK_EQ(Rs7_ShouldPatch(*h, false), !diag);  // diagnostics=0: D2/D3/D5 resolved, not written
+        CHECK(Rsxr_ShouldPatch(*h, true));             // diagnostics=1: every site is written
+        CHECK_EQ(Rsxr_ShouldPatch(*h, false), !diag);  // diagnostics=0: D2/D3/D5 resolved, not written
     }
 
     CHECK_EQ(diagOnly, 3);
 }
 
 TEST(test_variant_hooks_are_off_by_default) {
-    CHECK(!Rs7Variant_Get().Any());
+    CHECK(!RsxrVariant_Get().Any());
 
     for (const char* id : {"TVCB", "TVGP"}) {
-        const Rs7Hook* h = Rs7_FindHook(id);
+        const RsxrHook* h = Rsxr_FindHook(id);
 
         CHECK(h != nullptr);
         CHECK(h && h->IsMid());
-        CHECK(h && !Rs7_ShouldPatch(*h, true));
+        CHECK(h && !Rsxr_ShouldPatch(*h, true));
     }
 }
 
 TEST(eight_sites_are_always_written) {
     int count = 0;
 
-    for (const Rs7Site& site : kRs7Sites) {
-        const Rs7Hook* e8 = std::strncmp(site.id, "E8", 2) ? nullptr : Rs7_FindHook(site.id);
+    for (const RsxrSite& site : kRsxrSites) {
+        const RsxrHook* e8 = std::strncmp(site.id, "E8", 2) ? nullptr : Rsxr_FindHook(site.id);
         if (!e8) {
             continue;
         }
 
         ++count;
-        CHECK(Rs7_FindHook(site.id + 2) == nullptr);  // the seven-bound site it replaced is gone
-        CHECK(Rs7_ShouldPatch(*e8, true));
+        CHECK(Rsxr_FindHook(site.id + 2) == nullptr);  // the seven-bound site it replaced is gone
+        CHECK(Rsxr_ShouldPatch(*e8, true));
     }
 
     CHECK_EQ(count, 24);
 }
 
 TEST(diagram_hooks_are_all_unpatched_by_default_and_enabled_together) {
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
     for (const char* id : {"DGM", "DGS", "DGB", "TP13"}) {
-        const auto* hook = Rs7_FindHook(id);
+        const auto* hook = Rsxr_FindHook(id);
 
         CHECK(hook != nullptr);
         if (!hook) {
             continue;
         }
 
-        g_rs7_diagrams = 0;
-        CHECK(!Rs7_ShouldPatch(*hook, true));
-        g_rs7_diagrams = 1;
-        CHECK(Rs7_ShouldPatch(*hook, false));
+        g_rsxr_diagrams = 0;
+        CHECK(!Rsxr_ShouldPatch(*hook, true));
+        g_rsxr_diagrams = 1;
+        CHECK(Rsxr_ShouldPatch(*hook, false));
     }
 }
 
 TEST(peg_hooks_follow_native_pegset) {
     int native = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
         if (!h || h->ref) {
             continue;
         }
 
         const bool isNative = !std::strncmp(h->id, "PS", 2);
 
-        CHECK_EQ((h->gates & kRs7GatePegs) != 0, isNative);
+        CHECK_EQ((h->gates & kRsxrGatePegs) != 0, isNative);
         native += isNative;
-        if (h->gates & kRs7GatePegs) {
-            CHECK_EQ(Rs7_ShouldPatch(*h, true, false, true), isNative);
+        if (h->gates & kRsxrGatePegs) {
+            CHECK_EQ(Rsxr_ShouldPatch(*h, true, false, true), isNative);
         }
     }
 
@@ -267,8 +267,8 @@ TEST(peg_hooks_follow_native_pegset) {
 TEST(string_hooks_follow_native_strings) {
     int native = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
         if (!h || h->ref) {
             continue;
         }
@@ -276,12 +276,12 @@ TEST(string_hooks_follow_native_strings) {
         const char* id = h->id;
         const bool isNative = (!std::strncmp(id, "GS", 2) || !std::strncmp(id, "GI", 2) || !std::strncmp(id, "GRM", 3));
 
-        CHECK_EQ((h->gates & kRs7GateStrings) != 0, isNative);
+        CHECK_EQ((h->gates & kRsxrGateStrings) != 0, isNative);
         native += isNative;
 
-        if (h->gates & kRs7GateStrings) {
-            CHECK_EQ(Rs7_ShouldPatch(*h, true, false, true, true), isNative);
-            CHECK(!Rs7_ShouldPatch(*h, true, false, true, false));
+        if (h->gates & kRsxrGateStrings) {
+            CHECK_EQ(Rsxr_ShouldPatch(*h, true, false, true, true), isNative);
+            CHECK(!Rsxr_ShouldPatch(*h, true, false, true, false));
         }
     }
 
@@ -289,45 +289,45 @@ TEST(string_hooks_follow_native_strings) {
 }
 
 TEST(integrated_side_hooks_follow_both_string_modes) {
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
     for (bool nativeStrings : {false, true}) {
         for (const char* id : {"W", "I1", "D2", "D3"}) {
-            const auto* h = Rs7_FindHook(id);
+            const auto* h = Rsxr_FindHook(id);
 
             CHECK(h != nullptr);
             if (!h) {
                 continue;
             }
 
-            CHECK(Rs7_ShouldPatch(*h, true, false, true, nativeStrings));
+            CHECK(Rsxr_ShouldPatch(*h, true, false, true, nativeStrings));
             if (h->diagOnly) {
-                CHECK(!Rs7_ShouldPatch(*h, false, false, true, nativeStrings));
+                CHECK(!Rsxr_ShouldPatch(*h, false, false, true, nativeStrings));
             }
         }
 
         for (const char* id : {"DGM", "DGS", "DGB", "TP13"}) {
-            const auto* h = Rs7_FindHook(id);
+            const auto* h = Rsxr_FindHook(id);
 
             CHECK(h != nullptr);
             if (!h) {
                 continue;
             }
 
-            g_rs7_diagrams = 0;
-            CHECK(!Rs7_ShouldPatch(*h, true, false, true, nativeStrings));
-            g_rs7_diagrams = 1;
-            CHECK(Rs7_ShouldPatch(*h, true, false, true, nativeStrings));
+            g_rsxr_diagrams = 0;
+            CHECK(!Rsxr_ShouldPatch(*h, true, false, true, nativeStrings));
+            g_rsxr_diagrams = 1;
+            CHECK(Rsxr_ShouldPatch(*h, true, false, true, nativeStrings));
         }
     }
 }
 
 TEST(fretgrid_hooks_follow_native_fretgrid) {
-    rs7test::Restore restore_g_rs7_native_fretgrid(g_rs7_native_fretgrid);
+    rsxrtest::Restore restore_g_rsxr_native_fretgrid(g_rsxr_native_fretgrid);
     int n = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
         if (!h || h->ref) {
             continue;
         }
@@ -335,50 +335,50 @@ TEST(fretgrid_hooks_follow_native_fretgrid) {
         const bool isFg = !std::strncmp(h->id, "FGR", 3) || !std::strcmp(h->id, "FGHK") ||
                           !std::strcmp(h->id, "FGCT");  // FGR<va> in-place patches, FGRB, the FGHK mid-hook
 
-        CHECK_EQ((h->gates & kRs7GateFretgrid) != 0, isFg);
+        CHECK_EQ((h->gates & kRsxrGateFretgrid) != 0, isFg);
         if (!isFg) {
             continue;
         }
 
         ++n;
-        g_rs7_native_fretgrid = 0;
-        CHECK(!Rs7_ShouldPatch(*h, true, true, true, true));  // default: not a single FretGrid site is written
-        g_rs7_native_fretgrid = 1;
-        CHECK(Rs7_ShouldPatch(*h, false, false, false, false));  // independent of the other switches
-        CHECK(Rs7_ShouldPatch(*h, false, false, true, true));
+        g_rsxr_native_fretgrid = 0;
+        CHECK(!Rsxr_ShouldPatch(*h, true, true, true, true));  // default: not a single FretGrid site is written
+        g_rsxr_native_fretgrid = 1;
+        CHECK(Rsxr_ShouldPatch(*h, false, false, false, false));  // independent of the other switches
+        CHECK(Rsxr_ShouldPatch(*h, false, false, true, true));
     }
 
     CHECK_EQ(n, 73);
 }
 
 TEST(pitch_hooks_follow_native_pitch) {
-    rs7test::Restore restore_g_rs7_native_pitch(g_rs7_native_pitch);
+    rsxrtest::Restore restore_g_rsxr_native_pitch(g_rsxr_native_pitch);
     int n = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
-        if (!h || !(h->gates & kRs7GatePitch)) {
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
+        if (!h || !(h->gates & kRsxrGatePitch)) {
             continue;
         }
 
         ++n;
         CHECK_EQ(h->id[0], 'P');
-        g_rs7_native_pitch = 0;
-        CHECK(!Rs7_ShouldPatch(*h, true, true, true, true));  // default: never written
-        g_rs7_native_pitch = 1;
-        CHECK(Rs7_ShouldPatch(*h, true, false, false, false));
-        CHECK(Rs7_ShouldPatch(*h, false, false, true, true));
+        g_rsxr_native_pitch = 0;
+        CHECK(!Rsxr_ShouldPatch(*h, true, true, true, true));  // default: never written
+        g_rsxr_native_pitch = 1;
+        CHECK(Rsxr_ShouldPatch(*h, true, false, false, false));
+        CHECK(Rsxr_ShouldPatch(*h, false, false, true, true));
     }
 
     CHECK_EQ(n, 12);  // PA1 PA2 PM0 PR0 PT1 PM1 PE0 PC1-PC4 PBH
 }
 
 TEST(nextgrid_hooks_follow_native_nextgrid) {
-    rs7test::Restore restore_g_rs7_native_nextgrid(g_rs7_native_nextgrid);
+    rsxrtest::Restore restore_g_rsxr_native_nextgrid(g_rsxr_native_nextgrid);
     int n = 0;
 
-    for (int i = 0; i < kRs7SiteCount; ++i) {
-        const Rs7Hook* h = Rs7_FindHook(kRs7Sites[i].id);
+    for (int i = 0; i < kRsxrSiteCount; ++i) {
+        const RsxrHook* h = Rsxr_FindHook(kRsxrSites[i].id);
         if (!h || h->ref) {
             continue;
         }
@@ -386,7 +386,7 @@ TEST(nextgrid_hooks_follow_native_nextgrid) {
         const bool isNg = !std::strncmp(h->id, "NGB", 3) || !std::strcmp(h->id, "NG1") || !std::strcmp(h->id, "NGP") ||
                           !std::strcmp(h->id, "NG9");
 
-        CHECK_EQ((h->gates & kRs7GateNextgrid) != 0, isNg);
+        CHECK_EQ((h->gates & kRsxrGateNextgrid) != 0, isNg);
         if (!isNg) {
             continue;
         }
@@ -394,10 +394,10 @@ TEST(nextgrid_hooks_follow_native_nextgrid) {
         ++n;
 
         for (bool strings : {false, true}) {
-            g_rs7_native_nextgrid = 0;  // refused at startup: no NG site (and then nothing at all, 7-string unit)
-            CHECK(!Rs7_ShouldPatch(*h, true, true, true, strings));
-            g_rs7_native_nextgrid = 1;
-            CHECK(Rs7_ShouldPatch(*h, false, false, false, strings));
+            g_rsxr_native_nextgrid = 0;  // refused at startup: no NG site (and then nothing at all, 7-string unit)
+            CHECK(!Rsxr_ShouldPatch(*h, true, true, true, strings));
+            g_rsxr_native_nextgrid = 1;
+            CHECK(Rsxr_ShouldPatch(*h, false, false, false, strings));
         }
     }
 
@@ -405,10 +405,10 @@ TEST(nextgrid_hooks_follow_native_nextgrid) {
 }
 
 TEST(loadstep_probes_follow_publish_trace) {
-    rs7test::Restore restore_g_rs7_publish_trace(g_rs7_publish_trace);
+    rsxrtest::Restore restore_g_rsxr_publish_trace(g_rsxr_publish_trace);
 
     for (const char* id : {"LSA", "LSG", "LSC", "LSE"}) {
-        const Rs7Hook* h = Rs7_FindHook(id);
+        const RsxrHook* h = Rsxr_FindHook(id);
 
         CHECK(h != nullptr);
         if (!h) {
@@ -416,9 +416,9 @@ TEST(loadstep_probes_follow_publish_trace) {
         }
 
         CHECK(h->callback != nullptr);
-        g_rs7_publish_trace = 0;
-        CHECK(!Rs7_ShouldPatch(*h, true));
-        g_rs7_publish_trace = 1;
-        CHECK(Rs7_ShouldPatch(*h, false));
+        g_rsxr_publish_trace = 0;
+        CHECK(!Rsxr_ShouldPatch(*h, true));
+        g_rsxr_publish_trace = 1;
+        CHECK(Rsxr_ShouldPatch(*h, false));
     }
 }

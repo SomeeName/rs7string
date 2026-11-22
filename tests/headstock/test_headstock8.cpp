@@ -10,7 +10,7 @@
 #include <cwchar>
 #include <vector>
 
-using namespace rs7head;
+using namespace rsxrhead;
 
 namespace {
 // A loaded native PegSet whose slots 6.. up to `ready` are taken, with an entity and a locator.
@@ -35,18 +35,18 @@ std::vector<uint8_t> LoadedPegSet(unsigned loaded, unsigned ready) {
 }  // namespace
 
 TEST(headstock8_model_files_follow_eight) {
-    const rs7asset::ModelFiles seven = rs7asset::ModelFilesFor(false);
-    const rs7asset::ModelFiles eight = rs7asset::ModelFilesFor(true);
+    const rsxrasset::ModelFiles seven = rsxrasset::ModelFilesFor(false);
+    const rsxrasset::ModelFiles eight = rsxrasset::ModelFilesFor(true);
 
     CHECK(!std::wcscmp(seven.key, L"headstock7_file"));
     CHECK(!std::wcscmp(seven.keyLh, L"headstock7_file_lh"));
-    CHECK(!std::wcscmp(seven.file, L"rs7_inline7.nif"));
-    CHECK(!std::wcscmp(seven.fileLh, L"rs7_inline7_lh.nif"));
+    CHECK(!std::wcscmp(seven.file, L"rsxr_inline7.nif"));
+    CHECK(!std::wcscmp(seven.fileLh, L"rsxr_inline7_lh.nif"));
     CHECK_EQ(seven.pegs, 7u);
     CHECK(!std::wcscmp(eight.key, L"headstock8_file"));
     CHECK(!std::wcscmp(eight.keyLh, L"headstock8_file_lh"));
-    CHECK(!std::wcscmp(eight.file, L"rs7_inline8.nif"));
-    CHECK(!std::wcscmp(eight.fileLh, L"rs7_inline8_lh.nif"));
+    CHECK(!std::wcscmp(eight.file, L"rsxr_inline8.nif"));
+    CHECK(!std::wcscmp(eight.fileLh, L"rsxr_inline8_lh.nif"));
     CHECK_EQ(eight.pegs, 8u);
 }
 
@@ -77,32 +77,32 @@ TEST(headstock8_ready_count_raises_every_consecutive_seated_extra_peg) {
 }
 
 TEST(headstock8_extra_segments_follow_the_guitars_string_count) {
-    CHECK(!rs7asset::ExtraShown(0, 6));
-    CHECK(rs7asset::ExtraShown(0, 7));
-    CHECK(!rs7asset::ExtraShown(1, 7));  // the 8-peg model on a 7-string guitar: string_size_8 culled
-    CHECK(rs7asset::ExtraShown(1, 8));
+    CHECK(!rsxrasset::ExtraShown(0, 6));
+    CHECK(rsxrasset::ExtraShown(0, 7));
+    CHECK(!rsxrasset::ExtraShown(1, 7));  // the 8-peg model on a 7-string guitar: string_size_8 culled
+    CHECK(rsxrasset::ExtraShown(1, 8));
 }
 
 TEST(headstock8_bass_segments_use_the_models_names) {
     const int names[6] = {10, 9, 8, 7, 11, 6};  // E A D G, the low B, the high C
 
     for (int s = 0; s < 6; ++s) {
-        CHECK_EQ(rs7asset::BassSegName(s), names[s]);
+        CHECK_EQ(rsxrasset::BassSegName(s), names[s]);
     }
 }
 
 TEST(headstock8_extra_peg_palette_is_the_eighth_string_colour) {
     float buf[6] = {};
-    const uint32_t saved[2] = {rs7colour::Colour8(0), rs7colour::Colour8(1)};
+    const uint32_t saved[2] = {rsxrcolour::Colour8(0), rsxrcolour::Colour8(1)};
     const uint32_t rgb[2] = {0xFF8000, 0x0000FF};
 
-    rs7colour::SetPalette8(rgb);
-    CHECK(rs7pegcolour::ExtraPalette(6, buf) == g_rs7_fx_rgb);
-    CHECK(rs7pegcolour::ExtraPalette(7, buf) == buf);
+    rsxrcolour::SetPalette8(rgb);
+    CHECK(rsxrpegcolour::ExtraPalette(6, buf) == g_rsxr_fx_rgb);
+    CHECK(rsxrpegcolour::ExtraPalette(7, buf) == buf);
     CHECK_EQ(buf[0], 1.0f);
     CHECK(buf[1] > 0.50f && buf[1] < 0.51f);
     CHECK_EQ(buf[2], 0.0f);
     CHECK_EQ(buf[3], 0.0f);
     CHECK_EQ(buf[5], 1.0f);
-    rs7colour::SetPalette8(saved);
+    rsxrcolour::SetPalette8(saved);
 }

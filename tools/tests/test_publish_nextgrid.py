@@ -14,7 +14,7 @@ pytestmark = needs_exe
 @pytest.fixture(scope="module")
 def native():
     m = Machine("native")
-    m.write(m.exports["g_rs7_native_publish"], struct.pack("<I", 1))
+    m.write(m.exports["g_rsxr_native_publish"], struct.pack("<I", 1))
     return m
 
 

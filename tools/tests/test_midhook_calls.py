@@ -67,9 +67,9 @@ for i in range(1, 6):
         [Case(f"arg{arg:x}", stack={0: ret(sid), 4: arg, 8: 0x1234, 12: 0x5678}) for arg in (D + 0x2C, 0xFFFFFF00, 0)],
     )
 
-# ---- S4: Rs7_OnSongTuning(session = EBX, detector = EAX, vector = ESI), then Play_Detector_SetTuning ----------------
+# ---- S4: Rsxr_OnSongTuning(session = EBX, detector = EAX, vector = ESI), then Play_Detector_SetTuning ----------------
 register(
-    Spec("S4", 5, helpers={"Rs7_OnSongTuning": Helper(3)}, flags="dead", exits=("target",), call=True),
+    Spec("S4", 5, helpers={"Rsxr_OnSongTuning": Helper(3)}, flags="dead", exits=("target",), call=True),
     [
         Case(
             f"det{det:x}",
@@ -97,7 +97,7 @@ def pitch_cases(sid: str, tuning: int, tail: int) -> list[Case]:
                         regs={UC_X86_REG_ECX: obj + tuning, UC_X86_REG_EDX: instrument, UC_X86_REG_ESI: string},
                         mem={obj + tail: TAIL},
                         stack={0: ret(sid), 4: 9},
-                        rets={"Rs7Pitch_Tailed": tailed},
+                        rets={"RsxrPitch_Tailed": tailed},
                     )
                 )
     out.append(Case("null", regs={UC_X86_REG_ECX: 0, UC_X86_REG_ESI: 6}, stack={0: ret(sid), 4: 9}))
@@ -106,12 +106,12 @@ def pitch_cases(sid: str, tuning: int, tail: int) -> list[Case]:
 
 for sid, tuning, tail in (("PC2", 0x44, 0x58), ("PC3", 0x1340, 0x13B8)):
     register(
-        Spec(sid, 5, helpers={"Rs7Pitch_Tailed": Helper(2)}, flags="dead", exits=("target", "resume"), call=True),
+        Spec(sid, 5, helpers={"RsxrPitch_Tailed": Helper(2)}, flags="dead", exits=("target", "resume"), call=True),
         pitch_cases(sid, tuning, tail),
     )
 
 
-# ---- PSL2 (After placement): the callee (`ret 4`, patched: EAX = 1234h), then [ebx+8] = 1 and Rs7_PegSetLoaded ------
+# ---- PSL2 (After placement): the callee (`ret 4`, patched: EAX = 1234h), then [ebx+8] = 1 and Rsxr_PegSetLoaded ------
 def psl2_callee(machine) -> dict:
     return {machine.target: bytes.fromhex("B8 34 12 00 00 C2 04 00")}  # mov eax,1234h; ret 4 (flags untouched)
 
@@ -120,7 +120,7 @@ register(
     Spec(
         "PSL2",
         5,
-        helpers={"Rs7_PegSetLoaded": Helper(1, deref=((0, 16),))},
+        helpers={"Rsxr_PegSetLoaded": Helper(1, deref=((0, 16),))},
         flags="dead",
         exits=("resume",),
         patch=psl2_callee,

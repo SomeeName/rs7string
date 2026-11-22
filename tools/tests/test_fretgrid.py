@@ -281,5 +281,5 @@ def test_fgr_sites_are_independent_of_the_other_sites():
     for fid, fa, fb in spans["fgr"]:
         for oid, oa, ob in spans["other"]:
             if fid == "FGRB" and oid.startswith("PUB"):
-                continue  # mutually exclusive: with native_publish the PUB* ports replace FGRB (Rs7_ShouldPatch)
+                continue  # mutually exclusive: with native_publish the PUB* ports replace FGRB (Rsxr_ShouldPatch)
             assert not (fa < ob and oa < fb), f"{fid} overlaps {oid}"

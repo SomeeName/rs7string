@@ -7,7 +7,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace rs7head;
+using namespace rsxrhead;
 
 namespace {
 // A PegSet as the stock ctor 0x59C190 leaves it in the native allocation: six slots, pegColor[6]
@@ -72,22 +72,22 @@ TEST(head_init_tail_gives_slots_6_7_slot_0s_defaults_and_moves_pegcolor) {
 TEST(head_letter_seat_borrows_a_taken_slot_for_an_empty_one) {
     alignas(4) uint8_t ps[0x200] = {};
     const auto at = [&](int k) {
-        return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rs7head::Slot(ps, k)));
+        return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rsxrhead::Slot(ps, k)));
     };
 
-    CHECK_EQ(rs7head::LetterSeat(ps, 4), 0u);  // count 0
+    CHECK_EQ(rsxrhead::LetterSeat(ps, 4), 0u);  // count 0
     *reinterpret_cast<uint16_t*>(ps + 4) = 6;
-    CHECK_EQ(rs7head::LetterSeat(ps, 4), 0u);  // nothing taken
+    CHECK_EQ(rsxrhead::LetterSeat(ps, 4), 0u);  // nothing taken
 
     for (int k = 0; k < 4; ++k) {
-        rs7head::Slot(ps, k)[0] = 1;  // a stock 4-peg bass: slots 0-3 taken, 4/5 empty
+        rsxrhead::Slot(ps, k)[0] = 1;  // a stock 4-peg bass: slots 0-3 taken, 4/5 empty
     }
 
-    CHECK_EQ(rs7head::LetterSeat(ps, 4), at(0));  // low B -> the E's peg
-    CHECK_EQ(rs7head::LetterSeat(ps, 5), at(3));  // high C -> the G's peg
-    rs7head::Slot(ps, 3)[0] = 0;
-    CHECK_EQ(rs7head::LetterSeat(ps, 5), at(0));  // wraps round to the first taken slot
-    CHECK(rs7head::LetterSeat(nullptr, 4) == 0u);
+    CHECK_EQ(rsxrhead::LetterSeat(ps, 4), at(0));  // low B -> the E's peg
+    CHECK_EQ(rsxrhead::LetterSeat(ps, 5), at(3));  // high C -> the G's peg
+    rsxrhead::Slot(ps, 3)[0] = 0;
+    CHECK_EQ(rsxrhead::LetterSeat(ps, 5), at(0));  // wraps round to the first taken slot
+    CHECK(rsxrhead::LetterSeat(nullptr, 4) == 0u);
 }
 
 TEST(head_not_native_without_the_tail) {
@@ -141,7 +141,7 @@ TEST(head_owner_ctor_registers_then_converts) {
     ResetOwners();
     std::vector<uint8_t> m = StockCtorImage();
 
-    Rs7_PegSetCtor(m.data());
+    Rsxr_PegSetCtor(m.data());
     CHECK(IsNative(m.data()));
     CHECK_EQ(int(m[kTail]), kCapacity);
     ResetOwners();
@@ -159,7 +159,7 @@ TEST(head_owner_full_table_leaves_the_pegset_stock) {
     const std::vector<uint8_t> before = m;
 
     CHECK(!Own(m.data()));
-    Rs7_PegSetCtor(m.data());
+    Rsxr_PegSetCtor(m.data());
     CHECK(!IsNative(m.data()));
     CHECK(m == before);                      // stock layout kept: every stub keeps the stock counts
     CHECK(Disown(Fake(0x1000 + 7 * 0x10)));  // a free makes room again
@@ -209,16 +209,16 @@ TEST(head_loaded_counts_keep_the_load_and_start_with_six) {
 }
 
 TEST(head_named_colour_scales_the_7th_colour_like_string_0s_named_colour) {
-    rs7test::Restore restore_g_rs7_native_colours(g_rs7_native_colours);
+    rsxrtest::Restore restore_g_rsxr_native_colours(g_rsxr_native_colours);
 
     for (uintptr_t enabled : {uintptr_t(0), uintptr_t(1)}) {
-        g_rs7_native_colours = enabled;
-        std::vector<uint8_t> mgr(rs7colour::kSize, 0);
+        g_rsxr_native_colours = enabled;
+        std::vector<uint8_t> mgr(rsxrcolour::kSize, 0);
         const float lit[4] = {0.5f, 0.25f, 0.0f, 1.0f}, named[4] = {1.0f, 0.5f, 0.0f, 1.0f};
 
         for (uint32_t mode = 0; mode < 2; ++mode) {
-            *reinterpret_cast<const float**>(&mgr[rs7colour::PtrOffset(mode, 1)]) = lit;
-            *reinterpret_cast<const float**>(&mgr[rs7colour::PtrOffset(mode, 4)]) = named;
+            *reinterpret_cast<const float**>(&mgr[rsxrcolour::PtrOffset(mode, 1)]) = lit;
+            *reinterpret_cast<const float**>(&mgr[rsxrcolour::PtrOffset(mode, 4)]) = named;
         }
 
         *reinterpret_cast<uint32_t*>(&mgr[0x348]) = 0;

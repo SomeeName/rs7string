@@ -5,13 +5,13 @@
 #include <cstring>
 #include <vector>
 
-extern "C" void __cdecl Rs7_Mid_SC1(Rs7Mid::Context& c);
+extern "C" void __cdecl Rsxr_Mid_SC1(RsxrMid::Context& c);
 
 namespace {
 struct Camera {
-    rs7test::Restore<uintptr_t> on{g_rs7_frets_on};
+    rsxrtest::Restore<uintptr_t> on{g_rsxr_frets_on};
     alignas(4) uint8_t guitar[0x40] = {}, info[0x10] = {}, strings[12] = {}, o0[0x20] = {}, o1[0x20] = {};
-    std::vector<uint8_t> grid = std::vector<uint8_t>(rs7frets::kBars + rs7frets::kBarStride);
+    std::vector<uint8_t> grid = std::vector<uint8_t>(rsxrfrets::kBars + rsxrfrets::kBarStride);
     float stack[16] = {};
 
     template <class T>
@@ -20,22 +20,22 @@ struct Camera {
     }
 
     Camera(int kind, int count, bool inverted, bool lefty) {
-        g_rs7_frets_on = 1;
-        info[rs7::kInfoKind] = uint8_t(kind);
-        info[rs7::kInfoStrings] = uint8_t(count);
+        g_rsxr_frets_on = 1;
+        info[rsxr::kInfoKind] = uint8_t(kind);
+        info[rsxr::kInfoStrings] = uint8_t(count);
         info[8] = uint8_t(inverted);
-        info[rs7::kInfoLefty] = uint8_t(lefty);
-        Put(guitar, rs7::kGuitarInfo, info);
-        Put(guitar, rs7::kGuitarStrings, strings);
-        Put(guitar, rs7::kGuitarGrid, grid.data());
+        info[rsxr::kInfoLefty] = uint8_t(lefty);
+        Put(guitar, rsxr::kGuitarInfo, info);
+        Put(guitar, rsxr::kGuitarStrings, strings);
+        Put(guitar, rsxr::kGuitarGrid, grid.data());
         Put(strings, 4, o0);
         Put(strings, 8, o1);
         Put(o1, 0x08, lefty ? -0.25f : 0.25f);
         Put(o1, 0x10, inverted ? 2.0f : -2.0f);
-        uint8_t* bar = grid.data() + rs7frets::kBars;
+        uint8_t* bar = grid.data() + rsxrfrets::kBars;
 
         bar[0] = 1;
-        Put(bar, rs7frets::kBarBLocal + 8, -20.0f);
+        Put(bar, rsxrfrets::kBarBLocal + 8, -20.0f);
     }
 
     void Check(float shift) {
@@ -49,21 +49,21 @@ struct Camera {
                 stack[i] = float(i);
             }
 
-            Rs7Mid::Context c{};
+            RsxrMid::Context c{};
 
             c.esi = uintptr_t(guitar);
             c.esp = uintptr_t(stack);
             const float z = 100.0f;
 
             std::memcpy(&c.edx, &z, sizeof z);
-            const Rs7Mid::Context beforeContext = c;
+            const RsxrMid::Context beforeContext = c;
 
-            Rs7_Mid_SC1(c);
+            Rsxr_Mid_SC1(c);
             float result;
 
             std::memcpy(&result, &c.edx, sizeof result);
             CHECK_EQ(result, z + shift);
-            Rs7Mid::Context afterContext = c;
+            RsxrMid::Context afterContext = c;
 
             afterContext.edx = beforeContext.edx;
             CHECK(std::memcmp(&afterContext, &beforeContext, sizeof c) == 0);
@@ -107,19 +107,19 @@ TEST(song_camera_follows_the_floor_for_each_instrument_and_orientation) {
 TEST(song_camera_waits_for_floor_geometry_and_respects_the_frets_gate) {
     Camera c(1, 8, true, false);
 
-    g_rs7_frets_on = 0;
+    g_rsxr_frets_on = 0;
     c.Check(0.0f);
-    g_rs7_frets_on = 1;
+    g_rsxr_frets_on = 1;
     Camera::Put<uint8_t*>(c.strings, 4, nullptr);
     c.Check(0.0f);
     Camera::Put(c.strings, 4, c.o0);
-    c.grid[rs7frets::kBars] = 0;
+    c.grid[rsxrfrets::kBars] = 0;
     c.Check(0.0f);
-    c.grid[rs7frets::kBars] = 1;
+    c.grid[rsxrfrets::kBars] = 1;
     c.Check(-4.0f);  // ready again: retry without a cached or guessed spacing
     Camera::Put(c.o1, 0x08, 0.0f);
     Camera::Put(c.o1, 0x10, 0.0f);
     c.Check(0.0f);
-    Camera::Put<uint8_t*>(c.guitar, rs7::kGuitarGrid, nullptr);
+    Camera::Put<uint8_t*>(c.guitar, rsxr::kGuitarGrid, nullptr);
     c.Check(0.0f);
 }

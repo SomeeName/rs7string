@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 the rs7string authors (owner: SomeeName)
+Copyright (c) 2026 the RS Extended Range authors (owner: SomeeName)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,8 @@ SOFTWARE.
 
 ## Scope
 
-This licence covers rs7string_headstock.bin's authored geometry, node edits,
-copy/insert instructions and the six procedural rs7hs_*.dds textures, including
+This licence covers rsxr_headstock.bin's authored geometry, node edits,
+copy/insert instructions and the six procedural rsxrhs_*.dds textures, including
 their copies in the package. It does not license the user's input templates.
 
 ## Not covered: the built `.nif` files

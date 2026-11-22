@@ -1,5 +1,5 @@
-// Rs7Startup_LogSites (src/startup_sites.cpp) with its real Skipped / DeferredFg helpers, sliced out by
-// test_startup_logsites.py; Writes (the feature switches) and Rs7Log are stubs.
+// RsxrStartup_LogSites (src/startup_sites.cpp) with its real Skipped / DeferredFg helpers, sliced out by
+// test_startup_logsites.py; Writes (the feature switches) and RsxrLog are stubs.
 #include "model/gates.h"
 #include "model/groups.h"
 #include "platform/hooktable.h"
@@ -15,17 +15,17 @@
 static std::vector<std::string> g_lines;
 static std::set<std::string> g_off;  // ids whose feature switch is off (Writes false)
 // Stubs: only GD1's group (Diag) is disabled.
-Rs7Feature Rs7_FeatureOf(const Rs7Hook& h) {
-    return std::strcmp(h.id, "GD1") ? Rs7Feature::Core : Rs7Feature::Diag;
+RsxrFeature Rsxr_FeatureOf(const RsxrHook& h) {
+    return std::strcmp(h.id, "GD1") ? RsxrFeature::Core : RsxrFeature::Diag;
 }
-bool Rs7_FeatureDisabled(Rs7Feature f) {
-    return f == Rs7Feature::Diag;
+bool Rsxr_FeatureDisabled(RsxrFeature f) {
+    return f == RsxrFeature::Diag;
 }
-const char* Rs7_FeatureName(Rs7Feature f) {
-    return f == Rs7Feature::Diag ? "Diag" : "Core";
+const char* Rsxr_FeatureName(RsxrFeature f) {
+    return f == RsxrFeature::Diag ? "Diag" : "Core";
 }
 
-void Rs7Log(const char* fmt, ...) {
+void RsxrLog(const char* fmt, ...) {
     char buf[512];
     va_list a;
     va_start(a, fmt);
@@ -35,7 +35,7 @@ void Rs7Log(const char* fmt, ...) {
 }
 
 namespace {
-bool Writes(const Rs7Hook& h) {
+bool Writes(const RsxrHook& h) {
     return !g_off.count(h.id);
 }
 #include "logsites_helpers.inc"
@@ -84,31 +84,31 @@ int main() {
         {"GD1", false, false, 0, 0, 0, 0, 0, true, "(group Diag disabled: not patched)"},
     };
     const size_t n = sizeof rows / sizeof rows[0];
-    std::vector<Rs7Site> sites(n);
-    std::vector<Rs7Hook> hooks(n);
-    std::vector<const Rs7Hook*> ptrs;
-    Rs7ResolveResult res{};
+    std::vector<RsxrSite> sites(n);
+    std::vector<RsxrHook> hooks(n);
+    std::vector<const RsxrHook*> ptrs;
+    RsxrResolveResult res{};
 
     for (size_t i = 0; i < n; ++i) {
-        sites[i] = Rs7Site{rows[i].id, "", 0, "", Rs7Kind::Jmp, 5, -1, 4, 5};
-        hooks[i] = Rs7Hook{};
+        sites[i] = RsxrSite{rows[i].id, "", 0, "", RsxrKind::Jmp, 5, -1, 4, 5};
+        hooks[i] = RsxrHook{};
         hooks[i].id = rows[i].id;
         hooks[i].ref = rows[i].ref;
         hooks[i].privateOnly = rows[i].privateOnly;
-        hooks[i].gates = (rows[i].pegs ? kRs7GatePegs : 0u) | (rows[i].strs ? kRs7GateStrings : 0u) |
-                         (rows[i].fg ? kRs7GateFretgrid : 0u) | (rows[i].pitch ? kRs7GatePitch : 0u) |
-                         (rows[i].ng ? kRs7GateNextgrid : 0u);
+        hooks[i].gates = (rows[i].pegs ? kRsxrGatePegs : 0u) | (rows[i].strs ? kRsxrGateStrings : 0u) |
+                         (rows[i].fg ? kRsxrGateFretgrid : 0u) | (rows[i].pitch ? kRsxrGatePitch : 0u) |
+                         (rows[i].ng ? kRsxrGateNextgrid : 0u);
         if (rows[i].off) {
             g_off.insert(rows[i].id);
         }
-        res.sites.push_back(Rs7Resolved{&sites[i], 0x1000, 0x2000, {}});
+        res.sites.push_back(RsxrResolved{&sites[i], 0x1000, 0x2000, {}});
     }
 
-    for (const Rs7Hook& h : hooks) {
+    for (const RsxrHook& h : hooks) {
         ptrs.push_back(&h);
     }
 
-    Rs7Startup_LogSites(res, ptrs, ",SK1,FGR1,SK2,");
+    RsxrStartup_LogSites(res, ptrs, ",SK1,FGR1,SK2,");
 
     for (size_t i = 0; i < n; ++i) {
         Expect(i, rows[i].want);

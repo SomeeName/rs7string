@@ -54,14 +54,14 @@ def json_sink(emu):
         for name, a in addresses.items():
             emu.uc.mem_write(a, b"\xc2\x04\x00" if name == "key" else b"\xc2\x0c\x00" if name == "set" else b"\xc3")
             hooks.append(emu.uc.hook_add(UC_HOOK_CODE, intercept, begin=a, end=a))
-        emu.uc.mem_write(emu.exports["g_rs7_diagrams"], struct.pack("<I", 1))
+        emu.uc.mem_write(emu.exports["g_rsxr_diagrams"], struct.pack("<I", 1))
         yield values
     finally:
         for h in hooks:
             emu.uc.hook_del(h)
         for a, b in saved.items():
             emu.uc.mem_write(a, b)
-        emu.uc.mem_write(emu.exports["g_rs7_diagrams"], b"\0" * 4)
+        emu.uc.mem_write(emu.exports["g_rsxr_diagrams"], b"\0" * 4)
         ns_set(emu, [])
 
 
@@ -155,7 +155,7 @@ def test_tp13_resolves_registered_t8_and_preserves_stride_registers(emus, on, in
     song = BASE + 0xB000
     ns_set(emu, [(stock, 2, t8, 0, 0, 0, song, 0)])
     emu.uc.mem_write(song + 0x94, struct.pack("<I", stock))
-    emu.uc.mem_write(emu.exports["g_rs7_diagrams"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_diagrams"], struct.pack("<I", on))
     try:
         emu.run(
             site_va("TP13"),
@@ -168,13 +168,13 @@ def test_tp13_resolves_registered_t8_and_preserves_stride_registers(emus, on, in
         assert emu.uc.reg_read(UC_X86_REG_ECX) == index * 9
     finally:
         ns_set(emu, [])
-        emu.uc.mem_write(emu.exports["g_rs7_diagrams"], b"\0" * 4)
+        emu.uc.mem_write(emu.exports["g_rsxr_diagrams"], b"\0" * 4)
 
 
 def test_dgb_passes_exact_song_and_uuid_attributes_then_replays_registers(emus):
     _, emu = emus
     sid = "DGB"
-    fn = emu.exports["Rs7Diagram_Bind"]  # called by the DGB mid-hook (features/diagrams/hooks_mid.cpp)
+    fn = emu.exports["RsxrDiagram_Bind"]  # called by the DGB mid-hook (features/diagrams/hooks_mid.cpp)
     saved = emu.read(fn, 1)
     seen = []
     sp = STACK + 0xC000

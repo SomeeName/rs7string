@@ -2,10 +2,10 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-struct Rs7HookTable;
+struct RsxrHookTable;
 // The native FretGrid hooks (group Fretgrid): the FGR<va> layout sites, FGRB, FGHK, FGCT.
-extern const Rs7HookTable kRs7FretgridHooks;
-extern const Rs7HookTable kRs7FretgridCoreHooks;  // V2 (group Core)
+extern const RsxrHookTable kRsxrFretgridHooks;
+extern const RsxrHookTable kRsxrFretgridCoreHooks;  // V2 (group Core)
 
 // Native capacity-8 Rnd_FretGrid (docs/ARCHITECTURE.md section 1), a member of the native 7-string unit (no ini
 // switch).
@@ -23,23 +23,24 @@ extern const Rs7HookTable kRs7FretgridCoreHooks;  // V2 (group Core)
 // runs over eight strings), valid only when cells 0 and 1 are valid.
 // Logic: fretgrid.cpp (the native-grid registry, MigrateGrid, FillExtraCells). Glue: hooks.cpp (the switch, the
 // deferred layout write, the grid replacement, the FGHK / FGCT mid-hooks), hooks_build.cpp (FGRB), registration.cpp
-// (kRs7FretgridHooks; the FGR<va> rows come from sites.generated.inc, tools/gen_fretgrid.py).
+// (kRsxrFretgridHooks; the FGR<va> rows come from sites.generated.inc, tools/gen_fretgrid.py).
 
 extern "C" {
 // The native FretGrid is on (set by startup before any site is patched; a deferred write failure clears it).
-__declspec(dllexport) extern uintptr_t g_rs7_native_fretgrid;
+__declspec(dllexport) extern uintptr_t g_rsxr_native_fretgrid;
 // The row stride of a FretGrid cell row: 1CCh stock, 264h native. Read by the R1 / V2 stubs and the C++ readers.
-__declspec(dllexport) extern uintptr_t g_rs7_fg_row;
-// FGHK (mid-hook at the Rnd_Guitar per-frame update 0x592AC0, [esp+4] = guitar): see rs7fg::OnGuitarUpdate.
-__declspec(dllexport) void __cdecl Rs7_Mid_FGHK(Rs7Mid::Context& c);
+__declspec(dllexport) extern uintptr_t g_rsxr_fg_row;
+// FGHK (mid-hook at the Rnd_Guitar per-frame update 0x592AC0, [esp+4] = guitar): see rsxrfg::OnGuitarUpdate.
+__declspec(dllexport) void __cdecl Rsxr_Mid_FGHK(RsxrMid::Context& c);
 // FGCT (mid-hook after the FretGrid ctor in the guitar ctor 0x59267B, eax = grid): registers native grids.
-__declspec(dllexport) void __cdecl Rs7_Mid_FGCT(Rs7Mid::Context& c);
-// FGRB (mid-hook at the build's "complete" exit, [ebp+8] = grid, [ebp+0Ch] = guitar) -> Rs7Fg_BuildExtra(grid, guitar).
-__declspec(dllexport) void __cdecl Rs7_Mid_FGRB(Rs7Mid::Context& c);
-__declspec(dllexport) void __cdecl Rs7Fg_BuildExtra(uint8_t* grid, uint8_t* guitar);
+__declspec(dllexport) void __cdecl Rsxr_Mid_FGCT(RsxrMid::Context& c);
+// FGRB (mid-hook at the build's "complete" exit, [ebp+8] = grid, [ebp+0Ch] = guitar) -> RsxrFg_BuildExtra(grid,
+// guitar).
+__declspec(dllexport) void __cdecl Rsxr_Mid_FGRB(RsxrMid::Context& c);
+__declspec(dllexport) void __cdecl RsxrFg_BuildExtra(uint8_t* grid, uint8_t* guitar);
 }
 
-namespace rs7fg {
+namespace rsxrfg {
 constexpr uint32_t kRowStock = 0x1CC, kRowNative = 0x264;
 constexpr uint32_t kWireRowStock = 0x1C0, kWireRowNative = 0x220;
 constexpr uint32_t kWireBaseStock = 0x2EC0, kWireBaseNative = 0x72A0;
@@ -89,7 +90,7 @@ bool OnGuitarUpdate(uint8_t* guitar);
 void SetGridAllocatorForTests(void* (*allocate)(uint32_t), void* (*construct)(void*), void (*free)(void*, uint32_t));
 
 inline uint32_t RowStride() {
-    return static_cast<uint32_t>(g_rs7_fg_row);
+    return static_cast<uint32_t>(g_rsxr_fg_row);
 }
 
 // Pure: the native-layout cell s of fret row f (grid = the FretGrid base).
@@ -99,4 +100,4 @@ inline uint8_t* Cell(uint8_t* grid, uint32_t f, uint32_t s) {
 
 // Pure: cells 6/7 of the first `frets` rows from cells 0/1 (native layout). Returns the rows filled.
 int FillExtraCells(uint8_t* grid, uint32_t frets);
-}  // namespace rs7fg
+}  // namespace rsxrfg

@@ -10,7 +10,7 @@
 // five or fewer arrangements show every alternate, as before. Enter on an entry starts that arrangement. Arrow Down
 // on the last entry shown / Up on the first (and the mouse wheel, the same focus steps) scroll the window like the
 // game's own lists: the page vtable's focus steps +DCh / +E0h are swapped (hooks.cpp, the focused id at page +1FCh);
-// PageDown / PageUp (window messages, Rs7Arr_KeyDown) scroll too. ALTF resets the window on page entry, and ALTL marks
+// PageDown / PageUp (window messages, RsxrArr_KeyDown) scroll too. ALTF resets the window on page entry, and ALTL marks
 // the edge entries with the number of hidden alternates.
 // A scroll re-runs the builder: it fills a fresh clone of the view definition, so the shown slots are removed first,
 // ALTR merges the previous definition (song header) into the clone, the page keeps its focus lists (the builder's
@@ -23,7 +23,7 @@
 //        [esp+6Ch] = slots filled so far. Hidden: skip to the loop latch (the target of the JZ just
 //        before the site).
 
-namespace rs7arr {
+namespace rsxrarr {
 constexpr uint32_t kAltSlots = 4;  // altArrangementsP1_slot1..4 in las_songoptions.gfx
 
 // Whether one more alternate fits on the page after `filled` slots.
@@ -82,9 +82,9 @@ inline uint32_t CoopStep(uint32_t index, uint32_t count, int steps) {
 
 // The record index of a focused button id that names "arrangement<N>" (the builder's node names), or -1.
 int CoopFocusIndex(const char* focus);
-}  // namespace rs7arr
+}  // namespace rsxrarr
 
-extern const Rs7HookTable kRs7ArrangementHooks;
+extern const RsxrHookTable kRsxrArrangementHooks;
 
 // A key press from the game window's procedure (overlay.cpp, the game's main thread): PageDown / PageUp scroll.
-void Rs7Arr_KeyDown(unsigned vk);
+void RsxrArr_KeyDown(unsigned vk);

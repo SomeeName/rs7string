@@ -3,8 +3,8 @@
 #include "features/frets/frets.h"
 #include <cmath>
 
-bool rs7frets::Compute(const float a0[3], const float a1[3], const float mid[3], float halfLen, int lanes, Extend* out,
-                       int far, int farLanes) {
+bool rsxrfrets::Compute(const float a0[3], const float a1[3], const float mid[3], float halfLen, int lanes, Extend* out,
+                        int far, int farLanes) {
     float d[3], len2 = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -43,7 +43,7 @@ bool rs7frets::Compute(const float a0[3], const float a1[3], const float mid[3],
     return out->scale > 0.0f && std::isfinite(out->scale);
 }
 
-void rs7frets::ScaleBarMid(const float a0[3], const float a1[3], float k, float mid[3], float moved[3]) {
+void rsxrfrets::ScaleBarMid(const float a0[3], const float a1[3], float k, float mid[3], float moved[3]) {
     float u[3], len2 = 0.0f, along = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -64,7 +64,7 @@ void rs7frets::ScaleBarMid(const float a0[3], const float a1[3], float k, float 
     }
 }
 
-bool rs7frets::FloorShift(const float w0[3], const float w1[3], const float b[3], int lanes, float out[3]) {
+bool rsxrfrets::FloorShift(const float w0[3], const float w1[3], const float b[3], int lanes, float out[3]) {
     float u[3], len2 = 0.0f, side = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -84,7 +84,7 @@ bool rs7frets::FloorShift(const float w0[3], const float w1[3], const float b[3]
     return true;
 }
 
-bool rs7frets::GlowEnd(const float w0[3], const float w1[3], int lanes, float p[3]) {
+bool rsxrfrets::GlowEnd(const float w0[3], const float w1[3], int lanes, float p[3]) {
     float u[3], side = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -103,7 +103,7 @@ bool rs7frets::GlowEnd(const float w0[3], const float w1[3], int lanes, float p[
     return true;
 }
 
-bool rs7frets::GlowEndAt(const float w0[3], const float w1[3], float beyond, float p[3]) {
+bool rsxrfrets::GlowEndAt(const float w0[3], const float w1[3], float beyond, float p[3]) {
     float u[3], len2 = 0.0f, side = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -129,8 +129,8 @@ bool rs7frets::GlowEndAt(const float w0[3], const float w1[3], float beyond, flo
     return true;
 }
 
-int rs7frets::FloorMove(const float a0[3], const float a1[3], const float b[3], int nearLanes, int far, int farLanes,
-                        float out[3]) {
+int rsxrfrets::FloorMove(const float a0[3], const float a1[3], const float b[3], int nearLanes, int far, int farLanes,
+                         float out[3]) {
     float len2 = 0.0f;
 
     for (int i = 0; i < 3; ++i) {
@@ -160,8 +160,8 @@ int rs7frets::FloorMove(const float a0[3], const float a1[3], const float b[3], 
     return FloorShift(f0, f1, b, farLanes, out) ? farLanes : 0;
 }
 
-bool rs7frets::ChordFrame(const float a0[3], const float a1[3], const float b[3], int floorLanes, int top,
-                          FrameFit* out, int far, int farLanes) {
+bool rsxrfrets::ChordFrame(const float a0[3], const float a1[3], const float b[3], int floorLanes, int top,
+                           FrameFit* out, int far, int farLanes) {
     if (far < 1 || far > 5 || farLanes < 0 || farLanes > 1) {
         return false;
     }
@@ -218,7 +218,7 @@ bool rs7frets::ChordFrame(const float a0[3], const float a1[3], const float b[3]
     return std::isfinite(out->scale) && std::isfinite(out->shift) && out->scale > 0.0f;
 }
 
-float rs7frets::GlowStretch(int lanes, float spacing, float margin) {
+float rsxrfrets::GlowStretch(int lanes, float spacing, float margin) {
     const float m = std::isfinite(margin) && margin > 0.0f ? 2.0f * margin : 0.0f;
     const float k = (float(lanes) * spacing + m) / (kStockStringsWidth + m);
 

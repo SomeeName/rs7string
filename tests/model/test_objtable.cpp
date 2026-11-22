@@ -3,7 +3,7 @@
 #include "test.h"
 
 namespace {
-using Table = rs7::ObjTable<const int*, int, 4>;
+using Table = rsxr::ObjTable<const int*, int, 4>;
 
 int Live(const Table& t) {
     int n = 0;

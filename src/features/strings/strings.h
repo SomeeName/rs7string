@@ -11,14 +11,14 @@
 //   GuitarStrings 0x40 -> kGsSize: stock prefix kept (main[0..5] at +4, ghost[0..5] at +1Ch stay valid
 //     aliases, so unwidened stock readers keep working); +40h main[8], +60h ghost[8] (the stock ctor's
 //     six + two more of each kind, constructed by GSC1), +80h glow[8] (the renderer glow ramp of the
-//     native UpdateGlow), +0A0h tail, marker 'R7' at +3Ah (stock padding) and magic at +0ACh.
+//     native UpdateGlow), +0A0h tail, marker 'RX' at +3Ah (stock padding) and magic at +0ACh.
 //   InstrumentInfo 0x38 -> kInfoSize: +40h active count, +41h loaded count (stock +0Bh untouched, so
 //     every consumer outside the native loops keeps 6), +44h magic.
 // Loops: the stock functions are copied (platform/fncopy.h, tools/gen_fncopy.py) with their array
 // displacements moved to +40h/+60h and their count byte to +40h/+41h; their entries (GS* sites) run
 // the copy for a native GuitarStrings and the stock code otherwise.
 // Counts: loaded = 7 for a guitar (6 stock strings), else the stock count (bass 4); active = 7 while
-// the guitar shows the 7th string (N5's per-guitar 7-string rule, Rs7Gs_Frame), else 6. Loaded-count
+// the guitar shows the 7th string (N5's per-guitar 7-string rule, RsxrGs_Frame), else 6. Loaded-count
 // loops: bind, load, unload, transforms, entity pass, reset, InitColors, free (8). Active-count loops:
 // fade in/out, update, pluck, vibration, section dimming / next-note glow choice, headstock segment
 // colours. A guitar shows the 7th string by raising the count (string 6 un-culled, its ClipFade set to
@@ -31,52 +31,52 @@
 // registration.cpp (the hook table, group Strings). Internal: hooks.h.
 
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_native_strings;  // set before patching; a startup check may clear it
-__declspec(dllexport) extern uintptr_t g_rs7_fn_attach;       // X_ATTACH 0x594530 ECX = info, cdecl(s, &vec3) -> AL
+__declspec(dllexport) extern uintptr_t g_rsxr_native_strings;  // set before patching; a startup check may clear it
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_attach;       // X_ATTACH 0x594530 ECX = info, cdecl(s, &vec3) -> AL
 // Strings 6/7: [mode][string - 6][state 1 lit, 2 dimmed, 3 glow][rgb]; the glow entry is read by
-// Rs7_CallIn_GlowColour (the lit / dimmed state colours come from the native colour matrix since GSCL went in 1.0).
-__declspec(dllexport) extern float g_rs7_ns_rgb[2 * 2 * 3 * 3];
+// Rsxr_CallIn_GlowColour (the lit / dimmed state colours come from the native colour matrix since GSCL went in 1.0).
+__declspec(dllexport) extern float g_rsxr_ns_rgb[2 * 2 * 3 * 3];
 // v_positionString of the 7th/8th strings' atlas row (main and ghost), for 0x541880 (GRM3).
-__declspec(dllexport) extern float g_rs7_ns_v[2];
+__declspec(dllexport) extern float g_rsxr_ns_v[2];
 
 // Called from the stubs (cdecl; none throws).
-// Entry dispatch of a copied function: 1 = run the native copy. kind = Rs7GsKind; reg = the
+// Entry dispatch of a copied function: 1 = run the native copy. kind = RsxrGsKind; reg = the
 // GuitarStrings register (or the renderer / context the kind names), a1/a2 = the first two stack
 // arguments.
-__declspec(dllexport) int __cdecl Rs7Gs_Use(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2);
+__declspec(dllexport) int __cdecl RsxrGs_Use(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2);
 // GSC1: the native layout of a GuitarStrings the stock ctor just constructed (kGsSize while the switch is on; NULL:
 // nothing). Returns gs.
-__declspec(dllexport) uint8_t* __cdecl Rs7Gs_Construct(uint8_t* guitar, uint8_t* gs);
+__declspec(dllexport) uint8_t* __cdecl RsxrGs_Construct(uint8_t* guitar, uint8_t* gs);
 // GIA1: an InstrumentInfo the guitar just allocated with kInfoSize (before its stock ctor).
-__declspec(dllexport) void __cdecl Rs7Gs_InfoAllocated(uint8_t* info);
+__declspec(dllexport) void __cdecl RsxrGs_InfoAllocated(uint8_t* info);
 // GIZ1: the free size of an InstrumentInfo (unregisters a native one).
-__declspec(dllexport) uint32_t __cdecl Rs7Gs_InfoFreeSize(uint8_t* info);
+__declspec(dllexport) uint32_t __cdecl RsxrGs_InfoFreeSize(uint8_t* info);
 // Registry membership precedes every InstrumentInfo tail read or publication write.
-__declspec(dllexport) int __cdecl Rs7Gs_InfoNative(const uint8_t* info);
+__declspec(dllexport) int __cdecl RsxrGs_InfoNative(const uint8_t* info);
 // Each loaded extra slot has an entity and the stock loaded-model flag (+50h).
-__declspec(dllexport) int __cdecl Rs7Gs_ExtraReady(uint8_t* guitar);
-__declspec(dllexport) int __cdecl Rs7Gs_ExtraWhy(uint8_t* guitar);
+__declspec(dllexport) int __cdecl RsxrGs_ExtraReady(uint8_t* guitar);
+__declspec(dllexport) int __cdecl RsxrGs_ExtraWhy(uint8_t* guitar);
 // The entry dispatch of the copied functions (the GS<xx> mid-hooks; string7's chord pluck calls the GSPK one, kind 10):
 // the address to continue at, the native copy or the trampoline (the stock entry bytes + a jump back).
 // hooks_copies.cpp.
-__declspec(dllexport) uintptr_t __cdecl Rs7Gs_Target(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2);
+__declspec(dllexport) uintptr_t __cdecl RsxrGs_Target(uint32_t kind, uint8_t* reg, uint32_t a1, uint32_t a2);
 // GRM1: how many main strings 0x541880 collects meshes for (renderer +4 = GuitarStrings).
-__declspec(dllexport) uint32_t __cdecl Rs7Gs_MeshCount(uint8_t* gs);
-// Rs7_CallIn_HsLoaded / Rs7_CallIn_HsSeg: the headstock segment colour handle of string s >= 6 (the
+__declspec(dllexport) uint32_t __cdecl RsxrGs_MeshCount(uint8_t* gs);
+// Rsxr_CallIn_HsLoaded / Rsxr_CallIn_HsSeg: the headstock segment colour handle of string s >= 6 (the
 // edited model's string_size_7 / _8, features/headstock/assetload.h), nullptr without one.
-__declspec(dllexport) uint8_t* __cdecl Rs7Gs_SegHandle(uint8_t* guitar, uint32_t s);
-// Rs7_CallIn_Attach (s >= 6): the attach point of an added string, extrapolated from strings 0 and 1
+__declspec(dllexport) uint8_t* __cdecl RsxrGs_SegHandle(uint8_t* guitar, uint32_t s);
+// Rsxr_CallIn_Attach (s >= 6): the attach point of an added string, extrapolated from strings 0 and 1
 // of the stock query. 1 = written.
-__declspec(dllexport) int __cdecl Rs7Gs_AttachExt(uint8_t* info, uint32_t s, float* out);
-// PUBGA (every string) and Rs7_CallIn_Attach (s >= 6) with a [neck] spacing_* setting for this instrument
-// (features/spacing): the stock answer (Rs7Gs_AttachExt for added strings) scaled about the centre of the stock rows to
-// that spacing. -1 = no setting or a nested query (the caller answers as stock), else 0 / 1 like the stock query.
-__declspec(dllexport) int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out);
-// Rs7_CallIn_Shape (s >= 6; a bass: s 4 / 5), after the stock 0x5996A0: the added string's atlas row.
-__declspec(dllexport) void __cdecl Rs7Gs_ShapeDone(uint8_t* obj, uint32_t s);
+__declspec(dllexport) int __cdecl RsxrGs_AttachExt(uint8_t* info, uint32_t s, float* out);
+// PUBGA (every string) and Rsxr_CallIn_Attach (s >= 6) with a [neck] spacing_* setting for this instrument
+// (features/spacing): the stock answer (RsxrGs_AttachExt for added strings) scaled about the centre of the stock rows
+// to that spacing. -1 = no setting or a nested query (the caller answers as stock), else 0 / 1 like the stock query.
+__declspec(dllexport) int __cdecl RsxrGs_AttachSpaced(uint8_t* info, uint32_t s, float* out);
+// Rsxr_CallIn_Shape (s >= 6; a bass: s 4 / 5), after the stock 0x5996A0: the added string's atlas row.
+__declspec(dllexport) void __cdecl RsxrGs_ShapeDone(uint8_t* obj, uint32_t s);
 }
 
-enum Rs7GsKind : uint32_t {
+enum RsxrGsKind : uint32_t {
     kGsFree,
     kGsBind,
     kGsUnload,
@@ -96,7 +96,7 @@ enum Rs7GsKind : uint32_t {
     kGsKinds
 };
 
-namespace rs7gs {
+namespace rsxrgs {
 constexpr uint32_t kStockGsSize = 0x40;
 constexpr uint32_t kMain = 0x40;
 constexpr uint32_t kGhost = 0x60;
@@ -108,8 +108,8 @@ constexpr uint32_t kInfo = 0xA8;
 constexpr uint32_t kMagicOff = 0xAC;
 constexpr uint32_t kGsSize = 0xB0;
 constexpr uint32_t kMarkerOff = 0x3A;    // u16, stock padding between +39h and +3Ch
-constexpr uint16_t kMarker = 0x3752;     // "R7"
-constexpr uint32_t kMagic = 0x47375352;  // "RS7G"
+constexpr uint16_t kMarker = 0x5852;     // "RX"
+constexpr uint32_t kMagic = 0x47585352;  // "RSXG"
 constexpr int kCapacity = 8;
 constexpr int kStock = 6;
 constexpr int kLowerFrames = 45;  // frames without the 7th string before it is lowered (as the PegSet)
@@ -118,11 +118,11 @@ constexpr uint32_t kInfoActive = 0x40;
 constexpr uint32_t kInfoLoaded = 0x41;
 constexpr uint32_t kInfoMagicOff = 0x44;
 constexpr uint32_t kInfoSize = 0x48;
-constexpr uint32_t kInfoMagic = 0x49375352;  // "RS7I"
+constexpr uint32_t kInfoMagic = 0x49585352;  // "RSXI"
 
-using rs7mem::UncheckedField;
+using rsxrmem::UncheckedField;
 
-using rs7mem::UncheckedRead;
+using rsxrmem::UncheckedRead;
 
 // Layout checks (pure, layout.cpp). IsNative reads +3Ah first (inside the stock 0x40 bytes), then the magic.
 bool IsNative(const uint8_t* gs);
@@ -146,13 +146,13 @@ void RefreshCounts(uint8_t* info, bool seventh);
 // answers strings below it from the skeleton's stringattachpoints (4 for bass, CONFIRMED crash
 // data/tests/bass-native/crash1.mdmp: bass string 4 read a missing entry); added strings extrapolate.
 inline uint32_t StockAttachCount(const uint8_t* info) {
-    return rs7::StockStrings(info && rs7::IsBassKind(info[rs7::kInfoKind]));
+    return rsxr::StockStrings(info && rsxr::IsBassKind(info[rsxr::kInfoKind]));
 }
 
 // Extended bass: the stock strings string `s` (4 low B, 5 high C) continues from, near then far: 4 below E from 0 / 1,
 // 5 above G from 3 / 2 (one string spacing further: near + (near - far)).
 inline void BassAttachRows(uint32_t s, uint32_t* nearRow, uint32_t* farRow) {
-    *nearRow = rs7::kBassNeighbour[s == 4 ? 4 : 5];
+    *nearRow = rsxr::kBassNeighbour[s == 4 ? 4 : 5];
     *farRow = *nearRow == 0 ? 1u : 2u;
 }
 
@@ -169,28 +169,28 @@ inline void ExtrapolateAttach(const float a0[3], const float a1[3], uint32_t s, 
         out[i] = a0[i] + k * (a0[i] - a1[i]);
     }
 }
-}  // namespace rs7gs
+}  // namespace rsxrgs
 
-// From N5 (Rs7_S7Update) every frame on the game thread, for a native GuitarStrings: `want` = this
+// From N5 (Rsxr_S7Update) every frame on the game thread, for a native GuitarStrings: `want` = this
 // guitar shows the 7th string. Raises / lowers the active count. True when it handled the guitar.
 // With native_publish (the guitar's string count is its build count, C-lite) `want` is not used: the
 // guitar shows the count it was built with.
-bool Rs7Gs_Frame(uint8_t* guitar, uint8_t* gs, bool want);
+bool RsxrGs_Frame(uint8_t* guitar, uint8_t* gs, bool want);
 // String s (>= 6) of a native GuitarStrings if it is active, has its model and shader params; else
 // nullptr. ghost: the ghost string.
-uint8_t* Rs7Gs_Active(uint8_t* gs, int s, bool ghost);
+uint8_t* RsxrGs_Active(uint8_t* gs, int s, bool ghost);
 // Startup (before any site is written): builds the copies; false = native strings off (logged).
-bool Rs7Gs_BuildCopies();
-// Startup, before any site is written: builds the copies (Rs7Gs_BuildCopies) when native strings are on; a copy that
+bool RsxrGs_BuildCopies();
+// Startup, before any site is written: builds the copies (RsxrGs_BuildCopies) when native strings are on; a copy that
 // differs from the generated one turns native strings off.
-void Rs7Gs_Prepare();
+void RsxrGs_Prepare();
 
-struct Rs7GsStats {
+struct RsxrGsStats {
     int native, active7, raised, lowered;
 };
 
-void Rs7Gs_Stats(Rs7GsStats* out);
+void RsxrGs_Stats(RsxrGsStats* out);
 
 // The feature's hooks (registration.cpp), consumed by src/registry.cpp.
-struct Rs7HookTable;
-extern const Rs7HookTable kRs7StringsHooks;
+struct RsxrHookTable;
+extern const RsxrHookTable kRsxrStringsHooks;

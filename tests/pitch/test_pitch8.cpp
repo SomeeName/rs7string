@@ -13,22 +13,22 @@ size_t __cdecl FakeMsize(void*) {
     return g_fakeSize;
 }
 
-struct MsizeScope {  // g_rs7_fn_msize -> FakeMsize reporting `size`, restored afterwards
-    uintptr_t saved = g_rs7_fn_msize;
+struct MsizeScope {  // g_rsxr_fn_msize -> FakeMsize reporting `size`, restored afterwards
+    uintptr_t saved = g_rsxr_fn_msize;
 
     explicit MsizeScope(size_t size) {
         g_fakeSize = size;
-        g_rs7_fn_msize = reinterpret_cast<uintptr_t>(&FakeMsize);
+        g_rsxr_fn_msize = reinterpret_cast<uintptr_t>(&FakeMsize);
     }
 
-    ~MsizeScope() { g_rs7_fn_msize = saved; }
+    ~MsizeScope() { g_rsxr_fn_msize = saved; }
 };
 
 struct TailedScope {  // an empty registry of tailed allocations, emptied again afterwards
 
-    TailedScope() { Rs7Pitch_ClearTailed(); }
+    TailedScope() { RsxrPitch_ClearTailed(); }
 
-    ~TailedScope() { Rs7Pitch_ClearTailed(); }
+    ~TailedScope() { RsxrPitch_ClearTailed(); }
 };
 
 template <class T>
@@ -46,13 +46,13 @@ TEST(pitch8_fill_tuning_copies_up_to_eight_and_zeroes_the_rest) {
     const int16_t v[9] = {-2, 1, 2, 3, 4, 5, -1, 7, 99};
     int16_t t[8];
 
-    rs7p::FillTuning(v, 6, t);
+    rsxrp::FillTuning(v, 6, t);
 
     for (int i = 0; i < 8; ++i) {
         CHECK_EQ(t[i], i < 6 ? v[i] : 0);
     }
 
-    rs7p::FillTuning(v, 9, t);
+    rsxrp::FillTuning(v, 9, t);
 
     for (int i = 0; i < 8; ++i) {
         CHECK_EQ(t[i], v[i]);
@@ -63,14 +63,14 @@ TEST(pitch8_open_midi_is_the_stock_unrolled_formula) {
     const int16_t t[8] = {-2, -1, 0, 1, 2, 3, -1, 4};
     int16_t g[8], b[8];
 
-    rs7p::FillOpen(t, false, g);
+    rsxrp::FillOpen(t, false, g);
     const int gb[8] = {40, 45, 50, 55, 59, 64, 35, 30};
 
     for (int i = 0; i < 8; ++i) {
         CHECK_EQ(g[i], gb[i] + t[i]);
     }
 
-    rs7p::FillOpen(t, true, b);
+    rsxrp::FillOpen(t, true, b);
     const int bb[4] = {28, 33, 38, 43};
 
     for (int i = 0; i < 8; ++i) {
@@ -81,127 +81,127 @@ TEST(pitch8_open_midi_is_the_stock_unrolled_formula) {
 TEST(pitch8_lowest_matches_s3_for_seven_and_extends_to_eight) {
     const int16_t t[8] = {0, 0, 0, 0, 0, 0, -2, -1};
 
-    CHECK_EQ(rs7p::Lowest(40, t, 6, false), 40);
-    CHECK_EQ(rs7p::Lowest(40, t, 7, false), 33);  // S3: 35 + t6
-    CHECK_EQ(rs7p::Lowest(40, t, 8, false), 29);  // + 30 + t7
-    CHECK_EQ(rs7p::Lowest(20, t, 8, false), 20);  // never raised
-    CHECK_EQ(rs7p::Lowest(28, t, 8, true), 28);   // bass untouched
+    CHECK_EQ(rsxrp::Lowest(40, t, 6, false), 40);
+    CHECK_EQ(rsxrp::Lowest(40, t, 7, false), 33);  // S3: 35 + t6
+    CHECK_EQ(rsxrp::Lowest(40, t, 8, false), 29);  // + 30 + t7
+    CHECK_EQ(rsxrp::Lowest(20, t, 8, false), 20);  // never raised
+    CHECK_EQ(rsxrp::Lowest(28, t, 8, true), 28);   // bass untouched
 }
 
 TEST(pitch8_det_tuned_writes_the_tail_only_into_a_grown_block) {
-    std::vector<uint8_t> det(rs7p::kDetSize, 0xCD);
+    std::vector<uint8_t> det(rsxrp::kDetSize, 0xCD);
 
-    Put<int>(det, rs7::kDetInstrument, 1);
-    Put<int>(det, rs7::kDetLowestOpen, 40);
+    Put<int>(det, rsxr::kDetInstrument, 1);
+    Put<int>(det, rsxr::kDetLowestOpen, 40);
     std::vector<int16_t> v = {0, 0, 0, 0, 0, 0, -2};
-    const Rs7Int16Vec vec{v.data(), v.data() + v.size()};
+    const RsxrInt16Vec vec{v.data(), v.data() + v.size()};
 
     {
-        MsizeScope ms(rs7p::kDetStockSize);  // allocated before PA1: untouched
+        MsizeScope ms(rsxrp::kDetStockSize);  // allocated before PA1: untouched
 
-        Rs7Pitch_DetTuned(det.data(), &vec);
-        CHECK_EQ(Get<uint32_t>(det, rs7p::kDetMagic), 0xCDCDCDCDu);
-        CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), 40);
+        RsxrPitch_DetTuned(det.data(), &vec);
+        CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetMagic), 0xCDCDCDCDu);
+        CHECK_EQ(Get<int>(det, rsxr::kDetLowestOpen), 40);
     }
 
     {
-        MsizeScope ms(rs7p::kDetSize);
+        MsizeScope ms(rsxrp::kDetSize);
 
-        Rs7Pitch_DetTuned(det.data(), &vec);
-        CHECK_EQ(Get<uint32_t>(det, rs7p::kDetMagic), rs7p::kMagic);
-        CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 6u);  // the active count stays 6
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), -2);
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 14), 0);
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetOpen8 + 12), 33);
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetOpen8 + 14), 30);
-        CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), 33);
+        RsxrPitch_DetTuned(det.data(), &vec);
+        CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetMagic), rsxrp::kMagic);
+        CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 6u);  // the active count stays 6
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 12), -2);
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 14), 0);
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetOpen8 + 12), 33);
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetOpen8 + 14), 30);
+        CHECK_EQ(Get<int>(det, rsxr::kDetLowestOpen), 33);
     }
 
-    g_rs7_fn_msize = 0;  // no _msize: never written
-    std::vector<uint8_t> m(rs7p::kMatSize, 0xCD);
+    g_rsxr_fn_msize = 0;  // no _msize: never written
+    std::vector<uint8_t> m(rsxrp::kMatSize, 0xCD);
 
-    Rs7Pitch_MatNew(m.data());
-    CHECK_EQ(Get<uint32_t>(m, rs7p::kMatMagic), 0xCDCDCDCDu);
+    RsxrPitch_MatNew(m.data());
+    CHECK_EQ(Get<uint32_t>(m, rsxrp::kMatMagic), 0xCDCDCDCDu);
 }
 
 TEST(pitch8_matcher_tail) {
-    std::vector<uint8_t> m(rs7p::kMatSize, 0xCD);
-    MsizeScope ms(rs7p::kMatSize);
+    std::vector<uint8_t> m(rsxrp::kMatSize, 0xCD);
+    MsizeScope ms(rsxrp::kMatSize);
 
-    Rs7Pitch_MatNew(m.data());
-    CHECK_EQ(Get<uint32_t>(m, rs7p::kMatMagic), rs7p::kMagic);
+    RsxrPitch_MatNew(m.data());
+    CHECK_EQ(Get<uint32_t>(m, rsxrp::kMatMagic), rsxrp::kMagic);
 
     for (uint32_t i = 0; i < 8; ++i) {
-        CHECK_EQ(Get<int16_t>(m, rs7p::kMatTuning8 + 2 * i), 0);
+        CHECK_EQ(Get<int16_t>(m, rsxrp::kMatTuning8 + 2 * i), 0);
     }
 
     std::vector<int16_t> v = {-2, 0, 0, 0, 0, 0, -1, 3};
-    const Rs7Int16Vec vec{v.data(), v.data() + v.size()};
+    const RsxrInt16Vec vec{v.data(), v.data() + v.size()};
 
-    Rs7Pitch_MatTuned(m.data(), &vec);
+    RsxrPitch_MatTuned(m.data(), &vec);
 
     for (uint32_t i = 0; i < 8; ++i) {
-        CHECK_EQ(Get<int16_t>(m, rs7p::kMatTuning8 + 2 * i), v[i]);
+        CHECK_EQ(Get<int16_t>(m, rsxrp::kMatTuning8 + 2 * i), v[i]);
     }
 }
 
-// Rs7Pitch_Tailed trusts only objects whose tail the DLL wrote (the registry of tailed allocations, filled after
+// RsxrPitch_Tailed trusts only objects whose tail the DLL wrote (the registry of tailed allocations, filled after
 // _msize saw the native block size): a magic the DLL did not write, a stock-size block, the other kind or a cleared
 // magic are refused, and the check itself calls no _msize.
 TEST(pitch8_tailed_trusts_only_the_registered_allocations) {
     TailedScope reg;
-    std::vector<uint8_t> m(rs7p::kMatSize, 0), d(rs7p::kDetSize, 0);
-    alignas(8) static uint8_t foreign[rs7p::kDetSize];  // static storage: never a registered heap block
+    std::vector<uint8_t> m(rsxrp::kMatSize, 0), d(rsxrp::kDetSize, 0);
+    alignas(8) static uint8_t foreign[rsxrp::kDetSize];  // static storage: never a registered heap block
 
-    std::memcpy(foreign + rs7p::kMatMagic, &rs7p::kMagic, 4);
-    std::memcpy(foreign + rs7p::kDetMagic, &rs7p::kMagic, 4);
+    std::memcpy(foreign + rsxrp::kMatMagic, &rsxrp::kMagic, 4);
+    std::memcpy(foreign + rsxrp::kDetMagic, &rsxrp::kMagic, 4);
 
     {
-        MsizeScope ms(rs7p::kMatStockSize);  // stock-size block: no tail is written, nothing registered
+        MsizeScope ms(rsxrp::kMatStockSize);  // stock-size block: no tail is written, nothing registered
 
-        Rs7Pitch_MatNew(m.data());
-        CHECK_EQ(Get<uint32_t>(m, rs7p::kMatMagic), 0u);
-        CHECK_EQ(Rs7Pitch_Tailed(m.data(), 0), 0);
+        RsxrPitch_MatNew(m.data());
+        CHECK_EQ(Get<uint32_t>(m, rsxrp::kMatMagic), 0u);
+        CHECK_EQ(RsxrPitch_Tailed(m.data(), 0), 0);
     }
 
     {
-        MsizeScope ms(rs7p::kDetSize);
+        MsizeScope ms(rsxrp::kDetSize);
 
-        CHECK_EQ(Rs7Pitch_Tailed(foreign, 0), 0);
-        CHECK_EQ(Rs7Pitch_Tailed(foreign, 1), 0);
-        Rs7Pitch_MatNew(m.data());
-        Rs7Pitch_DetReset(d.data());
+        CHECK_EQ(RsxrPitch_Tailed(foreign, 0), 0);
+        CHECK_EQ(RsxrPitch_Tailed(foreign, 1), 0);
+        RsxrPitch_MatNew(m.data());
+        RsxrPitch_DetReset(d.data());
     }
 
-    rs7test::Restore restore_g_rs7_fn_msize(g_rs7_fn_msize);
+    rsxrtest::Restore restore_g_rsxr_fn_msize(g_rsxr_fn_msize);
 
-    g_rs7_fn_msize = 0;  // the check needs no _msize
-    CHECK_EQ(Rs7Pitch_Tailed(m.data(), 0), 1);
-    CHECK_EQ(Rs7Pitch_Tailed(d.data(), 1), 1);
-    CHECK_EQ(Rs7Pitch_Tailed(m.data(), 1), 0);
-    CHECK_EQ(Rs7Pitch_Tailed(d.data(), 0), 0);
-    CHECK_EQ(Rs7Pitch_Tailed(nullptr, 0), 0);
-    Put<uint32_t>(m, rs7p::kMatMagic, 0);
-    CHECK_EQ(Rs7Pitch_Tailed(m.data(), 0), 0);
+    g_rsxr_fn_msize = 0;  // the check needs no _msize
+    CHECK_EQ(RsxrPitch_Tailed(m.data(), 0), 1);
+    CHECK_EQ(RsxrPitch_Tailed(d.data(), 1), 1);
+    CHECK_EQ(RsxrPitch_Tailed(m.data(), 1), 0);
+    CHECK_EQ(RsxrPitch_Tailed(d.data(), 0), 0);
+    CHECK_EQ(RsxrPitch_Tailed(nullptr, 0), 0);
+    Put<uint32_t>(m, rsxrp::kMatMagic, 0);
+    CHECK_EQ(RsxrPitch_Tailed(m.data(), 0), 0);
 }
 
 // The registry keeps the most recently written objects: kTailedMax + 10 registrations evict an object written once,
 // an object rewritten in between stays.
 TEST(pitch8_tailed_registry_evicts_the_least_recently_written) {
     TailedScope reg;
-    MsizeScope ms(rs7p::kDetSize);
-    std::vector<std::vector<uint8_t>> mats(rs7p::kTailedMax + 10, std::vector<uint8_t>(rs7p::kMatSize, 0));
+    MsizeScope ms(rsxrp::kDetSize);
+    std::vector<std::vector<uint8_t>> mats(rsxrp::kTailedMax + 10, std::vector<uint8_t>(rsxrp::kMatSize, 0));
 
     for (size_t i = 0; i < mats.size(); ++i) {
-        Rs7Pitch_MatNew(mats[i].data());
+        RsxrPitch_MatNew(mats[i].data());
         if (i > 1) {
-            Rs7Pitch_MatNew(mats[1].data());
+            RsxrPitch_MatNew(mats[1].data());
         }
     }
 
-    CHECK_EQ(Rs7Pitch_Tailed(mats[0].data(), 0), 0);
-    CHECK_EQ(Rs7Pitch_Tailed(mats[1].data(), 0), 1);
-    CHECK_EQ(Rs7Pitch_Tailed(mats.back().data(), 0), 1);
+    CHECK_EQ(RsxrPitch_Tailed(mats[0].data(), 0), 0);
+    CHECK_EQ(RsxrPitch_Tailed(mats[1].data(), 0), 1);
+    CHECK_EQ(RsxrPitch_Tailed(mats.back().data(), 0), 1);
 }
 
 // A tailed object freed and its address reused by a stock-size block that still holds the old magic: whichever DLL
@@ -209,14 +209,14 @@ TEST(pitch8_tailed_registry_evicts_the_least_recently_written) {
 // the stale entry, so the block is never trusted and nothing past it is read.
 TEST(pitch8_tailed_stale_entry_of_a_reused_address_is_dropped) {
     TailedScope reg;
-    alignas(8) static uint8_t block[rs7p::kDetSize];  // one address, reused
+    alignas(8) static uint8_t block[rsxrp::kDetSize];  // one address, reused
     std::vector<int16_t> six = {0, 0, 0, 0, 0, 0};
-    const Rs7Int16Vec vec{six.data(), six.data() + six.size()};
-    using Writer = void (*)(uint8_t*, uint32_t, const Rs7Int16Vec*);
+    const RsxrInt16Vec vec{six.data(), six.data() + six.size()};
+    using Writer = void (*)(uint8_t*, uint32_t, const RsxrInt16Vec*);
     const Writer writers[] = {
-        [](uint8_t* o, uint32_t kind, const Rs7Int16Vec*) { kind ? Rs7Pitch_DetReset(o) : Rs7Pitch_MatNew(o); },
-        [](uint8_t* o, uint32_t kind, const Rs7Int16Vec* v) {
-            kind ? Rs7Pitch_DetTuned(o, v) : Rs7Pitch_MatTuned(o, v);
+        [](uint8_t* o, uint32_t kind, const RsxrInt16Vec*) { kind ? RsxrPitch_DetReset(o) : RsxrPitch_MatNew(o); },
+        [](uint8_t* o, uint32_t kind, const RsxrInt16Vec* v) {
+            kind ? RsxrPitch_DetTuned(o, v) : RsxrPitch_MatTuned(o, v);
         },
     };
 
@@ -225,21 +225,21 @@ TEST(pitch8_tailed_stale_entry_of_a_reused_address_is_dropped) {
             std::memset(block, 0, sizeof block);
 
             {
-                MsizeScope ms(rs7p::kDetSize);  // the tailed object
+                MsizeScope ms(rsxrp::kDetSize);  // the tailed object
 
                 writer(block, kind, &vec);
-                CHECK_EQ(Rs7Pitch_Tailed(block, kind), 1);
+                CHECK_EQ(RsxrPitch_Tailed(block, kind), 1);
             }
 
             // freed; the same address now a stock-size block, the old magic still in the bytes past it
-            MsizeScope ms(kind ? rs7p::kDetStockSize : rs7p::kMatStockSize);
+            MsizeScope ms(kind ? rsxrp::kDetStockSize : rsxrp::kMatStockSize);
 
             uint32_t magic = 0;
 
-            std::memcpy(&magic, block + (kind ? rs7p::kDetMagic : rs7p::kMatMagic), 4);
-            CHECK_EQ(magic, rs7p::kMagic);
+            std::memcpy(&magic, block + (kind ? rsxrp::kDetMagic : rsxrp::kMatMagic), 4);
+            CHECK_EQ(magic, rsxrp::kMagic);
             writer(block, kind, &vec);
-            CHECK_EQ(Rs7Pitch_Tailed(block, kind), 0);
+            CHECK_EQ(RsxrPitch_Tailed(block, kind), 0);
         }
     }
 }
@@ -250,82 +250,82 @@ TEST(pitch8_tailed_stale_entry_of_a_reused_address_is_dropped) {
 // keeps the song's strings 6 / 7 in the detector / matcher tails; without the switch (or outside the
 // re-apply) six entries zero them as before.
 TEST(pitch8_profile_reapply_keeps_the_song_strings_with_native_tuner) {
-    MsizeScope msize(rs7p::kDetSize);
-    rs7test::Restore restore_g_rs7_native_tuner(g_rs7_native_tuner);
+    MsizeScope msize(rsxrp::kDetSize);
+    rsxrtest::Restore restore_g_rsxr_native_tuner(g_rsxr_native_tuner);
 
     for (int nativeTuner : {0, 1}) {
-        g_rs7_native_tuner = uintptr_t(nativeTuner);
-        std::vector<uint8_t> det(rs7p::kDetSize, 0);
+        g_rsxr_native_tuner = uintptr_t(nativeTuner);
+        std::vector<uint8_t> det(rsxrp::kDetSize, 0);
 
-        Put<int>(det, rs7::kDetLowestOpen, 40);
-        Rs7Pitch_DetReset(det.data());
+        Put<int>(det, rsxr::kDetLowestOpen, 40);
+        RsxrPitch_DetReset(det.data());
         const int16_t song[7] = {0, 0, 0, 0, 0, 0, -1};  // 7-string, low A# (34)
-        const Rs7Int16Vec v7{song, song + 7};
+        const RsxrInt16Vec v7{song, song + 7};
 
-        Rs7Pitch_DetTuned(det.data(), &v7);
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), -1);
-        CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), 34);
+        RsxrPitch_DetTuned(det.data(), &v7);
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 12), -1);
+        CHECK_EQ(Get<int>(det, rsxr::kDetLowestOpen), 34);
         const int16_t profile[6] = {0, 0, 0, 0, 0, 0};
-        const Rs7Int16Vec v6{profile, profile + 6};
+        const RsxrInt16Vec v6{profile, profile + 6};
 
-        Put<int>(det, rs7::kDetLowestOpen, 40);                   // the stock SetTuning: string 0 + 40
-        g_rs7_profile_apply = Rs7Pitch_KeepSongTuning() ? 1 : 0;  // TS8PA (written only with the switch)
-        Rs7Pitch_DetTuned(det.data(), &v6);
-        g_rs7_profile_apply = 0;  // TS8PZ
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), nativeTuner ? -1 : 0);
-        CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), nativeTuner ? 34 : 40);
+        Put<int>(det, rsxr::kDetLowestOpen, 40);                    // the stock SetTuning: string 0 + 40
+        g_rsxr_profile_apply = RsxrPitch_KeepSongTuning() ? 1 : 0;  // TS8PA (written only with the switch)
+        RsxrPitch_DetTuned(det.data(), &v6);
+        g_rsxr_profile_apply = 0;  // TS8PZ
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 12), nativeTuner ? -1 : 0);
+        CHECK_EQ(Get<int>(det, rsxr::kDetLowestOpen), nativeTuner ? 34 : 40);
         // A six-string song (outside the re-apply) replaces it in both modes.
-        Put<int>(det, rs7::kDetLowestOpen, 40);
-        Rs7Pitch_DetTuned(det.data(), &v6);
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), 0);
-        g_rs7_profile_apply = Rs7Pitch_KeepSongTuning() ? 1 : 0;
-        Rs7Pitch_DetTuned(det.data(), &v6);
-        g_rs7_profile_apply = 0;
-        CHECK_EQ(Get<int16_t>(det, rs7p::kDetTuning8 + 12), 0);
-        CHECK_EQ(Get<int>(det, rs7::kDetLowestOpen), 40);
+        Put<int>(det, rsxr::kDetLowestOpen, 40);
+        RsxrPitch_DetTuned(det.data(), &v6);
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 12), 0);
+        g_rsxr_profile_apply = RsxrPitch_KeepSongTuning() ? 1 : 0;
+        RsxrPitch_DetTuned(det.data(), &v6);
+        g_rsxr_profile_apply = 0;
+        CHECK_EQ(Get<int16_t>(det, rsxrp::kDetTuning8 + 12), 0);
+        CHECK_EQ(Get<int>(det, rsxr::kDetLowestOpen), 40);
     }
 }
 
 TEST(pitch8_song_count_survives_the_set_tuning_and_ends_with_the_detector) {
-    std::vector<uint8_t> det(rs7p::kDetSize, 0xCD);
+    std::vector<uint8_t> det(rsxrp::kDetSize, 0xCD);
 
-    Put<int>(det, rs7::kDetInstrument, 1);
-    Put<int>(det, rs7::kDetLowestOpen, 40);
+    Put<int>(det, rsxr::kDetInstrument, 1);
+    Put<int>(det, rsxr::kDetLowestOpen, 40);
     std::vector<int16_t> v = {0, 0, 0, 0, 0, 0, -2};
-    const Rs7Int16Vec vec{v.data(), v.data() + v.size()};
-    MsizeScope ms(rs7p::kDetSize);
+    const RsxrInt16Vec vec{v.data(), v.data() + v.size()};
+    MsizeScope ms(rsxrp::kDetSize);
 
-    CHECK_EQ(Rs7Pitch_SongCount(det.data()), 0u);
-    Rs7Pitch_SetSongCount(det.data(), 7);  // S4 (Rs7Song_WidenDetector): the song is 7 strings
-    CHECK_EQ(Rs7Pitch_SongCount(det.data()), 7u);
-    Rs7Pitch_DetTuned(det.data(), &vec);  // the SetTuning that S4 runs next
-    CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 7u);
+    CHECK_EQ(RsxrPitch_SongCount(det.data()), 0u);
+    RsxrPitch_SetSongCount(det.data(), 7);  // S4 (RsxrSong_WidenDetector): the song is 7 strings
+    CHECK_EQ(RsxrPitch_SongCount(det.data()), 7u);
+    RsxrPitch_DetTuned(det.data(), &vec);  // the SetTuning that S4 runs next
+    CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 7u);
     v.resize(6);
-    const Rs7Int16Vec six{v.data(), v.data() + v.size()};
+    const RsxrInt16Vec six{v.data(), v.data() + v.size()};
 
-    Rs7Pitch_DetTuned(det.data(), &six);  // a profile re-apply mid-song keeps it
-    CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 7u);
-    Rs7Pitch_SetSongCount(det.data(), 0);  // the next S4 of a 6-string song
-    Rs7Pitch_DetTuned(det.data(), &six);
-    CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 6u);
-    Rs7Pitch_SetSongCount(det.data(), 8);
-    Rs7Pitch_DetReset(det.data());  // PR0: a new / reset detector has no song
-    CHECK_EQ(Rs7Pitch_SongCount(det.data()), 0u);
-    CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 6u);
-    Put<int>(det, rs7::kDetInstrument, 2);  // bass never widens
-    Rs7Pitch_SetSongCount(det.data(), 7);
-    Rs7Pitch_DetTuned(det.data(), &six);
-    CHECK_EQ(Get<uint32_t>(det, rs7p::kDetCount), 4u);
-    Rs7Pitch_SetSongCount(det.data(), 0);
+    RsxrPitch_DetTuned(det.data(), &six);  // a profile re-apply mid-song keeps it
+    CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 7u);
+    RsxrPitch_SetSongCount(det.data(), 0);  // the next S4 of a 6-string song
+    RsxrPitch_DetTuned(det.data(), &six);
+    CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 6u);
+    RsxrPitch_SetSongCount(det.data(), 8);
+    RsxrPitch_DetReset(det.data());  // PR0: a new / reset detector has no song
+    CHECK_EQ(RsxrPitch_SongCount(det.data()), 0u);
+    CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 6u);
+    Put<int>(det, rsxr::kDetInstrument, 2);  // bass never widens
+    RsxrPitch_SetSongCount(det.data(), 7);
+    RsxrPitch_DetTuned(det.data(), &six);
+    CHECK_EQ(Get<uint32_t>(det, rsxrp::kDetCount), 4u);
+    RsxrPitch_SetSongCount(det.data(), 0);
 }
 
 TEST(pitch8_expected_pitch8_matches_the_raw8_cases) {
     const int16_t t[8] = {-2, 0, 1, 0, 0, 0, -1, 3};
 
-    CHECK(rs7p::ExpectedPitch8(t, 1, 0, 5) == 40u - 2 + 5);
-    CHECK(rs7p::ExpectedPitch8(t, 1, 6, 0) == 35u - 1);
-    CHECK(rs7p::ExpectedPitch8(t, 0xFF, 7, 2) == 30u + 3 + 2);
-    CHECK(rs7p::ExpectedPitch8(t, 1, 8, 4) == 3u);
-    CHECK(rs7p::ExpectedPitch8(t, 2, 2, 1) == 38u + 1 + 1);
-    CHECK(rs7p::ExpectedPitch8(t, 2, 6, 0) == 0xFFFFFFFFu);
+    CHECK(rsxrp::ExpectedPitch8(t, 1, 0, 5) == 40u - 2 + 5);
+    CHECK(rsxrp::ExpectedPitch8(t, 1, 6, 0) == 35u - 1);
+    CHECK(rsxrp::ExpectedPitch8(t, 0xFF, 7, 2) == 30u + 3 + 2);
+    CHECK(rsxrp::ExpectedPitch8(t, 1, 8, 4) == 3u);
+    CHECK(rsxrp::ExpectedPitch8(t, 2, 2, 1) == 38u + 1 + 1);
+    CHECK(rsxrp::ExpectedPitch8(t, 2, 6, 0) == 0xFFFFFFFFu);
 }

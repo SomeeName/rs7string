@@ -4,13 +4,13 @@
 #include <cstdint>
 #include <vector>
 
-namespace rs7fix {
+namespace rsxrfix {
 // Worst-case synthetic stock: every line different (not only every row), all levels, 1..9 levels.
-inline std::vector<Rs7Image> Stock(unsigned levels) {
-    std::vector<Rs7Image> v;
+inline std::vector<RsxrImage> Stock(unsigned levels) {
+    std::vector<RsxrImage> v;
 
     for (unsigned k = 0; k < levels; ++k) {
-        Rs7Image im;
+        RsxrImage im;
 
         im.w = std::max(1u, 256u >> k);
         im.h = std::max(1u, 128u >> k);
@@ -30,11 +30,11 @@ inline std::vector<Rs7Image> Stock(unsigned levels) {
 
 // Like the game's ramps: 16 rows, every line of a row identical; rows 7 and 15 grey (R = G = B).
 // Smaller levels: the row of each line (h/16 lines per row while h >= 16, else line i = row 16i/h).
-inline std::vector<Rs7Image> UniformStock(unsigned levels) {
-    std::vector<Rs7Image> v;
+inline std::vector<RsxrImage> UniformStock(unsigned levels) {
+    std::vector<RsxrImage> v;
 
     for (unsigned k = 0; k < levels; ++k) {
-        Rs7Image im;
+        RsxrImage im;
 
         im.w = std::max(1u, 256u >> k);
         im.h = std::max(1u, 128u >> k);
@@ -57,4 +57,4 @@ inline std::vector<Rs7Image> UniformStock(unsigned levels) {
 
     return v;
 }
-}  // namespace rs7fix
+}  // namespace rsxrfix

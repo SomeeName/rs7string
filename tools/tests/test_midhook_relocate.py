@@ -1,5 +1,5 @@
 """The relocator's newer encodings (INC/DEC r/m8, IMUL, TEST r/m,imm, operand-size prefix 66) on real jmp sites:
-the relocated copy (Rs7Mid_Relocate of the built DLL) executes like the stock game bytes in Unicorn.
+the relocated copy (RsxrMid_Relocate of the built DLL) executes like the stock game bytes in Unicorn.
 
 Each run starts from the same registers, flags and memory (unmapped pages appear on first touch with content
 derived from their address) and stops where control leaves the code (the fall-through end or an outbound branch
@@ -115,7 +115,7 @@ def test_relocated_copy_executes_like_the_stock_bytes(game, relocate, sid):
     va, raw = site_bytes(game, sid)
     copy = relocate(raw, va, OUT)
     assert copy is not None, f"{sid} ({SITES_NEW[sid]}) rejected"
-    back = struct.pack("<Bi", 0xE9, va + len(raw) - (OUT + len(copy) + 5))  # as Rs7Mid_Build's jump back
+    back = struct.pack("<Bi", 0xE9, va + len(raw) - (OUT + len(copy) + 5))  # as RsxrMid_Build's jump back
     exits = set()
     for regs in register_sets(va):
         for flags in FLAGS:

@@ -7,7 +7,7 @@
 #include <cstring>
 #include <initializer_list>
 
-namespace Rs7MidRun {
+namespace RsxrMidRun {
 struct Regs {
     uint32_t eax, ebx, ecx, edx, esi, edi, flags, espDelta;
 };
@@ -99,4 +99,4 @@ inline bool Same(const Regs& a, const Regs& b) {
     return std::memcmp(&a, &b, sizeof a) == 0;
 }
 
-}  // namespace Rs7MidRun
+}  // namespace RsxrMidRun

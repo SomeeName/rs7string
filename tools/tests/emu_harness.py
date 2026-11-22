@@ -1,4 +1,4 @@
-"""Shared Unicorn harness of the emulator tests: run the rs7string stubs in Unicorn on the game snapshot and compare them with stock code.
+"""Shared Unicorn harness of the emulator tests: run the RSXR stubs in Unicorn on the game snapshot and compare them with stock code.
 
 Two emulators share the same setup; only the patched one has the code sites (+5 data/code
 references) rewritten exactly as the DLL does (jmp/rel32/call into the DLL's stubs, resume/target
@@ -73,156 +73,155 @@ RET_MAGIC = 0x5D2F0000
 TEB = 0x5D300000  # fake TEB page (fs base), see Emu.__init__
 FLAGS_MASK = 0x8D5  # CF PF AF ZF SF OF
 
-# Stubs whose C calls are diagnostics only (D2, D3,
-# D5 -> Rs7_Diag*: void cdecl loggers; R2's D1 logger is in VOID_C_EXPORTS). The loggers need Win32 imports the emulator does not
-# provide, so their entries are replaced with `ret`; the stubs' own pushad / pushfd / push / call /
-# stack restore / popfd / popad still run.
+# Stubs whose C calls are diagnostics only (D2, D3, D5 -> Rsxr_Diag*: void cdecl loggers; R2's D1 logger is in
+# VOID_C_EXPORTS). The loggers need Win32 imports the emulator does not provide, so their entries are replaced with
+# `ret`; the stubs' own pushad / pushfd / push / call / stack restore / popfd / popad still run.
 VOID_C_CALLS = ("D2", "D3", "D5")
 MID_CALLBACKS = {
-    "D2": "Rs7_Mid_D2",
-    "D3": "Rs7_Mid_D3",
-    "SE1": "Rs7_Mid_SE1",
-    "SE2": "Rs7_Mid_SE2",
-    "SE3": "Rs7_Mid_SE3",
-    "ALTS": "Rs7_Mid_ALTS",
-    "ALTF": "Rs7_Mid_ALTF",
-    "ALTL": "Rs7_Mid_ALTL",
-    "ALTR": "Rs7_Mid_ALTR",
-    "COAT": "Rs7_Mid_COAT",
-    "COAS": "Rs7_Mid_COAS",
+    "D2": "Rsxr_Mid_D2",
+    "D3": "Rsxr_Mid_D3",
+    "SE1": "Rsxr_Mid_SE1",
+    "SE2": "Rsxr_Mid_SE2",
+    "SE3": "Rsxr_Mid_SE3",
+    "ALTS": "Rsxr_Mid_ALTS",
+    "ALTF": "Rsxr_Mid_ALTF",
+    "ALTL": "Rsxr_Mid_ALTL",
+    "ALTR": "Rsxr_Mid_ALTR",
+    "COAT": "Rsxr_Mid_COAT",
+    "COAS": "Rsxr_Mid_COAS",
     # cold sites converted from naked stubs (features/*/hooks*.cpp, test_midhook_cold.py)
-    "TK": "Rs7_Mid_TK",
-    "TS": "Rs7_Mid_TS",
-    "TUT": "Rs7_Mid_TUT",
-    "XB1": "Rs7_Mid_XB1",
-    "N1": "Rs7_Mid_N1",
-    "N21": "Rs7_Mid_N21",
-    "GSZ1": "Rs7_Mid_GSZ1",
-    "GIZ1": "Rs7_Mid_GIZ1",
-    "GIP1": "Rs7_Mid_GIP1",
-    "PSA2": "Rs7_Mid_PSA2",
-    "PSD1": "Rs7_Mid_PSD1",
-    "PSD2": "Rs7_Mid_PSD2",
-    "PSU3": "Rs7_Mid_PSU3",
-    "PSC1": "Rs7_Mid_PSC1",
-    "PSL1": "Rs7_Mid_PSL1",
-    "PSM2": "Rs7_Mid_PSM2",
-    "PSR1": "Rs7_Mid_PSR1",
-    "PSN1": "Rs7_Mid_PSN1",
-    "GSSS": "Rs7_Mid_GSSS",
-    "GSSE": "Rs7_Mid_GSSE",
-    "PGH1": "Rs7_Mid_PGH1",  # 3+3 peg glow: skip meshes of the hidden peg part (features/headstock/assetload_pegs.cpp)
-    "GLW": "Rs7_Mid_GLW",  # RSMods pure red glow (features/colours/hooks.cpp); a no-op while g_rs7_glow_fix = 0
-    "CBUV": "Rs7_Mid_CBUV",  # bass low-B colour slot per player (features/colours/hooks_bass.cpp), light
-    "CBRGB": "Rs7_Mid_CBRGB",
-    "CBSTR": "Rs7_Mid_CBSTR",
-    "BD1": "Rs7_Mid_BD1",  # former naked stubs from here on (test_midhook_cold.py); bend direction guards, light
-    "BD2": "Rs7_Mid_BD2",
-    "BD3": "Rs7_Mid_BD3",
-    "BD4": "Rs7_Mid_BD4",
-    "D5": "Rs7_Mid_D5",  # gem position log (features/diag/hooks.cpp)
-    "FRG1": "Rs7_Mid_FRG1",  # fret range glow ends (features/frets/hooks.cpp)
-    "FRG2": "Rs7_Mid_FRG2",  # fret range glow bar scale (features/frets/hooks.cpp)
-    "B1": "Rs7_Mid_B1",  # chord frame marks (features/chords/hooks_frames.cpp)
-    "N12": "Rs7_Mid_N12",  # string 6 in the SNG section mask (features/string7/hooks_mid.cpp)
-    "N13": "Rs7_Mid_N13",
-    "PM0": "Rs7_Mid_PM0",  # native pitch tails (features/pitch/hooks_mid.cpp)
-    "PR0": "Rs7_Mid_PR0",
-    "PM1": "Rs7_Mid_PM1",
+    "TK": "Rsxr_Mid_TK",
+    "TS": "Rsxr_Mid_TS",
+    "TUT": "Rsxr_Mid_TUT",
+    "XB1": "Rsxr_Mid_XB1",
+    "N1": "Rsxr_Mid_N1",
+    "N21": "Rsxr_Mid_N21",
+    "GSZ1": "Rsxr_Mid_GSZ1",
+    "GIZ1": "Rsxr_Mid_GIZ1",
+    "GIP1": "Rsxr_Mid_GIP1",
+    "PSA2": "Rsxr_Mid_PSA2",
+    "PSD1": "Rsxr_Mid_PSD1",
+    "PSD2": "Rsxr_Mid_PSD2",
+    "PSU3": "Rsxr_Mid_PSU3",
+    "PSC1": "Rsxr_Mid_PSC1",
+    "PSL1": "Rsxr_Mid_PSL1",
+    "PSM2": "Rsxr_Mid_PSM2",
+    "PSR1": "Rsxr_Mid_PSR1",
+    "PSN1": "Rsxr_Mid_PSN1",
+    "GSSS": "Rsxr_Mid_GSSS",
+    "GSSE": "Rsxr_Mid_GSSE",
+    "PGH1": "Rsxr_Mid_PGH1",  # 3+3 peg glow: skip meshes of the hidden peg part (features/headstock/assetload_pegs.cpp)
+    "GLW": "Rsxr_Mid_GLW",  # RSMods pure red glow (features/colours/hooks.cpp); a no-op while g_rsxr_glow_fix = 0
+    "CBUV": "Rsxr_Mid_CBUV",  # bass low-B colour slot per player (features/colours/hooks_bass.cpp), light
+    "CBRGB": "Rsxr_Mid_CBRGB",
+    "CBSTR": "Rsxr_Mid_CBSTR",
+    "BD1": "Rsxr_Mid_BD1",  # former naked stubs from here on (test_midhook_cold.py); bend direction guards, light
+    "BD2": "Rsxr_Mid_BD2",
+    "BD3": "Rsxr_Mid_BD3",
+    "BD4": "Rsxr_Mid_BD4",
+    "D5": "Rsxr_Mid_D5",  # gem position log (features/diag/hooks.cpp)
+    "FRG1": "Rsxr_Mid_FRG1",  # fret range glow ends (features/frets/hooks.cpp)
+    "FRG2": "Rsxr_Mid_FRG2",  # fret range glow bar scale (features/frets/hooks.cpp)
+    "B1": "Rsxr_Mid_B1",  # chord frame marks (features/chords/hooks_frames.cpp)
+    "N12": "Rsxr_Mid_N12",  # string 6 in the SNG section mask (features/string7/hooks_mid.cpp)
+    "N13": "Rsxr_Mid_N13",
+    "PM0": "Rsxr_Mid_PM0",  # native pitch tails (features/pitch/hooks_mid.cpp)
+    "PR0": "Rsxr_Mid_PR0",
+    "PM1": "Rsxr_Mid_PM1",
     # N-slot sites (test_midhook_cold.py, test_midhook_nslot.py)
-    "TF1": "Rs7_Mid_TF1",  # tuner camera reference string (features/tuner/hooks_camera.cpp), light
-    "SC1": "Rs7_Mid_SC1",  # song camera follows the frets floor (full mode)
-    "MenuMovieSetup": "Rs7_Mid_MenuMovieSetup",  # menu loading fix: track the title movie request
-    "MenuMovieResult": "Rs7_Mid_MenuMovieResult",  # the asset locator's answer (AL)
-    "MenuIndexPublish": "Rs7_Mid_MenuIndexPublish",  # a file joined the local index
-    "MenuLoadUpdate": "Rs7_Mid_MenuLoadUpdate",  # game thread: replay a rejected request
-    "TF2": "Rs7_Mid_TF2",  # tuner camera pan for right-handed 7/8-string guitars and 5/6-string basses (hooks_camera.cpp)
-    "V2": "Rs7_Mid_V2",  # slide end cell stride (features/fretgrid/hooks_slide.cpp), light
+    "TF1": "Rsxr_Mid_TF1",  # tuner camera reference string (features/tuner/hooks_camera.cpp), light
+    "SC1": "Rsxr_Mid_SC1",  # song camera follows the frets floor (full mode)
+    "MenuMovieSetup": "Rsxr_Mid_MenuMovieSetup",  # menu loading fix: track the title movie request
+    "MenuMovieResult": "Rsxr_Mid_MenuMovieResult",  # the asset locator's answer (AL)
+    "MenuIndexPublish": "Rsxr_Mid_MenuIndexPublish",  # a file joined the local index
+    "MenuLoadUpdate": "Rsxr_Mid_MenuLoadUpdate",  # game thread: replay a rejected request
+    "TF2": "Rsxr_Mid_TF2",  # tuner camera pan for right-handed 7/8-string guitars and 5/6-string basses (hooks_camera.cpp)
+    "V2": "Rsxr_Mid_V2",  # slide end cell stride (features/fretgrid/hooks_slide.cpp), light
     # native N-slot chords (features/nslot/hooks_records.cpp, hooks_eval.cpp, hooks_latches.cpp)
-    "TP1": "Rs7_Mid_TP1",
-    "TP2": "Rs7_Mid_TP2",
-    "TP3": "Rs7_Mid_TP3",
-    "TP4": "Rs7_Mid_TP4",
-    "TP5": "Rs7_Mid_TP5",
-    "TP6": "Rs7_Mid_TP6",
-    "TP7": "Rs7_Mid_TP7",
-    "TP8": "Rs7_Mid_TP8",
-    "TP11": "Rs7_Mid_TP11",
-    "TP12": "Rs7_Mid_TP12",
-    "DS1": "Rs7_Mid_DS1",
-    "CP1": "Rs7_Mid_CP1",
-    "CP2": "Rs7_Mid_CP2",
-    "LU3": "Rs7_Mid_LU3",
-    "WC2": "Rs7_Mid_WC2",
-    "CS1": "Rs7_Mid_CS1",
-    "CC3": "Rs7_Mid_CC3",
-    "CH3": "Rs7_Mid_CH3",
-    "PL1": "Rs7_Mid_PL1",
-    "UP1": "Rs7_Mid_UP1",
-    "UP2": "Rs7_Mid_UP2",
-    "UP3": "Rs7_Mid_UP3",
-    "PD2": "Rs7_Mid_PD2",
-    "PD3": "Rs7_Mid_PD3",
-    "PD4": "Rs7_Mid_PD4",
-    "PD5": "Rs7_Mid_PD5",
+    "TP1": "Rsxr_Mid_TP1",
+    "TP2": "Rsxr_Mid_TP2",
+    "TP3": "Rsxr_Mid_TP3",
+    "TP4": "Rsxr_Mid_TP4",
+    "TP5": "Rsxr_Mid_TP5",
+    "TP6": "Rsxr_Mid_TP6",
+    "TP7": "Rsxr_Mid_TP7",
+    "TP8": "Rsxr_Mid_TP8",
+    "TP11": "Rsxr_Mid_TP11",
+    "TP12": "Rsxr_Mid_TP12",
+    "DS1": "Rsxr_Mid_DS1",
+    "CP1": "Rsxr_Mid_CP1",
+    "CP2": "Rsxr_Mid_CP2",
+    "LU3": "Rsxr_Mid_LU3",
+    "WC2": "Rsxr_Mid_WC2",
+    "CS1": "Rsxr_Mid_CS1",
+    "CC3": "Rsxr_Mid_CC3",
+    "CH3": "Rsxr_Mid_CH3",
+    "PL1": "Rsxr_Mid_PL1",
+    "UP1": "Rsxr_Mid_UP1",
+    "UP2": "Rsxr_Mid_UP2",
+    "UP3": "Rsxr_Mid_UP3",
+    "PD2": "Rsxr_Mid_PD2",
+    "PD3": "Rsxr_Mid_PD3",
+    "PD4": "Rsxr_Mid_PD4",
+    "PD5": "Rsxr_Mid_PD5",
     # string7 and pitch sites (features/string7/hooks_mid.cpp, features/pitch/hooks_mid.cpp)
-    "N5": "Rs7_Mid_N5",
-    "N18": "Rs7_Mid_N18",
-    "N19": "Rs7_Mid_N19",
-    "N20": "Rs7_Mid_N20",
-    "I1": "Rs7_Mid_I1",
-    "SF1": "Rs7_Mid_SF1",  # call site (Before placement): built with Rs7Mid_BuildCall
+    "N5": "Rsxr_Mid_N5",
+    "N18": "Rsxr_Mid_N18",
+    "N19": "Rsxr_Mid_N19",
+    "N20": "Rsxr_Mid_N20",
+    "I1": "Rsxr_Mid_I1",
+    "SF1": "Rsxr_Mid_SF1",  # call site (Before placement): built with RsxrMid_BuildCall
     # call sites (features/nslot/hooks_calls.cpp, features/pitch/hooks_calls.cpp, features/headstock/hooks_mid.cpp)
-    **{f"TM{i}": "Rs7_Mid_TM" for i in range(1, 7)},  # one callback, light
-    **{f"EV{i}": "Rs7_Mid_EV" for i in range(1, 6)},  # one callback, light
-    "S4": "Rs7_Mid_S4",
-    "PC2": "Rs7_Mid_PC2",
-    "PC3": "Rs7_Mid_PC3",
-    "PSL2": "Rs7_Mid_PSL2",  # After placement
-    "PBH": "Rs7_Mid_PBH",  # After placement (features/pitch/hooks_calls.cpp)
-    **{sid: f"Rs7_Mid_{sid}" for sid in ("PP1", "F1", "IN1", "PSN2", "TJ", "TU", "TN")},  # Wrap placement (CALL_WRAP)
-    "AM1": "Rs7_Mid_AM1Before",  # Wrap placement, no after callback
-    "MD1": "Rs7_Mid_MD1Before",
-    "PSN3": "Rs7_Mid_PSN3Before",
-    "GIA1": "Rs7_Mid_GIA1",
+    **{f"TM{i}": "Rsxr_Mid_TM" for i in range(1, 7)},  # one callback, light
+    **{f"EV{i}": "Rsxr_Mid_EV" for i in range(1, 6)},  # one callback, light
+    "S4": "Rsxr_Mid_S4",
+    "PC2": "Rsxr_Mid_PC2",
+    "PC3": "Rsxr_Mid_PC3",
+    "PSL2": "Rsxr_Mid_PSL2",  # After placement
+    "PBH": "Rsxr_Mid_PBH",  # After placement (features/pitch/hooks_calls.cpp)
+    **{sid: f"Rsxr_Mid_{sid}" for sid in ("PP1", "F1", "IN1", "PSN2", "TJ", "TU", "TN")},  # Wrap placement (CALL_WRAP)
+    "AM1": "Rsxr_Mid_AM1Before",  # Wrap placement, no after callback
+    "MD1": "Rsxr_Mid_MD1Before",
+    "PSN3": "Rsxr_Mid_PSN3Before",
+    "GIA1": "Rsxr_Mid_GIA1",
     **{
-        sid: f"Rs7_Mid_{sid}" for sid in ("GSA1", "GSC1", "GRM3", "BT1", "AG1", "AG2", "AG3", "PE0")
+        sid: f"Rsxr_Mid_{sid}" for sid in ("GSA1", "GSC1", "GRM3", "BT1", "AG1", "AG2", "AG3", "PE0")
     },  # call / jmp sites
     # asm reduction part 2 (features/pitch/hooks_calls.cpp, features/publish/hooks_pitch.cpp), light
-    "PC1": "Rs7_Mid_PC1",
-    "PC4": "Rs7_Mid_PC4",
-    **{f"PUBZ{i}": "Rs7_Mid_PUBZ" for i in range(7)},  # one callback: call sites (0, 4-6) and jmp sites (1-3)
+    "PC1": "Rsxr_Mid_PC1",
+    "PC4": "Rsxr_Mid_PC4",
+    **{f"PUBZ{i}": "Rsxr_Mid_PUBZ" for i in range(7)},  # one callback: call sites (0, 4-6) and jmp sites (1-3)
     # asm reduction part 3: the plain-PSARC unit's jmp_atomic8 sites (features/psarc/hooks_mid.cpp), full
-    "PP_TOC": "Rs7_Mid_PP_TOC",
-    "PP_SNGF": "Rs7_Mid_PP_SNGF",
+    "PP_TOC": "Rsxr_Mid_PP_TOC",
+    "PP_SNGF": "Rsxr_Mid_PP_SNGF",
     # x87 result (Context::PushSt0) and jmp_atomic8 sites (features/string7/hooks_lanes.cpp, features/pitch/hooks_mid.cpp)
-    "R3a": "Rs7_Mid_R3a",
-    "R3b": "Rs7_Mid_R3b",
-    "R3c": "Rs7_Mid_R3c",
-    "R4": "Rs7_Mid_R4",
-    "S3": "Rs7_Mid_S3",
-    "PT1": "Rs7_Mid_PT1",
+    "R3a": "Rsxr_Mid_R3a",
+    "R3b": "Rsxr_Mid_R3b",
+    "R3c": "Rsxr_Mid_R3c",
+    "R4": "Rsxr_Mid_R4",
+    "S3": "Rsxr_Mid_S3",
+    "PT1": "Rsxr_Mid_PT1",
 }
 
 
 CALL_AFTER = call_after()
-# Sites registered with Rs7_WrapRow (Rs7Mid::Call::Wrap; keep in sync with the registration tables): sid -> (stack
+# Sites registered with Rsxr_WrapRow (RsxrMid::Call::Wrap; keep in sync with the registration tables): sid -> (stack
 # argument dwords, bytes the callee pops, scratch bytes, before callback, after callback), callbacks as export names or
 # None. MID_CALLBACKS lists the after callback, or the before callback of a site without one.
 CALL_WRAP: dict[str, tuple[int, int, int, str | None, str | None]] = {
-    "PP1": (2, 8, 0, None, "Rs7_Mid_PP1"),
-    "F1": (0, 0, 0, None, "Rs7_Mid_F1"),  # a function entry
-    "IN1": (1, 4, 0, None, "Rs7_Mid_IN1"),
-    "PSN2": (1, 4, 0, "Rs7_Mid_PSN2Before", "Rs7_Mid_PSN2"),
-    "AM1": (4, 16, 32, "Rs7_Mid_AM1Before", None),
-    "PSN3": (1, 4, 0, "Rs7_Mid_PSN3Before", None),
-    "MD1": (4, 16, 32, "Rs7_Mid_MD1Before", None),  # a function entry
-    "GIA1": (2, 0, 0, "Rs7_Mid_GIA1Before", "Rs7_Mid_GIA1"),
-    "GSC1": (1, 4, 0, None, "Rs7_Mid_GSC1"),
-    **{sid: (n, 0, 0, f"Rs7_Mid_{sid}Before", f"Rs7_Mid_{sid}") for sid, n in (("TJ", 2), ("TU", 0), ("TN", 2))},
+    "PP1": (2, 8, 0, None, "Rsxr_Mid_PP1"),
+    "F1": (0, 0, 0, None, "Rsxr_Mid_F1"),  # a function entry
+    "IN1": (1, 4, 0, None, "Rsxr_Mid_IN1"),
+    "PSN2": (1, 4, 0, "Rsxr_Mid_PSN2Before", "Rsxr_Mid_PSN2"),
+    "AM1": (4, 16, 32, "Rsxr_Mid_AM1Before", None),
+    "PSN3": (1, 4, 0, "Rsxr_Mid_PSN3Before", None),
+    "MD1": (4, 16, 32, "Rsxr_Mid_MD1Before", None),  # a function entry
+    "GIA1": (2, 0, 0, "Rsxr_Mid_GIA1Before", "Rsxr_Mid_GIA1"),
+    "GSC1": (1, 4, 0, None, "Rsxr_Mid_GSC1"),
+    **{sid: (n, 0, 0, f"Rsxr_Mid_{sid}Before", f"Rsxr_Mid_{sid}") for sid, n in (("TJ", 2), ("TU", 0), ("TN", 2))},
 }
-# Sites registered with Rs7Hook::midMode = Rs7Mid::Mode::Light; keep in sync with the registration tables. Their
-# entries are built with Rs7Mid_BuildLight, and test_midhook_emu.py checks their callbacks for x87/MMX/SSE code.
+# Sites registered with RsxrHook::midMode = RsxrMid::Mode::Light; keep in sync with the registration tables. Their
+# entries are built with RsxrMid_BuildLight, and test_midhook_emu.py checks their callbacks for x87/MMX/SSE code.
 LIGHT_CALLBACKS: set[str] = {  # BD*, TF1, V2, N19/N20, N-slot but TP11, DS1 (loader thread), PL1 (FP helper); TM*, EV*
     "CBUV",
     "CBRGB",
@@ -287,82 +286,83 @@ BATCH5_LIGHT = {
     *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "CLVE", "NG1"),
     *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC", "PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBEDGE"),
 }
-MID_CALLBACKS.update({sid: f"Rs7_Mid_{sid}" for sid in BATCH5_MID})
+MID_CALLBACKS.update({sid: f"Rsxr_Mid_{sid}" for sid in BATCH5_MID})
 LIGHT_CALLBACKS |= BATCH5_LIGHT
 # The sse pass (test_midhook_sse_sites.py): W (full), R2, R6 and PUBGP (site R1) in sse mode.
-MID_CALLBACKS.update({"W": "Rs7_Mid_W", "R2": "Rs7_Mid_R2", "R6": "Rs7_Mid_R6", "R1": "Rs7_Mid_PUBGP"})
-MID_CALLBACKS.update({"FRG2B": "Rs7_Mid_FRG2", "FRG3": "Rs7_Mid_FRG3"})  # fret range glow: moved bars, box
-# Sites registered with Rs7Hook::midMode = Rs7Mid::Mode::Sse; keep in sync with the registration tables. Built with
-# Rs7Mid_BuildSse (mode 2); test_midhook_emu.py checks their callbacks for x87/MMX code (SSE is allowed).
+MID_CALLBACKS.update({"W": "Rsxr_Mid_W", "R2": "Rsxr_Mid_R2", "R6": "Rsxr_Mid_R6", "R1": "Rsxr_Mid_PUBGP"})
+MID_CALLBACKS.update({"FRG2B": "Rsxr_Mid_FRG2", "FRG3": "Rsxr_Mid_FRG3"})  # fret range glow: moved bars, box
+MID_CALLBACKS.update({"XI1": "Rsxr_Mid_XI1", "JM1": "Rsxr_Mid_JM1", "PN1": "Rsxr_Mid_PN1"})  # native charts
+# Sites registered with RsxrHook::midMode = RsxrMid::Mode::Sse; keep in sync with the registration tables. Built with
+# RsxrMid_BuildSse (mode 2); test_midhook_emu.py checks their callbacks for x87/MMX code (SSE is allowed).
 SSE_CALLBACKS: set[str] = {"R2", "R6", "R1"}
 assert not LIGHT_CALLBACKS & SSE_CALLBACKS
 
 
 def mid_mode(sid: str) -> int:
-    """The builders' mode argument of a site: 0 full, 1 light, 2 sse (Rs7Mid::Mode)."""
+    """The builders' mode argument of a site: 0 full, 1 light, 2 sse (RsxrMid::Mode)."""
     return 2 if sid in SSE_CALLBACKS else int(sid in LIGHT_CALLBACKS)
 
 
-JMP_BUILDERS = ("Rs7Mid_Build", "Rs7Mid_BuildLight", "Rs7Mid_BuildSse")  # by mode
-# Ref sites (never written): the variable Rs7_Startup stores the site's dword in.
+JMP_BUILDERS = ("RsxrMid_Build", "RsxrMid_BuildLight", "RsxrMid_BuildSse")  # by mode
+# Ref sites (never written): the variable Rsxr_Startup stores the site's dword in.
 REF_VARS = {
-    "X_DKEY": "g_rs7_dkey",
-    "X_DNUMBER": "g_rs7_dnumber",
-    "X_DSET": "g_rs7_dset",
-    "X_DDROP": "g_rs7_ddrop",
-    "X_ATTACH": "g_rs7_fn_attach",
-    "X_CM": "g_rs7_colormgr",
-    "X_TCS": "g_rs7_texlist_cs",
-    "X_THEAD": "g_rs7_texlist_head",
-    "X_SPAWN": "g_rs7_fn_spawn",
-    "X_ADV3": "g_rs7_fn_adv3",
-    "X_ALLOC": "g_rs7_fn_alloc",
-    "X_STRCTOR": "g_rs7_fn_strctor",
-    "X_SHAPE": "g_rs7_fn_shape",
-    "X_SHOW": "g_rs7_fn_show",
-    "X_DETACH": "g_rs7_fn_detach",
-    "X_SETPOS": "g_rs7_fn_setpos",
-    "X_SETROT": "g_rs7_fn_setrot",
-    "X_DT": "g_rs7_frame_global",
-    "X_WORLD": "g_rs7_fn_world",
-    "X_ROOT": "g_rs7_fn_root",
-    "X_SETSCALE": "g_rs7_fn_setscale",
-    "MenuMovieRequest": "g_rs7_menu_request",
-    "X_EULER": "g_rs7_fn_euler",
-    "X_PEGNAMES": "g_rs7_pegnames",
-    "X_PEGSELECT": "g_rs7_fn_pegselect",
-    "X_PEGPLACE": "g_rs7_fn_pegplace",
-    "X_PEGLAYER": "g_rs7_fn_peglayer",
-    "X_TMGR": "g_rs7_tuner_mgr",
-    "X_WTHR": "g_rs7_wrong_const",
-    "X_FADEMGR": "g_rs7_fade_mgr",
-    "X_FADEIN": "g_rs7_fn_fadein",
-    "X_FADEOUT": "g_rs7_fn_fadeout",
-    "X_FIXSTR": "g_rs7_fn_fixstr",
-    "X_STRPARAMS": "g_rs7_fn_strparams",
-    "X_TBASS": "g_rs7_tuner_bassbase",
-    "X_DDSH": "g_rs7_fn_dds",
-    "X_NFCTOR": "g_rs7_fn_nfctor",
-    "X_NFDTOR": "g_rs7_fn_nfdtor",
-    "X_GETDET": "g_rs7_fn_getdet",
+    "X_DKEY": "g_rsxr_dkey",
+    "X_DNUMBER": "g_rsxr_dnumber",
+    "X_DSET": "g_rsxr_dset",
+    "X_DDROP": "g_rsxr_ddrop",
+    "X_ATTACH": "g_rsxr_fn_attach",
+    "X_CM": "g_rsxr_colormgr",
+    "X_TCS": "g_rsxr_texlist_cs",
+    "X_THEAD": "g_rsxr_texlist_head",
+    "X_SPAWN": "g_rsxr_fn_spawn",
+    "X_ADV3": "g_rsxr_fn_adv3",
+    "X_ALLOC": "g_rsxr_fn_alloc",
+    "X_STRCTOR": "g_rsxr_fn_strctor",
+    "X_SHAPE": "g_rsxr_fn_shape",
+    "X_SHOW": "g_rsxr_fn_show",
+    "X_DETACH": "g_rsxr_fn_detach",
+    "X_SETPOS": "g_rsxr_fn_setpos",
+    "X_SETROT": "g_rsxr_fn_setrot",
+    "X_DT": "g_rsxr_frame_global",
+    "X_WORLD": "g_rsxr_fn_world",
+    "X_ROOT": "g_rsxr_fn_root",
+    "X_SETSCALE": "g_rsxr_fn_setscale",
+    "MenuMovieRequest": "g_rsxr_menu_request",
+    "X_EULER": "g_rsxr_fn_euler",
+    "X_PEGNAMES": "g_rsxr_pegnames",
+    "X_PEGSELECT": "g_rsxr_fn_pegselect",
+    "X_PEGPLACE": "g_rsxr_fn_pegplace",
+    "X_PEGLAYER": "g_rsxr_fn_peglayer",
+    "X_TMGR": "g_rsxr_tuner_mgr",
+    "X_WTHR": "g_rsxr_wrong_const",
+    "X_FADEMGR": "g_rsxr_fade_mgr",
+    "X_FADEIN": "g_rsxr_fn_fadein",
+    "X_FADEOUT": "g_rsxr_fn_fadeout",
+    "X_FIXSTR": "g_rsxr_fn_fixstr",
+    "X_STRPARAMS": "g_rsxr_fn_strparams",
+    "X_TBASS": "g_rsxr_tuner_bassbase",
+    "X_DDSH": "g_rsxr_fn_dds",
+    "X_NFCTOR": "g_rsxr_fn_nfctor",
+    "X_NFDTOR": "g_rsxr_fn_nfdtor",
+    "X_GETDET": "g_rsxr_fn_getdet",
     **private_features.get("EXPORTS", {}),  # the private extras
-    "X_SST": "g_rs7_fn_sst",
-    "X_STRCON": "g_rs7_fn_strcon",
-    "X_STRASG": "g_rs7_fn_strasg",
-    "X_LOC": "g_rs7_fn_loc",
-    "X_STRDTOR": "g_rs7_fn_strdtor",
-    "X_MSORT": "g_rs7_fn_msort",
-    "X_MINS1": "g_rs7_fn_mins1",
-    "X_MINS2": "g_rs7_fn_mins2",
-    "X_MCMP": "g_rs7_fn_mcmp",
-    "X_MTAB": "g_rs7_matcher_table",
-    "X_EVREL": "g_rs7_fn_evrel",
+    "X_SST": "g_rsxr_fn_sst",
+    "X_STRCON": "g_rsxr_fn_strcon",
+    "X_STRASG": "g_rsxr_fn_strasg",
+    "X_LOC": "g_rsxr_fn_loc",
+    "X_STRDTOR": "g_rsxr_fn_strdtor",
+    "X_MSORT": "g_rsxr_fn_msort",
+    "X_MINS1": "g_rsxr_fn_mins1",
+    "X_MINS2": "g_rsxr_fn_mins2",
+    "X_MCMP": "g_rsxr_fn_mcmp",
+    "X_MTAB": "g_rsxr_matcher_table",
+    "X_EVREL": "g_rsxr_fn_evrel",
 }
-# Void cdecl loggers called by stubs that also call testable C code (NG9 -> Rs7_NeckRow6N runs for
-# real, its once-per-song logger Rs7_NeckLog needs Win32 and is replaced with `ret`).
-VOID_C_EXPORTS = ("Rs7_NeckLog", "Rs7_S7LogMask", "Rs7_HeadLog", "Rs7_DiagNoteHead", "Rs7Pitch_FloorLog")
+# Void cdecl loggers called by stubs that also call testable C code (NG9 -> Rsxr_NeckRow6N runs for
+# real, its once-per-song logger Rsxr_NeckLog needs Win32 and is replaced with `ret`).
+VOID_C_EXPORTS = ("Rsxr_NeckLog", "Rsxr_S7LogMask", "Rsxr_HeadLog", "Rsxr_DiagNoteHead", "RsxrPitch_FloorLog")
 # Win32 clocks returning 0 (= "no clock": N5 then skips its time-based rules).
-ZERO_C_EXPORTS = ("Rs7_S7Now", "Rs7Song_Note", "Rs7Publish_GridWait")
+ZERO_C_EXPORTS = ("Rsxr_S7Now", "RsxrSong_Note", "RsxrPublish_GridWait")
 ALL_REGS = (
     UC_X86_REG_EAX,
     UC_X86_REG_EBX,
@@ -381,7 +381,7 @@ TEXT_VA, TEXT_SIZE = 0x401000, 0xCB503C
 
 @lru_cache(maxsize=1)
 def snapshot():
-    """The 700 MB memory snapshot, loaded once for all tests. Without it (CI, RS7_GAME_FILES), a skip."""
+    """The 700 MB memory snapshot, loaded once for all tests. Without it (CI, RSXR_GAME_FILES), a skip."""
     if not (SNAPSHOT / "memory.bin").exists():
         pytest.skip(f"needs the memory snapshot {SNAPSHOT} (tools/game_files.py)", allow_module_level=True)
 
@@ -409,7 +409,7 @@ def site_va(sid: str) -> int:
 
 @lru_cache(maxsize=None)
 def site_target(sid: str) -> int:
-    """The site's original branch target (its continuation), as Rs7_Startup binds g_rs7_target_<id>."""
+    """The site's original branch target (its continuation), as Rsxr_Startup binds g_rsxr_target_<id>."""
     _, sites = sitetable.load(SITES)
     s = next(x for x in sites if x.id == sid)
     ok, msg, _, target = sitecheck.check_site(game_text(), TEXT_VA, s)
@@ -418,7 +418,7 @@ def site_target(sid: str) -> int:
 
 
 def wrap_builder_args(exports, sid: str, va: int, callee: int | None, source: int, out: int, mode: int) -> tuple:
-    """Rs7Mid_BuildWrap's arguments for Wrap site `sid` (CALL_WRAP) at `out`: a call site's callee, or (callee None) a
+    """RsxrMid_BuildWrap's arguments for Wrap site `sid` (CALL_WRAP) at `out`: a call site's callee, or (callee None) a
     function entry whose prologue bytes are at `source` (length from sites.json)."""
     nargs, pops, locals_, before, after = CALL_WRAP[sid]
     length = 5 if callee is not None else next(s for s in sitetable.load(SITES)[1] if s.id == sid).length
@@ -440,16 +440,16 @@ def wrap_builder_args(exports, sid: str, va: int, callee: int | None, source: in
 
 
 def build_mid_entry(uc, exports, site, va: int, target: int, out: int, esp: int, ret: int) -> int:
-    """Build the mid-hook entry of `site` (MID_CALLBACKS) at `out` with the DLL's own emitter, as Rs7_Startup does
+    """Build the mid-hook entry of `site` (MID_CALLBACKS) at `out` with the DLL's own emitter, as Rsxr_Startup does
     (mode / call placement from mid_mode / CALL_AFTER); `esp` / `ret` are a free stack and a stop address."""
     callback = exports[MID_CALLBACKS[site.id]]
     if site.id in CALL_WRAP:
         callee = target if site.kind == "call" else None
         args = (ret, *wrap_builder_args(exports, site.id, va, callee, va, out, mid_mode(site.id)))
-        builder = "Rs7Mid_BuildWrap"
+        builder = "RsxrMid_BuildWrap"
     elif site.kind == "call":
         args = (ret, out, 256, va, target, out, callback, mid_mode(site.id), int(site.id in CALL_AFTER))
-        builder = "Rs7Mid_BuildCall"
+        builder = "RsxrMid_BuildCall"
     else:
         # a jmp_atomic8 site replays its whole `expect` span (startup's PrepareMid), the 5-byte jmp ends inside it
         args = (ret, out, 256, va, va, len(site.expect), out, callback)
@@ -462,15 +462,15 @@ def build_mid_entry(uc, exports, site, va: int, target: int, out: int, esp: int,
 
 
 def _callins() -> dict[str, tuple[str, int, int]]:
-    """Every call-in entry the DLL defines (`Rs7Mid::CallIn g_rs7_callin_<name>{&callback, Mode::..., argBytes}` in
+    """Every call-in entry the DLL defines (`RsxrMid::CallIn g_rsxr_callin_<name>{&callback, Mode::..., argBytes}` in
     src/): name -> (callback, mode 0 full / 1 light / 2 sse, argBytes), read from the C++ so the tests cannot drift from it."""
     import re
 
     out = {}
-    pattern = re.compile(r"Rs7Mid::CallIn g_rs7_callin_(\w+)\{&(\w+), Rs7Mid::Mode::(Full|Light|Sse)(?:, (\d+))?\};")
+    pattern = re.compile(r"RsxrMid::CallIn g_rsxr_callin_(\w+)\{&(\w+), RsxrMid::Mode::(Full|Light|Sse)(?:, (\d+))?\};")
     for path in sorted((REPO / "src").rglob("*.cpp")):
         for name, callback, mode, arg_bytes in pattern.findall(path.read_text(encoding="utf-8")):
-            assert name not in out, f"g_rs7_callin_{name} defined twice"
+            assert name not in out, f"g_rsxr_callin_{name} defined twice"
             out[name] = (callback, ("Full", "Light", "Sse").index(mode), int(arg_bytes or 0))
     return out
 
@@ -479,18 +479,18 @@ CALLINS = _callins()
 
 
 def build_callin_entry(uc, exports, callback: str, mode: int, arg_bytes: int, out: int, esp: int, ret: int) -> int:
-    """The call-in entry of `callback` at `out` with the DLL's Rs7Mid_BuildCallIn; `esp` / `ret`: a free stack and a
+    """The call-in entry of `callback` at `out` with the DLL's RsxrMid_BuildCallIn; `esp` / `ret`: a free stack and a
     stop address."""
     uc.mem_write(esp, struct.pack("<7I", ret, out, 0x40, out, exports[callback], mode, arg_bytes))
     uc.reg_write(UC_X86_REG_ESP, esp)
-    uc.emu_start(exports["Rs7Mid_BuildCallIn"], ret, count=50000)
+    uc.emu_start(exports["RsxrMid_BuildCallIn"], ret, count=50000)
     assert uc.reg_read(UC_X86_REG_EIP) == ret and uc.reg_read(UC_X86_REG_EAX) == (18 if arg_bytes else 16), callback
     return out
 
 
 def callin_entry(uc, exports, sym: str, out: int, esp: int, ret: int) -> int:
-    """build_callin_entry for a call-in object (g_rs7_callin_<name>, CALLINS), as CallIn::Entry() builds it."""
-    return build_callin_entry(uc, exports, *CALLINS[sym.removeprefix("g_rs7_callin_")], out, esp, ret)
+    """build_callin_entry for a call-in object (g_rsxr_callin_<name>, CALLINS), as CallIn::Entry() builds it."""
+    return build_callin_entry(uc, exports, *CALLINS[sym.removeprefix("g_rsxr_callin_")], out, esp, ret)
 
 
 def site_mid_entry(uc, exports, sid: str, out: int, esp: int, ret: int) -> int:
@@ -505,7 +505,7 @@ def site_mid_entry(uc, exports, sid: str, out: int, esp: int, ret: int) -> int:
 
 def install_teb(uc) -> None:
     """A minimal TEB at TEB, so DLL code with MSVC __try frames can register SEH (fs:[0] = end of chain). Every
-    mid-hook callback runs inside one (Rs7Mid_Guard), so every machine that runs DLL code needs it."""
+    mid-hook callback runs inside one (RsxrMid_Guard), so every machine that runs DLL code needs it."""
     try:
         uc.mem_map(TEB, 0x1000, UC_PROT_ALL)
     except UcError:
@@ -601,7 +601,7 @@ class Emu:
                 stub = self._build_mid(s, va, target)
                 self.mid_entries[s.id] = stub
             else:
-                stub = self.exports[f"Rs7_Stub_{s.id}"]
+                stub = self.exports[f"Rsxr_Stub_{s.id}"]
             if s.kind in ("jmp", "jmp_atomic8"):
                 rel = stub - (va + 5)
                 self.uc.mem_write(va, b"\xe9" + struct.pack("<i", rel) + b"\x90" * (s.length - 5))
@@ -609,17 +609,17 @@ class Emu:
                 self.uc.mem_write(va, struct.pack("<i", stub - (va + 4)))
             elif s.kind == "call":
                 self.uc.mem_write(va + 1, struct.pack("<i", stub - (va + 5)))
-            if f"g_rs7_resume_{s.id}" in self.exports:
-                self.uc.mem_write(self.exports[f"g_rs7_resume_{s.id}"], struct.pack("<I", va + s.length))
-            if f"g_rs7_target_{s.id}" in self.exports:
-                self.uc.mem_write(self.exports[f"g_rs7_target_{s.id}"], struct.pack("<I", target))
+            if f"g_rsxr_resume_{s.id}" in self.exports:
+                self.uc.mem_write(self.exports[f"g_rsxr_resume_{s.id}"], struct.pack("<I", va + s.length))
+            if f"g_rsxr_target_{s.id}" in self.exports:
+                self.uc.mem_write(self.exports[f"g_rsxr_target_{s.id}"], struct.pack("<I", target))
         for sid in VOID_C_CALLS:
-            address = self.exports[MID_CALLBACKS[sid]] if sid in MID_CALLBACKS else self.exports[f"Rs7_Stub_{sid}"]
+            address = self.exports[MID_CALLBACKS[sid]] if sid in MID_CALLBACKS else self.exports[f"Rsxr_Stub_{sid}"]
             for callee in self._stub_calls(address, tail=sid in MID_CALLBACKS):
                 self.uc.mem_write(callee, b"\xc3")  # cdecl void -> plain ret
         for name in VOID_C_EXPORTS:
             self.uc.mem_write(self.exports[name], b"\xc3")
-        # All 21 code sites written = rs7string.ini [debug] diagnostics=1 (with 0 the DLL leaves D2/D3/D5
+        # All 21 code sites written = rsxr.ini [debug] diagnostics=1 (with 0 the DLL leaves D2/D3/D5
         # unwritten and R2/R1 skip their D1/D4 calls; the `diag` fixture flips it).
         self.set_diag(1)
 
@@ -649,7 +649,7 @@ class Emu:
 
     def hook_entry(self, sid: str) -> int:
         """Where the game's patched jump / call of `sid` goes: its mid-hook entry or its naked stub."""
-        return self.mid_entries.get(sid) or self.exports[f"Rs7_Stub_{sid}"]
+        return self.mid_entries.get(sid) or self.exports[f"Rsxr_Stub_{sid}"]
 
     def run_to_callee(self, start: int, callee: int, regs: dict[int, int]):
         """Run until the hooked code continues into `callee`. A code hook stops there (Unicorn bakes an `until` address
@@ -685,7 +685,7 @@ class Emu:
         return (self.uc.reg_read(UC_X86_REG_FPSW) >> 11) & 7
 
     def set_diag(self, value: int):
-        self.uc.mem_write(self.exports["g_rs7_diag"], struct.pack("<I", value))
+        self.uc.mem_write(self.exports["g_rsxr_diag"], struct.pack("<I", value))
 
     @contextmanager
     def count_calls(self, sid: str):
@@ -695,7 +695,7 @@ class Emu:
             self.uc.hook_add(UC_HOOK_CODE, lambda uc, addr, size, user: hits.append(addr), begin=c, end=c)
             for c in set(
                 self._stub_calls(
-                    self.exports[MID_CALLBACKS[sid]] if sid in MID_CALLBACKS else self.exports[f"Rs7_Stub_{sid}"],
+                    self.exports[MID_CALLBACKS[sid]] if sid in MID_CALLBACKS else self.exports[f"Rsxr_Stub_{sid}"],
                     tail=sid in MID_CALLBACKS,
                 )
             )
@@ -733,8 +733,8 @@ S7_REGS = {
 
 
 def set_s7(emu: Emu, on: int, any7: int):
-    emu.uc.mem_write(emu.exports["g_rs7_s7_on"], struct.pack("<I", on))
-    emu.uc.mem_write(emu.exports["g_rs7_any7"], struct.pack("<I", any7))
+    emu.uc.mem_write(emu.exports["g_rsxr_s7_on"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_any7"], struct.pack("<I", any7))
 
 
 def run_s7_site(emus, sid: str, regs: dict[int, int], mem: dict[int, bytes], flags: bool = False):
@@ -789,12 +789,12 @@ def entry_calls(emu: Emu, entry: str):
         emu.uc.mem_write(addr, saved)
 
 
-# ---- native N-slot chord data: the registered-song table g_rs7_ns --------------------------------
+# ---- native N-slot chord data: the registered-song table g_rsxr_ns --------------------------------
 
 NS_BEGIN, NS_SUPER = 0x12340000, 0x22220000
 
 
 def ns_set(emu: Emu, entries: list[tuple[int, ...]]):
-    """g_rs7_ns: (tplBegin, tplCount, t8, cnBegin, cnCount, c8, song, origCn) per entry, rest free."""
+    """g_rsxr_ns: (tplBegin, tplCount, t8, cnBegin, cnCount, c8, song, origCn) per entry, rest free."""
     blob = b"".join(struct.pack("<8I", *e) for e in entries)
-    emu.uc.mem_write(emu.exports["g_rs7_ns"], blob + b"\0" * (64 * 32 - len(blob)))
+    emu.uc.mem_write(emu.exports["g_rsxr_ns"], blob + b"\0" * (64 * 32 - len(blob)))

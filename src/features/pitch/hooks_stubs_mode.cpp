@@ -4,22 +4,22 @@
 #include "features/pitch/pitch.h"
 #include <cstdint>
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_target_S1 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_target_S1 = 0;
 
 // S1 - target of the guitar JA (string > 5) in 0x873F80. EAX = -1, ECX = tuning, ESI = string.
-// g_rs7_target_S1 = 0x874020 (add eax,[ebp+8]; pop ebp; ret).
+// g_rsxr_target_S1 = 0x874020 (add eax,[ebp+8]; pop ebp; ret).
 // Stays asm: a rel32 site (the stub is the new target of a branch, not a jump written over
 // code), which no mid-hook entry serves; and it is hot (0x873F80 runs per tracked note and frame, PC1 / PC4 call it for
-// every string of an untailed object) while its helper Rs7_Base6 is not light-safe (C++ exception handling, the locked
+// every string of an untailed object) while its helper Rsxr_Base6 is not light-safe (C++ exception handling, the locked
 // side store), so a full-mode entry would be over the cost budget and a light one is not allowed.
-extern "C" __declspec(dllexport) __declspec(naked) void Rs7_Stub_S1() {
+extern "C" __declspec(dllexport) __declspec(naked) void Rsxr_Stub_S1() {
     __asm {
         cmp esi, 6
         jne s1_out
         push ecx
         push edx
         push ecx
-        call Rs7_Base6
+        call Rsxr_Base6
         add esp, 4
         pop edx
         pop ecx
@@ -27,6 +27,6 @@ extern "C" __declspec(dllexport) __declspec(naked) void Rs7_Stub_S1() {
         jne s1_out
         or eax, -1
     s1_out:
-        jmp g_rs7_target_S1
+        jmp g_rsxr_target_S1
     }
 }

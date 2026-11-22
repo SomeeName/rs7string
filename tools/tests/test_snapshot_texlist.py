@@ -1,7 +1,7 @@
 """Pin the engine texture-list layout (src/d3d/texlist.h, plan "Offline findings") in the memory snapshot.
 
-Walks Gamebryo's global NiTexture list from [0x1360B00] with the rs7tex constants parsed out of
-texlist.h, the way Rs7Tex_Walk does, and checks the stock colour ramps the Step 2 swap relies on.
+Walks Gamebryo's global NiTexture list from [0x1360B00] with the rsxrtex constants parsed out of
+texlist.h, the way RsxrTex_Walk does, and checks the stock colour ramps the Step 2 swap relies on.
 Reads only the memory snapshot (memory-mapped, read-only).
 """
 
@@ -74,10 +74,10 @@ def mem() -> MappedMemory:
 
 @lru_cache(maxsize=1)
 def consts() -> dict[str, int]:
-    """constexpr values inside `namespace rs7tex { ... }` of texlist.h."""
+    """constexpr values inside `namespace rsxrtex { ... }` of texlist.h."""
     text = TEXLIST_H.read_text(encoding="utf-8")
-    block = re.search(r"namespace rs7tex\s*\{(.*?)\n\}", text, re.S)
-    assert block, "namespace rs7tex not found in texlist.h"
+    block = re.search(r"namespace rsxrtex\s*\{(.*?)\n\}", text, re.S)
+    assert block, "namespace rsxrtex not found in texlist.h"
     found = {k: int(v, 0) for k, v in re.findall(r"\b(k\w+)\s*=\s*(0x[0-9A-Fa-f]+|\d+)", block.group(1))}
     for k in (
         "kVtSource54",

@@ -2,7 +2,7 @@
 #include "features/nslot/nslot.h"
 #include <cstring>
 
-namespace rs7track {
+namespace rsxrtrack {
 
 int Child(const uint8_t* ev, int s) {
     if (s < 6) {
@@ -12,7 +12,7 @@ int Child(const uint8_t* ev, int s) {
         return c;
     }
 
-    return static_cast<int8_t>(ev[rs7ns::kEvChild67 + (s - 6)]);
+    return static_cast<int8_t>(ev[rsxrns::kEvChild67 + (s - 6)]);
 }
 
 namespace {
@@ -53,7 +53,7 @@ uint8_t Aggregate(const uint8_t* ev, const uint8_t* tr, int field, bool zeroOnEm
 
     if (sp) {  // one string's child (stock: strings 0-5 only)
         const int s = *sp;
-        if (s >= rs7ns::kSlots) {
+        if (s >= rsxrns::kSlots) {
             return 0;
         }
 
@@ -72,7 +72,7 @@ uint8_t Aggregate(const uint8_t* ev, const uint8_t* tr, int field, bool zeroOnEm
 
     uint8_t al = 1;
 
-    for (int s = 0; s < rs7ns::kSlots; ++s) {
+    for (int s = 0; s < rsxrns::kSlots; ++s) {
         const int c = Child(ev, s);
         if (c < 0) {
             continue;
@@ -97,7 +97,7 @@ namespace {
 int32_t TailMidi(const uint8_t* ev, int t) {
     int32_t m;
 
-    std::memcpy(&m, ev + rs7ns::kEvMidi67 + 4 * t, 4);
+    std::memcpy(&m, ev + rsxrns::kEvMidi67 + 4 * t, 4);
 
     return m;
 }
@@ -105,7 +105,7 @@ int32_t TailMidi(const uint8_t* ev, int t) {
 uint32_t TailMask(const uint8_t* ev, int t) {
     uint32_t m;
 
-    std::memcpy(&m, ev + rs7ns::kEvMask67 + 4 * t, 4);
+    std::memcpy(&m, ev + rsxrns::kEvMask67 + 4 * t, 4);
 
     return m;
 }
@@ -127,7 +127,7 @@ uint8_t FoldTails(const uint8_t* ev, uint32_t bits, bool byteMask, bool none, ui
             continue;
         }
 
-        const uint32_t mask = byteMask ? ev[rs7ns::kEvMask67 + 4 * t] : TailMask(ev, t);
+        const uint32_t mask = byteMask ? ev[rsxrns::kEvMask67 + 4 * t] : TailMask(ev, t);
         const uint8_t test = ((mask & bits) != 0) != none;
 
         *lastTest = test;
@@ -139,13 +139,13 @@ uint8_t FoldTails(const uint8_t* ev, uint32_t bits, bool byteMask, bool none, ui
 
 int32_t ExtremeSlide(const uint8_t* ev, int32_t extreme, int32_t* lastDistance) {
     for (int t = 0; t < 2; ++t) {
-        const int32_t fret = ev[rs7ns::kEvFret67 + t];
+        const int32_t fret = ev[rsxrns::kEvFret67 + t];
 
         if (fret == 0) {
             continue;
         }
 
-        const int32_t distance = ev[rs7ns::kEvSlide67 + t] - fret;
+        const int32_t distance = ev[rsxrns::kEvSlide67 + t] - fret;
 
         *lastDistance = distance;
         if (extreme == 0) {
@@ -162,9 +162,9 @@ int32_t ExtremeSlide(const uint8_t* ev, int32_t extreme, int32_t* lastDistance) 
     return extreme;
 }
 
-}  // namespace rs7track
+}  // namespace rsxrtrack
 
-extern "C" uint8_t __cdecl Rs7Ns_Aggregate(const uint8_t* eval, const uint8_t* tracker, int field, int zeroOnEmpty,
-                                           const uint8_t* stringPtr) {
-    return rs7track::Aggregate(eval, tracker, field, zeroOnEmpty != 0, stringPtr);
+extern "C" uint8_t __cdecl RsxrNs_Aggregate(const uint8_t* eval, const uint8_t* tracker, int field, int zeroOnEmpty,
+                                            const uint8_t* stringPtr) {
+    return rsxrtrack::Aggregate(eval, tracker, field, zeroOnEmpty != 0, stringPtr);
 }

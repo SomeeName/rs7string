@@ -1,6 +1,6 @@
 #include "platform/retry.h"
 #include <windows.h>
 
-void Rs7_SleepMs(unsigned ms) {
+void Rsxr_SleepMs(unsigned ms) {
     Sleep(ms);
 }

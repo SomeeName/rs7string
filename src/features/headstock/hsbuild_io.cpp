@@ -8,11 +8,11 @@
 #include <cstdio>
 #include <filesystem>
 
-using rs7head::g_head;
+using rsxrhead::g_head;
 
 namespace {
-bool Read(const std::filesystem::path& path, rs7hs::Bytes& bytes) {
-    return rs7asset::ReadFileBytes(path.wstring(), bytes);
+bool Read(const std::filesystem::path& path, rsxrhs::Bytes& bytes) {
+    return rsxrasset::ReadFileBytes(path.wstring(), bytes);
 }
 
 bool Protected(const std::filesystem::path& path, const std::vector<std::wstring>& files) {
@@ -72,7 +72,7 @@ HANDLE CreateTemp(const std::filesystem::path& path, const std::vector<std::wstr
 }
 
 // Every write destination, including stamps and temporary files, must preserve configured custom models.
-bool Write(const std::filesystem::path& path, const rs7hs::Bytes& bytes,
+bool Write(const std::filesystem::path& path, const rsxrhs::Bytes& bytes,
            const std::vector<std::wstring>& protectedFiles) {
     if (Protected(path, protectedFiles)) {
         return true;
@@ -99,12 +99,12 @@ bool Write(const std::filesystem::path& path, const rs7hs::Bytes& bytes,
 }
 }  // namespace
 
-bool Rs7Hs_OutputsPresent(const rs7hs::Bytes& package, const std::filesystem::path& dest,
-                          const std::vector<std::wstring>& protectedFiles) {
-    std::vector<rs7hs::Expected> expected;
+bool RsxrHs_OutputsPresent(const rsxrhs::Bytes& package, const std::filesystem::path& dest,
+                           const std::vector<std::wstring>& protectedFiles) {
+    std::vector<rsxrhs::Expected> expected;
     std::string error;
 
-    if (!rs7hs::Manifest(package, expected, error)) {
+    if (!rsxrhs::Manifest(package, expected, error)) {
         return false;
     }
 
@@ -112,7 +112,7 @@ bool Rs7Hs_OutputsPresent(const rs7hs::Bytes& package, const std::filesystem::pa
         for (const auto& f : expected) {
             const auto path = dest / f.name;
 
-            if (!Protected(path, protectedFiles) && !rs7asset::FilePresent(path.wstring())) {
+            if (!Protected(path, protectedFiles) && !rsxrasset::FilePresent(path.wstring())) {
                 return false;
             }
         }
@@ -123,18 +123,18 @@ bool Rs7Hs_OutputsPresent(const rs7hs::Bytes& package, const std::filesystem::pa
     return true;
 }
 
-Rs7HsResult Rs7Hs_Ensure(const rs7hs::Bytes& package, const std::filesystem::path& dest, Rs7HsTemplateReader reader,
-                         bool replaceDiffering, std::string& note, const std::vector<std::wstring>& protectedFiles) {
+RsxrHsResult RsxrHs_Ensure(const rsxrhs::Bytes& package, const std::filesystem::path& dest, RsxrHsTemplateReader reader,
+                           bool replaceDiffering, std::string& note, const std::vector<std::wstring>& protectedFiles) {
     try {
         std::string error;
-        std::vector<rs7hs::Expected> expected;
+        std::vector<rsxrhs::Expected> expected;
 
-        if (!rs7hs::Manifest(package, expected, error)) {
+        if (!rsxrhs::Manifest(package, expected, error)) {
             note = "invalid package: " + error;
-            return Rs7HsResult::Failed;
+            return RsxrHsResult::Failed;
         }
 
-        rs7hs::Bytes existing;
+        rsxrhs::Bytes existing;
         bool allThere = true, allMatch = true;
 
         for (const auto& f : expected) {
@@ -145,7 +145,7 @@ Rs7HsResult Rs7Hs_Ensure(const rs7hs::Bytes& package, const std::filesystem::pat
             if (!Read(dest / f.name, existing)) {
                 if (!replaceDiffering && !Missing(dest / f.name)) {
                     note = "existing output unreadable: " + f.name + "; no output touched";
-                    return Rs7HsResult::Failed;
+                    return RsxrHsResult::Failed;
                 }
 
                 allThere = false;
@@ -153,33 +153,33 @@ Rs7HsResult Rs7Hs_Ensure(const rs7hs::Bytes& package, const std::filesystem::pat
                 continue;
             }
 
-            if (replaceDiffering && (existing.size() != f.size || rs7hs::Hash(existing) != f.sha256)) {
+            if (replaceDiffering && (existing.size() != f.size || rsxrhs::Hash(existing) != f.sha256)) {
                 allMatch = false;
             }
         }
 
         if (replaceDiffering ? allMatch : allThere) {
             note = "all " + std::to_string(expected.size()) + " files present";
-            return Rs7HsResult::Cached;
+            return RsxrHsResult::Cached;
         }
 
-        rs7hs::Bytes guitar, peg;
+        rsxrhs::Bytes guitar, peg;
 
         if (!reader || !reader(guitar, peg)) {
             note = "game reader unavailable/unsupported or template read failed";
-            return Rs7HsResult::Failed;
+            return RsxrHsResult::Failed;
         }
 
-        if (!rs7hs::CheckTemplates(guitar, peg, package, error)) {
+        if (!rsxrhs::CheckTemplates(guitar, peg, package, error)) {
             note = error + "; no output touched";
-            return Rs7HsResult::Failed;
+            return RsxrHsResult::Failed;
         }
 
-        std::vector<rs7hs::File> outputs;
+        std::vector<rsxrhs::File> outputs;
 
-        if (!rs7hs::Build(guitar, peg, package, outputs, error)) {
+        if (!rsxrhs::Build(guitar, peg, package, outputs, error)) {
             note = "refused: " + error + "; no output touched";
-            return Rs7HsResult::Failed;
+            return RsxrHsResult::Failed;
         }
 
         std::filesystem::create_directories(dest);
@@ -198,35 +198,35 @@ Rs7HsResult Rs7Hs_Ensure(const rs7hs::Bytes& package, const std::filesystem::pat
 
             if (!Write(path, f.bytes, protectedFiles)) {
                 note = "write failed: " + path.u8string() + "; partial build can be retried";
-                return Rs7HsResult::Failed;
+                return RsxrHsResult::Failed;
             }
 
             ++written;
         }
 
         note = "verified build, wrote " + std::to_string(written) + " files";
-        return Rs7HsResult::Built;
+        return RsxrHsResult::Built;
     } catch (const std::exception& e) {
         note = std::string("failure: ") + e.what();
-        return Rs7HsResult::Failed;
+        return RsxrHsResult::Failed;
     } catch (...) {
         note = "failure";
-        return Rs7HsResult::Failed;
+        return RsxrHsResult::Failed;
     }
 }
 
 namespace {
 struct Kit {
     const wchar_t* bin;
-    Rs7HsTemplateReader reader;
+    RsxrHsTemplateReader reader;
     const char* label;  // log prefix
 };
 
 constexpr Kit kKits[] = {
-    {L"rs7string_headstock.bin", Rs7HeadstockRead_HeadstockTemplates, ""},
-    {L"rs7string_headstock_lh.bin", Rs7HeadstockRead_HeadstockTemplatesLh, "left-handed "},
-    {L"rs7string_headstock_bass.bin", Rs7HeadstockRead_BassTemplates, "bass "},
-    {L"rs7string_headstock_bass_lh.bin", Rs7HeadstockRead_BassTemplatesLh, "left-handed bass "},
+    {L"rsxr_headstock.bin", RsxrHeadstockRead_HeadstockTemplates, ""},
+    {L"rsxr_headstock_lh.bin", RsxrHeadstockRead_HeadstockTemplatesLh, "left-handed "},
+    {L"rsxr_headstock_bass.bin", RsxrHeadstockRead_BassTemplates, "bass "},
+    {L"rsxr_headstock_bass_lh.bin", RsxrHeadstockRead_BassTemplatesLh, "left-handed bass "},
 };
 
 // "<size> <write time>" of a package file, "" if it cannot be read: an update that ships a new package changes it.
@@ -250,27 +250,27 @@ std::filesystem::path StampPath(const wchar_t* destDir, const Kit& k) {
 }
 }  // namespace
 
-bool Rs7Asset_PackageChanged(const wchar_t* dllDirectory, const wchar_t* destDir, Rs7HsKit kit,
-                             const std::vector<std::wstring>& protectedFiles) {
+bool RsxrAsset_PackageChanged(const wchar_t* dllDirectory, const wchar_t* destDir, RsxrHsKit kit,
+                              const std::vector<std::wstring>& protectedFiles) {
     if (!dllDirectory || !*dllDirectory || !destDir || !*destDir) {
         return false;
     }
 
     const Kit& k = kKits[static_cast<int>(kit)];
-    const std::string now = PackageStamp(std::filesystem::path(dllDirectory) / k.bin);
+    const std::filesystem::path file = std::filesystem::path(dllDirectory) / k.bin;
+    const std::string now = PackageStamp(file);
     if (now.empty()) {
         return false;  // no package: nothing to rebuild from
     }
 
-    rs7hs::Bytes last, package;
+    rsxrhs::Bytes last, package;
 
-    return !Read(StampPath(destDir, k), last) || std::string(last.begin(), last.end()) != now ||
-           !Read(std::filesystem::path(dllDirectory) / k.bin, package) ||
-           !Rs7Hs_OutputsPresent(package, destDir, protectedFiles);
+    return !Read(StampPath(destDir, k), last) || std::string(last.begin(), last.end()) != now || !Read(file, package) ||
+           !RsxrHs_OutputsPresent(package, destDir, protectedFiles);
 }
 
-bool Rs7Asset_SelfBuild(const wchar_t* dllDirectory, const wchar_t* destDir, Rs7HsKit kit,
-                        const std::vector<std::wstring>& protectedFiles) {
+bool RsxrAsset_SelfBuild(const wchar_t* dllDirectory, const wchar_t* destDir, RsxrHsKit kit,
+                         const std::vector<std::wstring>& protectedFiles) {
     if (!dllDirectory || !*dllDirectory || !destDir || !*destDir) {
         return false;
     }
@@ -280,33 +280,34 @@ bool Rs7Asset_SelfBuild(const wchar_t* dllDirectory, const wchar_t* destDir, Rs7
         return false;
     }
 
-    rs7hs::Bytes package;
+    rsxrhs::Bytes package;
     const Kit& k = kKits[static_cast<int>(kit)];
     const wchar_t* const bin = k.bin;
+    const std::filesystem::path file = root / bin;
 
-    if (!Read(root / bin, package)) {
-        Rs7Log("hsbuild: missing/unreadable %ls next to DLL", bin);
+    if (!Read(file, package)) {
+        RsxrLog("hsbuild: missing/unreadable %ls next to DLL", bin);
         return false;
     }
 
     std::string note;
-    const auto r = Rs7Hs_Ensure(package, std::filesystem::path(destDir), k.reader, true, note, protectedFiles);
+    const auto r = RsxrHs_Ensure(package, std::filesystem::path(destDir), k.reader, true, note, protectedFiles);
 
-    Rs7Log("hsbuild: %s%s in %ls: %s", k.label,
-           r == Rs7HsResult::Failed   ? "FAILED"
-           : r == Rs7HsResult::Cached ? "cached"
-                                      : "built",
-           destDir, note.c_str());
+    RsxrLog("hsbuild: %s%s in %ls: %s", k.label,
+            r == RsxrHsResult::Failed   ? "FAILED"
+            : r == RsxrHsResult::Cached ? "cached"
+                                        : "built",
+            destDir, note.c_str());
 
-    if (r == Rs7HsResult::Failed) {
+    if (r == RsxrHsResult::Failed) {
         return false;
     }
 
     // The outputs match this package now: remember it, so the next start only rebuilds after an update.
-    const std::string stamp = PackageStamp(root / bin);
+    const std::string stamp = PackageStamp(file);
 
-    if (!stamp.empty() && !Write(StampPath(destDir, k), rs7hs::Bytes(stamp.begin(), stamp.end()), protectedFiles)) {
-        Rs7Log("hsbuild: %scould not write %ls.stamp (the next start checks the models again)", k.label, bin);
+    if (!stamp.empty() && !Write(StampPath(destDir, k), rsxrhs::Bytes(stamp.begin(), stamp.end()), protectedFiles)) {
+        RsxrLog("hsbuild: %scould not write %ls.stamp (the next start checks the models again)", k.label, bin);
     }
 
     return true;

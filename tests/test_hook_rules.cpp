@@ -1,4 +1,4 @@
-// The unit cascade of Rs7_DisableFeature (src/hook_rules.cpp), pinned for every group: from the state after a
+// The unit cascade of Rsxr_DisableFeature (src/hook_rules.cpp), pinned for every group: from the state after a
 // complete startup (every switch on), which groups end up failed and which runtime switches end up cleared.
 #include "features/chords/chords.h"
 #include "features/clite/clite.h"
@@ -17,14 +17,14 @@
 #include <cstdio>
 
 namespace {
-using F = Rs7Feature;
+using F = RsxrFeature;
 
 // The runtime switches the cascade reads or clears, in this order.
-uintptr_t* const kSwitches[] = {&g_rs7_native_colours,    &g_rs7_native_pegset, &g_rs7_native_strings,
-                                &g_rs7_native_fretgrid,   &g_rs7_native_pitch,  &g_rs7_native_nextgrid,
-                                &g_rs7_diagrams,          &g_rs7_publish_ports, &g_rs7_native_publish,
-                                &g_rs7_native_chordloops, &g_rs7_native_tuner,  &g_rs7_clite,
-                                &g_rs7_glow_fix,          &g_rs7_menu_retry};
+uintptr_t* const kSwitches[] = {&g_rsxr_native_colours,    &g_rsxr_native_pegset, &g_rsxr_native_strings,
+                                &g_rsxr_native_fretgrid,   &g_rsxr_native_pitch,  &g_rsxr_native_nextgrid,
+                                &g_rsxr_diagrams,          &g_rsxr_publish_ports, &g_rsxr_native_publish,
+                                &g_rsxr_native_chordloops, &g_rsxr_native_tuner,  &g_rsxr_clite,
+                                &g_rsxr_glow_fix,          &g_rsxr_menu_retry};
 constexpr size_t kSwitchCount = sizeof kSwitches / sizeof kSwitches[0];
 
 // Bit i: kSwitches[i] cleared.
@@ -51,7 +51,7 @@ constexpr unsigned G(F f) {
 
 struct Expect {
     F group;
-    bool accepted;     // Rs7_DisableFeature's result
+    bool accepted;     // Rsxr_DisableFeature's result
     unsigned failed;   // G(...) of every failed group afterwards
     unsigned cleared;  // s... of every cleared switch afterwards
 };
@@ -84,7 +84,7 @@ unsigned FailedGroups() {
     unsigned m = 0;
 
     for (unsigned g = 0; g < unsigned(F::Count); ++g) {
-        if (Rs7_FeatureDisabled(F(g))) {
+        if (Rsxr_FeatureDisabled(F(g))) {
             m |= 1u << g;
         }
     }
@@ -114,13 +114,13 @@ TEST(disable_feature_cascade_pinned_for_every_group) {
     }
 
     for (const Expect& e : kCascade) {
-        Rs7_ResetFeatureFailures();
+        Rsxr_ResetFeatureFailures();
 
         for (uintptr_t* s : kSwitches) {
             *s = 1;
         }
 
-        const bool accepted = Rs7_DisableFeature(e.group);
+        const bool accepted = Rsxr_DisableFeature(e.group);
         const unsigned failed = FailedGroups(), cleared = ClearedSwitches();
 
         if (accepted != e.accepted || failed != e.failed || cleared != e.cleared) {
@@ -132,7 +132,7 @@ TEST(disable_feature_cascade_pinned_for_every_group) {
         CHECK(cleared == e.cleared);
     }
 
-    Rs7_ResetFeatureFailures();
+    Rsxr_ResetFeatureFailures();
 
     for (size_t i = 0; i < kSwitchCount; ++i) {
         *kSwitches[i] = saved[i];

@@ -5,8 +5,8 @@
 #include <vector>
 
 // The NtProtectVirtualMemory syscall (protect_syscall.asm): the number it loads into EAX, then the WOW64 transition.
-extern "C" DWORD g_rs7_protect_ssn = 0;
-extern "C" LONG NTAPI Rs7_SyscallProtect(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+extern "C" DWORD g_rsxr_protect_ssn = 0;
+extern "C" LONG NTAPI Rsxr_SyscallProtect(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
 
 namespace {
 INIT_ONCE g_once = INIT_ONCE_STATIC_INIT;
@@ -105,8 +105,8 @@ BOOL CALLBACK Init(PINIT_ONCE, PVOID, PVOID*) {
     const DWORD wow64Transition = __readfsdword(0xC0);
 
     if (!wine && wow64Transition) {
-        g_rs7_protect_ssn = FindSyscallNumber(ReadSystemNtdll(), "NtProtectVirtualMemory");
-        g_useSyscall = g_rs7_protect_ssn != 0;
+        g_rsxr_protect_ssn = FindSyscallNumber(ReadSystemNtdll(), "NtProtectVirtualMemory");
+        g_useSyscall = g_rsxr_protect_ssn != 0;
     }
 
     return TRUE;
@@ -116,13 +116,13 @@ BOOL CALLBACK Init(PINIT_ONCE, PVOID, PVOID*) {
 static volatile uintptr_t g_failLo = 0, g_failHi = 0;  // tests: injected failures
 static DWORD g_failProtection = 0;
 
-void Rs7_ProtectInjectFailure(uintptr_t lo, uintptr_t hi, DWORD protection) {
+void Rsxr_ProtectInjectFailure(uintptr_t lo, uintptr_t hi, DWORD protection) {
     g_failLo = lo;
     g_failHi = hi;
     g_failProtection = protection;
 }
 
-bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
+bool Rsxr_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
     InitOnceExecuteOnce(&g_once, Init, nullptr, nullptr);
 
     if (g_failHi) {
@@ -136,7 +136,7 @@ bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
         PVOID base = addr;
         SIZE_T size = len;
         ULONG old = 0;
-        if (Rs7_SyscallProtect(GetCurrentProcess(), &base, &size, newProt, &old) < 0) {
+        if (Rsxr_SyscallProtect(GetCurrentProcess(), &base, &size, newProt, &old) < 0) {
             return false;
         }
 
@@ -158,7 +158,7 @@ bool Rs7_Protect(void* addr, size_t len, DWORD newProt, DWORD* oldProt) {
     return true;
 }
 
-const char* Rs7_ProtectMethod() {
+const char* Rsxr_ProtectMethod() {
     InitOnceExecuteOnce(&g_once, Init, nullptr, nullptr);
 
     return g_useSyscall ? "syscall" : "VirtualProtect";

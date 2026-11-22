@@ -3,12 +3,12 @@
 #include "features/publish/publish.h"
 #include "model/slots.h"
 
-unsigned rs7pubstate::Count(size_t n, bool bass) {
-    return bass ? rs7::kStockBassStrings : rs7::GuitarStrings(n);
+unsigned rsxrpubstate::Count(size_t n, bool bass) {
+    return bass ? rsxr::kStockBassStrings : rsxr::GuitarStrings(n);
 }
 
-int rs7pubstate::Lowest(const int16_t t[8], unsigned n, bool bass) {
-    const int* base = bass ? g_rs7_pitch_bbase : g_rs7_pitch_gbase;
+int rsxrpubstate::Lowest(const int16_t t[8], unsigned n, bool bass) {
+    const int* base = bass ? g_rsxr_pitch_bbase : g_rsxr_pitch_gbase;
     const unsigned limit = bass ? 4 : 8;
 
     if (!n || n > limit) {

@@ -3,19 +3,19 @@
 #include "features/nslot/nslot.h"
 #include <algorithm>
 
-namespace rs7diagram {
+namespace rsxrdiagram {
 bool FromT8(const uint8_t* t, Shape* out) {
-    if (!t || !out || t[rs7ns::kT8Slots] < 7 || t[rs7ns::kT8Slots] > 8) {
+    if (!t || !out || t[rsxrns::kT8Slots] < 7 || t[rsxrns::kT8Slots] > 8) {
         return false;
     }
 
-    out->count = t[rs7ns::kT8Slots];
+    out->count = t[rsxrns::kT8Slots];
     out->manifest = false;
     out->capo = 0;
 
     for (int i = 0; i < 8; ++i) {
-        out->frets[i] = static_cast<int8_t>(t[rs7ns::kT8Frets + i]);
-        out->fingers[i] = static_cast<int8_t>(t[rs7ns::kT8Fingers + i]);
+        out->frets[i] = static_cast<int8_t>(t[rsxrns::kT8Frets + i]);
+        out->fingers[i] = static_cast<int8_t>(t[rsxrns::kT8Fingers + i]);
     }
 
     return true;
@@ -95,4 +95,4 @@ void Emit(const Shape& s, Put put, void* ctx) {
         }
     }
 }
-}  // namespace rs7diagram
+}  // namespace rsxrdiagram

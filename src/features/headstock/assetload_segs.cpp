@@ -16,15 +16,15 @@
 // The six headstock string segments of the edited model and the 7th: shader params, colour, draw layer.
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_strparams = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_strparams = 0;
 }
 
-using namespace rs7asset;
-using rs7head::g_head;
+using namespace rsxrasset;
+using rsxrhead::g_head;
 
 namespace {
 const int kInfoGuitar[4] = {1, 0, 0, 0};  // Rnd_SetStringShaderParams only reads info+0 (2 = bass)
-const int kInfoBass[4] = {rs7::kKindBass, 0, 0, 0};
+const int kInfoBass[4] = {rsxr::kKindBass, 0, 0, 0};
 constexpr uint32_t kStrShapeFound = 0x50;
 constexpr uint32_t kStrColour = 0x38;
 
@@ -32,7 +32,7 @@ constexpr uint32_t kStrColour = 0x38;
 // mesh once, so it is AddRef'd first, as 0x58E2BB..0x58E2C1 does): sets the segment's shader extra
 // data and points the param object at it, so the game's per-frame segment colour reaches it.
 bool BindSegment(void* params, uint8_t* mesh, uint32_t slot, bool bass = false) {
-    if (!g_rs7_fn_strparams || !mesh || !rs7s7d::IsKindOf(mesh, "NiMesh")) {
+    if (!g_rsxr_fn_strparams || !mesh || !rsxrs7d::IsKindOf(mesh, "NiMesh")) {
         return false;
     }
 
@@ -45,12 +45,12 @@ bool BindSegment(void* params, uint8_t* mesh, uint32_t slot, bool bass = false) 
             push slot
             push info
             mov eax, params
-            call dword ptr [g_rs7_fn_strparams]
+            call dword ptr [g_rsxr_fn_strparams]
             add esp, 0Ch
         }
 
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -77,13 +77,13 @@ void SwapRef(uintptr_t* slot, uintptr_t now) {  // NiPointer-style assignment, t
 
 // The stock param object of segment s of the guitar's headstock (Rnd_Headstock +20h + s*4), nullptr without one.
 uintptr_t* StockParams(uint8_t* head, int s) {
-    return Rs7_SafeRead<uintptr_t*>(head, kHeadParams + 4u * uint32_t(s));
+    return Rsxr_SafeRead<uintptr_t*>(head, kHeadParams + 4u * uint32_t(s));
 }
 
 // The bass string shader has the four stock rows (V of 0x5998F0's slot); the low B takes the E row, the high C the G
 // row, like the guitar's added strings take string 0's.
 uint32_t ShaderRow(const Head& h, int s) {
-    return uint32_t(!h.bass ? s : rs7::kBassNeighbour[s]);  // s < kSegs (6)
+    return uint32_t(!h.bass ? s : rsxr::kBassNeighbour[s]);  // s < kSegs (6)
 }
 
 // Holder destructor 0x58DAB0: last slot first, decrement +4, vtable +4 when the last reference goes away.
@@ -103,13 +103,13 @@ void ReleaseHolder(uintptr_t* holder) {
 
                 reinterpret_cast<Fn>(vt[1])(obj, nullptr);
             }
-        } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         }
     }
 }
 }  // namespace
 
-namespace rs7asset {
+namespace rsxrasset {
 void ReleaseParams(Head& h) {
     for (auto& holder : h.paramsX) {
         ReleaseHolder(holder);
@@ -131,7 +131,7 @@ void ReleaseParams(Head& h) {
 // touched yet) and a referenced copy of the stock holders' pointers.
 void BindAlt(Head& h) {
     ReleaseParams(h);
-    uint8_t* head = Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarHead);
+    uint8_t* head = Rsxr_SafeRead<uint8_t*>(h.guitar, kGuitarHead);
     int n = 0;
 
     for (int s = 0; head && s < kSegs; ++s) {
@@ -150,7 +150,7 @@ void BindAlt(Head& h) {
         for (int i = 0; i < 9; ++i) {
             h.stockHold[s][i] = 0;
             uintptr_t p = 0;
-            if (!Rs7_SafeCopyZero(&p, params + i, sizeof p) || !p || !h.altHold[s][i]) {
+            if (!Rsxr_SafeCopyZero(&p, params + i, sizeof p) || !p || !h.altHold[s][i]) {
                 continue;
             }
 
@@ -172,19 +172,19 @@ void BindAlt(Head& h) {
     }
 
     h.bound = true;
-    Rs7Alloc_Inc(kAkAssetBinds);
+    RsxrAlloc_Inc(kAkAssetBinds);
 
-    if (Rs7Log_Upto(&g_head.logBind, 8)) {
-        Rs7Log("assetload: guitar %p: %d of %d headstock string segment(s) of the edited model bound; %d extra "
-               "segment(s) (string_size_7/8) bound to their own params",
-               h.guitar, n, kSegs, extra);
+    if (RsxrLog_Upto(&g_head.logBind, 8)) {
+        RsxrLog("assetload: guitar %p: %d of %d headstock string segment(s) of the edited model bound; %d extra "
+                "segment(s) (string_size_7/8) bound to their own params",
+                h.guitar, n, kSegs, extra);
     }
 }
 
 // The game's per-frame segment state goes through the six stock param objects: point them at the
 // alt's extra data (toAlt) or back, carrying the current values over, so nothing is reset.
 void PointParams(Head& h, bool toAlt) {
-    uint8_t* head = Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarHead);
+    uint8_t* head = Rsxr_SafeRead<uint8_t*>(h.guitar, kGuitarHead);
 
     for (int s = 0; head && s < kSegs; ++s) {
         uintptr_t* params = StockParams(head, s);
@@ -207,8 +207,8 @@ void PointParams(Head& h, bool toAlt) {
 
             uint8_t v[16];
 
-            if (from && Rs7_SafeCopyZero(v, reinterpret_cast<uint8_t*>(from) + kColourRgb, ValueSize(i))) {
-                Rs7_SafeStore(reinterpret_cast<uint8_t*>(to) + kColourRgb, v, ValueSize(i));
+            if (from && Rsxr_SafeCopyZero(v, reinterpret_cast<uint8_t*>(from) + kColourRgb, ValueSize(i))) {
+                Rsxr_SafeStore(reinterpret_cast<uint8_t*>(to) + kColourRgb, v, ValueSize(i));
             }
             SwapRef(params + i, to);
         }
@@ -218,12 +218,12 @@ void PointParams(Head& h, bool toAlt) {
         uint8_t* loaded = head + kHeadLoaded + uint32_t(s);
 
         if (toAlt) {
-            h.loadedWas[s] = Rs7_SafeRead<uint8_t>(head, kHeadLoaded + uint32_t(s));
+            h.loadedWas[s] = Rsxr_SafeRead<uint8_t>(head, kHeadLoaded + uint32_t(s));
             const uint8_t one = 1;
 
-            Rs7_SafeStore(loaded, &one, 1);
+            Rsxr_SafeStore(loaded, &one, 1);
         } else {
-            Rs7_SafeStore(loaded, &h.loadedWas[s], 1);
+            Rsxr_SafeStore(loaded, &h.loadedWas[s], 1);
         }
     }
 
@@ -231,11 +231,11 @@ void PointParams(Head& h, bool toAlt) {
 }
 
 void FindSegments(Head& h) {
-    // The stock model: the first NiNode sibling of rs7_alt (culled or not, so the restore always finds it).
+    // The stock model: the first NiNode sibling of rsxr_alt (culled or not, so the restore always finds it).
     uint8_t* stock = nullptr;
 
-    EachChild(Rs7_SafeRead<uint8_t*>(h.alt, kParent), [&](uint8_t* c) {
-        if (c != h.alt && rs7s7d::IsKindOf(c, "NiNode")) {
+    EachChild(Rsxr_SafeRead<uint8_t*>(h.alt, kParent), [&](uint8_t* c) {
+        if (c != h.alt && rsxrs7d::IsKindOf(c, "NiNode")) {
             stock = c;
         }
 
@@ -245,10 +245,10 @@ void FindSegments(Head& h) {
     // A bass binds slots 0..count-1 (Rnd_Headstock_LoadStringMeshes 0x58E090, CONFIRMED), so a 5/6-string bass fits
     // the six stock slots and has no extra segment; its names follow the string order (BassSegName). A guitar keeps
     // string_size_<6 - s>.
-    const uint8_t* info = Rs7_SafeRead<const uint8_t*>(h.guitar, kGuitarInfo);
-    const int count = info ? Rs7_SafeRead<uint8_t>(info, kInfoStrings) : 0;
+    const uint8_t* info = Rsxr_SafeRead<const uint8_t*>(h.guitar, kGuitarInfo);
+    const int count = info ? Rsxr_SafeRead<uint8_t>(info, kInfoStrings) : 0;
 
-    h.bass = info && rs7::IsBassKind(Rs7_SafeRead<uint8_t>(info, rs7::kInfoKind));
+    h.bass = info && rsxr::IsBassKind(Rsxr_SafeRead<uint8_t>(info, rsxr::kInfoKind));
 
     for (int s = 0; s < kSegs; ++s) {
         char name[24];
@@ -274,7 +274,7 @@ void FindSegments(Head& h) {
 }
 
 // An extra segment's colour, every shown frame, without native strings (with them the stock segment colour loop
-// does it through Rs7Asset_SegColour): what Rnd_Headstock_UpdateSegmentColours 0x58E4F0 does for segment s <
+// does it through RsxrAsset_SegColour): what Rnd_Headstock_UpdateSegmentColours 0x58E4F0 does for segment s <
 // stringCount (string object +50h base shape found: copy the colour handle +38h's RGBA (+14h..+23h) onto the
 // segment's g_diffuseColor), for the 7th string's object S7. So it is lit / dimmed exactly like the 7th string
 // line (N11). Without S7 ([neck] string7_line=0) the static [color] string6 colour; the 8th segment (no
@@ -285,29 +285,30 @@ void ColourExtra(Head& h, int e) {
         return;
     }
 
-    uint8_t* s7 = e == 0 ? Rs7S7_ObjectOf(h.guitar) : nullptr;
-    uint8_t* src = (s7 && Rs7_SafeRead<uint8_t>(s7, kStrShapeFound)) ? Rs7_SafeRead<uint8_t*>(s7, kStrColour) : nullptr;
+    uint8_t* s7 = e == 0 ? RsxrS7_ObjectOf(h.guitar) : nullptr;
+    uint8_t* src =
+        (s7 && Rsxr_SafeRead<uint8_t>(s7, kStrShapeFound)) ? Rsxr_SafeRead<uint8_t*>(s7, kStrColour) : nullptr;
     uint8_t rgba[16];
 
-    if (src && Rs7_SafeCopyZero(rgba, src + kColourRgb, sizeof rgba)) {
-        Rs7_SafeStore(cd + kColourRgb, rgba, sizeof rgba);
-        if (Rs7Log_Upto(&g_head.logSeg7, 2)) {
-            Rs7Log("assetload: guitar %p: string_size_7 follows the 7th string's colour (S7 %p colour %p)", h.guitar,
-                   s7, src);
+    if (src && Rsxr_SafeCopyZero(rgba, src + kColourRgb, sizeof rgba)) {
+        Rsxr_SafeStore(cd + kColourRgb, rgba, sizeof rgba);
+        if (RsxrLog_Upto(&g_head.logSeg7, 2)) {
+            RsxrLog("assetload: guitar %p: string_size_7 follows the 7th string's colour (S7 %p colour %p)", h.guitar,
+                    s7, src);
         }
     } else if (e == 0) {
-        Rs7_SafeStore(cd + kColourRgb, g_rs7_fx_rgb + 3 * Rs7Colour_Mode(), 3 * sizeof(float));
+        Rsxr_SafeStore(cd + kColourRgb, g_rsxr_fx_rgb + 3 * RsxrColour_Mode(), 3 * sizeof(float));
     } else {
         float rgb[3];
 
-        Rs7_RgbToFloats(rs7colour::Colour8(Rs7Colour_Mode()), rgb);
-        Rs7_SafeStore(cd + kColourRgb, rgb, sizeof rgb);
+        Rsxr_RgbToFloats(rsxrcolour::Colour8(RsxrColour_Mode()), rgb);
+        Rsxr_SafeStore(cd + kColourRgb, rgb, sizeof rgb);
     }
 }
 
 // The 7th segment at the nut (issue #17 / #23 / nut gap, 2026-10-15). string_size_7 is left exactly as
 // the model has it: its nut end equals string_size_1..6's (model y 15.21, same height and radius,
-// pitch 1.608 in z) and lands on the 7th neck string's start (Rs7Gs_AttachExt, features/strings/strings.h
+// pitch 1.608 in z) and lands on the 7th neck string's start (RsxrGs_AttachExt, features/strings/strings.h
 // ExtrapolateAttach: z to 0.001, y to 0.011), like strings 0-5 meet theirs. An older workaround
 // sheared the segment's nut end 0.30 deeper (x) on the idea that the 7th nut slot is lower; the real
 // cause of "the segment draws in front of the nut" was the draw layer (LayerExtra below, CONFIRMED in game
@@ -319,16 +320,16 @@ void ColourExtra(Head& h, int e) {
 void LayerExtra(Head& h, int e) {
     const uint8_t* from = h.altSeg[0] ? h.altSeg[0] : h.stockSeg[0];  // string_size_6
     uint16_t value = 0, was = 0;
-    const int rc = rs7asset::CopyLayer(from, h.segX[e], rs7asset::GamePropType, &value, &was);
+    const int rc = rsxrasset::CopyLayer(from, h.segX[e], rsxrasset::GamePropType, &value, &was);
 
-    if (rc == 1 && Rs7Log_Upto(&g_head.logLayer, 4)) {
-        Rs7Log("assetload: guitar %p: string_size_%d draw layer %u -> %u (string_size_6's; it drew after the fret "
-               "bars, over the nut - issue #23)",
-               h.guitar, kSegs + 1 + e, unsigned(was), unsigned(value));
-    } else if (rc < 0 && Rs7Log_Upto(&g_head.logLayer, 4)) {
-        Rs7Log("assetload: guitar %p: string_size_%d draw layer NOT set (no layer property on string_size_%d)",
-               h.guitar, kSegs + 1 + e,
-               rs7asset::FindProperty(from, rs7asset::kLayerType, rs7asset::GamePropType) ? kSegs + 1 + e : kSegs);
+    if (rc == 1 && RsxrLog_Upto(&g_head.logLayer, 4)) {
+        RsxrLog("assetload: guitar %p: string_size_%d draw layer %u -> %u (string_size_6's; it drew after the fret "
+                "bars, over the nut - issue #23)",
+                h.guitar, kSegs + 1 + e, unsigned(was), unsigned(value));
+    } else if (rc < 0 && RsxrLog_Upto(&g_head.logLayer, 4)) {
+        RsxrLog("assetload: guitar %p: string_size_%d draw layer NOT set (no layer property on string_size_%d)",
+                h.guitar, kSegs + 1 + e,
+                rsxrasset::FindProperty(from, rsxrasset::kLayerType, rsxrasset::GamePropType) ? kSegs + 1 + e : kSegs);
     }
 }
 
@@ -338,11 +339,11 @@ void LayerBass(Head& h) {
     for (int s = 4; h.bass && s < kSegs; ++s) {
         uint16_t value = 0, was = 0;
 
-        if (h.altSeg[s] && rs7asset::CopyLayer(h.altSeg[0], h.altSeg[s], rs7asset::GamePropType, &value, &was) == 1 &&
-            Rs7Log_Upto(&g_head.logLayer, 4)) {
-            Rs7Log("assetload: guitar %p: bass string %d segment draw layer %u -> %u (the E string's)", h.guitar, s,
-                   unsigned(was), unsigned(value));
+        if (h.altSeg[s] && rsxrasset::CopyLayer(h.altSeg[0], h.altSeg[s], rsxrasset::GamePropType, &value, &was) == 1 &&
+            RsxrLog_Upto(&g_head.logLayer, 4)) {
+            RsxrLog("assetload: guitar %p: bass string %d segment draw layer %u -> %u (the E string's)", h.guitar, s,
+                    unsigned(was), unsigned(value));
         }
     }
 }
-}  // namespace rs7asset
+}  // namespace rsxrasset

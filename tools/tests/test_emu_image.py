@@ -15,9 +15,9 @@ def test_exports_are_direct(emus):
     """No incremental-link thunks: every stub export is the stub itself (no stub starts with a jmp),
     and the image has no ILT (the linker's thunks are `jmp rel32` runs at the start of .text)."""
     _, patched = emus
-    stubs = {n: a for n, a in patched.exports.items() if n.startswith("Rs7_Stub_")}
+    stubs = {n: a for n, a in patched.exports.items() if n.startswith("Rsxr_Stub_")}
     # Stub exports besides the PUB* family. Update the count when a stub is added or removed (history: git log).
-    assert len([s for s in stubs if not s.startswith("Rs7_Stub_PUB")]) == 6
+    assert len([s for s in stubs if not s.startswith("Rsxr_Stub_PUB")]) == 6
     for name, addr in stubs.items():
         assert patched.read(addr, 1)[0] != 0xE9, f"{name} is an ILT thunk"
     pe = pefile.PE(str(DLL), fast_load=True)
@@ -32,4 +32,4 @@ MGR_PTR = 0x0135F58C
 
 def test_colour_manager_ref_is_bound(emus):
     _, patched = emus
-    assert struct.unpack("<I", patched.read(patched.exports["g_rs7_colormgr"], 4))[0] == MGR_PTR
+    assert struct.unpack("<I", patched.read(patched.exports["g_rsxr_colormgr"], 4))[0] == MGR_PTR

@@ -1,19 +1,19 @@
 {
-  "rs7_inline7_lh.nif": {
-    "bytes": 1424764,
-    "sha256": "01b564082c6b92036794680150ad63ceaa6d8b69cff8d16af92d09cf5021cf55",
-    "copies": 1037,
-    "literal_bytes": 1413740
+  "rsxr_inline7_lh.nif": {
+    "bytes": 1424773,
+    "sha256": "8f27bc8fdb9ee0b0701ee573b0a05350191e75f90e52152d44718b96d9316684",
+    "copies": 953,
+    "literal_bytes": 1413867
   },
-  "rs7_inline8_lh.nif": {
-    "bytes": 1523951,
-    "sha256": "57c5d984fead678e38398916c06257629ac2e6278d6a33eee18c52a61f5b0cf5",
-    "copies": 1115,
-    "literal_bytes": 1512606
+  "rsxr_inline8_lh.nif": {
+    "bytes": 1523960,
+    "sha256": "9c508430794c3510616fd6185b105a119fa0e733a7e75fdc313c70a7fa50c20e",
+    "copies": 1028,
+    "literal_bytes": 1512713
   },
   "package": {
-    "bytes": 5928092,
-    "sha256": "df7160427c23c26f88ef448394a8dd4060c155f3cb2fbfa4f8add6f1038fb73a",
+    "bytes": 5922719,
+    "sha256": "409bc5bddb214ed672be8acf3edea100e290e0eade136de1a637bd8df6a1ad5a",
     "templates": [
       "epi_whilshire_cherry_lh.nif",
       "epi_whilshire_peg.nif"

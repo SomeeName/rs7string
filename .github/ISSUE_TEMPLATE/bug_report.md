@@ -11,13 +11,13 @@ labels: bug
 **Steps to reproduce**
 
 **Environment**
-- rs7string version:
+- RS Extended Range version:
 - Game build (Steam, September 2022?):
 - CDLC enabler:
 - Other mods (RSMods, RS_ASIO, others):
 - Song / chart and tuning:
 
-**rs7string.log**
-Paste the relevant lines from `rs7string.log` (next to the game exe). Remove personal paths.
+**rsxr.log**
+Paste the relevant lines from `rsxr.log`. You find it next to the game exe. Remove personal paths first.
 
 Do not attach game files or encryption keys.

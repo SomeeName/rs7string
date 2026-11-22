@@ -6,7 +6,7 @@
 
 // The stock colour ramps (swap_ramp.cpp): candidates found by the worker are copied and bound on the render
 // thread, repainted when the colour changes and released when the engine drops them.
-namespace rs7swap {
+namespace rsxrswap {
 struct Copy {
     uint64_t hash;
     uint32_t fmt;
@@ -15,22 +15,22 @@ struct Copy {
 };
 
 struct RampState {
-    Rs7SwapCfg cfg = {{kRs7DefaultColour, kRs7DefaultColour}};
-    CRITICAL_SECTION* listLock;  // the game's NiTexture list lock
-    uintptr_t d3d9Lo, d3d9Hi;    // d3d9.dll's image
-    Rs7SwapValidator validator;  // tests: replaces the engine revalidation
+    RsxrSwapCfg cfg = {{kRsxrDefaultColour, kRsxrDefaultColour}};
+    CRITICAL_SECTION* listLock;   // the game's NiTexture list lock
+    uintptr_t d3d9Lo, d3d9Hi;     // d3d9.dll's image
+    RsxrSwapValidator validator;  // tests: replaces the engine revalidation
     volatile bool injectFault;
     volatile LONG retireReq;
-    volatile LONG recolourReq;  // Rs7Swap_RequestRecolour -> the render thread (OnSet)
-    volatile LONG recolourRgb[2] = {LONG(kRs7DefaultColour), LONG(kRs7DefaultColour)};
+    volatile LONG recolourReq;  // RsxrSwap_RequestRecolour -> the render thread (OnSet)
+    volatile LONG recolourRgb[2] = {LONG(kRsxrDefaultColour), LONG(kRsxrDefaultColour)};
     // Render thread only.
-    Copy copies[kRs7MaxCands];
+    Copy copies[kRsxrMaxCands];
     uint32_t rgb8[2] = {0xFFFFFFFF, 0xFFFFFFFF};  // the eighth string's colours of the last Recolour (none yet)
     unsigned copyCount;
     uint32_t colourGeneration;
     bool recolourFailed;
     DWORD recolourRetryAtMs;
-    Rs7Cand* processing;  // the candidate Process works on (fault handler)
+    RsxrCand* processing;  // the candidate Process works on (fault handler)
 };
 
 extern RampState g_ramp;
@@ -41,4 +41,4 @@ IDirect3DBaseTexture9* OnSet(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTe
 void AfterFault();
 // Tests: release every reference and clear the request flags.
 void ResetRamp();
-}  // namespace rs7swap
+}  // namespace rsxrswap

@@ -7,42 +7,42 @@
 #include <intrin.h>
 
 extern "C" {
-uintptr_t g_rs7_profile_apply = 0;  // pitch.h: TS8PA / TS8PZ (native tuner)
-uintptr_t g_rs7_native_pitch = 0;
-uintptr_t g_rs7_fn_msize = 0;
-const int32_t g_rs7_pitch_gbase[8] = {rs7::kGuitarOpenMidi[0], rs7::kGuitarOpenMidi[1], rs7::kGuitarOpenMidi[2],
-                                      rs7::kGuitarOpenMidi[3], rs7::kGuitarOpenMidi[4], rs7::kGuitarOpenMidi[5],
-                                      rs7::kGuitarOpenMidi[6], rs7::kGuitarOpenMidi[7]};
-// Every bass string, the extended low B / high C included (rs7bass::ExtraBase gates those to an extended-bass song).
-const int32_t g_rs7_pitch_bbase[6] = {rs7::kBassOpenMidi[0], rs7::kBassOpenMidi[1], rs7::kBassOpenMidi[2],
-                                      rs7::kBassOpenMidi[3], rs7::kBassOpenMidi[4], rs7::kBassOpenMidi[5]};
+uintptr_t g_rsxr_profile_apply = 0;  // pitch.h: TS8PA / TS8PZ (native tuner)
+uintptr_t g_rsxr_native_pitch = 0;
+uintptr_t g_rsxr_fn_msize = 0;
+const int32_t g_rsxr_pitch_gbase[8] = {rsxr::kGuitarOpenMidi[0], rsxr::kGuitarOpenMidi[1], rsxr::kGuitarOpenMidi[2],
+                                       rsxr::kGuitarOpenMidi[3], rsxr::kGuitarOpenMidi[4], rsxr::kGuitarOpenMidi[5],
+                                       rsxr::kGuitarOpenMidi[6], rsxr::kGuitarOpenMidi[7]};
+// Every bass string, the extended low B / high C included (rsxrbass::ExtraBase gates those to an extended-bass song).
+const int32_t g_rsxr_pitch_bbase[6] = {rsxr::kBassOpenMidi[0], rsxr::kBassOpenMidi[1], rsxr::kBassOpenMidi[2],
+                                       rsxr::kBassOpenMidi[3], rsxr::kBassOpenMidi[4], rsxr::kBassOpenMidi[5]};
 }
 
-rs7p::State rs7p::g_state;
+rsxrp::State rsxrp::g_state;
 
 namespace {
-using rs7p::g_state;
-using rs7p::UncheckedField;
+using rsxrp::g_state;
+using rsxrp::UncheckedField;
 
 using MsizeFn = size_t(__cdecl*)(void*);
 
 // Whether the CRT block of `p` holds at least `size` bytes (false without _msize: stock behaviour).
 bool Holds(uint8_t* p, uint32_t size) {
-    return p && g_rs7_fn_msize && reinterpret_cast<MsizeFn>(g_rs7_fn_msize)(p) >= size;
+    return p && g_rsxr_fn_msize && reinterpret_cast<MsizeFn>(g_rsxr_fn_msize)(p) >= size;
 }
 
 bool Bass(uint8_t* det) {
-    return rs7::IsBassKind(UncheckedField<int>(det, rs7::kDetInstrument));
+    return rsxr::IsBassKind(UncheckedField<int>(det, rsxr::kDetInstrument));
 }
 
 // The registry of tailed allocations: every object whose tail the DLL wrote (PM0, PR0, PM1, S3, PT1: only after Holds
-// saw the native block size). Rs7Pitch_Tailed reads it instead of _msize, so the hot readers (PC1-PC4 in light mode,
+// saw the native block size). RsxrPitch_Tailed reads it instead of _msize, so the hot readers (PC1-PC4 in light mode,
 // the publication) call no CRT function and execute no x87/SSE instruction. One dword per object: its address, bit 0
 // set for a detector (both are heap blocks, 8-aligned). Writers take a spin lock (cold paths, possibly two threads);
 // readers acquire the published keys without it. Every writer that finds a stock-size block drops a stale entry at that
-// address. Full (rs7p::kTailedMax, 64 x the measured peak): the least recently written entry goes, a dead object's (a
+// address. Full (rsxrp::kTailedMax, 64 x the measured peak): the least recently written entry goes, a dead object's (a
 // live object is rewritten at every tuning change), logged once.
-using rs7p::kTailedMax;
+using rsxrp::kTailedMax;
 
 static_assert(std::atomic<uintptr_t>::is_always_lock_free);
 
@@ -61,7 +61,7 @@ void UnlockTailed() {
 
 // Writes the magic that marks a valid tail and records the object.
 void MarkTailed(uint8_t* obj, uint32_t kind) {
-    UncheckedField<uint32_t>(obj, kind ? rs7p::kDetMagic : rs7p::kMatMagic) = rs7p::kMagic;
+    UncheckedField<uint32_t>(obj, kind ? rsxrp::kDetMagic : rsxrp::kMatMagic) = rsxrp::kMagic;
     const uintptr_t key = TailedKey(obj, kind);
 
     LockTailed();
@@ -88,8 +88,8 @@ void MarkTailed(uint8_t* obj, uint32_t kind) {
     UnlockTailed();
 
     if (logEviction) {  // full-mode writers only (PM0 PR0 PM1 S3 PT1)
-        Rs7Log("pitch8: the registry of tailed allocations is full (%u), the least recently written entry goes",
-               kTailedMax);
+        RsxrLog("pitch8: the registry of tailed allocations is full (%u), the least recently written entry goes",
+                kTailedMax);
     }
 }
 
@@ -133,21 +133,21 @@ void WriteDet(uint8_t* det, const int16_t t[8]) {
     const bool bass = Bass(det);
     int16_t open[8];
 
-    rs7p::FillOpen(t, bass, open);
-    Put8(det + rs7p::kDetTuning8, t);
-    Put8(det + rs7p::kDetOpen8, open);
-    // Stock 6 / bass 4; the 7/8 a song widened the detector to (S4, Rs7Song_WidenDetector) survives the
+    rsxrp::FillOpen(t, bass, open);
+    Put8(det + rsxrp::kDetTuning8, t);
+    Put8(det + rsxrp::kDetOpen8, open);
+    // Stock 6 / bass 4; the 7/8 a song widened the detector to (S4, RsxrSong_WidenDetector) survives the
     // SetTuning that S4 runs after it.
-    const unsigned song = bass ? 0 : Rs7Pitch_SongCount(det);
+    const unsigned song = bass ? 0 : RsxrPitch_SongCount(det);
 
-    UncheckedField<uint32_t>(det, rs7p::kDetCount) = song ? song : bass ? 4 : 6;
+    UncheckedField<uint32_t>(det, rsxrp::kDetCount) = song ? song : bass ? 4 : 6;
     MarkTailed(det, 1);
 }
 }  // namespace
 
 namespace {
 // The song's 7 / 8-entry tuning per object (the last SetTuning with more than six entries: S4), kept
-// through a six-entry profile re-apply (Play_Tuning_ApplyToDetection, g_rs7_profile_apply).
+// through a six-entry profile re-apply (Play_Tuning_ApplyToDetection, g_rsxr_profile_apply).
 // Value: the entry count kept (7 or 8). A full table replaces its entries in turn.
 // t = the new vector's tuning8 (n entries). Returns the entry count the tail keeps.
 size_t KeepSong(const uint8_t* obj, const int16_t* tail, int16_t t[8], size_t n) {
@@ -160,7 +160,7 @@ size_t KeepSong(const uint8_t* obj, const int16_t* tail, int16_t t[8], size_t n)
         return keep;
     }
 
-    if (g_rs7_profile_apply && kept && Rs7Pitch_KeepSongTuning()) {  // the profile's six strings
+    if (g_rsxr_profile_apply && kept && RsxrPitch_KeepSongTuning()) {  // the profile's six strings
         for (size_t s = 6; s < *kept; ++s) {
             t[s] = tail[s];
         }
@@ -168,7 +168,7 @@ size_t KeepSong(const uint8_t* obj, const int16_t* tail, int16_t t[8], size_t n)
         return *kept;
     }
 
-    if (kept && !g_rs7_profile_apply) {
+    if (kept && !g_rsxr_profile_apply) {
         g_state.song.Erase(obj);  // a six-string song replaces it
     }
 
@@ -176,7 +176,7 @@ size_t KeepSong(const uint8_t* obj, const int16_t* tail, int16_t t[8], size_t n)
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7Pitch_SetSongCount(const uint8_t* det, unsigned count) {
+extern "C" void __cdecl RsxrPitch_SetSongCount(const uint8_t* det, unsigned count) {
     if (!det) {
         return;
     }
@@ -188,7 +188,7 @@ extern "C" void __cdecl Rs7Pitch_SetSongCount(const uint8_t* det, unsigned count
     }
 }
 
-extern "C" unsigned __cdecl Rs7Pitch_SongCount(const uint8_t* det) {
+extern "C" unsigned __cdecl RsxrPitch_SongCount(const uint8_t* det) {
     const unsigned* count = g_state.songCount.Find(det);
 
     return count ? *count : 0;
@@ -201,7 +201,7 @@ namespace {
 // Value: the reset floor. A full table replaces its entries in turn (round robin), so a live detector's record can go.
 int ResetFloorOf(uint8_t* det, bool reset) {
     int* r = g_state.floor.Find(det);
-    const int current = UncheckedField<int>(det, rs7::kDetFloor);
+    const int current = UncheckedField<int>(det, rsxr::kDetFloor);
 
     if (r) {
         if (reset) {
@@ -213,41 +213,41 @@ int ResetFloorOf(uint8_t* det, bool reset) {
 
     // Not recorded outside a reset: the record may have been evicted after the DLL lowered this floor, so the current
     // floor is not taken below the stock one.
-    return g_state.floor.Put(det, reset || current >= rs7p::kStockFloor ? current : rs7p::kStockFloor);
+    return g_state.floor.Put(det, reset || current >= rsxrp::kStockFloor ? current : rsxrp::kStockFloor);
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7Pitch_DetFloor(uint8_t* det, int reset) {
+extern "C" void __cdecl RsxrPitch_DetFloor(uint8_t* det, int reset) {
     if (!det) {
         return;
     }
 
     const int resetFloor = ResetFloorOf(det, reset != 0);
-    int& floor = UncheckedField<int>(det, rs7::kDetFloor);
-    const int lowest = UncheckedField<int>(det, rs7::kDetLowestOpen);
-    const int want = rs7p::Floor(resetFloor, lowest);
+    int& floor = UncheckedField<int>(det, rsxr::kDetFloor);
+    const int lowest = UncheckedField<int>(det, rsxr::kDetLowestOpen);
+    const int want = rsxrp::Floor(resetFloor, lowest);
 
     if (floor == want) {
         return;
     }
 
-    Rs7Pitch_FloorLog(det, floor, want, lowest, resetFloor);
+    RsxrPitch_FloorLog(det, floor, want, lowest, resetFloor);
     floor = want;
 }
 
-extern "C" __declspec(noinline) void __cdecl Rs7Pitch_FloorLog(uint8_t* det, int floor, int want, int lowest,
-                                                               int reset) {
+extern "C" __declspec(noinline) void __cdecl RsxrPitch_FloorLog(uint8_t* det, int floor, int want, int lowest,
+                                                                int reset) {
     // +DCCh: the rate the lag of a pitch is computed with, +DD4h: the lag buffer's length (0x4DF4D0 clamps the lag to
     // length - 4).
-    Rs7Log("pitch: detector %p floor %d -> %d (lowest open %d, reset floor %d; lag rate %d, buffer %d)", det, floor,
-           want, lowest, reset, int(UncheckedField<float>(det, 0xDCC)), UncheckedField<int>(det, 0xDD4));
+    RsxrLog("pitch: detector %p floor %d -> %d (lowest open %d, reset floor %d; lag rate %d, buffer %d)", det, floor,
+            want, lowest, reset, int(UncheckedField<float>(det, 0xDCC)), UncheckedField<int>(det, 0xDD4));
 }
 
-extern "C" void __cdecl Rs7Pitch_DetReset(uint8_t* det) {
+extern "C" void __cdecl RsxrPitch_DetReset(uint8_t* det) {
     g_state.song.Erase(det);  // a new / reset detector has no song yet
-    Rs7Pitch_SetSongCount(det, 0);
+    RsxrPitch_SetSongCount(det, 0);
 
-    if (!Holds(det, rs7p::kDetSize)) {
+    if (!Holds(det, rsxrp::kDetSize)) {
         ForgetTailed(det, 1);
         return;
     }
@@ -257,8 +257,8 @@ extern "C" void __cdecl Rs7Pitch_DetReset(uint8_t* det) {
     WriteDet(det, zero);  // the stock reset zeroes tuning[6] first and derives openMidi from it
 }
 
-extern "C" void __cdecl Rs7Pitch_DetTuned(uint8_t* det, const Rs7Int16Vec* v) {
-    if (!Holds(det, rs7p::kDetSize)) {
+extern "C" void __cdecl RsxrPitch_DetTuned(uint8_t* det, const RsxrInt16Vec* v) {
+    if (!Holds(det, rsxrp::kDetSize)) {
         ForgetTailed(det, 1);
         return;
     }
@@ -266,19 +266,19 @@ extern "C" void __cdecl Rs7Pitch_DetTuned(uint8_t* det, const Rs7Int16Vec* v) {
     size_t n = static_cast<size_t>(v->end - v->begin);
     int16_t t[8];
 
-    rs7p::FillTuning(v->begin, n, t);
-    if (UncheckedField<uint32_t>(det, rs7p::kDetMagic) == rs7p::kMagic) {
-        n = KeepSong(det, reinterpret_cast<const int16_t*>(det + rs7p::kDetTuning8), t, n);
+    rsxrp::FillTuning(v->begin, n, t);
+    if (UncheckedField<uint32_t>(det, rsxrp::kDetMagic) == rsxrp::kMagic) {
+        n = KeepSong(det, reinterpret_cast<const int16_t*>(det + rsxrp::kDetTuning8), t, n);
     } else {
         n = KeepSong(det, t, t, n);
     }
     WriteDet(det, t);
-    int& lowest = UncheckedField<int>(det, rs7::kDetLowestOpen);
+    int& lowest = UncheckedField<int>(det, rsxr::kDetLowestOpen);
 
-    lowest = rs7p::Lowest(lowest, t, n, Bass(det));
+    lowest = rsxrp::Lowest(lowest, t, n, Bass(det));
 }
 
-void Rs7Pitch_ClearTailed() {
+void RsxrPitch_ClearTailed() {
     LockTailed();
 
     for (unsigned i = 0; i < kTailedMax; ++i) {
@@ -290,28 +290,28 @@ void Rs7Pitch_ClearTailed() {
     UnlockTailed();
 }
 
-extern "C" int __cdecl Rs7Pitch_Tailed(uint8_t* obj, uint32_t kind) {
-    const uint32_t magic = kind ? rs7p::kDetMagic : rs7p::kMatMagic;
+extern "C" int __cdecl RsxrPitch_Tailed(uint8_t* obj, uint32_t kind) {
+    const uint32_t magic = kind ? rsxrp::kDetMagic : rsxrp::kMatMagic;
 
-    return obj && Remembered(obj, kind) && UncheckedField<uint32_t>(obj, magic) == rs7p::kMagic ? 1 : 0;
+    return obj && Remembered(obj, kind) && UncheckedField<uint32_t>(obj, magic) == rsxrp::kMagic ? 1 : 0;
 }
 
-extern "C" void __cdecl Rs7Pitch_MatNew(uint8_t* m) {
+extern "C" void __cdecl RsxrPitch_MatNew(uint8_t* m) {
     g_state.song.Erase(m);
 
-    if (!Holds(m, rs7p::kMatSize)) {
+    if (!Holds(m, rsxrp::kMatSize)) {
         ForgetTailed(m, 0);
         return;
     }
 
     const int16_t zero[8] = {};
 
-    Put8(m + rs7p::kMatTuning8, zero);  // the stock ctor zeroes tuning[6] (+44h)
+    Put8(m + rsxrp::kMatTuning8, zero);  // the stock ctor zeroes tuning[6] (+44h)
     MarkTailed(m, 0);
 }
 
-extern "C" void __cdecl Rs7Pitch_MatTuned(uint8_t* m, const Rs7Int16Vec* v) {
-    if (!Holds(m, rs7p::kMatSize)) {
+extern "C" void __cdecl RsxrPitch_MatTuned(uint8_t* m, const RsxrInt16Vec* v) {
+    if (!Holds(m, rsxrp::kMatSize)) {
         ForgetTailed(m, 0);
         return;
     }
@@ -319,12 +319,12 @@ extern "C" void __cdecl Rs7Pitch_MatTuned(uint8_t* m, const Rs7Int16Vec* v) {
     int16_t t[8];
     const size_t n = static_cast<size_t>(v->end - v->begin);
 
-    rs7p::FillTuning(v->begin, n, t);
-    if (UncheckedField<uint32_t>(m, rs7p::kMatMagic) == rs7p::kMagic) {
-        KeepSong(m, reinterpret_cast<const int16_t*>(m + rs7p::kMatTuning8), t, n);
+    rsxrp::FillTuning(v->begin, n, t);
+    if (UncheckedField<uint32_t>(m, rsxrp::kMatMagic) == rsxrp::kMagic) {
+        KeepSong(m, reinterpret_cast<const int16_t*>(m + rsxrp::kMatTuning8), t, n);
     } else {
         KeepSong(m, t, t, n);
     }
-    Put8(m + rs7p::kMatTuning8, t);
+    Put8(m + rsxrp::kMatTuning8, t);
     MarkTailed(m, 0);
 }

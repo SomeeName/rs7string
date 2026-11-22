@@ -21,23 +21,23 @@
 #include <string>
 #include <vector>
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_plain_psarc = uintptr_t(Rs7PlainProvider::Unknown);
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_plain_psarc = uintptr_t(RsxrPlainProvider::Unknown);
 
 //   PP_TOC   0x8A3643 PSARC TOC loader: plain TOC (archiveFlags & 4 clear) skips the decrypt block
 //   PP_SNGF  0x558C1A SNG loader: flags 1 (plain) passes the flags check
 //   PP_SNGD  0x558CD4 SNG loader: the call of the SNG decrypt becomes decrypt-or-copy (a C function)
-extern "C" __declspec(dllexport) uintptr_t g_rs7_target_PP_SNGD = 0;  // the game's SNG decrypt (0xE3EA10)
-extern "C" uintptr_t g_rs7_skip_PP_TOC;                               // hooks_mid.cpp
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_target_PP_SNGD = 0;  // the game's SNG decrypt (0xE3EA10)
+extern "C" uintptr_t g_rsxr_skip_PP_TOC;                               // hooks_mid.cpp
 
 namespace {
 // PP_TOC: the TOC decrypt block runs from site - 3 (mov eax,[ebp-74h]) to site + 0x4D (lea ecx,[edi+34h]);
 // the pattern pins every byte of it up to the add esp,28h that ends it.
 constexpr uintptr_t kTocSkip = 0x4D;
-constexpr Rs7Group kPsarc = Rs7_Group(Rs7Feature::Psarc);
+constexpr RsxrGroup kPsarc = Rsxr_Group(RsxrFeature::Psarc);
 
 struct Unit {
-    const Rs7Site* site = nullptr;
-    const Rs7Hook* hook = nullptr;
+    const RsxrSite* site = nullptr;
+    const RsxrHook* hook = nullptr;
     uintptr_t addr = 0;
     std::vector<uint8_t> original;  // the site's `expect` (PP_SNGF: cmp + jne, 11 bytes)
     uint8_t ours[5] = {};
@@ -50,16 +50,16 @@ std::vector<Unit> g_unit;
 // new entry from the pool; the old one stays, since a thread could still run in it.
 struct MidEntry {
     uintptr_t at = 0;
-    Rs7Mid::Hook* hook = nullptr;
+    RsxrMid::Hook* hook = nullptr;
 };
 
 MidEntry g_mid[4];
-Rs7Mid::Hook g_midPool[32];
+RsxrMid::Hook g_midPool[32];
 size_t g_midUsed = 0;
 size_t g_midLimit = 0;  // tests: 0 = the whole pool
 
 // The address our jmp goes to: the row's stub, or its mid-hook entry (0: the entry could not be built).
-uintptr_t OurTarget(size_t index, const Rs7Site& s, const Rs7Hook& h, uintptr_t addr, const std::vector<uint8_t>& o) {
+uintptr_t OurTarget(size_t index, const RsxrSite& s, const RsxrHook& h, uintptr_t addr, const std::vector<uint8_t>& o) {
     if (!h.IsMid()) {
         return reinterpret_cast<uintptr_t>(h.stub);
     }
@@ -77,9 +77,9 @@ uintptr_t OurTarget(size_t index, const Rs7Site& s, const Rs7Hook& h, uintptr_t 
         return 0;
     }
 
-    Rs7Mid::Hook& hook = g_midPool[g_midUsed++];
+    RsxrMid::Hook& hook = g_midPool[g_midUsed++];
 
-    if (!Rs7_PrepareMid(hook, Rs7Resolved{&s, addr, 0, o}, h)) {
+    if (!Rsxr_PrepareMid(hook, RsxrResolved{&s, addr, 0, o}, h)) {
         return 0;
     }
 
@@ -88,16 +88,16 @@ uintptr_t OurTarget(size_t index, const Rs7Site& s, const Rs7Hook& h, uintptr_t 
     return hook.Entry();
 }
 
-void SetProvider(Rs7PlainProvider p) {
-    g_rs7_plain_psarc = uintptr_t(p);
+void SetProvider(RsxrPlainProvider p) {
+    g_rsxr_plain_psarc = uintptr_t(p);
 }
 
-Rs7SiteState Live(const Unit& u) {
-    return Rs7_ClassifySite(reinterpret_cast<const uint8_t*>(u.addr), u.original.data(), u.original.size(), u.ours,
-                            sizeof u.ours);
+RsxrSiteState Live(const Unit& u) {
+    return Rsxr_ClassifySite(reinterpret_cast<const uint8_t*>(u.addr), u.original.data(), u.original.size(), u.ours,
+                             sizeof u.ours);
 }
 
-std::string Describe(const std::vector<Rs7SiteState>& st) {
+std::string Describe(const std::vector<RsxrSiteState>& st) {
     std::string s;
 
     for (size_t i = 0; i < g_unit.size(); ++i) {
@@ -105,15 +105,15 @@ std::string Describe(const std::vector<Rs7SiteState>& st) {
         const uint8_t* p = reinterpret_cast<const uint8_t*>(g_unit[i].addr);
 
         std::snprintf(b, sizeof b, "%s%s %08X %s (%02X %02X %02X %02X %02X)", i ? ", " : "", g_unit[i].site->id,
-                      unsigned(g_unit[i].addr), Rs7_SiteStateName(st[i]), p[0], p[1], p[2], p[3], p[4]);
+                      unsigned(g_unit[i].addr), Rsxr_SiteStateName(st[i]), p[0], p[1], p[2], p[3], p[4]);
         s += b;
     }
 
     return s;
 }
 
-std::vector<Rs7SiteState> States() {
-    std::vector<Rs7SiteState> st;
+std::vector<RsxrSiteState> States() {
+    std::vector<RsxrSiteState> st;
 
     for (const auto& u : g_unit) {
         st.push_back(Live(u));
@@ -124,21 +124,21 @@ std::vector<Rs7SiteState> States() {
 
 // Finds the three sites (patterns wildcard every byte an enabler or we overwrite) and binds the stubs'
 // variables from the stock bytes. Empty string on success.
-std::string Resolve(const Rs7PlainHost& host, const Rs7Site* sites, int count, uintptr_t textVa, size_t textSize) {
+std::string Resolve(const RsxrPlainHost& host, const RsxrSite* sites, int count, uintptr_t textVa, size_t textSize) {
     g_unit.clear();
     const uint8_t* text = reinterpret_cast<const uint8_t*>(textVa);
 
     for (int i = 0; i < count; ++i) {
-        const Rs7Site& s = sites[i];
+        const RsxrSite& s = sites[i];
         Unit u;
 
         u.site = &s;
-        Rs7Pattern pat, exp;
-        if (!Rs7_ParsePattern(s.pattern, pat) || !Rs7_ParsePattern(s.expect, exp)) {
+        RsxrPattern pat, exp;
+        if (!Rsxr_ParsePattern(s.pattern, pat) || !Rsxr_ParsePattern(s.expect, exp)) {
             return std::string(s.id) + ": bad pattern";
         }
 
-        const auto hits = Rs7_FindAll(text, textSize, pat, 2);
+        const auto hits = Rsxr_FindAll(text, textSize, pat, 2);
 
         if (hits.size() != 1) {
             char m[64];
@@ -160,7 +160,7 @@ std::string Resolve(const Rs7PlainHost& host, const Rs7Site* sites, int count, u
             return std::string(s.id) + ": mid-hook entry rejected";
         }
 
-        u.ours[0] = s.kind == Rs7Kind::Call ? 0xE8 : 0xE9;
+        u.ours[0] = s.kind == RsxrKind::Call ? 0xE8 : 0xE9;
         const int32_t rel = int32_t(ours - (u.addr + 5));
 
         std::memcpy(u.ours + 1, &rel, 4);
@@ -180,7 +180,7 @@ std::string Resolve(const Rs7PlainHost& host, const Rs7Site* sites, int count, u
         }
 
         if (!std::strcmp(u.site->id, "PP_TOC")) {
-            g_rs7_skip_PP_TOC = u.addr + kTocSkip;
+            g_rsxr_skip_PP_TOC = u.addr + kTocSkip;
         }
     }
 
@@ -188,21 +188,21 @@ std::string Resolve(const Rs7PlainHost& host, const Rs7Site* sites, int count, u
 }
 
 // Resolves the sites, retrying while .text may still be unpacking. On failure disables Psarc and returns false.
-bool ResolveWithRetry(const Rs7PlainHost& host, bool enabled, const Rs7Site* sites, int count, uintptr_t textVa,
+bool ResolveWithRetry(const RsxrPlainHost& host, bool enabled, const RsxrSite* sites, int count, uintptr_t textVa,
                       size_t textSize) {
     std::string err;
 
-    Rs7_Retry(20, 100, [&] {  // .text may still be unpacking
+    Rsxr_Retry(20, 100, [&] {  // .text may still be unpacking
         err = Resolve(host, sites, count, textVa, textSize);
 
         return err.empty();
     });
 
     if (!err.empty()) {
-        Rs7Log("plain psarc: site %s - plain PSARC support off (feature %s DISABLED)", err.c_str(),
-               Rs7_FeatureName(Rs7Feature::Psarc));
+        RsxrLog("plain psarc: site %s - plain PSARC support off (feature %s DISABLED)", err.c_str(),
+                Rsxr_FeatureName(RsxrFeature::Psarc));
         host.groups->disable(kPsarc);
-        SetProvider(enabled ? Rs7PlainProvider::Failed : Rs7PlainProvider::Off);
+        SetProvider(enabled ? RsxrPlainProvider::Failed : RsxrPlainProvider::Off);
         return false;
     }
 
@@ -211,25 +211,25 @@ bool ResolveWithRetry(const Rs7PlainHost& host, bool enabled, const Rs7Site* sit
 
 // True (provider set and logged) when nothing is to be written: plain PSARC is off, or the CDLC enabler or an
 // earlier start already provides it.
-bool SettledWithoutWriting(bool enabled, Rs7PlainDecision d, const std::vector<Rs7SiteState>& st) {
+bool SettledWithoutWriting(bool enabled, RsxrPlainDecision d, const std::vector<RsxrSiteState>& st) {
     if (!enabled) {
-        SetProvider(Rs7PlainProvider::Off);
-        Rs7Log("plain psarc: [psarc] plain=0 - rs7string leaves the sites alone; %s [%s]",
-               d == Rs7PlainDecision::Enabler ? "provided by the CDLC enabler"
-                                              : "nobody provides it: plain packages will not load",
-               Describe(st).c_str());
+        SetProvider(RsxrPlainProvider::Off);
+        RsxrLog("plain psarc: [psarc] plain=0 - RSXR leaves the sites alone; %s [%s]",
+                d == RsxrPlainDecision::Enabler ? "provided by the CDLC enabler"
+                                                : "nobody provides it: plain packages will not load",
+                Describe(st).c_str());
         return true;
     }
 
-    if (d == Rs7PlainDecision::Enabler) {
-        SetProvider(Rs7PlainProvider::Enabler);
-        Rs7Log("plain psarc: provided by the CDLC enabler - all three sites left alone [%s]", Describe(st).c_str());
+    if (d == RsxrPlainDecision::Enabler) {
+        SetProvider(RsxrPlainProvider::Enabler);
+        RsxrLog("plain psarc: provided by the CDLC enabler - all three sites left alone [%s]", Describe(st).c_str());
         return true;
     }
 
-    if (d == Rs7PlainDecision::Already) {
-        SetProvider(Rs7PlainProvider::Ours);
-        Rs7Log("plain psarc: already patched by rs7string [%s]", Describe(st).c_str());
+    if (d == RsxrPlainDecision::Already) {
+        SetProvider(RsxrPlainProvider::Ours);
+        RsxrLog("plain psarc: already patched by RSXR [%s]", Describe(st).c_str());
         return true;
     }
 
@@ -237,8 +237,8 @@ bool SettledWithoutWriting(bool enabled, Rs7PlainDecision d, const std::vector<R
 }
 
 // One unit in the Psarc feature group: a failed write restores the others (CAS back from ours only).
-Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
-    Rs7PatchOps ops;
+RsxrPatchOps CasPatchOps(const RsxrGroupPolicy* groups) {
+    RsxrPatchOps ops;
 
     ops.count = g_unit.size();
     ops.group = [](size_t) {
@@ -248,7 +248,7 @@ Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
         return g_unit[i].site->id;
     };
     ops.should = [groups](size_t i) {
-        return !groups->disabled(kPsarc) && Live(g_unit[i]) == Rs7SiteState::Original;
+        return !groups->disabled(kPsarc) && Live(g_unit[i]) == RsxrSiteState::Original;
     };
     ops.prepare = [](size_t) {
         return true;
@@ -256,130 +256,130 @@ Rs7PatchOps CasPatchOps(const Rs7GroupPolicy* groups) {
     // The CAS writes run under the same thread freeze as the main batch (ops.range), so the
     // CDLC enabler's threads and the loaders are stopped and none stands inside a site; the compare-exchange
     // still guards against an enabler that wrote before the freeze. Inside the freeze: no logging.
-    static Rs7CasResult casResult[8];
+    static RsxrCasResult casResult[8];
 
     ops.apply = [](size_t i) {
         const Unit& u = g_unit[i];
-        const Rs7CasResult r = Rs7_CasCode(u.addr, u.original.data(), u.ours, sizeof u.ours);
+        const RsxrCasResult r = Rsxr_CasCode(u.addr, u.original.data(), u.ours, sizeof u.ours);
 
         if (i < 8) {
             casResult[i] = r;
         }
 
-        return Rs7WriteResult(r == Rs7CasResult::Written || r == Rs7CasResult::WrittenCleanupFailed,
-                              r != Rs7CasResult::WrittenCleanupFailed && r != Rs7CasResult::MismatchCleanupFailed);
+        return RsxrWriteResult(r == RsxrCasResult::Written || r == RsxrCasResult::WrittenCleanupFailed,
+                               r != RsxrCasResult::WrittenCleanupFailed && r != RsxrCasResult::MismatchCleanupFailed);
     };
     ops.restore = [](size_t i) {  // success = the bytes are no longer ours
         const Unit& u = g_unit[i];
-        const Rs7CasResult r =
-            Rs7_CasCode(u.addr, u.ours, u.original.data(), sizeof u.ours);  // only if it is still ours
-        if (r == Rs7CasResult::Written) {
+        const RsxrCasResult r =
+            Rsxr_CasCode(u.addr, u.ours, u.original.data(), sizeof u.ours);  // only if it is still ours
+        if (r == RsxrCasResult::Written) {
             return true;
         }
 
-        return r == Rs7CasResult::Mismatch &&
+        return r == RsxrCasResult::Mismatch &&
                std::memcmp(reinterpret_cast<const void*>(u.addr), u.ours, sizeof u.ours) != 0;
     };
     ops.range = [](size_t i) {
-        return Rs7Range{g_unit[i].addr, g_unit[i].addr + sizeof g_unit[i].ours};
+        return RsxrRange{g_unit[i].addr, g_unit[i].addr + sizeof g_unit[i].ours};
     };
     ops.log = [](const std::string& m) {
         for (size_t i = 0; i < g_unit.size() && i < 8; ++i) {  // after the freeze: why a CAS failed
-            const Rs7CasResult r = casResult[i];
+            const RsxrCasResult r = casResult[i];
 
-            if (r != Rs7CasResult::Written && r != Rs7CasResult(-1)) {
-                Rs7Log("plain psarc: %s compare-exchange failed (%s)", g_unit[i].site->id,
-                       r == Rs7CasResult::Mismatch                ? "the bytes changed"
-                       : r == Rs7CasResult::Unsupported           ? "no atomic window"
-                       : r == Rs7CasResult::WrittenCleanupFailed  ? "written, protection restore failed"
-                       : r == Rs7CasResult::MismatchCleanupFailed ? "not written, protection restore failed"
-                                                                  : "protection");
+            if (r != RsxrCasResult::Written && r != RsxrCasResult(-1)) {
+                RsxrLog("plain psarc: %s compare-exchange failed (%s)", g_unit[i].site->id,
+                        r == RsxrCasResult::Mismatch                ? "the bytes changed"
+                        : r == RsxrCasResult::Unsupported           ? "no atomic window"
+                        : r == RsxrCasResult::WrittenCleanupFailed  ? "written, protection restore failed"
+                        : r == RsxrCasResult::MismatchCleanupFailed ? "not written, protection restore failed"
+                                                                    : "protection");
             }
 
-            casResult[i] = Rs7CasResult(-1);
+            casResult[i] = RsxrCasResult(-1);
         }
 
-        Rs7Log("plain psarc: %s", m.c_str());
+        RsxrLog("plain psarc: %s", m.c_str());
     };
 
     for (auto& r : casResult) {
-        r = Rs7CasResult(-1);
+        r = RsxrCasResult(-1);
     }
 
     return ops;
 }
 
 // Sets the provider from the patch outcome and logs it.
-void ReportPatch(const Rs7GroupPolicy& groups, Rs7PatchResult pr, const std::vector<size_t>& written, DWORD t0) {
-    if (pr == Rs7PatchResult::FreezeTimeout) {
+void ReportPatch(const RsxrGroupPolicy& groups, RsxrPatchResult pr, const std::vector<size_t>& written, DWORD t0) {
+    if (pr == RsxrPatchResult::FreezeTimeout) {
         groups.disable(kPsarc);
     }
 
-    if (pr == Rs7PatchResult::Unrecoverable) {  // our bytes stay; plain packages still load through them
-        SetProvider(Rs7PlainProvider::Failed);
-        Rs7Log("plain psarc: UNRECOVERABLE rollback - %u site(s) stay rs7string's, no retries [%s]",
-               unsigned(written.size()), Describe(States()).c_str());
+    if (pr == RsxrPatchResult::Unrecoverable) {  // our bytes stay; plain packages still load through them
+        SetProvider(RsxrPlainProvider::Failed);
+        RsxrLog("plain psarc: UNRECOVERABLE rollback - %u site(s) stay RSXR's, no retries [%s]",
+                unsigned(written.size()), Describe(States()).c_str());
         return;
     }
 
-    const std::vector<Rs7SiteState> st = States();
+    const std::vector<RsxrSiteState> st = States();
 
     if (groups.disabled(kPsarc)) {
-        if (Rs7Plain_Decide(st.data(), st.size()) == Rs7PlainDecision::Enabler) {
-            SetProvider(Rs7PlainProvider::Enabler);
-            Rs7Log("plain psarc: provided by the CDLC enabler - it patched while we did, ours restored [%s]",
-                   Describe(st).c_str());
+        if (RsxrPlain_Decide(st.data(), st.size()) == RsxrPlainDecision::Enabler) {
+            SetProvider(RsxrPlainProvider::Enabler);
+            RsxrLog("plain psarc: provided by the CDLC enabler - it patched while we did, ours restored [%s]",
+                    Describe(st).c_str());
         } else {
-            SetProvider(Rs7PlainProvider::Failed);
-            Rs7Log("plain psarc: writing failed - plain PSARC support off [%s]", Describe(st).c_str());
+            SetProvider(RsxrPlainProvider::Failed);
+            RsxrLog("plain psarc: writing failed - plain PSARC support off [%s]", Describe(st).c_str());
         }
 
         return;
     }
 
-    SetProvider(Rs7PlainProvider::Ours);
-    Rs7Log("plain psarc: provided by rs7string, %u sites written %lu ms after d3d9 [%s]", unsigned(written.size()),
-           GetTickCount() - t0, Describe(st).c_str());
+    SetProvider(RsxrPlainProvider::Ours);
+    RsxrLog("plain psarc: provided by RSXR, %u sites written %lu ms after d3d9 [%s]", unsigned(written.size()),
+            GetTickCount() - t0, Describe(st).c_str());
 }
 
 }  // namespace
 
-void Rs7Plain_StartFromIni(const Rs7PlainHost& host, const wchar_t* ini, const Rs7Site* sites, int count,
-                           uintptr_t textVa, size_t textSize) {
+void RsxrPlain_StartFromIni(const RsxrPlainHost& host, const wchar_t* ini, const RsxrSite* sites, int count,
+                            uintptr_t textVa, size_t textSize) {
     // [debug] plain_delay_ms (test only): start later, so a CDLC enabler with its own plain-PSARC patches gets
     // there first (the coexistence path).
     if (const UINT delay = GetPrivateProfileIntW(L"debug", L"plain_delay_ms", 0, ini)) {
-        Rs7Log("debug: plain_delay_ms=%u -> plain PSARC starts late (test only)", delay < 30000 ? delay : 30000u);
+        RsxrLog("debug: plain_delay_ms=%u -> plain PSARC starts late (test only)", delay < 30000 ? delay : 30000u);
         Sleep(delay < 30000 ? delay : 30000u);
     }
 
-    Rs7Plain_Start(host, Rs7Set_Bool("psarc.plain"), sites, count, textVa, textSize);
+    RsxrPlain_Start(host, RsxrSet_Bool("psarc.plain"), sites, count, textVa, textSize);
 }
 
-void Rs7Plain_Start(const Rs7PlainHost& host, bool enabled, const Rs7Site* sites, int count, uintptr_t textVa,
-                    size_t textSize) {
+void RsxrPlain_Start(const RsxrPlainHost& host, bool enabled, const RsxrSite* sites, int count, uintptr_t textVa,
+                     size_t textSize) {
     const DWORD t0 = GetTickCount();
     if (!ResolveWithRetry(host, enabled, sites, count, textVa, textSize)) {
         return;
     }
 
-    const std::vector<Rs7SiteState> st = States();
-    if (SettledWithoutWriting(enabled, Rs7Plain_Decide(st.data(), st.size()), st)) {
+    const std::vector<RsxrSiteState> st = States();
+    if (SettledWithoutWriting(enabled, RsxrPlain_Decide(st.data(), st.size()), st)) {
         return;
     }
 
     std::vector<size_t> written;
-    const Rs7PatchResult pr =
-        Rs7_PatchIsolated(*host.groups, CasPatchOps(host.groups), written);  // never Core; a failure disables Psarc
+    const RsxrPatchResult pr =
+        Rsxr_PatchIsolated(*host.groups, CasPatchOps(host.groups), written);  // never Core; a failure disables Psarc
 
     ReportPatch(*host.groups, pr, written, t0);
 }
 
-size_t Rs7Plain_MidPoolUsed() {
+size_t RsxrPlain_MidPoolUsed() {
     return g_midUsed;
 }
 
-void Rs7Plain_SetMidPoolLimit(size_t limit) {
+void RsxrPlain_SetMidPoolLimit(size_t limit) {
     g_midLimit = limit;
 
     for (MidEntry& m : g_mid) {  // the next resolve takes new entries (a fake .text may reuse an old address)
@@ -387,7 +387,7 @@ void Rs7Plain_SetMidPoolLimit(size_t limit) {
     }
 }
 
-uintptr_t Rs7Plain_MidEntry(const char* id) {
+uintptr_t RsxrPlain_MidEntry(const char* id) {
     for (size_t i = 0; i < g_unit.size() && i < std::size(g_mid); ++i) {
         if (!std::strcmp(g_unit[i].site->id, id) && g_mid[i].hook && g_mid[i].at == g_unit[i].addr) {
             return g_mid[i].hook->Entry();
@@ -397,34 +397,34 @@ uintptr_t Rs7Plain_MidEntry(const char* id) {
     return 0;
 }
 
-void Rs7Plain_LogState(const char* when) {
+void RsxrPlain_LogState(const char* when) {
     if (g_unit.empty()) {
         return;
     }
 
-    const std::vector<Rs7SiteState> st = States();
-    const Rs7PlainDecision d = Rs7Plain_Decide(st.data(), st.size());
-    const Rs7PlainProvider was = Rs7PlainProvider(g_rs7_plain_psarc);
+    const std::vector<RsxrSiteState> st = States();
+    const RsxrPlainDecision d = RsxrPlain_Decide(st.data(), st.size());
+    const RsxrPlainProvider was = RsxrPlainProvider(g_rsxr_plain_psarc);
 
-    if (was == Rs7PlainProvider::Ours && d == Rs7PlainDecision::Enabler) {
-        SetProvider(Rs7PlainProvider::Enabler);
+    if (was == RsxrPlainProvider::Ours && d == RsxrPlainDecision::Enabler) {
+        SetProvider(RsxrPlainProvider::Enabler);
     }
-    Rs7Log("plain psarc: %s: %s [%s]%s", when, Rs7Plain_ProviderName(Rs7PlainProvider(g_rs7_plain_psarc)),
-           Describe(st).c_str(),
-           was == Rs7PlainProvider::Ours && d == Rs7PlainDecision::Enabler
-               ? " - the CDLC enabler overwrote ours (same behaviour)"
-               : "");
+    RsxrLog("plain psarc: %s: %s [%s]%s", when, RsxrPlain_ProviderName(RsxrPlainProvider(g_rsxr_plain_psarc)),
+            Describe(st).c_str(),
+            was == RsxrPlainProvider::Ours && d == RsxrPlainDecision::Enabler
+                ? " - the CDLC enabler overwrote ours (same behaviour)"
+                : "");
 }
 
 // ---- PP_SNGD (PP_TOC and PP_SNGF: hooks_mid.cpp)
 
 // PP_SNGD - called in place of the game's SNG decrypt (cdecl, 6 args, bool in AL). src points just
 // past the 8-byte SNG header and starts with the 16-byte IV slot; the game expects the payload at out[0].
-using Rs7SngDecrypt = bool(__cdecl*)(const uint8_t* src, uint32_t len, const char* key, uint32_t keyLen, uint8_t* out,
-                                     uint32_t outLen);
+using RsxrSngDecrypt = bool(__cdecl*)(const uint8_t* src, uint32_t len, const char* key, uint32_t keyLen, uint8_t* out,
+                                      uint32_t outLen);
 
-extern "C" __declspec(dllexport) bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t* src, uint32_t len, const char* key,
-                                                               uint32_t keyLen, uint8_t* out, uint32_t outLen) {
+extern "C" __declspec(dllexport) bool __cdecl Rsxr_Stub_PP_SNGD(const uint8_t* src, uint32_t len, const char* key,
+                                                                uint32_t keyLen, uint8_t* out, uint32_t outLen) {
     // Even encrypted input needs the IV slot. Reject it before inspecting the preceding header.
     if (!src || !out || len < 0x10) {
         return false;
@@ -435,14 +435,14 @@ extern "C" __declspec(dllexport) bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t* sr
     std::memcpy(&magic, src - 8, 4);
     std::memcpy(&flags, src - 4, 4);
 
-    switch (Rs7Plain_SngAction(magic, flags, len, outLen)) {
-        case Rs7SngAction::Copy:
+    switch (RsxrPlain_SngAction(magic, flags, len, outLen)) {
+        case RsxrSngAction::Copy:
             std::memmove(out, src + 0x10, len - 0x10);
             return true;
-        case Rs7SngAction::Reject:
+        case RsxrSngAction::Reject:
             return false;
         default: {
-            const auto decrypt = reinterpret_cast<Rs7SngDecrypt>(g_rs7_target_PP_SNGD);
+            const auto decrypt = reinterpret_cast<RsxrSngDecrypt>(g_rsxr_target_PP_SNGD);
             if (!decrypt) {
                 return false;  // not resolved (cannot happen once the site is written): fail the load, never call null
             }

@@ -25,7 +25,7 @@ int Fmt(char* out, size_t cap, uint32_t v) {
         return std::snprintf(out, cap, " game:%08X", unsigned(v));
     }
     if (base == reinterpret_cast<uintptr_t>(&__ImageBase)) {
-        return std::snprintf(out, cap, " rs7:%08X", unsigned(v - base));
+        return std::snprintf(out, cap, " rsxr:%08X", unsigned(v - base));
     }
 
     char path[MAX_PATH] = {};
@@ -49,7 +49,7 @@ bool LooksLikeReturn(uint32_t v) {
     __try {
         return p[-5] == 0xE8 || (p[-2] == 0xFF && (p[-1] & 0x38) == 0x10) ||
                (p[-3] == 0xFF && (p[-2] & 0x38) == 0x10) || (p[-6] == 0xFF && (p[-5] & 0x38) == 0x10);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -90,10 +90,10 @@ void Sample(HANDLE h, DWORD tid, int i) {
             n += Fmt(buf + n, sizeof buf - n, v);
             ++found;
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 
-    Rs7Log("%s", buf);
+    RsxrLog("%s", buf);
 }
 
 uint64_t Cpu(HANDLE h) {
@@ -144,8 +144,8 @@ DWORD WINAPI Probe(void*) {
                 reports[te.th32ThreadID] < 2 && total < 8) {
                 ++reports[te.th32ThreadID];
                 ++total;
-                Rs7Log("spin_probe: thread %lu used %.1f s CPU in the last 10 s - 20 samples:", te.th32ThreadID,
-                       double(cpu - it->second) / 1e7);
+                RsxrLog("spin_probe: thread %lu used %.1f s CPU in the last 10 s - 20 samples:", te.th32ThreadID,
+                        double(cpu - it->second) / 1e7);
 
                 for (int i = 0; i < 20; ++i) {
                     Sample(h, te.th32ThreadID, i);
@@ -162,7 +162,7 @@ DWORD WINAPI Probe(void*) {
 }
 }  // namespace
 
-void Rs7SpinProbe_Start() {
+void RsxrSpinProbe_Start() {
     HANDLE t = CreateThread(nullptr, 0, Probe, nullptr, CREATE_SUSPENDED, &g_self);
     if (!t) {
         return;
@@ -170,5 +170,6 @@ void Rs7SpinProbe_Start() {
 
     ResumeThread(t);
     CloseHandle(t);
-    Rs7Log("debug: spin_probe=1 -> threads using >= 8 s CPU per 10 s are sampled (EIP + return addresses, diagnostic)");
+    RsxrLog(
+        "debug: spin_probe=1 -> threads using >= 8 s CPU per 10 s are sampled (EIP + return addresses, diagnostic)");
 }

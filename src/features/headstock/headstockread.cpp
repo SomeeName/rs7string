@@ -60,7 +60,7 @@ __declspec(naked) void* __stdcall CallPsarcCreate(void* /*stream*/) {
 }
 
 int SehFilter(const char* what, const char* name) {
-    Rs7Log("headstock: exception in %s (%s) - skipped", what, name ? name : "?");
+    RsxrLog("headstock: exception in %s (%s) - skipped", what, name ? name : "?");
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -100,7 +100,7 @@ int SafeRead(void* file, void* buf, int size, const char* name) {
 uint32_t SafeSize(void* file) {
     __try {
         return reinterpret_cast<GetSize_t>(Vt(file)[4])(file);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -120,7 +120,7 @@ void* HeadstockFrontend() {
         }
 
         return *reinterpret_cast<void**>(kFsFrontend);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -205,32 +205,32 @@ bool ReadTemplatePair(const char* psarc, const char* guitarEntry, const char* pe
 }
 }  // namespace
 
-bool Rs7HeadstockRead_HeadstockTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+bool RsxrHeadstockRead_HeadstockTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedrh.psarc",
                             "assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", kInlinePeg, guitar, peg);
 }
 
 // Gitarrenkopfplatte 3+3 (assetload_load.cpp): the in-line peg and the one texture of it that the 3+3 peg package
 // does not carry (wilshire_hardware.dds; hardware_gloss / loft_env_map / normal_sm have 3+3 namesakes).
-bool Rs7HeadstockRead_InlinePeg(std::vector<uint8_t>& peg, std::vector<uint8_t>& hardware) {
+bool RsxrHeadstockRead_InlinePeg(std::vector<uint8_t>& peg, std::vector<uint8_t>& hardware) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedrh.psarc", kInlinePeg,
                             "assets/gameplay/guitar_standard_inline/wilshire_hardware.dds", peg, hardware);
 }
 
 // The left-handed in-line frame; its archive carries the same peg (identical bytes, CONFIRMED by SHA-256 on the
 // owner's install), so the left-handed package is self-contained.
-bool Rs7HeadstockRead_HeadstockTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+bool RsxrHeadstockRead_HeadstockTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarstandardinlinedlh.psarc",
                             "assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif", kInlinePeg, guitar,
                             peg);
 }
 
-bool Rs7HeadstockRead_BassTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+bool RsxrHeadstockRead_BassTemplates(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarbassinlinedrh.psarc",
                             "assets/gameplay/guitar_bass_inline/bass_thunder.nif", kBassPeg, guitar, peg);
 }
 
-bool Rs7HeadstockRead_BassTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
+bool RsxrHeadstockRead_BassTemplatesLh(std::vector<uint8_t>& guitar, std::vector<uint8_t>& peg) {
     return ReadTemplatePair("nativeexe/base/dependency_guitarbassinlinedlh.psarc",
                             "assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif", kBassPeg, guitar, peg);
 }

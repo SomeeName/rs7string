@@ -4,8 +4,8 @@
 // call: bad memory, a bad instruction, an integer trap, and a C++ exception escaping game or library code. Anything
 // else keeps searching: a breakpoint (a debugger), a guard page (the stack's or an allocator's), a stack overflow
 // (swallowed, it would leave the thread without a guard page) and the game's own exception codes.
-//   __try { ... } __except (Rs7_FaultFilter(GetExceptionCode())) { ... }
-inline int Rs7_FaultFilter(unsigned long code) {
+//   __try { ... } __except (Rsxr_FaultFilter(GetExceptionCode())) { ... }
+inline int Rsxr_FaultFilter(unsigned long code) {
     switch (code) {
         case 0xC0000005u:  // EXCEPTION_ACCESS_VIOLATION
         case 0xC0000006u:  // EXCEPTION_IN_PAGE_ERROR

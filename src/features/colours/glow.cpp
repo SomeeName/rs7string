@@ -2,7 +2,7 @@
 #include "features/colours/colours.h"
 #include <cmath>
 
-namespace rs7rsmods {
+namespace rsxrrsmods {
 bool Hue(const float rgb[3], int* hue) {
     const float r = rgb[0], g = rgb[1], b = rgb[2];
     const float lo = std::fmin(std::fmin(r, g), b), hi = std::fmax(std::fmax(r, g), b);
@@ -75,4 +75,4 @@ bool CorrectGlow(bool custom, const float enabled[3], const float glow[3], float
 
     return true;
 }
-}  // namespace rs7rsmods
+}  // namespace rsxrrsmods

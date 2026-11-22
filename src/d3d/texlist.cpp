@@ -4,17 +4,17 @@
 #include <cstring>
 
 namespace {
-constexpr size_t kPathMax = sizeof(Rs7TexFound::path);  // 120: up to 119 chars + NUL
-constexpr size_t kSeenSlots = 2 * rs7tex::kMaxNodes;    // open addressing, load <= 1/2 (power of two)
+constexpr size_t kPathMax = sizeof(RsxrTexFound::path);  // 120: up to 119 chars + NUL
+constexpr size_t kSeenSlots = 2 * rsxrtex::kMaxNodes;    // open addressing, load <= 1/2 (power of two)
 constexpr size_t kWhyMax = 64;
 
-bool U32(const Rs7MemReader& m, uintptr_t a, uint32_t* v) {
+bool U32(const RsxrMemReader& m, uintptr_t a, uint32_t* v) {
     return m.Read(a, v, sizeof *v);
 }
 
 // Reads a NUL-terminated string of at most kPathMax-1 chars at the pointer stored at `ptrAddr`.
 // False if the pointer is null/unreadable, the string unreadable or not terminated in time.
-bool Str(const Rs7MemReader& m, uintptr_t ptrAddr, char out[kPathMax]) {
+bool Str(const RsxrMemReader& m, uintptr_t ptrAddr, char out[kPathMax]) {
     out[0] = '\0';
     uint32_t p = 0;
     if (!U32(m, ptrAddr, &p) || !p) {
@@ -65,8 +65,8 @@ struct RdInfo {
     uint32_t rd = 0, d3d = 0, w = 0, h = 0, fmt = 0;
 };
 
-bool CheckRd(const Rs7MemReader& m, uintptr_t obj, uintptr_t lo, uintptr_t hi, RdInfo* r, char why[kWhyMax]) {
-    using namespace rs7tex;
+bool CheckRd(const RsxrMemReader& m, uintptr_t obj, uintptr_t lo, uintptr_t hi, RdInfo* r, char why[kWhyMax]) {
+    using namespace rsxrtex;
     auto no = [&](const char* check, uint32_t v, bool hex) {
         std::snprintf(why, kWhyMax, hex ? "%s (%08X)" : "%s (%u)", check, v);
 
@@ -105,7 +105,7 @@ bool CheckRd(const Rs7MemReader& m, uintptr_t obj, uintptr_t lo, uintptr_t hi, R
 }
 
 bool IsSource(uint32_t vt) {
-    return vt == rs7tex::kVtSource54 || vt == rs7tex::kVtSource50;
+    return vt == rsxrtex::kVtSource54 || vt == rsxrtex::kVtSource50;
 }
 
 // True if `node` was already in the table (a cycle); inserts it otherwise. False also when full.
@@ -126,20 +126,20 @@ bool SeenBefore(std::vector<uint32_t>& tab, uint32_t node) {
     return false;  // cannot happen: kMaxNodes stops the walk first
 }
 
-void AddEmbedded(Rs7TexWalk* w, uint32_t node, const RdInfo& rd) {
-    Rs7TexFound f{};
+void AddEmbedded(RsxrTexWalk* w, uint32_t node, const RdInfo& rd) {
+    RsxrTexFound f{};
 
     f.obj = node;
     f.rd = rd.rd;
     f.d3d = rd.d3d;
-    f.family = Rs7Family::Embedded;
+    f.family = RsxrFamily::Embedded;
     f.fmt = rd.fmt;
     std::snprintf(f.path, sizeof f.path, "(NIF texture obj=%08X)", unsigned(node));
     w->found.push_back(f);
 }
 }  // namespace
 
-bool Rs7Tex_FamilyOf(const char* name, Rs7Family* f) {
+bool RsxrTex_FamilyOf(const char* name, RsxrFamily* f) {
     if (!name) {
         return false;
     }
@@ -153,26 +153,26 @@ bool Rs7Tex_FamilyOf(const char* name, Rs7Family* f) {
     }
 
     if (IEquals(base, "note_gradient_map.dds")) {
-        *f = Rs7Family::Note;
+        *f = RsxrFamily::Note;
         return true;
     }
 
     if (IEquals(base, "gradient_map_additive.dds")) {
-        *f = Rs7Family::Additive;
+        *f = RsxrFamily::Additive;
         return true;
     }
 
     return false;
 }
 
-void Rs7Tex_Prepare(Rs7TexWalk* w) {
+void RsxrTex_Prepare(RsxrTexWalk* w) {
     w->found.reserve(64);
     w->rejects.reserve(64);
     w->seen.assign(kSeenSlots, 0);
 }
 
-void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, uintptr_t hi, Rs7TexWalk* w) {
-    using namespace rs7tex;
+void RsxrTex_WalkInto(const RsxrMemReader& m, uintptr_t headAddr, uintptr_t lo, uintptr_t hi, RsxrTexWalk* w) {
+    using namespace rsxrtex;
 
     w->nodes = w->sources = w->nameMatches = 0;
     w->cycleOrCap = w->readFault = false;
@@ -211,8 +211,8 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
             char file[kPathMax], plat[kPathMax];
             const bool hasFile = Str(m, node + kFile, file);
             const bool hasPlat = Str(m, node + kPlatFile, plat);
-            Rs7Family fam = Rs7Family::Note;
-            const bool match = (hasFile && Rs7Tex_FamilyOf(file, &fam)) || (hasPlat && Rs7Tex_FamilyOf(plat, &fam));
+            RsxrFamily fam = RsxrFamily::Note;
+            const bool match = (hasFile && RsxrTex_FamilyOf(file, &fam)) || (hasPlat && RsxrTex_FamilyOf(plat, &fam));
             const char* path = hasPlat && plat[0] ? plat : file;
             RdInfo rd;
             char why[kWhyMax];
@@ -223,7 +223,7 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
             }
 
             // A NIF model's own texture has no file name; a 256x128 one may be a ramp (the content check is the
-            // render thread's, Rs7Family::Embedded). Never past the reserved capacity: no allocation under the lock.
+            // render thread's, RsxrFamily::Embedded). Never past the reserved capacity: no allocation under the lock.
             const bool embedded = !match && vt == kVtSource50 && !(hasFile && file[0]) && !(hasPlat && plat[0]) &&
                                   valid && rd.w == 256 && rd.h == 128 && w->found.size() < w->found.capacity();
 
@@ -247,7 +247,7 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
                     std::snprintf(line, sizeof line, "obj=%08X '%s': %s", unsigned(node), path, why);
                     w->rejects.emplace_back(line);  // rare: only a ramp name that fails a check allocates
                 } else {
-                    Rs7TexFound f{};
+                    RsxrTexFound f{};
 
                     f.obj = node;
                     f.rd = rd.rd;
@@ -271,17 +271,18 @@ void Rs7Tex_WalkInto(const Rs7MemReader& m, uintptr_t headAddr, uintptr_t lo, ui
     }
 }
 
-Rs7TexWalk Rs7Tex_Walk(const Rs7MemReader& mem, uintptr_t headAddr, uintptr_t d3d9Lo, uintptr_t d3d9Hi) {
-    Rs7TexWalk w;
+RsxrTexWalk RsxrTex_Walk(const RsxrMemReader& mem, uintptr_t headAddr, uintptr_t d3d9Lo, uintptr_t d3d9Hi) {
+    RsxrTexWalk w;
 
-    Rs7Tex_Prepare(&w);
-    Rs7Tex_WalkInto(mem, headAddr, d3d9Lo, d3d9Hi, &w);
+    RsxrTex_Prepare(&w);
+    RsxrTex_WalkInto(mem, headAddr, d3d9Lo, d3d9Hi, &w);
 
     return w;
 }
 
-bool Rs7Tex_Revalidate(const Rs7MemReader& m, uintptr_t obj, uintptr_t d3d, Rs7Family fam, uintptr_t lo, uintptr_t hi) {
-    using namespace rs7tex;
+bool RsxrTex_Revalidate(const RsxrMemReader& m, uintptr_t obj, uintptr_t d3d, RsxrFamily fam, uintptr_t lo,
+                        uintptr_t hi) {
+    using namespace rsxrtex;
     if (!obj || !d3d) {
         return false;
     }
@@ -295,16 +296,16 @@ bool Rs7Tex_Revalidate(const Rs7MemReader& m, uintptr_t obj, uintptr_t d3d, Rs7F
     RdInfo rd;
     char why[kWhyMax];
 
-    if (fam == Rs7Family::Embedded) {
+    if (fam == RsxrFamily::Embedded) {
         const bool named = (Str(m, obj + kFile, file) && file[0]) || (Str(m, obj + kPlatFile, plat) && plat[0]);
 
         return vt == kVtSource50 && !named && CheckRd(m, obj, lo, hi, &rd, why) && rd.d3d == d3d && rd.w == 256 &&
                rd.h == 128;
     }
 
-    Rs7Family f = Rs7Family::Note;
-    const bool fileOk = Str(m, obj + kFile, file) && Rs7Tex_FamilyOf(file, &f) && f == fam;
-    const bool platOk = !fileOk && Str(m, obj + kPlatFile, plat) && Rs7Tex_FamilyOf(plat, &f) && f == fam;
+    RsxrFamily f = RsxrFamily::Note;
+    const bool fileOk = Str(m, obj + kFile, file) && RsxrTex_FamilyOf(file, &f) && f == fam;
+    const bool platOk = !fileOk && Str(m, obj + kPlatFile, plat) && RsxrTex_FamilyOf(plat, &f) && f == fam;
     if (!fileOk && !platOk) {
         return false;
     }

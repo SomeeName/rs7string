@@ -17,9 +17,9 @@ FNS = [
         0x875424,
         arrays=False,
         edits={
-            0x8751FC: ("call", "g_rs7_callin_PubBaseG", 7),
-            0x875205: ("call", "g_rs7_callin_PubBaseB", 7),
-            0x87522C: ("call", "g_rs7_callin_PubClassify", 7),
+            0x8751FC: ("call", "g_rsxr_callin_PubBaseG", 7),
+            0x875205: ("call", "g_rsxr_callin_PubBaseB", 7),
+            0x87522C: ("call", "g_rsxr_callin_PubClassify", 7),
             0x875233: (
                 "bytes",
                 "B9 46 00 00 00 83 C3 08 EB 03",
@@ -43,7 +43,7 @@ FNS = [
         0x58E820,
         arrays=False,
         edits={
-            0x58E7A2: ("call", "g_rs7_callin_PubWireCount", 7),
+            0x58E7A2: ("call", "g_rsxr_callin_PubWireCount", 7),
         },
     ),
 ]
@@ -58,8 +58,8 @@ def render():
     return (
         fc.render(results())
         .replace("tools/gen_fncopy.py", "tools/gen_publish.py")
-        .replace("kRs7FnSpecs", "kRs7PubSpecs")
-        .replace("kRs7FnSpecCount", "kRs7PubSpecCount")
+        .replace("kRsxrFnSpecs", "kRsxrPubSpecs")
+        .replace("kRsxrFnSpecCount", "kRsxrPubSpecCount")
     )
 
 

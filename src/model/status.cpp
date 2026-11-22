@@ -6,26 +6,26 @@
 
 namespace {
 SRWLOCK g_lock = SRWLOCK_INIT;
-Rs7StartStatus g_start;
-Rs7SongStatus g_song;
+RsxrStartStatus g_start;
+RsxrSongStatus g_song;
 }  // namespace
 
-void Rs7Status_SetStart(const Rs7StartStatus& s) {
+void RsxrStatus_SetStart(const RsxrStartStatus& s) {
     AcquireSRWLockExclusive(&g_lock);
     g_start = s;
     ReleaseSRWLockExclusive(&g_lock);
 }
 
-Rs7StartStatus Rs7Status_Start() {
+RsxrStartStatus RsxrStatus_Start() {
     AcquireSRWLockShared(&g_lock);
-    const Rs7StartStatus s = g_start;
+    const RsxrStartStatus s = g_start;
 
     ReleaseSRWLockShared(&g_lock);
 
     return s;
 }
 
-void Rs7Status_SetSong(int entries, int strings, bool bass, bool active, const int16_t* tuning) {
+void RsxrStatus_SetSong(int entries, int strings, bool bass, bool active, const int16_t* tuning) {
     AcquireSRWLockExclusive(&g_lock);
     g_song.songs += 1;
     g_song.entries = entries;
@@ -41,16 +41,16 @@ void Rs7Status_SetSong(int entries, int strings, bool bass, bool active, const i
     ReleaseSRWLockExclusive(&g_lock);
 }
 
-Rs7SongStatus Rs7Status_Song() {
+RsxrSongStatus RsxrStatus_Song() {
     AcquireSRWLockShared(&g_lock);
-    const Rs7SongStatus s = g_song;
+    const RsxrSongStatus s = g_song;
 
     ReleaseSRWLockShared(&g_lock);
 
     return s;
 }
 
-int Rs7Status_SongRows(const Rs7SongStatus& s, Rs7StatusRow* rows, int max) {
+int RsxrStatus_SongRows(const RsxrSongStatus& s, RsxrStatusRow* rows, int max) {
     int n = 0;
     auto add = [&](const char* label, bool on, const char* fmt, auto... args) {
         if (n < max) {
@@ -66,10 +66,10 @@ int Rs7Status_SongRows(const Rs7SongStatus& s, Rs7StatusRow* rows, int max) {
         return n;
     }
 
-    const bool extra = unsigned(s.strings) > rs7::StockStrings(s.bass);
+    const bool extra = unsigned(s.strings) > rsxr::StockStrings(s.bass);
 
     if (s.active) {
-        add("extra strings", true, "ON (low B = MIDI %d, t6 = %d)", rs7::kLowB + s.t6, s.t6);
+        add("extra strings", true, "ON (low B = MIDI %d, t6 = %d)", rsxr::kLowB + s.t6, s.t6);
     } else {
         add("extra strings", extra, "%s", extra ? "ON" : "off");
     }

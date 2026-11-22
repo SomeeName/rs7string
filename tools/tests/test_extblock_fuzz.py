@@ -1,4 +1,4 @@
-"""Truncation, boundary-value and fixed-seed random malformed RS7X blocks against the real parser and XB1 entry."""
+"""Truncation, boundary-value and fixed-seed random malformed extension blocks against the real parser and XB1 entry."""
 
 from native_harness import ROOT, compile_harness, run_harness
 

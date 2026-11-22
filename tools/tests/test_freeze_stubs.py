@@ -9,7 +9,7 @@ import freeze_stubs
 
 class FakeImage:
     arrays = ["g_table"]
-    exports = {"Rs7_Helper": 0x1000, "g_var": 0x9000, "g_table": 0x9100}
+    exports = {"Rsxr_Helper": 0x1000, "g_var": 0x9000, "g_table": 0x9100}
 
     def is_code(self, va: int) -> bool:
         return va < 0x8000
@@ -17,23 +17,23 @@ class FakeImage:
 
 @pytest.mark.parametrize(
     "sym,add,relative",
-    [("Rs7_Helper", 0, True), ("g_var", 0, False), ("g_var", 8, False), ("g_table", -24, False)],
+    [("Rsxr_Helper", 0, True), ("g_var", 0, False), ("g_var", 8, False), ("g_table", -24, False)],
 )
 def test_known_exports_pass(sym, add, relative):
-    freeze_stubs.check_target(FakeImage(), "Rs7_Stub_X", 0x5000, sym, add, relative)
+    freeze_stubs.check_target(FakeImage(), "Rsxr_Stub_X", 0x5000, sym, add, relative)
 
 
 @pytest.mark.parametrize(
     "sym,add,relative,why",
     [
-        ("Rs7_Helper", 0x90, True, "not an exported function"),  # a call into a non-exported neighbour
+        ("Rsxr_Helper", 0x90, True, "not an exported function"),  # a call into a non-exported neighbour
         ("g_var", -4, False, "not a hinted array"),
-        ("Rs7_Helper", 4, False, "inside a function"),
+        ("Rsxr_Helper", 4, False, "inside a function"),
     ],
 )
 def test_unknown_targets_fail(sym, add, relative, why):
     with pytest.raises(AssertionError, match=why):
-        freeze_stubs.check_target(FakeImage(), "Rs7_Stub_X", 0x5000, sym, add, relative)
+        freeze_stubs.check_target(FakeImage(), "Rsxr_Stub_X", 0x5000, sym, add, relative)
 
 
 def test_map_symbols_name_a_non_exported_function(tmp_path):
@@ -42,14 +42,14 @@ def test_map_symbols_name_a_non_exported_function(tmp_path):
     img.exports = dict(FakeImage.exports)
     mapfile = tmp_path / "x.map"
     mapfile.write_text(
-        " 0001:00000100       _Rs7_Local                 00001100 f   a.obj\n"
-        " 0001:00000200       __catch$_Rs7_Local$0       00001200 f   a.obj\n"
+        " 0001:00000100       _Rsxr_Local                 00001100 f   a.obj\n"
+        " 0001:00000200       __catch$_Rsxr_Local$0       00001200 f   a.obj\n"
     )
-    freeze_stubs.add_map_symbols(img, mapfile, ["Rs7_Local"])
-    assert img.exports["Rs7_Local"] == 0x1100
-    freeze_stubs.check_target(img, "Rs7_Stub_X", 0x5000, *img_symbol(img, 0x1100), True)
+    freeze_stubs.add_map_symbols(img, mapfile, ["Rsxr_Local"])
+    assert img.exports["Rsxr_Local"] == 0x1100
+    freeze_stubs.check_target(img, "Rsxr_Stub_X", 0x5000, *img_symbol(img, 0x1100), True)
     with pytest.raises(AssertionError, match="not in"):
-        freeze_stubs.add_map_symbols(img, mapfile, ["Rs7_Missing"])
+        freeze_stubs.add_map_symbols(img, mapfile, ["Rsxr_Missing"])
 
 
 def img_symbol(img, va):

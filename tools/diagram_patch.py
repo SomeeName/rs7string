@@ -13,7 +13,7 @@ from pathlib import Path
 import struct
 
 TARGETS = {"libs/commonlib.gfx": 1103, "views/contentpanel.gfx": 28, "views/ge_game.gfx": 26}
-MAGIC = b"R7DA\x01\0\0\0"
+MAGIC = b"RXDA\x01\0\0\0"
 LIMIT = 16 * 1024 * 1024
 
 
@@ -170,7 +170,7 @@ def main():
         recipe = movie_recipe(old, new, sprite)
         if swap_movie(old, recipe, sprite) != new:
             raise ValueError("roundtrip mismatch")
-        staged.append((Path(name).stem + ".rs7da", recipe))
+        staged.append((Path(name).stem + ".rsxrda", recipe))
         print(
             f"{name}: one tag; byte-identical; old={hashlib.sha256(old).hexdigest()} new={hashlib.sha256(new).hexdigest()} recipe={len(recipe)} bytes"
         )

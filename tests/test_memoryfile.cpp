@@ -3,17 +3,17 @@
 #include <cstring>
 
 namespace {
-void __fastcall Destroy(rs7::MemoryFile*, void*, uint32_t) {}
+void __fastcall Destroy(rsxr::MemoryFile*, void*, uint32_t) {}
 
-long __fastcall Release(rs7::MemoryFile* f, void*) {
-    return rs7::MemoryFileOps::DropRef(f);
+long __fastcall Release(rsxr::MemoryFile* f, void*) {
+    return rsxr::MemoryFileOps::DropRef(f);
 }
 }  // namespace
 
 TEST(memory_file_vtable_read_seek_and_reference_contract) {
-    const auto vt = rs7::MemoryFileVtable<true, true>(Destroy, Release);
+    const auto vt = rsxr::MemoryFileVtable<true, true>(Destroy, Release);
     const uint8_t bytes[] = {1, 2, 3, 4};
-    rs7::MemoryFile f{vt.data(), 1, bytes, sizeof bytes, 0};
+    rsxr::MemoryFile f{vt.data(), 1, bytes, sizeof bytes, 0};
     using Get = uint32_t(__thiscall*)(void*);
     using Read = uint32_t(__thiscall*)(void*, void*, uint32_t);
     using Seek = bool(__thiscall*)(void*, uint32_t);
@@ -42,9 +42,9 @@ TEST(memory_file_vtable_read_seek_and_reference_contract) {
 }
 
 TEST(memory_file_owned_policy_rejects_null_destination_without_advancing) {
-    rs7::MemoryFile f{nullptr, 1, nullptr, 4, 0};
+    rsxr::MemoryFile f{nullptr, 1, nullptr, 4, 0};
 
-    CHECK_EQ(rs7::MemoryFileOps::Read<false>(&f, nullptr, nullptr, 2), 0u);
+    CHECK_EQ(rsxr::MemoryFileOps::Read<false>(&f, nullptr, nullptr, 2), 0u);
     CHECK_EQ(f.pos, 0u);
-    CHECK(rs7::MemoryFileOps::Good<false>(&f, nullptr));
+    CHECK(rsxr::MemoryFileOps::Good<false>(&f, nullptr));
 }

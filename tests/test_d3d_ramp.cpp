@@ -7,38 +7,38 @@
 #include <cstring>
 #include <vector>
 
-using namespace rs7swapfix;
+using namespace rsxrswapfix;
 
 TEST(d3d_recolour_retries_the_same_colours_after_a_failed_write) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
     const auto lv = Stock(2);
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, lv);
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, lv);
 
     Add(stock);
-    CHECK(Rs7Swap_InstallOn(d.dev));
+    CHECK(RsxrSwap_InstallOn(d.dev));
     d.dev->SetTexture(0, stock);
-    auto* ours = static_cast<IDirect3DTexture9*>(Rs7Cand_Find(stock)->ours);
+    auto* ours = static_cast<IDirect3DTexture9*>(RsxrCand_Find(stock)->ours);
     D3DLOCKED_RECT locked{};
     const HRESULT lockHr = ours->LockRect(0, &locked, nullptr, 0);
 
     CHECK(SUCCEEDED(lockHr));
-    const Rs7SwapCfg next = {{0x112233, 0xFF8000}};
+    const RsxrSwapCfg next = {{0x112233, 0xFF8000}};
     Capturing cap;
 
-    Rs7Swap_RequestRecolour(next.rgb);
+    RsxrSwap_RequestRecolour(next.rgb);
     d.dev->SetTexture(2, nullptr);
     CHECK(Logged("ramp: recolour of copy", "failed"));
     // Another identical stock must not share the copy whose repaint failed.
-    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, lv);
+    IDirect3DTexture9* other = rsxrd3d::MakeTex(d.dev, lv);
 
     Add(other);
     d.dev->SetTexture(1, other);
-    auto* current = static_cast<IDirect3DTexture9*>(Rs7Cand_Find(other)->ours);
+    auto* current = static_cast<IDirect3DTexture9*>(RsxrCand_Find(other)->ours);
 
     CHECK(current && current != ours);
     // A successful current-generation copy must not be repainted when retrying the failed one.
@@ -51,13 +51,13 @@ TEST(d3d_recolour_retries_the_same_colours_after_a_failed_write) {
     }
 
     Lines().clear();
-    Rs7Swap_RequestRecolour(next.rgb);
+    RsxrSwap_RequestRecolour(next.rgb);
     d.dev->SetTexture(2, nullptr);
     CHECK(Logged("ramp: recoloured 2 copies", "0 failed"));
     if (current && SUCCEEDED(currentHr)) {
         CHECK(SUCCEEDED(current->UnlockRect(0)));
     }
-    CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(lv, next)));
+    CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(ours), Expected(lv, next)));
     End(d.dev);
     CHECK_EQ(other->Release(), 0ul);
     CHECK_EQ(stock->Release(), 0ul);
@@ -67,32 +67,32 @@ TEST(d3d_reconcile_retires_a_refusal_when_the_engine_object_changes) {
     Begin();
     void* const tex = reinterpret_cast<void*>(0x10000000);
 
-    CHECK(Rs7Cand_Add(tex, Rs7Family::Note, "note_gradient_map.dds", 0x1000) >= 0);
-    Rs7Cand_Find(tex)->state = Rs7CandState::Refused;
-    Rs7TexWalk walk;
-    Rs7TexFound found{};
+    CHECK(RsxrCand_Add(tex, RsxrFamily::Note, "note_gradient_map.dds", 0x1000) >= 0);
+    RsxrCand_Find(tex)->state = RsxrCandState::Refused;
+    RsxrTexWalk walk;
+    RsxrTexFound found{};
 
     found.d3d = reinterpret_cast<uintptr_t>(tex);
-    found.family = Rs7Family::Note;
+    found.family = RsxrFamily::Note;
     found.obj = 0x2000;
     walk.found.push_back(found);
-    Rs7Ramp_Reconcile(walk);
-    CHECK(Rs7Cand_Find(tex) == nullptr);
-    CHECK(Rs7Cand_Add(tex, found.family, "note_gradient_map.dds", found.obj) >= 0);
-    CHECK(Rs7Cand_Find(tex)->state == Rs7CandState::Pending);
-    CHECK_EQ(Rs7Cand_Find(tex)->obj, uintptr_t(0x2000));
-    Rs7Cand_ResetForTests();
+    RsxrRamp_Reconcile(walk);
+    CHECK(RsxrCand_Find(tex) == nullptr);
+    CHECK(RsxrCand_Add(tex, found.family, "note_gradient_map.dds", found.obj) >= 0);
+    CHECK(RsxrCand_Find(tex)->state == RsxrCandState::Pending);
+    CHECK_EQ(RsxrCand_Find(tex)->obj, uintptr_t(0x2000));
+    RsxrCand_ResetForTests();
 }
 
 TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
     const auto lv = Stock(1);
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, lv);
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, lv);
 
     CHECK(stock != nullptr);
     if (!stock) {
@@ -100,7 +100,7 @@ TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
     }
 
     Add(stock);
-    CHECK(Rs7Swap_InstallOn(d.dev));
+    CHECK(RsxrSwap_InstallOn(d.dev));
     Capturing cap;
 
     d.dev->SetTexture(1, stock);
@@ -121,12 +121,12 @@ TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
         ours->GetLevelDesc(0, &b);
         CHECK(a.Width == b.Width && a.Height == b.Height && a.Format == b.Format && b.Pool == D3DPOOL_MANAGED);
         CHECK_EQ(ours->GetLevelCount(), stock->GetLevelCount());
-        CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(lv)));
+        CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(ours), Expected(lv)));
         ours->Release();
     }
 
     CHECK(V6On());
-    CHECK(Rs7Cand_Find(stock) && Rs7Cand_Find(stock)->state == Rs7CandState::Active);
+    CHECK(RsxrCand_Find(stock) && RsxrCand_Find(stock)->state == RsxrCandState::Active);
     CHECK(Logged("ramp: process note", "fmt=22 256x128 levels=1 pool=1"));
     CHECK(Logged("ramp: built", "self-check exact=1 v6-pure=1 changed-lines=8"));
     CHECK(Logged("ramp: V6 ON"));
@@ -136,14 +136,14 @@ TEST(d3d_swap_binds_our_copy_and_turns_v6_on) {
 
 TEST(d3d_levels_1_4_9_are_copied_exactly) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     for (unsigned levels : {1u, 4u, 9u}) {
         Begin();
         const auto lv = Stock(levels);
-        IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, lv);
+        IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, lv);
 
         CHECK(stock && stock->GetLevelCount() == levels);
         if (!stock) {
@@ -151,15 +151,15 @@ TEST(d3d_levels_1_4_9_are_copied_exactly) {
         }
 
         Add(stock);
-        Rs7Swap_InstallOn(d.dev);
+        RsxrSwap_InstallOn(d.dev);
         d.dev->SetTexture(0, stock);
-        Rs7Cand* c = Rs7Cand_Find(stock);
+        RsxrCand* c = RsxrCand_Find(stock);
 
-        CHECK(c && c->state == Rs7CandState::Active);
+        CHECK(c && c->state == RsxrCandState::Active);
         if (c && c->ours) {
-            CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(static_cast<IDirect3DTexture9*>(c->ours)), Expected(lv)));
+            CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(static_cast<IDirect3DTexture9*>(c->ours)), Expected(lv)));
         }
-        CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(stock), lv));  // the stock itself is untouched
+        CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(stock), lv));  // the stock itself is untouched
         End(d.dev);
         stock->Release();
     }
@@ -167,29 +167,29 @@ TEST(d3d_levels_1_4_9_are_copied_exactly) {
 
 TEST(d3d_default_pool_stock_is_refused_and_v6_stays_off) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1), D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT);
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1), D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT);
 
     CHECK(stock != nullptr);
     if (!stock) {
         return;
     }
 
-    IDirect3DTexture9* note = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* note = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Add(note, Rs7Family::Note, "other/note_gradient_map.dds");
-    Rs7Swap_InstallOn(d.dev);
+    Add(note, RsxrFamily::Note, "other/note_gradient_map.dds");
+    RsxrSwap_InstallOn(d.dev);
     Capturing cap;
 
     d.dev->SetTexture(1, note);  // an active note alone would turn V6 on
     d.dev->SetTexture(1, stock);
     CHECK(RawBound(d.dev, 1) == static_cast<IDirect3DBaseTexture9*>(stock));
-    CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Refused);
+    CHECK(RsxrCand_Find(stock)->state == RsxrCandState::Refused);
     CHECK(Logged("ramp: refuse note", "pool"));
     CHECK(V6Off());
     End(d.dev);
@@ -199,7 +199,7 @@ TEST(d3d_default_pool_stock_is_refused_and_v6_stays_off) {
 
 TEST(d3d_dxt1_ramp_refused) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
@@ -212,13 +212,13 @@ TEST(d3d_dxt1_ramp_refused) {
 
     Begin();
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
 
     {
         Capturing cap;
 
         d.dev->SetTexture(0, stock);
-        CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Refused);
+        CHECK(RsxrCand_Find(stock)->state == RsxrCandState::Refused);
         CHECK(Logged("ramp: refuse note", "DXT ramps are not copied"));
         CHECK(RawBound(d.dev, 0) == static_cast<IDirect3DBaseTexture9*>(stock));
     }
@@ -229,20 +229,20 @@ TEST(d3d_dxt1_ramp_refused) {
 
 TEST(d3d_identical_stocks_share_one_copy) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* a = rs7d3d::MakeTex(d.dev, Stock(2));
-    IDirect3DTexture9* b = rs7d3d::MakeTex(d.dev, Stock(2));
+    IDirect3DTexture9* a = rsxrd3d::MakeTex(d.dev, Stock(2));
+    IDirect3DTexture9* b = rsxrd3d::MakeTex(d.dev, Stock(2));
 
     Add(a);
-    Add(b, Rs7Family::Note, "tail/note_gradient_map.dds");
-    Rs7Swap_InstallOn(d.dev);
+    Add(b, RsxrFamily::Note, "tail/note_gradient_map.dds");
+    RsxrSwap_InstallOn(d.dev);
     d.dev->SetTexture(0, a);
     d.dev->SetTexture(1, b);
-    CHECK(Rs7Cand_Find(a)->ours != nullptr && Rs7Cand_Find(a)->ours == Rs7Cand_Find(b)->ours);
+    CHECK(RsxrCand_Find(a)->ours != nullptr && RsxrCand_Find(a)->ours == RsxrCand_Find(b)->ours);
     CHECK(RawBound(d.dev, 0) == RawBound(d.dev, 1));
     End(d.dev);
     CHECK_EQ(a->Release(), 0ul);
@@ -253,23 +253,23 @@ TEST(d3d_identical_stocks_share_one_copy) {
 // with the new colours, exactly as a first build with them would; unused cached copies are dropped.
 TEST(d3d_recolour_repaints_the_live_copy) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
     const auto lv = Stock(4);
-    IDirect3DTexture9* a = rs7d3d::MakeTex(d.dev, lv);
+    IDirect3DTexture9* a = rsxrd3d::MakeTex(d.dev, lv);
 
     Add(a);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     d.dev->SetTexture(1, a);
     IDirect3DBaseTexture9* raw = RawBound(d.dev, 1);
 
     CHECK(raw != nullptr && raw != static_cast<IDirect3DBaseTexture9*>(a));
-    const Rs7SwapCfg next = {{0x112233, 0xFF8000}};
+    const RsxrSwapCfg next = {{0x112233, 0xFF8000}};
 
-    Rs7Swap_RequestRecolour(next.rgb);
+    RsxrSwap_RequestRecolour(next.rgb);
     Capturing cap;
 
     d.dev->SetTexture(2, nullptr);  // any bind on the render thread runs it
@@ -282,25 +282,25 @@ TEST(d3d_recolour_repaints_the_live_copy) {
     CHECK(ours != nullptr);
 
     if (ours) {
-        CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(lv, next)));
-        CHECK(!rs7d3d::SameImages(rs7d3d::ReadTex(ours), Expected(lv)));
+        CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(ours), Expected(lv, next)));
+        CHECK(!rsxrd3d::SameImages(rsxrd3d::ReadTex(ours), Expected(lv)));
         ours->Release();
     }
 
     CHECK(V6On());
-    Rs7SwapStats st{};
+    RsxrSwapStats st{};
 
-    Rs7Swap_Stats(&st);
+    RsxrSwap_Stats(&st);
     CHECK(st.installed && st.active == 1 && st.copies == 1 && st.rgb[0] == 0x112233u && st.rgb[1] == 0xFF8000u);
     // The same colours again: nothing to do.
     Lines().clear();
-    Rs7Swap_RequestRecolour(next.rgb);
+    RsxrSwap_RequestRecolour(next.rgb);
     d.dev->SetTexture(2, nullptr);
     CHECK(!Logged("ramp: recoloured"));
     // A copy built after the change uses the new colours too.
-    IDirect3DTexture9* b = rs7d3d::MakeTex(d.dev, Stock(2));
+    IDirect3DTexture9* b = rsxrd3d::MakeTex(d.dev, Stock(2));
 
-    Add(b, Rs7Family::Note, "tail/note_gradient_map.dds");
+    Add(b, RsxrFamily::Note, "tail/note_gradient_map.dds");
     d.dev->SetTexture(3, b);
     IDirect3DTexture9* oursB = nullptr;
 
@@ -310,7 +310,7 @@ TEST(d3d_recolour_repaints_the_live_copy) {
     CHECK(oursB != nullptr);
 
     if (oursB) {
-        CHECK(rs7d3d::SameImages(rs7d3d::ReadTex(oursB), Expected(Stock(2), next)));
+        CHECK(rsxrd3d::SameImages(rsxrd3d::ReadTex(oursB), Expected(Stock(2), next)));
         oursB->Release();
     }
 
@@ -323,21 +323,21 @@ TEST(d3d_recolour_repaints_the_live_copy) {
 
 TEST(d3d_stale_candidate_is_retired_not_swapped) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     g_verdict = 0;  // the engine no longer holds this pointer (freed, address reused)
     Capturing cap;
 
     d.dev->SetTexture(1, stock);
     CHECK(RawBound(d.dev, 1) == static_cast<IDirect3DBaseTexture9*>(stock));
-    CHECK(Rs7Cand_Find(stock) == nullptr);
+    CHECK(RsxrCand_Find(stock) == nullptr);
     CHECK(Logged("ramp: drop stale note"));
     CHECK(V6Off());
     CHECK_EQ(Refs(stock), 1ul);  // no reference taken
@@ -347,22 +347,22 @@ TEST(d3d_stale_candidate_is_retired_not_swapped) {
 
 TEST(d3d_busy_list_lock_leaves_it_pending_until_the_next_bind) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     g_verdict = -1;
     d.dev->SetTexture(1, stock);
     CHECK(RawBound(d.dev, 1) == static_cast<IDirect3DBaseTexture9*>(stock));
-    CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Pending);
+    CHECK(RsxrCand_Find(stock)->state == RsxrCandState::Pending);
     g_verdict = 1;
     d.dev->SetTexture(1, stock);
-    CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Active);
+    CHECK(RsxrCand_Find(stock)->state == RsxrCandState::Active);
     CHECK(V6On());
     End(d.dev);
     stock->Release();
@@ -370,39 +370,39 @@ TEST(d3d_busy_list_lock_leaves_it_pending_until_the_next_bind) {
 
 TEST(d3d_gone_active_candidate_is_released_on_the_render_thread) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
-    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* other = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     d.dev->SetTexture(1, stock);
     CHECK(V6On() && Refs(stock) == 2ul);  // ours + the candidate's
     d.dev->SetTexture(1, other);
-    Rs7TexWalk empty;
+    RsxrTexWalk empty;
 
-    Rs7Ramp_Reconcile(empty);  // one miss: kept
-    CHECK(Rs7Cand_Find(stock) && Rs7Cand_Find(stock)->gone == 1);
-    Rs7TexWalk listed;
-    Rs7TexFound f{};
+    RsxrRamp_Reconcile(empty);  // one miss: kept
+    CHECK(RsxrCand_Find(stock) && RsxrCand_Find(stock)->gone == 1);
+    RsxrTexWalk listed;
+    RsxrTexFound f{};
 
     f.d3d = reinterpret_cast<uintptr_t>(stock);
     f.obj = 0x1000;
-    f.family = Rs7Family::Note;
+    f.family = RsxrFamily::Note;
     listed.found.push_back(f);
-    Rs7Ramp_Reconcile(listed);  // listed again: the count restarts
-    CHECK(Rs7Cand_Find(stock)->gone == 0);
-    Rs7Ramp_Reconcile(empty);
-    Rs7Ramp_Reconcile(empty);  // two misses in a row: released at the next SetTexture
-    CHECK(Rs7Cand_Find(stock) != nullptr && Refs(stock) == 2ul);
+    RsxrRamp_Reconcile(listed);  // listed again: the count restarts
+    CHECK(RsxrCand_Find(stock)->gone == 0);
+    RsxrRamp_Reconcile(empty);
+    RsxrRamp_Reconcile(empty);  // two misses in a row: released at the next SetTexture
+    CHECK(RsxrCand_Find(stock) != nullptr && Refs(stock) == 2ul);
     Capturing cap;
 
     d.dev->SetTexture(2, nullptr);
-    CHECK(Rs7Cand_Find(stock) == nullptr);
+    CHECK(RsxrCand_Find(stock) == nullptr);
     CHECK_EQ(Refs(stock), 1ul);
     CHECK(Logged("ramp: release note", "gone from the engine list"));
     CHECK(V6Off());  // no active note any more
@@ -413,31 +413,31 @@ TEST(d3d_gone_active_candidate_is_released_on_the_render_thread) {
 
 TEST(d3d_refused_candidate_gone_from_the_list_unblocks_v6) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* note = rs7d3d::MakeTex(d.dev, Stock(1));
-    IDirect3DTexture9* bad = rs7d3d::MakeTex(d.dev, Stock(1), D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT);
+    IDirect3DTexture9* note = rsxrd3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* bad = rsxrd3d::MakeTex(d.dev, Stock(1), D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT);
 
     Add(note);
-    Add(bad, Rs7Family::Additive, "stem/gradient_map_additive.dds");
-    Rs7Swap_InstallOn(d.dev);
+    Add(bad, RsxrFamily::Additive, "stem/gradient_map_additive.dds");
+    RsxrSwap_InstallOn(d.dev);
     d.dev->SetTexture(0, note);
     d.dev->SetTexture(1, bad);
     CHECK(V6Off());  // a refused additive keeps V6 off
-    Rs7TexWalk w;
-    Rs7TexFound f{};
+    RsxrTexWalk w;
+    RsxrTexFound f{};
 
     f.d3d = reinterpret_cast<uintptr_t>(note);
     f.obj = 0x1000;
-    f.family = Rs7Family::Note;
+    f.family = RsxrFamily::Note;
     w.found.push_back(f);
     Capturing cap;
 
-    Rs7Ramp_Reconcile(w);  // the refused one is gone from the engine list
-    CHECK(Rs7Cand_Find(bad) == nullptr);
+    RsxrRamp_Reconcile(w);  // the refused one is gone from the engine list
+    CHECK(RsxrCand_Find(bad) == nullptr);
     CHECK(Logged("ramp: candidate gone: additive", "(refused), slot freed"));
     CHECK(V6On());
     End(d.dev);

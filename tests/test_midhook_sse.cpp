@@ -1,4 +1,4 @@
-// The sse mid-hook mode (Rs7Mid::Mode::Sse, ARCHITECTURE.md section 14 "Sse mode") on the hardware, the exact x87
+// The sse mid-hook mode (RsxrMid::Mode::Sse, ARCHITECTURE.md section 14 "Sse mode") on the hardware, the exact x87
 // compare and ADD flag helpers W / R2 / R6 use, and the relocator's FCOMP m32. Hardware references are emitted
 // machine code (Asm), no inline assembly.
 #include "platform/midhook.h"
@@ -63,24 +63,24 @@ bool g_loaded = false, g_otherEdits = true;
 unsigned g_depth = 99;
 
 // SSE math, MXCSR and every XMM register clobbered; the x87 result through LoadSt0.
-void __cdecl SseLoad(Rs7Mid::Context& c) {
+void __cdecl SseLoad(RsxrMid::Context& c) {
     g_depth = c.FpuDepth();
     g_otherEdits = c.HasSt0() || c.SetSt0(1.0) || c.PushSt0(1.0);
-    g_loaded = Rs7Mid::LoadSt0(c, 2.0f * g_a - g_b);
+    g_loaded = RsxrMid::LoadSt0(c, 2.0f * g_a - g_b);
     _mm_setcsr(0x7f00);  // round toward zero: the thunk restores the caller's MXCSR
     g_clobberXmm();
 }
 
-void __cdecl SseNoop(Rs7Mid::Context&) {}
+void __cdecl SseNoop(RsxrMid::Context&) {}
 
-void __cdecl FullLoad(Rs7Mid::Context& c) {
-    g_loaded = Rs7Mid::LoadSt0(c, 1.0f);
+void __cdecl FullLoad(RsxrMid::Context& c) {
+    g_loaded = RsxrMid::LoadSt0(c, 1.0f);
 }
 
 using Builder = size_t(__cdecl*)(uint8_t*, size_t, const uint8_t*, uintptr_t, size_t, uintptr_t, uintptr_t);
 
 // A `nop x5; ret` site at the page start with its entry at +64.
-uint8_t* Site(Rs7Mid::Callback callback, Builder build) {
+uint8_t* Site(RsxrMid::Callback callback, Builder build) {
     auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     if (!page) {
         return nullptr;
@@ -109,7 +109,7 @@ struct alignas(16) Images {
 }  // namespace
 
 TEST(midhook_sse_loads_the_result_and_restores_sse_state) {
-    uint8_t* page = Site(&SseLoad, &Rs7Mid_BuildSse);
+    uint8_t* page = Site(&SseLoad, &RsxrMid_BuildSse);
 
     CHECK(page != nullptr);
     if (!page) {
@@ -150,7 +150,7 @@ TEST(midhook_sse_loads_the_result_and_restores_sse_state) {
 }
 
 TEST(midhook_load_st0_fails_outside_sse_mode) {
-    for (const Builder build : {&Rs7Mid_Build, &Rs7Mid_BuildLight}) {
+    for (const Builder build : {&RsxrMid_Build, &RsxrMid_BuildLight}) {
         uint8_t* page = Site(&FullLoad, build);
 
         CHECK(page != nullptr);
@@ -171,7 +171,7 @@ TEST(midhook_add32_matches_hardware_add) {
     for (uint32_t lhsValue : inputs) {
         for (uint32_t rhsValue : inputs) {
             const uint32_t hardwareSum = g_hardwareAdd(lhsValue, rhsValue);
-            Rs7Mid::Context context{};
+            RsxrMid::Context context{};
 
             context.eflags = 0xed7;
             CHECK_EQ(context.Add32(lhsValue, rhsValue), hardwareSum);
@@ -194,7 +194,7 @@ struct Image {
 };
 
 int Order(const Image& image, float rhs) {
-    Rs7Mid::Context c{};
+    RsxrMid::Context c{};
 
     c.fpu = uint32_t(uintptr_t(image.bytes));
 
@@ -234,7 +234,7 @@ TEST(midhook_compare_st0_is_exact_and_matches_fcomp) {
     CHECK_EQ(Order(cases[2], 34.0f), -1);
     CHECK_EQ(Order(cases[9], 34.0f), 2);  // pseudo-infinity
     CHECK_EQ(Order(cases[11], 0.0f), 1);  // pseudo-denormal: 2^-16382, above zero
-    Rs7Mid::Context empty{};
+    RsxrMid::Context empty{};
 
     CHECK_EQ(empty.CompareSt0(1.0f), 2);  // no image (light mode)
 }
@@ -244,15 +244,15 @@ TEST(midhook_relocates_fcomp_m32_only) {
     // W 005B2DDE: fcomp dword [1224C6Ch] (D8 /3, absolute), and with a base register.
     const uint8_t abs[] = {0xd8, 0x1d, 0x6c, 0x4c, 0x22, 0x01}, based[] = {0xd8, 0x58, 0x10, 0x90, 0x90};
 
-    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, abs, 0x5b2dde, sizeof abs, 0x2000), sizeof abs);
+    CHECK_EQ(RsxrMid_Relocate(out, sizeof out, abs, 0x5b2dde, sizeof abs, 0x2000), sizeof abs);
     CHECK(std::memcmp(out, abs, sizeof abs) == 0);
-    CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, based, 0x1000, sizeof based, 0x2000), sizeof based);
+    CHECK_EQ(RsxrMid_Relocate(out, sizeof out, based, 0x1000, sizeof based, 0x2000), sizeof based);
 
     // The other D8 forms (fadd /0, fcom /2, fsub /4) and the register forms stay rejected.
     for (const uint8_t modrm : {uint8_t(0x05), uint8_t(0x15), uint8_t(0x25), uint8_t(0xd9)}) {
         const uint8_t other[] = {0xd8, modrm, 0x6c, 0x4c, 0x22, 0x01};
 
-        CHECK_EQ(Rs7Mid_Relocate(out, sizeof out, other, 0x1000, sizeof other, 0x2000), 0u);
+        CHECK_EQ(RsxrMid_Relocate(out, sizeof out, other, 0x1000, sizeof other, 0x2000), 0u);
     }
 }
 
@@ -260,7 +260,7 @@ TEST(midhook_relocates_fcomp_m32_only) {
 // own `fld dword` would (compared with the hardware: status word and the register file).
 TEST(midhook_sse_on_a_full_x87_stack_behaves_like_fld) {
     for (const bool load : {false, true}) {
-        uint8_t* page = Site(load ? &SseLoad : &SseNoop, &Rs7Mid_BuildSse);
+        uint8_t* page = Site(load ? &SseLoad : &SseNoop, &RsxrMid_BuildSse);
 
         CHECK(page != nullptr);
         if (!page) {

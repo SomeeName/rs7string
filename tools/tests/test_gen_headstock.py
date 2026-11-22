@@ -23,9 +23,9 @@ def test_audit_rejects_template_run():
 def test_package_roundtrip():
     templates = [bytes(range(100)), bytes(range(100, 200))]
     out = b"our geometry" + templates[0][3:58]
-    package = hs.package(templates, [("rs7_inline7.nif", out, hs.delta(out, templates))])
+    package = hs.package(templates, [("rsxr_inline7.nif", out, hs.delta(out, templates))])
     hs.audit_runs(package, templates)
-    assert hs.unpack(package, templates) == {"rs7_inline7.nif": out}
+    assert hs.unpack(package, templates) == {"rsxr_inline7.nif": out}
     with pytest.raises(ValueError, match="template hash"):
         hs.unpack(package, [b"wrong", templates[1]])
 
@@ -39,7 +39,7 @@ def test_shipped_package_owner_identity_and_no_template_runs():
     if not all((hs.TEMPLATES / n).exists() for n in names):
         pytest.skip("owner templates absent")
     templates = [(hs.TEMPLATES / n).read_bytes() for n in names]
-    package = (Path(hs.DEST) / "rs7string_headstock.bin").read_bytes()
+    package = (Path(hs.DEST) / "rsxr_headstock.bin").read_bytes()
     hs.audit_runs(package, templates)
     outputs = hs.unpack(package, templates)
     assert len(outputs) == 9
@@ -48,13 +48,13 @@ def test_shipped_package_owner_identity_and_no_template_runs():
 
 
 def test_shipped_lefty_package_owner_identity_and_no_template_runs():
-    package = (Path(hs.DEST) / "rs7string_headstock_lh.bin").read_bytes()
+    package = (Path(hs.DEST) / "rsxr_headstock_lh.bin").read_bytes()
     if not all((hs.TEMPLATES_LH / n).exists() for n in hs.LH_NAMES):
         pytest.skip("owner templates absent")
     templates = [(hs.TEMPLATES_LH / n).read_bytes() for n in hs.LH_NAMES]
     hs.audit_runs(package, templates)
     outputs = hs.unpack(package, templates)
-    assert list(outputs) == ["rs7_inline7_lh.nif", "rs7_inline8_lh.nif"]
+    assert list(outputs) == ["rsxr_inline7_lh.nif", "rsxr_inline8_lh.nif"]
     for name in outputs:
         assert outputs[name] == (hs.OUTPUTS / name).read_bytes()
     # the right-handed frame is refused: the package is bound to the left-handed template hashes

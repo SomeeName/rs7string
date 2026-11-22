@@ -7,17 +7,17 @@
 
 namespace {
 // One more than the longest value plus its terminator: GetPrivateProfileString returns nSize - 1 both for an exact fit
-// and for a cut value, so a value of exactly kRs7IniValueMax characters must stay below that count.
-constexpr DWORD kReadSize = kRs7IniValueMax + 2;
+// and for a cut value, so a value of exactly kRsxrIniValueMax characters must stay below that count.
+constexpr DWORD kReadSize = kRsxrIniValueMax + 2;
 
-// The text of [section] key, or `fallback` if the key is missing. *tooLong: longer than kRs7IniValueMax (the text is
+// The text of [section] key, or `fallback` if the key is missing. *tooLong: longer than kRsxrIniValueMax (the text is
 // then only a prefix).
 std::wstring Read(const wchar_t* section, const wchar_t* key, const wchar_t* fallback, const wchar_t* iniPath,
                   bool* tooLong) {
     wchar_t buf[kReadSize] = {};
     const DWORD n = GetPrivateProfileStringW(section, key, fallback, buf, kReadSize, iniPath);
 
-    *tooLong = n > DWORD(kRs7IniValueMax);
+    *tooLong = n > DWORD(kRsxrIniValueMax);
 
     return std::wstring(buf, n);
 }
@@ -41,10 +41,14 @@ int HexDigit(wchar_t ch) {  // ASCII only (iswxdigit would depend on the locale)
 }
 }  // namespace
 
-int Rs7Config_ReadInt(const wchar_t* section, const wchar_t* key, int def, const wchar_t* iniPath, int hi) {
+std::wstring RsxrConfig_FindIni(const std::wstring& dir) {
+    return dir + kRsxrIniName;
+}
+
+int RsxrConfig_ReadInt(const wchar_t* section, const wchar_t* key, int def, const wchar_t* iniPath, int hi) {
     std::wstring text;
     bool tooLong = false;
-    if (!Rs7Config_ReadPresent(section, key, iniPath, &text, &tooLong)) {
+    if (!RsxrConfig_ReadPresent(section, key, iniPath, &text, &tooLong)) {
         return def;
     }
 
@@ -61,21 +65,21 @@ int Rs7Config_ReadInt(const wchar_t* section, const wchar_t* key, int def, const
     const bool number = !tooLong && end != buf && !text.empty() && !*end && errno != ERANGE;
 
     if (!number || v < 0 || v > hi) {
-        Rs7Log("config: [%ls] %ls in rs7string.ini %s (a whole number from 0 to %d); using 0 until fixed "
-               "(invalid integer)",
-               section, key, number ? "is out of range" : "is not a whole number", hi);
+        RsxrLog("config: [%ls] %ls in rsxr.ini %s (a whole number from 0 to %d); using 0 until fixed "
+                "(invalid integer)",
+                section, key, number ? "is out of range" : "is not a whole number", hi);
         return 0;
     }
 
     return int(v);
 }
 
-std::wstring Rs7Config_ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, bool* tooLong) {
+std::wstring RsxrConfig_ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, bool* tooLong) {
     return Read(section, key, L"", iniPath, tooLong);
 }
 
-bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out,
-                           bool* tooLong) {
+bool RsxrConfig_ReadPresent(const wchar_t* section, const wchar_t* key, const wchar_t* iniPath, std::wstring* out,
+                            bool* tooLong) {
     bool cut = false;
     std::wstring text = Read(section, key, L"\x01", iniPath, &cut);
     if (text.size() == 1 && text[0] == 1) {
@@ -90,7 +94,7 @@ bool Rs7Config_ReadPresent(const wchar_t* section, const wchar_t* key, const wch
     return true;
 }
 
-std::wstring Rs7Config_ResolveIniPath(const wchar_t* iniPath) {
+std::wstring RsxrConfig_ResolveIniPath(const wchar_t* iniPath) {
     if (!iniPath || !*iniPath) {
         return {};
     }
@@ -111,7 +115,7 @@ std::wstring Rs7Config_ResolveIniPath(const wchar_t* iniPath) {
     return path;
 }
 
-bool Rs7_ParseRgb(const wchar_t* t, uint32_t* rgb) {
+bool Rsxr_ParseRgb(const wchar_t* t, uint32_t* rgb) {
     if (!t) {
         return false;
     }

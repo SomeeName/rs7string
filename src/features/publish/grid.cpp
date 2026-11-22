@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace rs7pubgrid {
+namespace rsxrpubgrid {
 unsigned PhysicalRank(unsigned s, unsigned n) {
     if (n <= 6) {
         return s;
@@ -44,16 +44,16 @@ int GetCellPos(const uint8_t* grid, unsigned n, unsigned fret, unsigned k, unsig
         return 0;
     }
 
-    const auto* row = grid + 4 + (fret - 1) * rs7fg::kRowNative;
-    const auto* cell = row + 4 + s * rs7fg::kCell;
+    const auto* row = grid + 4 + (fret - 1) * rsxrfg::kRowNative;
+    const auto* cell = row + 4 + s * rsxrfg::kCell;
 
-    std::memcpy(out, cell + rs7fg::kCellWorld + k * 12, 12);
+    std::memcpy(out, cell + rsxrfg::kCellWorld + k * 12, 12);
 
     return 1;
 }
-}  // namespace rs7pubgrid
+}  // namespace rsxrpubgrid
 
-namespace rs7pubgrid {
+namespace rsxrpubgrid {
 bool WaitStep(WaitEntry* table, size_t n, const void* grid, unsigned reason, uint64_t now, uint64_t limitMs,
               const void* owner, uint64_t staleMs) {
     WaitEntry* e = nullptr;
@@ -122,4 +122,4 @@ bool Failed(const WaitEntry* table, size_t n, const void* owner) {
 
     return false;
 }
-}  // namespace rs7pubgrid
+}  // namespace rsxrpubgrid

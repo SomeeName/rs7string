@@ -29,4 +29,4 @@ def test_built_dll_imports_only_expected_windows_libraries():
 
 def test_d3d9_is_forbidden():
     assert "d3d9.dll" in check_exports.FORBIDDEN_IMPORTS
-    assert {"g_rs7_v6", "g_rs7_colormgr"} <= set(check_exports.REQUIRED_DATA)
+    assert {"g_rsxr_v6", "g_rsxr_colormgr"} <= set(check_exports.REQUIRED_DATA)

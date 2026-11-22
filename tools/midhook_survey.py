@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the built mid-hook relocator (Rs7Mid_Relocate of bin/Release/dinput8.dll, in Unicorn) over the displaced
+"""Run the built mid-hook relocator (RsxrMid_Relocate of bin/Release/dinput8.dll, in Unicorn) over the displaced
 bytes of every jmp site in sites.json and list the sites it rejects and why.
 
 Reason: the first displaced instruction that the relocator rejects on its own (NOP-padded to 5 bytes), as
@@ -29,7 +29,7 @@ SCRATCH, STACK, RET_MAGIC = 0x10000000, 0x10100000, 0x10200000
 
 
 class Relocator:
-    """Rs7Mid_Relocate of a built DLL, executed in Unicorn (the function is pure: no imports, no state)."""
+    """RsxrMid_Relocate of a built DLL, executed in Unicorn (the function is pure: no imports, no state)."""
 
     def __init__(self, dll: Path = DLL):
         pe = pefile.PE(str(dll))
@@ -40,7 +40,7 @@ class Relocator:
         for s in pe.sections:
             self.uc.mem_write(base + s.VirtualAddress, s.get_data())
         exports = {e.name.decode(): base + e.address for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name}
-        self.entry = exports["Rs7Mid_Relocate"]
+        self.entry = exports["RsxrMid_Relocate"]
         for region in (SCRATCH, STACK, RET_MAGIC):
             self.uc.mem_map(region, 0x10000, UC_PROT_ALL)
 

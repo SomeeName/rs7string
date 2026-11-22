@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
-const char* kKey = "Rs7String6";
+const char* kKey = "RsxrString6";
 #include "readkey.inc"
 struct Node { void** vt; uint8_t bytes[16]; };
 struct Object { void** vt; Node* child; };
@@ -35,7 +35,7 @@ int main() {
     nvt[20] = reinterpret_cast<void*>(&NotNumber); if (ReadKey(&holder, &out, &raw)) return 6;
     nvt[20] = reinterpret_cast<void*>(&Number);
     void* bad = reinterpret_cast<void*>(1); if (ReadKey(&bad, &out, &raw)) return 7;
-    expectedKey = "Rs7String7"; double value = -2; std::memcpy(node.bytes + 8, &value, 8);
+    expectedKey = "RsxrString7"; double value = -2; std::memcpy(node.bytes + 8, &value, 8);
     if (ReadKey(&holder, &out, &raw) || !ReadKey(&holder, &out, &raw, expectedKey) || out != -2) return 8;
     std::puts("PASS: synthetic manifest vtables cover missing/malformed/nonfinite/range/fractional keys");
 }

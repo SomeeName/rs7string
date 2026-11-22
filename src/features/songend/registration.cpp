@@ -1,20 +1,21 @@
-// The song-end log's hooks, looked up by src/registry.cpp (Rs7_FindHook) and written by the main batch. Group Core,
+// The song-end log's hooks, looked up by src/registry.cpp (Rsxr_FindHook) and written by the main batch. Group Core,
 // as before the move.
 #include "features/songend/songend.h"
 #include "model/groups.h"
 
 extern "C" {
-void Rs7_Mid_SE1(Rs7Mid::Context&);  // hooks.cpp
-void Rs7_Mid_SE2(Rs7Mid::Context&);
-void Rs7_Mid_SE3(Rs7Mid::Context&);
+void Rsxr_Mid_SE1(RsxrMid::Context&);  // hooks.cpp
+void Rsxr_Mid_SE2(RsxrMid::Context&);
+void Rsxr_Mid_SE3(RsxrMid::Context&);
 }
 
 namespace {
-const Rs7Hook kHooks[] = {
-    Rs7_Mid("SE1", &Rs7_Mid_SE1),
-    Rs7_Mid("SE2", &Rs7_Mid_SE2),
-    Rs7_Mid("SE3", &Rs7_Mid_SE3),
+const RsxrHook kHooks[] = {
+    Rsxr_Mid("SE1", &Rsxr_Mid_SE1),
+    Rsxr_Mid("SE2", &Rsxr_Mid_SE2),
+    Rsxr_Mid("SE3", &Rsxr_Mid_SE3),
 };
 }  // namespace
 
-extern const Rs7HookTable kRs7SongEndHooks = {Rs7_Group(Rs7Feature::Core), kHooks, sizeof kHooks / sizeof kHooks[0]};
+extern const RsxrHookTable kRsxrSongEndHooks = {Rsxr_Group(RsxrFeature::Core), kHooks,
+                                                sizeof kHooks / sizeof kHooks[0]};

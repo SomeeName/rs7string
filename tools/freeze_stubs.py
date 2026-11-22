@@ -11,7 +11,7 @@ Unicorn). Only code emitted by this repository's own build is stored; no game by
 linker map (`$env:_LINK_ = '/MAP'`, no image change) and the fixup is named NAME, so the oracle links it against the
 DLL under test, which must export it.
 
-NAME is an exported function (e.g. Rs7_Stub_TK or Rs7_PegOwnedZF). The stub's extent is found by
+NAME is an exported function (e.g. Rsxr_Stub_TK or Rsxr_PegOwnedZF). The stub's extent is found by
 recursive descent (conditional/unconditional relative branches inside the image, stopping at ret,
 jmp reg, jmp [mem]); calls are not followed, except to a label of the stub itself (before the next
 export). Every 32-bit field that points into the image becomes
@@ -79,7 +79,7 @@ class Image:
         for a, n in self.by_addr[i::-1]:
             if a != addr:
                 break
-            if n.startswith(("Rs7", "g_rs7")):
+            if n.startswith(("Rsxr", "g_rsxr")):
                 name = n
         if va - addr > MAX_ADDEND:
             raise ValueError(f"{va:#x}: nearest export {name} is {va - addr:#x} below")
@@ -227,8 +227,8 @@ def main(argv: list[str]) -> int:
         blob = freeze_one(img, n, frozen_starts)
         blob["source"] = source
         result[n] = blob
-        if not all(f["symbol"].startswith(("Rs7", "g_rs7", "@")) for f in blob["fixups"]):
-            print("  note: non-Rs7 symbol in", n, [f["symbol"] for f in blob["fixups"]])
+        if not all(f["symbol"].startswith(("Rsxr", "g_rsxr", "@")) for f in blob["fixups"]):
+            print("  note: non-Rsxr symbol in", n, [f["symbol"] for f in blob["fixups"]])
         # round trip: the relinked blob must equal the DLL bytes
         va = img.exports[n]
         want = img.read(va, len(bytes.fromhex(blob["hex"])))

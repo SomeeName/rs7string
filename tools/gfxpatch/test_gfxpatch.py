@@ -58,8 +58,8 @@ class BinaryTests(unittest.TestCase):
             gp.validate_paths(Path("C:/Program Files (x86)/Steam/steamapps/common/Rocksmith2014"), Path("output"))
         with self.assertRaises(ValueError):
             gp.validate_paths(Path("input"), Path("input/edited"))
-        with self.assertRaises(ValueError):
-            gp.validate_paths(Path("input"), Path("C:/src/rs7string/out"))
+        with self.assertRaises(ValueError):  # a checkout under the repository's new name
+            gp.validate_paths(Path("input"), Path("C:/src/rs-extended-range-dev/out"))
         with self.assertRaises(ValueError):
             gp.safe_child(Path("output"), "../input/movie.gfx")
 

@@ -18,7 +18,7 @@
 #include <vector>
 
 namespace {
-// The tabs, by index: the first ones are the Rs7UiTab values (platform/uilayout.h), the log tab follows them.
+// The tabs, by index: the first ones are the RsxrUiTab values (platform/uilayout.h), the log tab follows them.
 struct Tab {
     const char* name;  // "o tab <name>"
     const char* label;
@@ -27,11 +27,11 @@ struct Tab {
 constexpr Tab kTabs[] = {{"status", "Status"}, {"colour", "Colour"}, {"neck", "Neck"}, {"tuner", "Tuner"},
                          {"debug", "Debug"},   {"window", "Window"}, {"log", "Log"}};
 constexpr int kTabCount = int(sizeof kTabs / sizeof kTabs[0]);
-constexpr int kLogTab = int(Rs7UiTab::Window) + 1;
+constexpr int kLogTab = int(RsxrUiTab::Window) + 1;
 constexpr unsigned kLogLines = 200;     // lines the log tab shows
 constexpr float kRowNameWidth = 11.0f;  // status rows: value column, in font sizes
 
-constexpr bool TabIs(Rs7UiTab t, const char* name) {
+constexpr bool TabIs(RsxrUiTab t, const char* name) {
     const char* a = kTabs[int(t)].name;
 
     while (*a && *a == *name) {
@@ -42,10 +42,10 @@ constexpr bool TabIs(Rs7UiTab t, const char* name) {
     return *a == *name;
 }
 
-static_assert(TabIs(Rs7UiTab::Status, "status") && TabIs(Rs7UiTab::Colour, "colour") && TabIs(Rs7UiTab::Neck, "neck") &&
-                  TabIs(Rs7UiTab::Tuner, "tuner") && TabIs(Rs7UiTab::Debug, "debug") &&
-                  TabIs(Rs7UiTab::Window, "window"),
-              "kTabs follows Rs7UiTab");
+static_assert(TabIs(RsxrUiTab::Status, "status") && TabIs(RsxrUiTab::Colour, "colour") &&
+                  TabIs(RsxrUiTab::Neck, "neck") && TabIs(RsxrUiTab::Tuner, "tuner") &&
+                  TabIs(RsxrUiTab::Debug, "debug") && TabIs(RsxrUiTab::Window, "window"),
+              "kTabs follows RsxrUiTab");
 static_assert(kLogTab == kTabCount - 1, "the log tab is the last one");
 // The one restart note: restart-only settings carry " *" in their label (Edit).
 constexpr char kRestartNote[] = "Settings marked * apply after you restart the game.";
@@ -74,24 +74,24 @@ void EndWrappedTooltip() {
     ImGui::EndTooltip();
 }
 
-void Help(const Rs7SetDef& d) {
+void Help(const RsxrSetDef& d) {
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         return;
     }
 
     BeginWrappedTooltip(d.help);
-    ImGui::TextDisabled("rs7string.ini [%ls] %ls (default %s)", d.section, d.key, d.def[0] ? d.def : "empty");
+    ImGui::TextDisabled("rsxr.ini [%ls] %ls (default %s)", d.section, d.key, d.def[0] ? d.def : "empty");
     EndWrappedTooltip();
 }
 
 // The state after a control. Restart-only keys carry " *" in their label (kRestartNote) instead of a tag; the player
 // view shows no tags and no ini values.
 void Badge(int i, bool player) {
-    const Rs7SetDef& d = Rs7Set_Def(i);
+    const RsxrSetDef& d = RsxrSet_Def(i);
 
-    if (!player && d.when != Rs7SetWhen::Restart) {
+    if (!player && d.when != RsxrSetWhen::Restart) {
         ImGui::SameLine();
-        if (d.when == Rs7SetWhen::Live) {
+        if (d.when == RsxrSetWhen::Live) {
             ImGui::TextColored(kGreen, "[live]");
         } else {
             ImGui::TextColored(kYellow, "[next session]");
@@ -99,21 +99,21 @@ void Badge(int i, bool player) {
         Help(d);
     }
 
-    if (Rs7Set_NeedsRestart(i)) {
+    if (RsxrSet_NeedsRestart(i)) {
         ImGui::SameLine();
         if (player) {
             ImGui::TextColored(kOrange, "restart the game to apply");
         } else {
             ImGui::TextColored(kOrange, "restart required (running: %s)",
-                               Rs7Set_Format(i, Rs7Set_State(i).running).c_str());
+                               RsxrSet_Format(i, RsxrSet_State(i).running).c_str());
         }
     }
 
-    if (Rs7Set_Dirty(i)) {
+    if (RsxrSet_Dirty(i)) {
         ImGui::SameLine();
         ImGui::TextColored(kYellow, "not saved");
         if (!player && ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("changed, not saved (saved: %s)", Rs7Set_Format(i, Rs7Set_State(i).saved).c_str());
+            ImGui::SetTooltip("changed, not saved (saved: %s)", RsxrSet_Format(i, RsxrSet_State(i).saved).c_str());
         }
     }
 }
@@ -133,11 +133,11 @@ void HintMarker(const char* hint) {
 
 // After a control: the table's help as a tooltip and the tags, or in the player view the "(?)" hint and the badge. A
 // locked control keeps its reason as text below, because that text is what explains the disabled control.
-void Decorate(const Rs7UiItem& it, int i, bool locked) {
-    const bool player = it.tab == Rs7UiTab::Player;
+void Decorate(const RsxrUiItem& it, int i, bool locked) {
+    const bool player = it.tab == RsxrUiTab::Player;
 
     if (!player) {
-        Help(Rs7Set_Def(i));
+        Help(RsxrSet_Def(i));
     } else if (it.hint) {
         HintMarker(it.hint);
     }
@@ -149,16 +149,16 @@ void Decorate(const Rs7UiItem& it, int i, bool locked) {
     }
 }
 
-void LogUiSet(int i, Rs7SetResult r) {
-    Rs7Log("overlay: ui set %s = %s -> %s", Rs7Set_Def(i).id, Rs7Set_Format(i, Rs7Set_State(i).value).c_str(),
-           Rs7Set_ResultName(r));
+void LogUiSet(int i, RsxrSetResult r) {
+    RsxrLog("overlay: ui set %s = %s -> %s", RsxrSet_Def(i).id, RsxrSet_Format(i, RsxrSet_State(i).value).c_str(),
+            RsxrSet_ResultName(r));
 }
 
 // A colour as #RRGGBB; its width leaves room for the label.
-bool EditRgb(const char* label, Rs7SetValue& v) {
+bool EditRgb(const char* label, RsxrSetValue& v) {
     float c[3];
 
-    Rs7_RgbToFloats(v.rgb, c);
+    Rsxr_RgbToFloats(v.rgb, c);
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
 
     if (!ImGui::ColorEdit3(label, c, ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_InputRGB)) {
@@ -185,38 +185,38 @@ void NarrowFor(bool player) {
 
 // Edit state of one setting: the last commit result (logged when a slider is released) and the text field.
 struct EditState {
-    Rs7SetResult last = Rs7SetResult::Unchanged;
+    RsxrSetResult last = RsxrSetResult::Unchanged;
     bool editing = false;
-    char text[kRs7SetTextMax] = {};
+    char text[kRsxrSetTextMax] = {};
 };
 
 // One per setting of the store; the count is fixed once the tables are linked.
 EditState& EditStateOf(int i) {
-    static std::vector<EditState> states = std::vector<EditState>(size_t(Rs7Set_Count()));
+    static std::vector<EditState> states = std::vector<EditState>(size_t(RsxrSet_Count()));
 
     return states[size_t(i)];
 }
 
-// One control per setting, typed by the table; every change goes through Rs7Set_Commit (the same path
+// One control per setting, typed by the table; every change goes through RsxrSet_Commit (the same path
 // as "o set"). Text keys commit on Enter or when the field loses focus. A Player item brings its own plain label and
 // hint (platform/uilayout.h); other items use the table's label and help.
-void Edit(const Rs7UiItem& it) {
+void Edit(const RsxrUiItem& it) {
     const char* id = it.text;
-    const bool player = it.tab == Rs7UiTab::Player;
-    const int i = Rs7Set_Find(id);
+    const bool player = it.tab == RsxrUiTab::Player;
+    const int i = RsxrSet_Find(id);
 
     if (i < 0) {
         ImGui::TextColored(kRed, "unknown setting %s", id);
         return;
     }
 
-    const Rs7SetDef& d = Rs7Set_Def(i);
-    Rs7SetValue v = Rs7Set_State(i).value;
+    const RsxrSetDef& d = RsxrSet_Def(i);
+    RsxrSetValue v = RsxrSet_State(i).value;
     EditState& es = EditStateOf(i);
     char label[160];
 
     std::snprintf(label, sizeof label, "%s%s", player && it.label ? it.label : d.label,
-                  d.when == Rs7SetWhen::Restart ? " *" : "");
+                  d.when == RsxrSetWhen::Restart ? " *" : "");
     ImGui::PushID(i);
     bool changed = false;
     const bool locked = player && it.locked && it.locked();
@@ -224,7 +224,7 @@ void Edit(const Rs7UiItem& it) {
     ImGui::BeginDisabled(locked);
 
     switch (d.type) {
-        case Rs7SetType::Bool: {
+        case RsxrSetType::Bool: {
             bool b = v.i != 0;
 
             if (ImGui::Checkbox(label, &b)) {
@@ -234,35 +234,35 @@ void Edit(const Rs7UiItem& it) {
 
             break;
         }
-        case Rs7SetType::Int:
+        case RsxrSetType::Int:
             NarrowFor(player);
             changed = ImGui::SliderInt(label, &v.i, int(d.lo), int(d.hi));
             break;
-        case Rs7SetType::Float:
+        case RsxrSetType::Float:
             NarrowFor(player);
             changed = ImGui::SliderFloat(label, &v.f[0], d.lo, d.hi,
                                          !player                         ? "%.3f"
                                          : it.zeroText && v.f[0] == 0.0f ? it.zeroText
                                                                          : "%.2f");
             break;
-        case Rs7SetType::Rgb:
+        case RsxrSetType::Rgb:
             changed = EditRgb(label, v);
             break;
-        case Rs7SetType::Text: {
+        case RsxrSetType::Text: {
             char* buf = es.text;
 
             if (!es.editing) {
-                std::snprintf(buf, kRs7SetTextMax, "%s", v.text);
+                std::snprintf(buf, kRsxrSetTextMax, "%s", v.text);
             }
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
-            const bool enter = ImGui::InputText(label, buf, kRs7SetTextMax, ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool enter = ImGui::InputText(label, buf, kRsxrSetTextMax, ImGuiInputTextFlags_EnterReturnsTrue);
 
             es.editing = ImGui::IsItemActive();
 
             if (enter || ImGui::IsItemDeactivatedAfterEdit()) {
-                const Rs7SetResult r = Rs7Set_SetText(d.id, buf);
+                const RsxrSetResult r = RsxrSet_SetText(d.id, buf);
 
-                if (r != Rs7SetResult::Unchanged) {
+                if (r != RsxrSetResult::Unchanged) {
                     LogUiSet(i, r);
                 }
             }
@@ -272,24 +272,24 @@ void Edit(const Rs7UiItem& it) {
     }
 
     if (ImGui::IsItemActivated()) {
-        es.last = Rs7SetResult::Unchanged;  // a drag that changes nothing must not log the previous drag's result
+        es.last = RsxrSetResult::Unchanged;  // a drag that changes nothing must not log the previous drag's result
     }
     ImGui::EndDisabled();
 
     if (changed) {
-        const Rs7SetResult r = Rs7Set_Commit(i, v);
+        const RsxrSetResult r = RsxrSet_Commit(i, v);
 
-        if (r != Rs7SetResult::Unchanged) {
+        if (r != RsxrSetResult::Unchanged) {
             es.last = r;
         }
         // Sliders change every frame while dragged: log the bool flips at once, the rest when released.
-        if (d.type == Rs7SetType::Bool && r != Rs7SetResult::Unchanged) {
+        if (d.type == RsxrSetType::Bool && r != RsxrSetResult::Unchanged) {
             LogUiSet(i, r);
         }
     }
 
-    if (d.type != Rs7SetType::Bool && d.type != Rs7SetType::Text && ImGui::IsItemDeactivatedAfterEdit() &&
-        es.last != Rs7SetResult::Unchanged) {
+    if (d.type != RsxrSetType::Bool && d.type != RsxrSetType::Text && ImGui::IsItemDeactivatedAfterEdit() &&
+        es.last != RsxrSetResult::Unchanged) {
         LogUiSet(i, es.last);
     }
     Decorate(it, i, locked);
@@ -337,64 +337,64 @@ void Section(const char* title) {
     ImGui::SeparatorText(title);
 }
 
-// Rs7Ui_TabItems, clamped to what fits in `items` (it returns the full count).
-int TabItems(Rs7UiTab tab, const Rs7UiItem* (&items)[kRs7UiMaxTabItems]) {
-    const int n = Rs7Ui_TabItems(tab, items, kRs7UiMaxTabItems);
+// RsxrUi_TabItems, clamped to what fits in `items` (it returns the full count).
+int TabItems(RsxrUiTab tab, const RsxrUiItem* (&items)[kRsxrUiMaxTabItems]) {
+    const int n = RsxrUi_TabItems(tab, items, kRsxrUiMaxTabItems);
 
-    return n < kRs7UiMaxTabItems ? n : kRs7UiMaxTabItems;
+    return n < kRsxrUiMaxTabItems ? n : kRsxrUiMaxTabItems;
 }
 
 // The features' items of one tab (platform/uilayout.h), in list order.
-void Items(Rs7UiTab tab) {
-    const Rs7UiItem* items[kRs7UiMaxTabItems];
+void Items(RsxrUiTab tab) {
+    const RsxrUiItem* items[kRsxrUiMaxTabItems];
     const int n = TabItems(tab, items);
 
     for (int i = 0; i < n; ++i) {
-        const Rs7UiItem& it = *items[i];
-        char buf[kRs7UiRowBuf];
+        const RsxrUiItem& it = *items[i];
+        char buf[kRsxrUiRowBuf];
 
         switch (it.kind) {
-            case Rs7UiKind::Section:
+            case RsxrUiKind::Section:
                 Section(it.text);
                 break;
-            case Rs7UiKind::Setting:
+            case RsxrUiKind::Setting:
                 Edit(it);
                 break;
-            case Rs7UiKind::Row:
+            case RsxrUiKind::Row:
                 it.live(buf, sizeof buf);
                 Row(it.text, "%s", buf);
                 break;
-            case Rs7UiKind::OnOff: {
-                const bool on = it.live(buf, kRs7UiOnOffBuf);
+            case RsxrUiKind::OnOff: {
+                const bool on = it.live(buf, kRsxrUiOnOffBuf);
 
                 OnOff(it.text, on, buf);
                 break;
             }
-            case Rs7UiKind::Note:
+            case RsxrUiKind::Note:
                 ImGui::TextWrapped("%s", it.text);
                 break;
         }
     }
 }
 
-void TabStatus(const Rs7OverlayUi& ui) {
-    Section("rs7string");
-    Row("build", "%s (%s %s)", RS7_VERSION, __DATE__, __TIME__);
-    const Rs7StartStatus st = Rs7Status_Start();
+void TabStatus(const RsxrOverlayUi& ui) {
+    Section("RS Extended Range");
+    Row("build", "%s (%s %s)", RSXR_VERSION, __DATE__, __TIME__);
+    const RsxrStartStatus st = RsxrStatus_Start();
 
-    if (st.state == Rs7StartState::Patched) {
+    if (st.state == RsxrStartState::Patched) {
         Row("sites", "%u resolved, %u written (memory protection via %s)", st.resolved, st.written, st.protect);
-    } else if (st.state == Rs7StartState::Failed) {
+    } else if (st.state == RsxrStartState::Failed) {
         ColouredRow("sites", kRed, "NOTHING PATCHED: %s", st.error);
     } else {
         Row("sites", "starting");
     }
 
     Section("song");
-    const Rs7SongStatus s = Rs7Status_Song();
+    const RsxrSongStatus s = RsxrStatus_Song();
 
-    Rs7StatusRow rows[6];
-    const int rowCount = Rs7Status_SongRows(s, rows, int(std::size(rows)));
+    RsxrStatusRow rows[6];
+    const int rowCount = RsxrStatus_SongRows(s, rows, int(std::size(rows)));
 
     for (int i = 0; i < rowCount; ++i) {
         if (rows[i].on) {
@@ -404,40 +404,40 @@ void TabStatus(const Rs7OverlayUi& ui) {
         }
     }
 
-    Row("colour mode", "%s", Rs7Colour_ModeName());
+    Row("colour mode", "%s", RsxrColour_ModeName());
 
     Section("features");
-    Items(Rs7UiTab::Status);
+    Items(RsxrUiTab::Status);
 
     Section("overlay");
     char k[16];
 
     Row("hotkey", "%s", KeyName(ui.hotkey, k, sizeof k));
-    Row("frames", "%lu Present calls, %lu callback faults", Rs7Present_Frames(), Rs7Present_Faults());
+    Row("frames", "%lu Present calls, %lu callback faults", RsxrPresent_Frames(), RsxrPresent_Faults());
     Row("window", "%p, window thread %lu, render thread %lu", static_cast<void*>(ui.hwnd), ui.wndTid, ui.renderTid);
     Row("focus", "%s",
         GetForegroundWindow() == ui.hwnd ? "game window is foreground (mouse input on)"
                                          : "game window not in foreground");
-    Row("background mode", "%s", Rs7Window_Background() ? "on (pipe commands)" : "off");
+    Row("background mode", "%s", RsxrWindow_Background() ? "on (pipe commands)" : "off");
     Row("RSMods", "%s", GetModuleHandleW(L"xinput1_3.dll") ? "loaded (xinput1_3.dll)" : "not loaded");
     Row("ini", "%ls", ui.iniPath);
 }
 
-void TabLog(Rs7OverlayUi& ui) {
-    static char lines[kLogLines][kRs7LogTailLen];
+void TabLog(RsxrOverlayUi& ui) {
+    static char lines[kLogLines][kRsxrLogTailLen];
     static unsigned count = 0;
     static unsigned long seq = ~0ul;
     unsigned got = 0;
-    char tmp[1][kRs7LogTailLen];
+    char tmp[1][kRsxrLogTailLen];
     // Copy the tail only when something was logged (the counter changed).
-    const unsigned long now = Rs7Log_Tail(tmp, 0, &got);
+    const unsigned long now = RsxrLog_Tail(tmp, 0, &got);
 
     if (now != seq) {
-        seq = Rs7Log_Tail(lines, kLogLines, &count);
+        seq = RsxrLog_Tail(lines, kLogLines, &count);
     }
     ImGui::Checkbox("follow", &ui.logFollow);
     ImGui::SameLine();
-    ImGui::TextDisabled("last %u lines of rs7string.log", count);
+    ImGui::TextDisabled("last %u lines of rsxr.log", count);
     ImGui::BeginChild("log", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
 
     for (unsigned i = 0; i < count; ++i) {
@@ -453,34 +453,34 @@ void TabLog(Rs7OverlayUi& ui) {
 }
 
 // Save button, its result and the restart banner.
-void SaveBar(Rs7OverlayUi& ui) {
-    const int dirty = Rs7Set_DirtyCount();
+void SaveBar(RsxrOverlayUi& ui) {
+    const int dirty = RsxrSet_DirtyCount();
 
     ImGui::BeginDisabled(dirty == 0);
     char save[64];
 
-    std::snprintf(save, sizeof save, "Save to rs7string.ini (%d changed)", dirty);
+    std::snprintf(save, sizeof save, "Save to rsxr.ini (%d changed)", dirty);
 
     if (ImGui::Button(save)) {
-        const int n = Rs7Set_Save(ui.iniPath);
+        const int n = RsxrSet_Save(ui.iniPath);
 
         if (n < 0) {
-            ui.saveResult = "Could not save rs7string.ini. Is it write-protected? See rs7string.log.";
-            Rs7Log("overlay: ui save -> write error, %ls not fully saved", ui.iniPath);
+            ui.saveResult = "Could not save rsxr.ini. Is it write-protected? See rsxr.log.";
+            RsxrLog("overlay: ui save -> write error, %ls not fully saved", ui.iniPath);
         } else {
             char r[32];
 
             std::snprintf(r, sizeof r, "%d key(s) saved", n);
             ui.saveResult = r;
-            Rs7Log("overlay: ui save -> %d keys written to %ls", n, ui.iniPath);
+            RsxrLog("overlay: ui save -> %d keys written to %ls", n, ui.iniPath);
         }
     }
 
     ImGui::EndDisabled();
     int restart = 0;
 
-    for (int i = 0; i < Rs7Set_Count(); ++i) {
-        restart += Rs7Set_NeedsRestart(i) ? 1 : 0;
+    for (int i = 0; i < RsxrSet_Count(); ++i) {
+        restart += RsxrSet_NeedsRestart(i) ? 1 : 0;
     }
 
     if (!ui.saveResult.empty()) {
@@ -495,7 +495,7 @@ void SaveBar(Rs7OverlayUi& ui) {
 }
 
 // The technical tabs, inside the Advanced tab.
-void TechnicalTabs(Rs7OverlayUi& ui) {
+void TechnicalTabs(RsxrOverlayUi& ui) {
     if (!ImGui::BeginTabBar("tabs")) {
         return;
     }
@@ -507,14 +507,14 @@ void TechnicalTabs(Rs7OverlayUi& ui) {
         }
 
         switch (t) {
-            case int(Rs7UiTab::Status):
+            case int(RsxrUiTab::Status):
                 TabStatus(ui);
                 break;
             case kLogTab:
                 TabLog(ui);
                 break;
             default:
-                Items(Rs7UiTab(t));
+                Items(RsxrUiTab(t));
                 break;
         }
 
@@ -526,9 +526,9 @@ void TechnicalTabs(Rs7OverlayUi& ui) {
 }
 
 // The Settings of one player tab.
-void PlayerTab(const Rs7UiPlayerTab& tab) {
-    const Rs7UiItem* items[kRs7UiMaxTabItems];
-    const int n = TabItems(Rs7UiTab::Player, items);
+void PlayerTab(const RsxrUiPlayerTab& tab) {
+    const RsxrUiItem* items[kRsxrUiMaxTabItems];
+    const int n = TabItems(RsxrUiTab::Player, items);
 
     for (int i = tab.first; i < tab.first + tab.count && i < n; ++i) {
         Edit(*items[i]);
@@ -536,7 +536,7 @@ void PlayerTab(const Rs7UiPlayerTab& tab) {
 }
 
 // The overlay's one tab bar: the player tabs (from the tables), then Advanced with the technical tabs.
-void MainTabs(Rs7OverlayUi& ui, const Rs7UiPlayerTab* tabs, int n) {
+void MainTabs(RsxrOverlayUi& ui, const RsxrUiPlayerTab* tabs, int n) {
     if (!ImGui::BeginTabBar("main")) {
         return;
     }
@@ -578,7 +578,7 @@ bool SameName(const char* a, const char* b) {
 
 // The default window height: title bar, save bar, note, tab bar and the longest player tab with its locked hints.
 // Computed from the tables, so a tab with more settings makes the window taller instead of making it scroll.
-float DefaultHeight(const Rs7UiPlayerTab* tabs, int n) {
+float DefaultHeight(const RsxrUiPlayerTab* tabs, int n) {
     float tallest = 0;
 
     for (int t = 0; t < n; ++t) {
@@ -591,13 +591,13 @@ float DefaultHeight(const Rs7UiPlayerTab* tabs, int n) {
 }
 }  // namespace
 
-bool Rs7OverlayUi_RequestTab(Rs7OverlayUi& ui, const char* name) {
+bool RsxrOverlayUi_RequestTab(RsxrOverlayUi& ui, const char* name) {
     if (!name) {
         return false;
     }
 
-    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
-    const int n = std::min(Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs), kRs7UiMaxPlayerTabs);
+    RsxrUiPlayerTab tabs[kRsxrUiMaxPlayerTabs];
+    const int n = std::min(RsxrUi_PlayerTabs(tabs, kRsxrUiMaxPlayerTabs), kRsxrUiMaxPlayerTabs);
     const bool player = !std::strncmp(name, "player-", 7);
 
     if (!player) {
@@ -607,7 +607,7 @@ bool Rs7OverlayUi_RequestTab(Rs7OverlayUi& ui, const char* name) {
         }
 
         for (int i = 0; i < kTabCount; ++i) {
-            if (SameName(name, kTabs[i].name) || (i == int(Rs7UiTab::Colour) && SameName(name, "color"))) {
+            if (SameName(name, kTabs[i].name) || (i == int(RsxrUiTab::Colour) && SameName(name, "color"))) {
                 ui.tabRequest = i;
                 ui.mainRequest = n;
                 return true;
@@ -625,17 +625,18 @@ bool Rs7OverlayUi_RequestTab(Rs7OverlayUi& ui, const char* name) {
     return false;
 }
 
-void Rs7OverlayUi_Draw(Rs7OverlayUi& ui, bool* open) {
+void RsxrOverlayUi_Draw(RsxrOverlayUi& ui, bool* open) {
     const float f = ImGui::GetFontSize();
-    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
-    const int n = std::min(Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs), kRs7UiMaxPlayerTabs);
+    RsxrUiPlayerTab tabs[kRsxrUiMaxPlayerTabs];
+    const int n = std::min(RsxrUi_PlayerTabs(tabs, kRsxrUiMaxPlayerTabs), kRsxrUiMaxPlayerTabs);
 
     ImGui::SetNextWindowPos(ImVec2(f * 1.5f, f * 1.5f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(f * 58.0f, DefaultHeight(tabs, n)), ImGuiCond_FirstUseEver);
     char k[16];
     char title[64];
 
-    std::snprintf(title, sizeof title, "rs7string %s  (%s)###rs7overlay", RS7_VERSION, KeyName(ui.hotkey, k, sizeof k));
+    std::snprintf(title, sizeof title, "RS Extended Range %s  (%s)###rsxroverlay", RSXR_VERSION,
+                  KeyName(ui.hotkey, k, sizeof k));
 
     if (!ImGui::Begin(title, open)) {
         ImGui::End();

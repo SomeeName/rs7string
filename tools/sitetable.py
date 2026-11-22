@@ -1,4 +1,4 @@
-"""Load and validate rs7string/sites.json (shared by gen_sites.py and sitecheck.py)."""
+"""Load and validate sites.json (shared by gen_sites.py and sitecheck.py)."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ class Site:
     publish: str = ""  # "native": request + all five native layouts
     tuner: str = ""  # "native": written only with the native tuner (features/tuner/hooks.h)
     group: str = ""  # "psarc": the plain-PSARC unit (features/psarc/psarc.h), "fast": [test] fast (features/testdrive/testdrive.h); both
-    # patched early on their own, not in kRs7Sites
+    # patched early on their own, not in kRsxrSites
 
 
 def parse_pattern(text: str) -> list[int | None]:

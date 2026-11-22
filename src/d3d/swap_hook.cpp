@@ -10,51 +10,51 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" HRESULT __stdcall Rs7_SetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex);
-extern "C" HRESULT __stdcall Rs7_GetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out);
+extern "C" HRESULT __stdcall Rsxr_SetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex);
+extern "C" HRESULT __stdcall Rsxr_GetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out);
 
 // Hot-patchable thunks: the first 5 bytes are relocatable whole instructions, so a trampoline hooker
 // (RSMods' MemUtil::TrampHook reads vTable[65] from its dummy device) can hook this slot after us.
-extern "C" __declspec(naked) void Rs7_Thunk_SetTexture() {
+extern "C" __declspec(naked) void Rsxr_Thunk_SetTexture() {
     __asm {
         mov edi, edi
         push ebp
         mov ebp, esp
         pop ebp
-        jmp Rs7_SetTextureHook
+        jmp Rsxr_SetTextureHook
     }
 }
 
-extern "C" __declspec(naked) void Rs7_Thunk_GetTexture() {
+extern "C" __declspec(naked) void Rsxr_Thunk_GetTexture() {
     __asm {
         mov edi, edi
         push ebp
         mov ebp, esp
         pop ebp
-        jmp Rs7_GetTextureHook
+        jmp Rsxr_GetTextureHook
     }
 }
 
-namespace rs7swap {
+namespace rsxrswap {
 HookState g_hook;
-}  // namespace rs7swap
+}  // namespace rsxrswap
 
 namespace {
-using rs7d3d::LogQuiet;
-using rs7swap::g_hook;
-using rs7swap::kSlotGet;
-using rs7swap::kSlotSet;
-using rs7swap::kStages;
+using rsxrd3d::LogQuiet;
+using rsxrswap::g_hook;
+using rsxrswap::kSlotGet;
+using rsxrswap::kSlotSet;
+using rsxrswap::kStages;
 static_assert(kSlotSet == kSlotGet + 1, "VtSlotPair hooks two neighbouring slots");
 
 // GetTexture is written first: once SetTexture can swap, GetTexture already hides it.
-const rs7d3d::VtSlotPair kSlots{
+const rsxrd3d::VtSlotPair kSlots{
     "ramp",
     kSlotGet,
-    {reinterpret_cast<uintptr_t>(&Rs7_Thunk_GetTexture), reinterpret_cast<uintptr_t>(&Rs7_Thunk_SetTexture)}};
+    {reinterpret_cast<uintptr_t>(&Rsxr_Thunk_GetTexture), reinterpret_cast<uintptr_t>(&Rsxr_Thunk_SetTexture)}};
 
 // d3d9's entry points of slots 64/65.
-rs7d3d::SlotValues Orig() {
+rsxrd3d::SlotValues Orig() {
     return {reinterpret_cast<uintptr_t>(g_hook.origGet), reinterpret_cast<uintptr_t>(g_hook.origSet)};
 }
 
@@ -91,7 +91,7 @@ void DescribeBody(uintptr_t fn, char* out, size_t n) {
     char mod[MAX_PATH];
     const uintptr_t to = JumpTarget(fn);
 
-    rs7d3d::ModuleName(reinterpret_cast<const void*>(to ? to : fn), mod, sizeof mod);
+    rsxrd3d::ModuleName(reinterpret_cast<const void*>(to ? to : fn), mod, sizeof mod);
     if (to) {
         std::snprintf(out, n, "inline-hooked -> %s", mod);
     } else {
@@ -100,21 +100,21 @@ void DescribeBody(uintptr_t fn, char* out, size_t n) {
 }
 }  // namespace
 
-extern "C" HRESULT __stdcall Rs7_SetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex) {
+extern "C" HRESULT __stdcall Rsxr_SetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex) {
     IDirect3DBaseTexture9* bind = tex;
 
     __try {
-        bind = rs7swap::OnSet(dev, stage, tex);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        bind = rsxrswap::OnSet(dev, stage, tex);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         bind = tex;
-        rs7swap::AfterFault();
+        rsxrswap::AfterFault();
     }
 
     return g_hook.origSet(dev, stage, bind);
 }
 
 // Hide the swap: whoever asks (RSMods' CaptureNoteColorRamp / stem CRCs) gets the stock texture.
-extern "C" HRESULT __stdcall Rs7_GetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out) {
+extern "C" HRESULT __stdcall Rsxr_GetTextureHook(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out) {
     const HRESULT hr = g_hook.origGet(dev, stage, out);
 
     __try {
@@ -122,16 +122,16 @@ extern "C" HRESULT __stdcall Rs7_GetTextureHook(IDirect3DDevice9* dev, DWORD sta
             (*out)->Release();  // cannot free: the candidate holds a reference
             *out = g_hook.bound[stage].stock;
             (*out)->AddRef();
-            Rs7Ramp_CountHidden();
+            RsxrRamp_CountHidden();
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
-        Rs7Ramp_CountFault();
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
+        RsxrRamp_CountFault();
     }
 
     return hr;
 }
 
-bool Rs7Swap_InstallOn(void* device) {
+bool RsxrSwap_InstallOn(void* device) {
     if (!device) {
         return false;
     }
@@ -151,8 +151,8 @@ bool Rs7Swap_InstallOn(void* device) {
 
     DescribeBody(reinterpret_cast<uintptr_t>(vt[kSlotSet]), bodySet, sizeof bodySet);
     DescribeBody(reinterpret_cast<uintptr_t>(vt[kSlotGet]), bodyGet, sizeof bodyGet);
-    g_hook.origGet = reinterpret_cast<rs7swap::GetTex>(vt[kSlotGet]);
-    g_hook.origSet = reinterpret_cast<rs7swap::SetTex>(vt[kSlotSet]);
+    g_hook.origGet = reinterpret_cast<rsxrswap::GetTex>(vt[kSlotGet]);
+    g_hook.origSet = reinterpret_cast<rsxrswap::SetTex>(vt[kSlotSet]);
     g_hook.dev = static_cast<IDirect3DDevice9*>(device);
     g_hook.vt = vt;
     g_hook.deviceOk = true;
@@ -173,7 +173,7 @@ bool Rs7Swap_InstallOn(void* device) {
     return true;
 }
 
-void Rs7Swap_Recheck() {
+void RsxrSwap_Recheck() {
     static bool foreignLogged = false;
     if (!g_hook.installed || !g_hook.vt) {
         return;
@@ -182,18 +182,18 @@ void Rs7Swap_Recheck() {
     kSlots.Recheck(g_hook.dev, g_hook.vt, Orig(), g_hook.mem, &foreignLogged);
 }
 
-void Rs7Swap_SetOverlayDrawing(IDirect3DDevice9* dev, bool drawing) {
+void RsxrSwap_SetOverlayDrawing(IDirect3DDevice9* dev, bool drawing) {
     if (dev == g_hook.dev) {
         g_hook.overlayDrawing = drawing;
     }
 }
 
-void Rs7Swap_UninstallForTests() {
+void RsxrSwap_UninstallForTests() {
     if (g_hook.vt) {
         kSlots.Restore(g_hook.vt, Orig());
     }
 
-    rs7swap::ResetRamp();
+    rsxrswap::ResetRamp();
 
     for (auto& b : g_hook.bound) {
         b = {};
@@ -208,6 +208,6 @@ void Rs7Swap_UninstallForTests() {
     g_hook.overlayDrawing = false;
 }
 
-HRESULT Rs7Swap_RawGetTextureForTests(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out) {
+HRESULT RsxrSwap_RawGetTextureForTests(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9** out) {
     return g_hook.origGet ? g_hook.origGet(dev, stage, out) : dev->GetTexture(stage, out);
 }

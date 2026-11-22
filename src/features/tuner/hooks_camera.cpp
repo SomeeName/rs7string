@@ -13,25 +13,25 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-using Rs7Mid::Dword;
+using RsxrMid::Dword;
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_TF1 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_TF1 = 0;
 
 namespace {
 constexpr uint8_t kEdgeStrings = 6;
 }  // namespace
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TF1(Rs7Mid::Context& c) {
-    c.edx = Dword(c.eax + rs7::kGuitarInfo);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_TF1(RsxrMid::Context& c) {
+    c.edx = Dword(c.eax + rsxr::kGuitarInfo);
     const auto* info = reinterpret_cast<const uint8_t*>(c.edx);
-    const uint8_t count = info[rs7::kInfoStrings];
+    const uint8_t count = info[rsxr::kInfoStrings];
     // A five-string bass's string 4 is its low B, next to string 0: the opposite edge stays the G (string 3).
-    const uint8_t edge = rs7::IsBassKind(info[rs7::kInfoKind]) && count == 5 ? 4
-                         : count > kEdgeStrings                              ? kEdgeStrings
-                                                                             : count;
+    const uint8_t edge = rsxr::IsBassKind(info[rsxr::kInfoKind]) && count == 5 ? 4
+                         : count > kEdgeStrings                                ? kEdgeStrings
+                                                                               : count;
 
     c.ebx = (c.ebx & 0xFFFFFF00u) | static_cast<uint8_t>(edge - 1);
-    c.jump = static_cast<uint32_t>(g_rs7_resume_TF1);
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_TF1);
 }
 
 // TF2 - 0x5B297F in the same pose, on the overview offset table's path (table 0x12EFC68; the other table 0x12EFDE8 is
@@ -46,19 +46,19 @@ constexpr uint32_t kInfoLefty = 0x09;  // InstrumentInfo: u8 non-zero = left-han
 constexpr float kPan = 6.0f;           // tested 2026-10-29: 6 shows the 8th peg and the high e letter with a margin
 }  // namespace
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_TF2(Rs7Mid::Context& c) {
-    const uint32_t guitar = Dword(c.esi + rs7tu::kGuitar);
-    const uint32_t info = guitar ? Dword(guitar + rs7::kGuitarInfo) : 0;
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_TF2(RsxrMid::Context& c) {
+    const uint32_t guitar = Dword(c.esi + rsxrtu::kGuitar);
+    const uint32_t info = guitar ? Dword(guitar + rsxr::kGuitarInfo) : 0;
     if (!info) {
         return;
     }
 
     const auto* i = reinterpret_cast<const uint8_t*>(info);
-    const bool guitarClass = !rs7::IsBassKind(i[rs7::kInfoKind]);
+    const bool guitarClass = !rsxr::IsBassKind(i[rsxr::kInfoKind]);
     const bool lefty = i[kInfoLefty] != 0;
 
     const bool extended =
-        guitarClass ? rs7::IsExtendedGuitar(i[rs7::kInfoStrings]) : rs7::IsExtendedBass(i[rs7::kInfoStrings]);
+        guitarClass ? rsxr::IsExtendedGuitar(i[rsxr::kInfoStrings]) : rsxr::IsExtendedBass(i[rsxr::kInfoStrings]);
 
     if (!lefty && extended) {
         *reinterpret_cast<float*>(c.ebp - 0x24) -= kPan;

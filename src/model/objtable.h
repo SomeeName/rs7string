@@ -6,7 +6,7 @@
 // so an entry that refilled a freed slot can be the next one evicted. No heap and no locks: each caller keeps its own
 // threading rule.
 
-namespace rs7 {
+namespace rsxr {
 template <class Key, class Value, size_t N>
 class ObjTable {
 public:
@@ -103,4 +103,4 @@ private:
     size_t next_ = 0;
     Value scratch_{};  // Put(Key{})'s result
 };
-}  // namespace rs7
+}  // namespace rsxr

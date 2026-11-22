@@ -19,8 +19,8 @@
 //    every player but 0).
 //  - GKL 0x77CE9F in GetGuitarStringCount 0x77CE50 (Lua): the answer for a guitar is the build count.
 //  - GKT 0x5B6098 in Play_Tuning_SetPlayerTargetTuning 0x5B6030 after Play_TargetTuningStore_Set
-//    (ESI = player, [EBP+8] = the Tuning JSON): desired count from the manifest keys (Rs7String6 -> 7,
-//    + Rs7String7 -> 8, else 6); when it changed and the caller is the song-select
+//    (ESI = player, [EBP+8] = the Tuning JSON): desired count from the manifest keys (RsxrString6 -> 7,
+//    + RsxrString7 -> 8, else 6); when it changed and the caller is the song-select
 //    path (Play_SetPlayerTuningFromManifest), call Rnd_Guitar_EnsureForPlayer 0x596030 like the
 //    route buttons 0x597C80 do (then 0x4B24F0 for both slots). From a mode entry (kRetModeEntries: Session Mode,
 //    Guitarcade, Lessons, Technique hub) a guitar built with 7/8 is rebuilt with 6 the same way (door (b)).
@@ -32,13 +32,13 @@
 //    string_size_7). The loop runs at most 6 (string_size_6..1 as on a six-string guitar); string_size_7 has its own
 //    params (assetload).
 // The count is the guitar's for its whole life (InstrumentInfo +0Bh, copied from the profile at the build); nothing
-// publishes or restores it at song setup any more (features/publish/publish.h Rs7Song_WidenDetector: only the per-song
+// publishes or restores it at song setup any more (features/publish/publish.h RsxrSong_WidenDetector: only the per-song
 // detector is widened).
-namespace rs7clite {
-// Desired count from the manifest keys (8 only with Rs7String7 next to Rs7String6).
+namespace rsxrclite {
+// Desired count from the manifest keys (8 only with RsxrString7 next to RsxrString6).
 unsigned Desired(bool has6, bool has7);
 // Extended bass (docs/ARCHITECTURE.md "Extended bass"): the bass build count from the manifest keys, 4 stock, 5 with
-// Rs7String4 (low B), 6 with Rs7String4 and Rs7String5 (high C). GKB writes it into the bass profile of the player
+// RsxrString4 (low B), 6 with RsxrString4 and RsxrString5 (high C). GKB writes it into the bass profile of the player
 // whose arrangement asked for it.
 unsigned BassDesired(bool has4, bool has5);
 // The bass count GKB writes for player `player` (0/1) whose desired count is `desired`: 5/6, else 4 (stock); an
@@ -102,10 +102,9 @@ constexpr ModeEntryRet kRetModeEntries[] = {
 const char* ModeEntry(uint32_t ret);
 // What GKT does for a stored target tuning: the count to rebuild the guitar with, 0 = no rebuild.
 //   song select (AllowedCaller), player 0 or 1: want, if it differs from the player's built count was;
-//   a mode entry (ModeEntry), player 0 or 1: 6, if the guitar is built with 7/8 and the tuning has no Rs7 key (want 6);
-//   anything else: 0.
-//   tunerLive (any of them): 0 - a live player tuner holds the guitar (TunersHolding), a rebuild would free it under
-//   the tuner. The next store from a listed caller decides again (the built count is unchanged).
+//   a mode entry (ModeEntry), player 0 or 1: 6, if the guitar is built with 7/8 and the tuning has no Rsxr key (want
+//   6); anything else: 0. tunerLive (any of them): 0 - a live player tuner holds the guitar (TunersHolding), a rebuild
+//   would free it under the tuner. The next store from a listed caller decides again (the built count is unchanged).
 //   stock: the instrument's stock count (6 guitar, 4 bass) a mode entry rebuilds back to.
 unsigned RebuildTarget(uint32_t ret, uint32_t player, unsigned want, unsigned was, bool tunerLive = false,
                        bool songLive = false, unsigned stock = 6);
@@ -114,7 +113,7 @@ unsigned RebuildTarget(uint32_t ret, uint32_t player, unsigned want, unsigned wa
 // opens the "Tuner" / "TunerMP" screen (0x5D1E90 after 0x4079D0 "Tuner"): 0x745E46 = the store of player 0, 0x745EC3
 // = the second store for multiplayer ("TunerMP" branch). The owner's crash (tests/owner-crash1) came through 0x745E46
 // after a 7-string song: no rebuild there, the new tuner session ran on the 7-built guitar. GKT now rebuilds player 0's
-// guitar to the picked tuning's count there (6, or 7/8 for a tuning with the Rs7 keys) like song select does - never
+// guitar to the picked tuning's count there (6, or 7/8 for a tuning with the Rsxr keys) like song select does - never
 // while a player tuner holds a guitar (tunerLive) and never while a song is loaded (songLive: an SNG registered in
 // features/nslot; HYPOTHESIS that the menu is not reachable from a song's pause menu - its navigation lives in the
 // packed UI assets - so the song guard keeps a rebuild from pulling the guitar out from under a paused song).
@@ -135,7 +134,7 @@ unsigned TunersHolding(uintptr_t mgr, uintptr_t* guitar = nullptr);
 // string_size nodes, six on a guitar, four on a bass (instrument 2; an extended 5/6-string bass otherwise waits
 // forever for string_size_5, CONFIRMED loadstep trace: headstock step pending).
 constexpr unsigned HeadstockLoopCount(unsigned n, unsigned instrument = 1) {
-    const unsigned stock = rs7::IsBassKind(int(instrument & 0xFFu)) ? 4u : 6u;
+    const unsigned stock = rsxr::IsBassKind(int(instrument & 0xFFu)) ? 4u : 6u;
 
     return (n & 0xFFu) > stock ? stock : (n & 0xFFu);
 }
@@ -149,21 +148,21 @@ constexpr uint32_t kRetSetFromManifest = 0x697A24;  // after `call 0x5B6030` at 
 // holder +04h Rnd_Guitar, +08h its profile, +10h load state (+28h == 3: ready).
 constexpr uint32_t kMgrSlots = 0x10, kHolderGuitar = 0x04, kHolderProfile = 0x08, kHolderState = 0x10,
                    kStateReady = 0x28, kProfileCount = 0x38, kProfileType = 0x18;
-using rs7::kGuitarInfo;
-}  // namespace rs7clite
+using rsxr::kGuitarInfo;
+}  // namespace rsxrclite
 
 // GKC GKE GKM GKL GKT GKH1 GKH2 (registration.cpp), group Clite.
-struct Rs7HookTable;
-extern const Rs7HookTable kRs7CliteHooks;
+struct RsxrHookTable;
+extern const RsxrHookTable kRsxrCliteHooks;
 
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_clite;             // runtime switch (C-lite, group failure clears it)
-__declspec(dllexport) extern uintptr_t g_rs7_clite_desired[2];  // per player: count GKC writes into its guitar profile
-__declspec(dllexport) extern uintptr_t g_rs7_clite_bass[2];     // per player: count GKB writes into its bass profile
-__declspec(dllexport) extern uintptr_t g_rs7_clite_mgr;         // guitar manager seen by GKM
+__declspec(dllexport) extern uintptr_t g_rsxr_clite;             // runtime switch (C-lite, group failure clears it)
+__declspec(dllexport) extern uintptr_t g_rsxr_clite_desired[2];  // per player: count GKC writes into its guitar profile
+__declspec(dllexport) extern uintptr_t g_rsxr_clite_bass[2];     // per player: count GKB writes into its bass profile
+__declspec(dllexport) extern uintptr_t g_rsxr_clite_mgr;         // guitar manager seen by GKM
 }
 // Starts the rebuild-timing watcher (log only). Call after the GK* sites are written.
-void Rs7Clite_Start();
-// Startup, after the native ports (Rs7Publish_Start): C-lite is on when requested (the native PegSet and tuner are
-// on) and the native ports are ready (g_rs7_clite), logged. Before any site is written.
-void Rs7Clite_Configure(bool requested);
+void RsxrClite_Start();
+// Startup, after the native ports (RsxrPublish_Start): C-lite is on when requested (the native PegSet and tuner are
+// on) and the native ports are ready (g_rsxr_clite), logged. Before any site is written.
+void RsxrClite_Configure(bool requested);

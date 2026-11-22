@@ -1,11 +1,11 @@
 """Old-vs-new equivalence and stock references of the sites converted with the sse mid-hook mode and the FCOMP m32
-relocation (stubs frozen at 7f80b7b, tools/tests/fixtures/midhook_7f80b7b.json; R2's logger Rs7_DiagNoteHead was not
+relocation (stubs frozen at 7f80b7b, tools/tests/fixtures/midhook_7f80b7b.json; R2's logger Rsxr_DiagNoteHead was not
 exported there, freeze_stubs.py --map/--local named it):
-- R2 (note head lane z) and R6 (lane offset y): sse mode, string 6's extrapolated lane through Rs7Mid::LoadSt0. The
+- R2 (note head lane z) and R6 (lane offset y): sse mode, string 6's extrapolated lane through RsxrMid::LoadSt0. The
   runs end after the game's next `fstp dword` (R2 0x79E730, R6 0x7A8C30), so the float the game keeps is compared;
   the x87 precision flags the old stubs' arithmetic raised are the contract "sticky".
 - W (wrong-instrument threshold): full mode, the replayed `fcomp [34.0]` on a remapped ST0 (Context::CompareSt0).
-- R1 (PUBGP, Rnd_FretGrid_GetCellPos replaced whole): sse mode, Rs7Publish_GridPos and `ret 0Ch` (Rs7Mid::Ret).
+- R1 (PUBGP, Rnd_FretGrid_GetCellPos replaced whole): sse mode, RsxrPublish_GridPos and `ret 0Ch` (RsxrMid::Ret).
 What is compared: midhook_oracle.py and midhook_stock.py.
 """
 
@@ -68,7 +68,7 @@ def r2_case(string: int, v: int, diag: int, carry: bool) -> Case:
         regs={UC_X86_REG_EBX: string * CELL, UC_X86_REG_EDX: edx},
         mem={ROW: lane_row(0x44, *LANES[v])},
         ebp={0x1C: (ROW - edx) & 0xFFFFFFFF, 0x10: 0xAB01, 0x14: 0xCD00 | string, 0x18: 0xEF07, -0x30: 0xC09FAE14},
-        words={"g_rs7_diag": diag},
+        words={"g_rsxr_diag": diag},
     )
 
 
@@ -76,7 +76,7 @@ register(
     Spec(
         "R2",
         7,
-        helpers={"Rs7_DiagNoteHead": Helper(7, deref=((3, 0x94),))},
+        helpers={"Rsxr_DiagNoteHead": Helper(7, deref=((3, 0x94),))},
         exits=(("resume", 6),),  # after `mov ebx,[ebp-10h]; fstp dword [ebp-24h]`
         fsw="sticky",
     ),
@@ -129,7 +129,7 @@ def w_case(mean: str, thr: str, switches: tuple[int, int]) -> Case:
         f"m{mean}-t{thr}-l{switches[0]:x}-a{switches[1]:x}",
         regs={UC_X86_REG_EAX: 0x1111},
         mem={MEAN: struct.pack("<QH", *MEANS[mean])},
-        words={"g_rs7_lowrange": switches[0], "g_rs7_tuner_any": switches[1], "g_rs7_wrong_thr": THRESHOLDS[thr]},
+        words={"g_rsxr_lowrange": switches[0], "g_rsxr_tuner_any": switches[1], "g_rsxr_wrong_thr": THRESHOLDS[thr]},
         x87=bytes.fromhex("DB 2D") + struct.pack("<I", MEAN),  # fld tbyte [MEAN]
     )
 
@@ -139,9 +139,9 @@ register(
     Spec(
         "W",
         6,
-        helpers={"Rs7_WrongThreshold": Helper(1)},
+        helpers={"Rsxr_WrongThreshold": Helper(1)},
         flags="dead",
-        words={"g_rs7_wrong_const": 0x1224C6C},  # X_WTHR, as Rs7_Startup binds it
+        words={"g_rsxr_wrong_const": 0x1224C6C},  # X_WTHR, as Rsxr_Startup binds it
     ),
     [w_case(m, t, s) for m in MEANS for t in THRESHOLDS for s in SWITCHES if t == "34" or s == (1, 1)],
 )
@@ -151,8 +151,8 @@ register(
     Spec(
         "R1",
         6,
-        stub="Rs7_Stub_PUBGP",
-        helpers={"Rs7Publish_GridPos": Helper(5)},
+        stub="Rsxr_Stub_PUBGP",
+        helpers={"RsxrPublish_GridPos": Helper(5)},
         flags="dead",  # the old stub's `add esp,20`; a return (flags are not part of the convention)
         exits=(RET_AT,),
     ),
@@ -161,7 +161,7 @@ register(
             f"r{r}-s{s}",
             regs={UC_X86_REG_EAX: 0x12345600 | 7, UC_X86_REG_ECX: D + 0x600, UC_X86_REG_EDX: 0xD0D0},
             stack={0: RET_AT, 4: D, 8: 2, 12: 0xABCDEF00 | s},
-            rets={"Rs7Publish_GridPos": r},
+            rets={"RsxrPublish_GridPos": r},
         )
         for r in (0, 1)
         for s in (0, 6, 7)
@@ -193,7 +193,7 @@ REFS: dict[str, Ref] = {
     # stubbed logger: the real one needs the log file (Win32 imports the emulator lacks); it observes only
     "R2": Ref(**ruled(lane_store(0x24), why="string 6: the extrapolated lane z, stock has six cells"), real=False),
     "R6": Ref(**ruled(lane_store(0x0C), why="string 6: the extrapolated lane y, stock has six cells")),
-    # Rs7_WrongThreshold for real on the default state (no session registered): the stock threshold 34
+    # Rsxr_WrongThreshold for real on the default state (no session registered): the stock threshold 34
     "W": Ref(),
 }
 NONE = {

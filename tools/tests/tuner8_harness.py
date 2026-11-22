@@ -45,11 +45,11 @@ CALLIN_AT = COPY + 0xC000  # call-in entries
 SYN = 0x70000000
 # the targets of the synthetic calls SYN + i (hooks_copies.cpp SymAddress): call-in entries or DLL exports
 SYMS = [
-    "g_rs7_callin_Tu8Advance",
-    "Rs7Tu8_OnSelect",
-    "g_rs7_callin_Tu8First",
-    "g_rs7_tu8_labels",
-    "Rs7Asset_LetterInline",
+    "g_rsxr_callin_Tu8Advance",
+    "RsxrTu8_OnSelect",
+    "g_rsxr_callin_Tu8First",
+    "g_rsxr_tu8_labels",
+    "RsxrAsset_LetterInline",
 ]
 
 ARRAYS = [
@@ -160,9 +160,9 @@ class Machine:
         self.spawned = 0
         self.fn_range = (0, 0)
         self.callins: dict[str, int] = {}
-        self.put(self.exports["g_rs7_native_tuner"], 1)
-        # Rs7Tu8_OnSelect logs / reads the detector: a plain `ret` here (cdecl, its own tests in C++).
-        uc.mem_write(self.exports["Rs7Tu8_OnSelect"], b"\xc3")
+        self.put(self.exports["g_rsxr_native_tuner"], 1)
+        # RsxrTu8_OnSelect logs / reads the detector: a plain `ret` here (cdecl, its own tests in C++).
+        uc.mem_write(self.exports["RsxrTu8_OnSelect"], b"\xc3")
 
     def _load_dll(self):
         base, size, blobs, exports = dll_image()
@@ -209,7 +209,7 @@ class Machine:
 
     def sym(self, name: str) -> int:
         """A synthetic call's target: the call-in entry (built once, as SymAddress builds it) or the DLL export."""
-        if not name.startswith("g_rs7_callin_"):
+        if not name.startswith("g_rsxr_callin_"):
             return self.exports[name]
         if name not in self.callins:
             out = CALLIN_AT + 0x40 * len(self.callins)
@@ -254,7 +254,7 @@ class Machine:
             uc.mem_write(SESSION + COUNT, bytes([n, 1]))
             uc.mem_write(SESSION + ORDER, order(n))
             # Register the session in the DLL (TU8INIT's C entry; native_tuner=1).
-            self.call_dll("Rs7Tuner8_InitSession", [SESSION], keep_tail=True)
+            self.call_dll("RsxrTuner8_InitSession", [SESSION], keep_tail=True)
             uc.mem_write(SESSION + COUNT, bytes([n, 1]))
             uc.mem_write(SESSION + ORDER, order(n))
 

@@ -33,7 +33,7 @@ struct Worker {
         return 0;
     }
 
-    Worker() { thread = rs7test::Must(CreateThread(nullptr, 0, Run, this, 0, &tid), "CreateThread"); }
+    Worker() { thread = rsxrtest::Must(CreateThread(nullptr, 0, Run, this, 0, &tid), "CreateThread"); }
 
     ~Worker() {
         InterlockedExchange(&stop, 1);
@@ -72,23 +72,23 @@ struct Hooks {
         g_spawnChild = false;
         InterlockedExchange(&g_contextCalls, 0);
         InterlockedExchange(&g_suspendCalls, 0);
-        Rs7_FreezeSetTiming(150, 2000);
+        Rsxr_FreezeSetTiming(150, 2000);
     }
 
     ~Hooks() {
         const ULONGLONG end = GetTickCount64() + 6000;
 
-        while (Rs7_FreezeReaderBusy() && GetTickCount64() < end) {
+        while (Rsxr_FreezeReaderBusy() && GetTickCount64() < end) {
             Sleep(1);
         }
 
-        CHECK(!Rs7_FreezeReaderBusy());
-        if (Rs7_FreezeReaderBusy()) {
+        CHECK(!Rsxr_FreezeReaderBusy());
+        if (Rsxr_FreezeReaderBusy()) {
             std::abort();  // a still-running reader must not outlive its fixture
         }
 
-        Rs7_FreezeSetTestHooks(nullptr, nullptr);
-        Rs7_FreezeSetTiming(0, 0);
+        Rsxr_FreezeSetTestHooks(nullptr, nullptr);
+        Rsxr_FreezeSetTiming(0, 0);
         g_target = nullptr;
     }
 };
@@ -124,7 +124,7 @@ int ReleaseContext(void* h, unsigned long tid, void* c) {
         while (GetTickCount64() < end) {
             const bool ready = g_spawnChild ? InterlockedCompareExchange(&g_target->childCount, 0, 0) != 0
                                             : InterlockedCompareExchange(&g_target->count, 0, 0) != before;
-            if (ready || Rs7_FreezeAbortedForTests()) {
+            if (ready || Rsxr_FreezeAbortedForTests()) {
                 break;
             }
 
@@ -165,11 +165,11 @@ TIMING_TEST(freeze_refuses_a_live_thread_with_an_unreadable_context) {
     Hooks hooks(w);
 
     CHECK(w.Moves());
-    Rs7_FreezeSetTestHooks(nullptr, FailContext);
+    Rsxr_FreezeSetTestHooks(nullptr, FailContext);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 0));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, Count, &calls, &st, 0));
     CHECK_EQ(calls, 0);
     CHECK(w.Moves());
 }
@@ -179,11 +179,11 @@ TIMING_TEST(freeze_refuses_a_live_thread_that_cannot_be_suspended) {
     Hooks hooks(w);
 
     CHECK(w.Moves());
-    Rs7_FreezeSetTestHooks(FailSuspend, nullptr);
+    Rsxr_FreezeSetTestHooks(FailSuspend, nullptr);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 0));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, Count, &calls, &st, 0));
     CHECK_EQ(calls, 0);
     CHECK(w.Moves());
 }
@@ -193,11 +193,11 @@ TIMING_TEST(freeze_refuses_a_live_thread_that_cannot_be_resuspended) {
     Hooks hooks(w);
 
     CHECK(w.Moves());
-    Rs7_FreezeSetTestHooks(FailResuspend, ReleaseContext);
+    Rsxr_FreezeSetTestHooks(FailResuspend, ReleaseContext);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
     CHECK_EQ(calls, 0);
     CHECK_EQ(st.released, 1u);
     CHECK(w.Moves());
@@ -209,11 +209,11 @@ TIMING_TEST(freeze_holds_a_child_created_by_a_temporarily_released_target) {
 
     CHECK(w.Moves());
     g_spawnChild = true;
-    Rs7_FreezeSetTestHooks(nullptr, ReleaseContext);
+    Rsxr_FreezeSetTestHooks(nullptr, ReleaseContext);
     ChildProbe probe{&w};
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, WatchChild, &probe, &st, 2000));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, WatchChild, &probe, &st, 2000));
     CHECK(st.released >= 1u);
     CHECK_EQ(st.stalls, 0u);  // exercise a temporary release, without a full abort/retry hiding the child
     CHECK(probe.before > 0);

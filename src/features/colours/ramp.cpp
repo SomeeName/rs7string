@@ -21,7 +21,7 @@ unsigned Clamp(int64_t line, unsigned h) {
     return unsigned(line);
 }
 
-void AddTap(std::vector<Rs7Tap>& v, unsigned line, unsigned w4) {
+void AddTap(std::vector<RsxrTap>& v, unsigned line, unsigned w4) {
     for (auto& t : v) {
         if (t.line == line) {
             t.w4 += w4;
@@ -41,28 +41,28 @@ uint32_t RecolorPixel(uint32_t src, unsigned mode, uint32_t rgb) {
     for (int sh = 16; sh >= 0; sh -= 8) {
         const uint8_t g = uint8_t(src >> sh), c = uint8_t(rgb >> sh);
 
-        out |= uint32_t(Rs7_Recolor(g, kRs7Anchor[mode], c)) << sh;
+        out |= uint32_t(Rsxr_Recolor(g, kRsxrAnchor[mode], c)) << sh;
     }
 
     return out;
 }
 
-// Stock line the band of `mode` is recoloured from: the point tap of row kRs7Row6[mode].
+// Stock line the band of `mode` is recoloured from: the point tap of row kRsxrRow6[mode].
 unsigned SourceLine(unsigned mode, unsigned h) {
-    return Rs7Ramp_Taps(2 * kRs7Row6[mode] + 1, 2 * kRs7RampRows, h, false)[0].line;
+    return RsxrRamp_Taps(2 * kRsxrRow6[mode] + 1, 2 * kRsxrRampRows, h, false)[0].line;
 }
 
 // Stamps band `band` (0 = V6, 1 = V7) into stamp as 1 + 2 * band + mode; false (stamp unchanged) if one of its taps is
 // protected or already stamped by another band.
 bool StampBand(unsigned h, const std::vector<bool>& prot, unsigned band, std::vector<uint8_t>& stamp) {
     std::vector<uint8_t> next = stamp;
-    const unsigned* num = band ? kRs7V7Num : kRs7V6Num;
+    const unsigned* num = band ? kRsxrV7Num : kRsxrV6Num;
 
     for (unsigned m = 0; m < 2; ++m) {
         const uint8_t mark = uint8_t(1 + 2 * band + m);
 
         for (bool bil : {true, false}) {
-            for (const auto& t : Rs7Ramp_Taps(num[m], kRs7BandDen, h, bil)) {
+            for (const auto& t : RsxrRamp_Taps(num[m], kRsxrBandDen, h, bil)) {
                 if (prot[t.line] || (next[t.line] && next[t.line] != mark)) {
                     return false;
                 }
@@ -104,7 +104,7 @@ uint32_t StampRgb(uint8_t stamp, const uint32_t rgb[2], const uint32_t* rgb8) {
     return stamp > 2 ? rgb8[m] : rgb[m];
 }
 
-bool SameSize(const Rs7Image& a, const Rs7Image& b) {
+bool SameSize(const RsxrImage& a, const RsxrImage& b) {
     return a.w == b.w && a.h == b.h && a.px.size() == size_t(a.w) * a.h && b.px.size() == a.px.size();
 }
 
@@ -121,7 +121,7 @@ struct LineCheck {
     bool pure;     // stamp != 0: it holds the recoloured source line of mode stamp - 1
 };
 
-LineCheck CheckLine(const Rs7Image& s, const Rs7Image& d, unsigned y, uint8_t stamp, const unsigned src[2],
+LineCheck CheckLine(const RsxrImage& s, const RsxrImage& d, unsigned y, uint8_t stamp, const unsigned src[2],
                     const uint32_t rgb[2], const uint32_t* rgb8) {
     const uint32_t* a = &s.px[size_t(y) * s.w];
     const uint32_t* c = &d.px[size_t(y) * s.w];
@@ -145,8 +145,8 @@ LineCheck CheckLine(const Rs7Image& s, const Rs7Image& d, unsigned y, uint8_t st
 }
 }  // namespace
 
-std::vector<Rs7Tap> Rs7Ramp_Taps(unsigned num, unsigned den, unsigned h, bool bilinear) {
-    std::vector<Rs7Tap> v;
+std::vector<RsxrTap> RsxrRamp_Taps(unsigned num, unsigned den, unsigned h, bool bilinear) {
+    std::vector<RsxrTap> v;
     if (h == 0 || den == 0) {
         return v;
     }
@@ -187,12 +187,12 @@ std::vector<Rs7Tap> Rs7Ramp_Taps(unsigned num, unsigned den, unsigned h, bool bi
     return v;
 }
 
-std::vector<bool> Rs7Ramp_Protected(unsigned h) {
+std::vector<bool> RsxrRamp_Protected(unsigned h) {
     std::vector<bool> p(h, false);
 
-    for (unsigned i = 0; i < kRs7RampRows; ++i) {
+    for (unsigned i = 0; i < kRsxrRampRows; ++i) {
         for (bool bil : {true, false}) {
-            for (const auto& t : Rs7Ramp_Taps(2 * i + 1, 2 * kRs7RampRows, h, bil)) {
+            for (const auto& t : RsxrRamp_Taps(2 * i + 1, 2 * kRsxrRampRows, h, bil)) {
                 p[t.line] = true;
             }
         }
@@ -201,24 +201,24 @@ std::vector<bool> Rs7Ramp_Protected(unsigned h) {
     return p;
 }
 
-Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], const uint32_t* rgb8) {
-    Rs7RampBuild b;
+RsxrRampBuild RsxrRamp_Build(const std::vector<RsxrImage>& stock, const uint32_t rgb[2], const uint32_t* rgb8) {
+    RsxrRampBuild b;
 
     b.levels = stock;
 
     for (size_t k = 0; k < stock.size(); ++k) {
-        const Rs7Image& s = stock[k];
+        const RsxrImage& s = stock[k];
         if (s.w == 0 || s.h == 0 || s.px.size() != size_t(s.w) * s.h) {
             break;
         }
 
         std::vector<uint8_t> stamp;
-        if (!BandLines(s.h, Rs7Ramp_Protected(s.h), rgb8 != nullptr, stamp)) {
+        if (!BandLines(s.h, RsxrRamp_Protected(s.h), rgb8 != nullptr, stamp)) {
             break;
         }
 
         const unsigned src[2] = {SourceLine(0, s.h), SourceLine(1, s.h)};
-        Rs7Image& d = b.levels[k];
+        RsxrImage& d = b.levels[k];
 
         for (unsigned y = 0; y < s.h; ++y) {
             if (!stamp[y]) {
@@ -239,9 +239,9 @@ Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rg
     return b;
 }
 
-Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBuild& b, const uint32_t rgb[2],
-                            const uint32_t* rgb8) {
-    Rs7RampCheck r{true, true, 0, std::string()};
+RsxrRampCheck RsxrRamp_Verify(const std::vector<RsxrImage>& stock, const RsxrRampBuild& b, const uint32_t rgb[2],
+                              const uint32_t* rgb8) {
+    RsxrRampCheck r{true, true, 0, std::string()};
     auto fail = [&r](bool& flag, std::string why) {
         flag = false;
         if (r.why.empty()) {
@@ -260,8 +260,8 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
     }
 
     for (size_t k = 0; k < stock.size(); ++k) {
-        const Rs7Image& s = stock[k];
-        const Rs7Image& d = b.levels[k];
+        const RsxrImage& s = stock[k];
+        const RsxrImage& d = b.levels[k];
 
         if (!SameSize(s, d)) {
             fail(r.exact, Fmt("level %u: size differs (%u)", unsigned(k), d.h));
@@ -271,7 +271,7 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
             continue;
         }
 
-        const auto prot = Rs7Ramp_Protected(s.h);
+        const auto prot = RsxrRamp_Protected(s.h);
         std::vector<uint8_t> stamp(s.h, 0);
 
         if (k < b.customLevels && !BandLines(s.h, prot, rgb8 != nullptr, stamp)) {
@@ -305,31 +305,31 @@ Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBui
     return r;
 }
 
-Rs7RampPlan Rs7Ramp_Plan(const Rs7RampDesc& d) {
+RsxrRampPlan RsxrRamp_Plan(const RsxrRampDesc& d) {
     if (d.w != 256 || d.h != 128) {
-        return {Rs7RampVerdict::Refuse, "level 0 is not 256x128"};
+        return {RsxrRampVerdict::Refuse, "level 0 is not 256x128"};
     }
     if (d.levels == 0) {
-        return {Rs7RampVerdict::Refuse, "no levels"};
+        return {RsxrRampVerdict::Refuse, "no levels"};
     }
-    if (d.pool != kRs7PoolManaged) {
-        return {Rs7RampVerdict::Refuse, "pool is not MANAGED"};
+    if (d.pool != kRsxrPoolManaged) {
+        return {RsxrRampVerdict::Refuse, "pool is not MANAGED"};
     }
     if (d.usage != 0) {
-        return {Rs7RampVerdict::Refuse, "usage flags set"};
+        return {RsxrRampVerdict::Refuse, "usage flags set"};
     }
-    if (d.format == kRs7FmtA8R8G8B8 || d.format == kRs7FmtX8R8G8B8) {
-        return {Rs7RampVerdict::Swap, "exact copy, same format"};
-    }
-
-    if (d.format == kRs7FmtDxt1 || d.format == kRs7FmtDxt5) {
-        return {Rs7RampVerdict::Refuse, "DXT ramps are not copied"};
+    if (d.format == kRsxrFmtA8R8G8B8 || d.format == kRsxrFmtX8R8G8B8) {
+        return {RsxrRampVerdict::Swap, "exact copy, same format"};
     }
 
-    return {Rs7RampVerdict::Refuse, "unsupported format"};
+    if (d.format == kRsxrFmtDxt1 || d.format == kRsxrFmtDxt5) {
+        return {RsxrRampVerdict::Refuse, "DXT ramps are not copied"};
+    }
+
+    return {RsxrRampVerdict::Refuse, "unsupported format"};
 }
 
-uint64_t Rs7Ramp_Hash(const std::vector<Rs7Image>& levels) {
+uint64_t RsxrRamp_Hash(const std::vector<RsxrImage>& levels) {
     uint64_t h = 0xCBF29CE484222325ull;
     auto feed = [&h](uint32_t v) {
         for (int i = 0; i < 4; ++i) {
@@ -350,8 +350,8 @@ uint64_t Rs7Ramp_Hash(const std::vector<Rs7Image>& levels) {
     return h;
 }
 
-Rs7RowStats Rs7Ramp_RowStats(const Rs7Image& im) {
-    Rs7RowStats s{0, false, false};
+RsxrRowStats RsxrRamp_RowStats(const RsxrImage& im) {
+    RsxrRowStats s{0, false, false};
     if (im.w == 0 || im.h == 0 || im.px.size() != size_t(im.w) * im.h) {
         return s;
     }
@@ -360,8 +360,8 @@ Rs7RowStats Rs7Ramp_RowStats(const Rs7Image& im) {
         return ((p >> 16) & 0xFF) == ((p >> 8) & 0xFF) && ((p >> 8) & 0xFF) == (p & 0xFF);
     };
 
-    for (unsigned r = 0; r < kRs7RampRows; ++r) {
-        const unsigned y0 = r * im.h / kRs7RampRows, y1 = (r + 1) * im.h / kRs7RampRows;
+    for (unsigned r = 0; r < kRsxrRampRows; ++r) {
+        const unsigned y0 = r * im.h / kRsxrRampRows, y1 = (r + 1) * im.h / kRsxrRampRows;
         bool uniform = true, allGrey = y1 > y0;
 
         for (unsigned y = y0; y < y1; ++y) {

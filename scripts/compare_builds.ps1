@@ -1,6 +1,6 @@
 <#
     Prove that a source change (formatting, braces, blank lines, a refactor) left the machine code alone:
-    build two revisions with a linker map and compare every function of dinput8.dll and rs7string_tests.exe
+    build two revisions with a linker map and compare every function of dinput8.dll and rsxr_tests.exe
     (tools\cmp_functions.py: symbol names, not addresses, so moved code compares equal).
       .\scripts\compare_builds.ps1 -Old 66d3def -New HEAD            functions
       .\scripts\compare_builds.ps1 -Old 66d3def -New HEAD -Data      functions and the data symbols of the DLL
@@ -13,9 +13,9 @@
     hashes, string-literal and other compiler-generated symbol names). The result proves the code is the same;
     it is no statement about the optimised build.
     -Alias <namespace>[,...] counts those namespaces as the anonymous one (code that moved out of an anonymous
-    namespace into a named one, e.g. -Alias rs7asset). The anonymous namespace itself is never compared.
-    Both revisions are built in the same folder (..\rs7-cmp-work): MSVC derives the names of anonymous-namespace
-    and lambda symbols from the source path. Builds are cached in ..\rs7-cmp-out\<short sha>; delete a folder
+    namespace into a named one, e.g. -Alias rsxrasset). The anonymous namespace itself is never compared.
+    Both revisions are built in the same folder (..\rsxr-cmp-work): MSVC derives the names of anonymous-namespace
+    and lambda symbols from the source path. Builds are cached in ..\rsxr-cmp-out\<short sha>; delete a folder
     there to rebuild. Nothing is copied into a game folder.
 #>
 param(
@@ -28,15 +28,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = (git -C $PSScriptRoot rev-parse --show-toplevel).Trim().Replace('/', '\')
 if ($LASTEXITCODE -or -not $repo) { throw 'git rev-parse --show-toplevel failed' }
-$work = Join-Path (Split-Path $repo) 'rs7-cmp-work'
-$out = Join-Path (Split-Path $repo) 'rs7-cmp-out'
+$work = Join-Path (Split-Path $repo) 'rsxr-cmp-work'
+$out = Join-Path (Split-Path $repo) 'rsxr-cmp-out'
 $suffix = if ($NoOpt) { '-noopt' } else { '' }
 
 function Build-Rev([string]$Rev) {
     $sha = (git -C $repo rev-parse --short=10 $Rev).Trim()
     if ($LASTEXITCODE -or -not $sha) { throw "unknown revision $Rev" }
     $dest = Join-Path $out ($sha + $suffix)
-    if (Test-Path (Join-Path $dest 'rs7string_tests.map')) { return $dest }
+    if (Test-Path (Join-Path $dest 'rsxr_tests.map')) { return $dest }
     if (Test-Path $work) { git -C $repo worktree remove --force $work | Out-Null; if (Test-Path $work) { Remove-Item -Recurse -Force $work } }
     git -C $repo worktree add --detach $work $sha | Out-Null
     if ($LASTEXITCODE) { throw "git worktree add failed for $sha" }
@@ -47,8 +47,11 @@ function Build-Rev([string]$Rev) {
         & (Join-Path $work 'build.ps1') -SkipFormatCheck -NoTests | Out-Host
     } finally { Remove-Item Env:\_LINK_, Env:\_CL_ -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Force $dest | Out-Null
-    foreach ($f in 'dinput8.dll', 'dinput8.map', 'rs7string_tests.exe', 'rs7string_tests.map') {
+    foreach ($f in 'dinput8.dll', 'dinput8.map') {
         Copy-Item -LiteralPath (Join-Path $work "bin\Release\$f") -Destination $dest
+    }
+    foreach ($ext in 'exe', 'map') {
+        Copy-Item -LiteralPath (Join-Path $work "bin\Release\rsxr_tests.$ext") -Destination (Join-Path $dest "rsxr_tests.$ext")
     }
     git -C $repo worktree remove --force $work | Out-Null
     return $dest
@@ -59,7 +62,7 @@ $b = Build-Rev $New
 $rc = 0
 Push-Location $repo
 try {
-    foreach ($pair in @(@('dinput8.dll', 'dinput8.map'), @('rs7string_tests.exe', 'rs7string_tests.map'))) {
+    foreach ($pair in @(@('dinput8.dll', 'dinput8.map'), @('rsxr_tests.exe', 'rsxr_tests.map'))) {
         Write-Host "== $($pair[0])  ($Old -> $New$(if ($NoOpt) { ', -NoOpt' }))"
         $extra = @(); if ($Data -and $pair[0] -eq 'dinput8.dll') { $extra = @('--data') }
         # `powershell -File` passes -Alias a,b as one string: split it here too.

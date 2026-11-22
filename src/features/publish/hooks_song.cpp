@@ -1,4 +1,4 @@
-// Song setup (S4): widen the song's detector to a 7/8-string guitar's count (Rs7Song_WidenDetector, publish.h).
+// Song setup (S4): widen the song's detector to a 7/8-string guitar's count (RsxrSong_WidenDetector, publish.h).
 #include "features/pitch/pitch.h"
 #include "features/publish/publish.h"
 #include "features/strings/strings.h"
@@ -7,21 +7,21 @@
 #include "platform/log.h"
 
 namespace {
-using rs7mem::UncheckedField;
+using rsxrmem::UncheckedField;
 }  // namespace
 
 // Lifecycle log line (capped). Exported so the emulator tests can stub it (no Win32 there).
-extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl Rs7Song_Note(const char* what, const void* info,
-                                                                                unsigned a, unsigned b) {
+extern "C" __declspec(dllexport) __declspec(noinline) void __cdecl RsxrSong_Note(const char* what, const void* info,
+                                                                                 unsigned a, unsigned b) {
     static volatile long lines = 0;
 
-    if (Rs7Log_Upto(&lines, 200)) {
-        Rs7Log("song detector: %s (info %p, %u, %u)", what, info, a, b);
+    if (RsxrLog_Upto(&lines, 200)) {
+        RsxrLog("song detector: %s (info %p, %u, %u)", what, info, a, b);
     }
 }
 
-void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) {
-    if (!g_rs7_native_publish || !session || !detector || !v) {
+void RsxrSong_WidenDetector(void* session, void* detector, const RsxrInt16Vec* v) {
+    if (!g_rsxr_native_publish || !session || !detector || !v) {
         return;
     }
 
@@ -37,39 +37,39 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
     }
 
     auto* det = static_cast<uint8_t*>(detector);
-    const bool bass = rs7::IsBassKind(UncheckedField<int>(det, rs7::kDetInstrument));
-    const unsigned count = rs7pubstate::Count(n, bass);
+    const bool bass = rsxr::IsBassKind(UncheckedField<int>(det, rsxr::kDetInstrument));
+    const unsigned count = rsxrpubstate::Count(n, bass);
 
-    Rs7Pitch_SetSongCount(det, 0);  // a previous song of this detector does not carry over
+    RsxrPitch_SetSongCount(det, 0);  // a previous song of this detector does not carry over
     if (count == 6 || bass) {
         return;  // the stock width: nothing to widen
     }
 
-    auto* guitar = UncheckedField<uint8_t*>(static_cast<uint8_t*>(session), rs7::kSessionGuitar);
-    auto* info = rs7::GuitarInfo(guitar);
+    auto* guitar = UncheckedField<uint8_t*>(static_cast<uint8_t*>(session), rsxr::kSessionGuitar);
+    auto* info = rsxr::GuitarInfo(guitar);
 
-    if (!Rs7Gs_InfoNative(info)) {
-        Rs7Song_Note("not widened: the guitar's InstrumentInfo is not native", info, count, 0);
+    if (!RsxrGs_InfoNative(info)) {
+        RsxrSong_Note("not widened: the guitar's InstrumentInfo is not native", info, count, 0);
         return;
     }
 
     // GridBuild gave up on this guitar's cells 6/7 (5 s timeout): no neck geometry for the extra strings, so
     // the song stays at the stock width instead of scoring strings that cannot be drawn.
-    if (Rs7Publish_NeckFailed(guitar)) {
-        Rs7Song_Note("not widened: the neck of this guitar failed (GridBuild timed out without cells 6/7)", info, count,
-                     0);
+    if (RsxrPublish_NeckFailed(guitar)) {
+        RsxrSong_Note("not widened: the neck of this guitar failed (GridBuild timed out without cells 6/7)", info,
+                      count, 0);
         return;
     }
 
-    const unsigned built = UncheckedField<uint8_t>(info, rs7::kInfoStrings);
+    const unsigned built = UncheckedField<uint8_t>(info, rsxr::kInfoStrings);
 
     if (built != count) {
-        Rs7Song_Note("not widened: the guitar was built with another string count (song, guitar)", info, count, built);
+        RsxrSong_Note("not widened: the guitar was built with another string count (song, guitar)", info, count, built);
         return;
     }
 
-    if (!Rs7Pitch_Tailed(det, 1)) {
-        Rs7Song_Note("not widened: the detector has no native tail", info, count, 0);
+    if (!RsxrPitch_Tailed(det, 1)) {
+        RsxrSong_Note("not widened: the detector has no native tail", info, count, 0);
         return;
     }
 
@@ -79,10 +79,10 @@ void Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* v) 
         tuning[i] = v->begin[i];
     }
 
-    const int lowest = rs7pubstate::Lowest(tuning, count, false);
+    const int lowest = rsxrpubstate::Lowest(tuning, count, false);
 
-    Rs7Pitch_SetSongCount(det, count);
-    UncheckedField<uint32_t>(det, rs7p::kDetCount) = count;
-    UncheckedField<int>(det, rs7::kDetLowestOpen) = lowest;
-    Rs7Song_Note("detector widened", info, count, unsigned(lowest));
+    RsxrPitch_SetSongCount(det, count);
+    UncheckedField<uint32_t>(det, rsxrp::kDetCount) = count;
+    UncheckedField<int>(det, rsxr::kDetLowestOpen) = lowest;
+    RsxrSong_Note("detector widened", info, count, unsigned(lowest));
 }

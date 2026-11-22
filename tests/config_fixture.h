@@ -8,24 +8,24 @@
 #include "platform/settings.h"
 #include "settings_removed.h"
 
-// Every feature's startup read at once, as Rs7_Startup runs them (Rs7Set_ReadIni), with the fields under their
+// Every feature's startup read at once, as Rsxr_Startup runs them (RsxrSet_ReadIni), with the fields under their
 // feature-struct names, for the config tests.
-struct Rs7TestConfig : Rs7DiagConfig, Rs7ColourConfig, Rs7String7Config, Rs7TunerConfig {
+struct RsxrTestConfig : RsxrDiagConfig, RsxrColourConfig, RsxrString7Config, RsxrTunerConfig {
     bool found = false;      // the ini file exists
-    int removedKeys = 0;     // keys of kRs7RemovedKeys present in the file
+    int removedKeys = 0;     // keys of kRsxrRemovedKeys present in the file
     bool songEndLog = true;  // [debug] song_end_log
 };
 
-inline Rs7TestConfig Rs7Test_LoadConfig(const wchar_t* iniPath) {
-    Rs7TestConfig c;
+inline RsxrTestConfig RsxrTest_LoadConfig(const wchar_t* iniPath) {
+    RsxrTestConfig c;
 
-    c.found = Rs7Set_ReadIni(iniPath);
-    static_cast<Rs7DiagConfig&>(c) = Rs7Diag_Config();
-    static_cast<Rs7ColourConfig&>(c) = Rs7Colour_Config();
-    static_cast<Rs7String7Config&>(c) = Rs7String7_Config();
-    static_cast<Rs7TunerConfig&>(c) = Rs7Tuner_Config();
-    c.removedKeys = Rs7Removed_Count();
-    c.songEndLog = Rs7SongEnd_Config();
+    c.found = RsxrSet_ReadIni(iniPath);
+    static_cast<RsxrDiagConfig&>(c) = RsxrDiag_Config();
+    static_cast<RsxrColourConfig&>(c) = RsxrColour_Config();
+    static_cast<RsxrString7Config&>(c) = RsxrString7_Config();
+    static_cast<RsxrTunerConfig&>(c) = RsxrTuner_Config();
+    c.removedKeys = RsxrRemoved_Count();
+    c.songEndLog = RsxrSongEnd_Config();
 
     return c;
 }

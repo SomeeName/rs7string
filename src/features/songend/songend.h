@@ -15,16 +15,16 @@
 //   SE3 0x7E0AE6 in Play_Session_UpdateState: state 3 with the song object +78h == NULL.
 // [debug] song_end_log=1 (default, live): on. A fault in the logger switches it off for the run.
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_endlog;  // 0 = the stubs skip the call
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_endlog;  // 0 = the stubs skip the call
 
 // The former pushad stubs' entry, kept for the frozen stubs of tools/tests/test_midhook_pilot.py: site 1/2/3 =
 // SE1/SE2/SE3; f = the stub's pushad block: f[0] EDI, f[1] ESI, f[2] EBP, f[3] ESP, f[4] EBX, f[5] EDX, f[6] ECX,
 // f[7] EAX, f[8] EFLAGS, f[9..] the site's stack ([esp], [esp+4], ...).
-extern "C" __declspec(dllexport) void __cdecl Rs7End_OnSite(uint32_t site, const uint32_t* f);
+extern "C" __declspec(dllexport) void __cdecl RsxrEnd_OnSite(uint32_t site, const uint32_t* f);
 // Context-native entry: scan the original game stack, never the callback stack.
-extern "C" __declspec(dllexport) void __cdecl Rs7End_OnContext(uint32_t site, const Rs7Mid::Context& context);
+extern "C" __declspec(dllexport) void __cdecl RsxrEnd_OnContext(uint32_t site, const RsxrMid::Context& context);
 
-namespace rs7end {
+namespace rsxrend {
 // An end-song event as Play_Session_OnEndSongEvent accepts it: type 3, target 2 (all) or sessionId.
 bool IsEndEvent(uint32_t target, uint32_t type, uint32_t sessionId);
 // The new state at a known caller of 0x7DFA30 (its return address), -1 for an unknown caller.
@@ -34,14 +34,14 @@ const char* CallerName(uint32_t ret);
 // Whether the 7 bytes before a return address end in a call instruction (E8 rel32, FF /2 with a
 // register, [reg], [reg+disp8], [reg+disp32] or [disp32] operand); b[6] is the byte just before it.
 bool EndsInCall(const uint8_t b[7]);
-}  // namespace rs7end
+}  // namespace rsxrend
 
-struct Rs7HookTable;
-extern const Rs7HookTable kRs7SongEndHooks;  // SE1-SE3, group Core
-struct Rs7SetTable;
-extern const Rs7SetTable kRs7SongEndSettings;
+struct RsxrHookTable;
+extern const RsxrHookTable kRsxrSongEndHooks;  // SE1-SE3, group Core
+struct RsxrSetTable;
+extern const RsxrSetTable kRsxrSongEndSettings;
 // The song end log in the Debug tab (platform/uilayout.h).
-struct Rs7UiTable;
-extern const Rs7UiTable kRs7SongEndUi;
-bool Rs7SongEnd_ReadIni(const wchar_t* iniPath);
-bool Rs7SongEnd_Config();
+struct RsxrUiTable;
+extern const RsxrUiTable kRsxrSongEndUi;
+bool RsxrSongEnd_ReadIni(const wchar_t* iniPath);
+bool RsxrSongEnd_Config();

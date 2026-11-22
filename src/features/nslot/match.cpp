@@ -3,9 +3,9 @@
 #include <windows.h>
 #include <cstring>
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_fn_msort = 0, g_rs7_fn_mins1 = 0, g_rs7_fn_mins2 = 0,
-                                           g_rs7_fn_mcmp = 0, g_rs7_matcher_table = 0;
-extern "C" __declspec(dllexport) uintptr_t g_rs7_match_misses = 2;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_fn_msort = 0, g_rsxr_fn_mins1 = 0, g_rsxr_fn_mins2 = 0,
+                                           g_rsxr_fn_mcmp = 0, g_rsxr_matcher_table = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_match_misses = 2;
 
 namespace {
 volatile LONG g_stock6 = 0, g_portN = 0, g_portHits = 0;
@@ -22,7 +22,7 @@ struct Cand {
 // 0x4E3EE0 (cdecl first, last, 0, depth 2*log2(127) = 12, comparator 0x4E1940 = descending strength),
 // then the insertion sorts 0x4E86B0 (EDI = first, [esp+4] = first + 16) and 0x4E45A0 (cdecl first + 16,
 // last). v[127] stays where it is, as in stock.
-void GameSort(Cand* v, const rs7match::Game& g) {
+void GameSort(Cand* v, const rsxrmatch::Game& g) {
     const uintptr_t s = g.sort, i1 = g.ins1, i2 = g.ins2, c = g.cmp;
 
     __asm {
@@ -70,7 +70,7 @@ bool ScaledGreater(float m, double c, float u) {
 }
 }  // namespace
 
-namespace rs7match {
+namespace rsxrmatch {
 
 bool OctaveDyad(const int32_t* in, int n) {
     int count = 0, first = 0;
@@ -366,49 +366,50 @@ int MatchN(const uint8_t* m, const int32_t* in, int n, int tol, int hist, const 
     return Verdict(active, found, r, tol, g.misses);
 }
 
-}  // namespace rs7match
+}  // namespace rsxrmatch
 
 namespace {
-rs7match::Game Bound() {
-    rs7match::Game g;
+rsxrmatch::Game Bound() {
+    rsxrmatch::Game g;
 
-    g.sort = g_rs7_fn_msort;
-    g.ins1 = g_rs7_fn_mins1;
-    g.ins2 = g_rs7_fn_mins2;
-    g.cmp = g_rs7_fn_mcmp;
-    g.table = g_rs7_matcher_table;
-    g.misses = static_cast<int>(g_rs7_match_misses);
+    g.sort = g_rsxr_fn_msort;
+    g.ins1 = g_rsxr_fn_mins1;
+    g.ins2 = g_rsxr_fn_mins2;
+    g.cmp = g_rsxr_fn_mcmp;
+    g.table = g_rsxr_matcher_table;
+    g.misses = static_cast<int>(g_rsxr_match_misses);
 
     return g;
 }
 }  // namespace
 
-extern "C" int __cdecl Rs7Ns_MatchPort(const uint8_t* matcher, const int32_t* in, int n, int tol, int hist) {
-    return rs7match::MatchN(matcher, in, n, tol, hist, Bound());
+extern "C" int __cdecl RsxrNs_MatchPort(const uint8_t* matcher, const int32_t* in, int n, int tol, int hist) {
+    return rsxrmatch::MatchN(matcher, in, n, tol, hist, Bound());
 }
 
 namespace {
-// The port behind an SEH guard (a fault reads as "not matched"); kept out of Rs7Ns_DetectChord so the
+// The port behind an SEH guard (a fault reads as "not matched"); kept out of RsxrNs_DetectChord so the
 // compaction path has no SEH frame (the emulator tests run it).
 __declspec(noinline) int PortGuarded(const uint8_t* matcher, const int32_t* in8, int tol, int hist, bool low) {
-    rs7match::Game g = Bound();
+    rsxrmatch::Game g = Bound();
 
     if (low) {
-        g.lowOctave = rs7match::kLowOctave;
+        g.lowOctave = rsxrmatch::kLowOctave;
     }
 
     __try {
-        return rs7match::MatchN(matcher, in8, rs7match::kMaxTargets, tol, hist, g);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return rsxrmatch::MatchN(matcher, in8, rsxrmatch::kMaxTargets, tol, hist, g);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 }  // namespace
 
-extern "C" int __cdecl Rs7Ns_DetectChord(const uint8_t* matcher, const int32_t* in8, int tol, int hist, int32_t* out6) {
-    const bool low = rs7match::LowChord(in8, rs7match::kMaxTargets);
+extern "C" int __cdecl RsxrNs_DetectChord(const uint8_t* matcher, const int32_t* in8, int tol, int hist,
+                                          int32_t* out6) {
+    const bool low = rsxrmatch::LowChord(in8, rsxrmatch::kMaxTargets);
 
-    if (!low && rs7match::Compact6(in8, rs7match::kMaxTargets, out6)) {
+    if (!low && rsxrmatch::Compact6(in8, rsxrmatch::kMaxTargets, out6)) {
         InterlockedIncrement(&g_stock6);
         return -1;
     }
@@ -423,8 +424,8 @@ extern "C" int __cdecl Rs7Ns_DetectChord(const uint8_t* matcher, const int32_t* 
     return r;
 }
 
-Rs7MatchStats Rs7Ns_MatchStats(bool reset) {
-    Rs7MatchStats s;
+RsxrMatchStats RsxrNs_MatchStats(bool reset) {
+    RsxrMatchStats s;
 
     s.stock6 = reset ? InterlockedExchange(&g_stock6, 0) : InterlockedCompareExchange(&g_stock6, 0, 0);
     s.portN = reset ? InterlockedExchange(&g_portN, 0) : InterlockedCompareExchange(&g_portN, 0, 0);

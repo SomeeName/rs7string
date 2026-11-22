@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-// The parser fuzz targets (scripts\fuzz.ps1, docs/DEVELOPMENT.md "Fuzzing"). One libFuzzer exe; RS7_FUZZ_TARGET
-// picks the target, RS7_FUZZ_SEEDS=DIR writes the target's built-in seeds into DIR and exits.
-namespace rs7fuzz {
+// The parser fuzz targets (scripts\fuzz.ps1, docs/DEVELOPMENT.md "Fuzzing"). One libFuzzer exe; RSXR_FUZZ_TARGET
+// picks the target, RSXR_FUZZ_SEEDS=DIR writes the target's built-in seeds into DIR and exits.
+namespace rsxrfuzz {
 using Seeds = std::vector<std::vector<uint8_t>>;
 
 struct Target {
@@ -19,7 +19,7 @@ struct Target {
 extern const Target kTargets[];
 extern const size_t kTargetCount;
 
-int Rs7x(const uint8_t* d, size_t n);
+int Extblock(const uint8_t* d, size_t n);
 int Settings(const uint8_t* d, size_t n);
 int Ini(const uint8_t* d, size_t n);
 int Text(const uint8_t* d, size_t n);
@@ -32,7 +32,9 @@ int Plain(const uint8_t* d, size_t n);
 int Pattern(const uint8_t* d, size_t n);
 int TuningName(const uint8_t* d, size_t n);
 int Redact(const uint8_t* d, size_t n);
-Seeds Rs7xSeeds();
+int NativeSng(const uint8_t* d, size_t n);
+int NativeManifest(const uint8_t* d, size_t n);
+Seeds ExtblockSeeds();
 Seeds SettingsSeeds();
 Seeds IniSeeds();
 Seeds TextSeeds();
@@ -44,8 +46,10 @@ Seeds PlainSeeds();
 Seeds PatternSeeds();
 Seeds TuningNameSeeds();
 Seeds RedactSeeds();
+Seeds NativeSngSeeds();
+Seeds NativeManifestSeeds();
 
 // Helpers for the targets.
 std::vector<uint8_t> Bytes(const std::string& s);
 std::wstring Widen(const uint8_t* d, size_t n);  // bytes as UTF-16 code units (0 ends the text)
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz

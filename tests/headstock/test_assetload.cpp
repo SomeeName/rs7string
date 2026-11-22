@@ -1,6 +1,7 @@
 #include "features/headstock/assetload.h"
 #include "test.h"
 #include "testutil.h"
+#include <windows.h>
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
@@ -13,123 +14,123 @@ TEST(assetload_timed_out_builder_does_not_publish_its_path) {
     volatile long state = 1;  // a waiter exhausted its budget while the builder is still running
     std::wstring path = L"C:\\headstock\\still-changing.nif";
 
-    CHECK(Rs7Asset_PublishedPath(path, &state).empty());
+    CHECK(RsxrAsset_PublishedPath(path, &state).empty());
     path = L"C:\\headstock\\finished.nif";
     state = 2;
-    CHECK(Rs7Asset_PublishedPath(path, &state) == path);
+    CHECK(RsxrAsset_PublishedPath(path, &state) == path);
     path.clear();  // a completed but failed builder must keep the stock fallback
-    CHECK(Rs7Asset_PublishedPath(path, &state).empty());
+    CHECK(RsxrAsset_PublishedPath(path, &state).empty());
 }
 
 TEST(assetload_edited_path_of_a_guitar_model) {
     const std::wstring dir = L"C:\\edited\\";
 
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", dir,
-                              L"_7inline") == L"C:\\edited\\epi_wilshire_cherry_7inline.nif");
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", dir,
+                               L"_7inline") == L"C:\\edited\\epi_wilshire_cherry_7inline.nif");
     // No trailing separator, upper case and backslashes in the game name.
-    CHECK(Rs7Asset_EditedPath("data\\Assets\\Gameplay\\Guitar_Standard\\GIB_LesPaul.NIF", L"D:\\x", L"_7") ==
+    CHECK(RsxrAsset_EditedPath("data\\Assets\\Gameplay\\Guitar_Standard\\GIB_LesPaul.NIF", L"D:\\x", L"_7") ==
           L"D:\\x\\gib_lespaul_7.nif");
 }
 
 TEST(assetload_ignores_everything_but_guitar_nifs) {
     const std::wstring dir = L"C:\\edited\\";
 
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/inlay/skull.nif", dir, L"_7inline").empty());
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/guitar_standard_inline/wilshire.dds", dir, L"_7inline").empty());
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/guitar_x/.nif", dir, L"_7inline").empty());
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/guitar_x/a b.nif", dir, L"_7inline").empty());
-    CHECK(Rs7Asset_EditedPath("data/assets/gameplay/guitar_x/foo.nif", L"", L"_7inline").empty());
-    CHECK(Rs7Asset_EditedPath(nullptr, dir, L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/inlay/skull.nif", dir, L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/guitar_standard_inline/wilshire.dds", dir, L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/guitar_x/.nif", dir, L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/guitar_x/a b.nif", dir, L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath("data/assets/gameplay/guitar_x/foo.nif", L"", L"_7inline").empty());
+    CHECK(RsxrAsset_EditedPath(nullptr, dir, L"_7inline").empty());
 }
 
 TEST(assetload_7string_model_applies_to_the_inline_right_hand_folder) {
-    CHECK(Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif"));
-    CHECK(Rs7Asset_IsRhCandidate("DATA\\Assets\\Gameplay\\Guitar_Standard_Inline\\Other.NIF"));
-    CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif"));
-    CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif"));
-    CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_bass/bass_jackcasady.nif"));
-    CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/sub/x.nif"));
-    CHECK(!Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/wilshire.dds"));
-    CHECK(!Rs7Asset_IsRhCandidate(nullptr));
+    CHECK(RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif"));
+    CHECK(RsxrAsset_IsRhCandidate("DATA\\Assets\\Gameplay\\Guitar_Standard_Inline\\Other.NIF"));
+    CHECK(!RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif"));
+    CHECK(!RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif"));
+    CHECK(!RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_bass/bass_jackcasady.nif"));
+    CHECK(!RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/sub/x.nif"));
+    CHECK(!RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_standard_inline/wilshire.dds"));
+    CHECK(!RsxrAsset_IsRhCandidate(nullptr));
 }
 
 TEST(assetload_bass_frames_get_the_extended_bass_model) {
     const std::wstring dir = L"C:\\rs\\head";
 
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", dir, 5) ==
-          L"C:\\rs\\head\\rs7_bass5.nif");
-    CHECK(Rs7Asset_BassPath("DATA/Assets/Gameplay/Guitar_Bass_Inline/Bass_Thunder_LH.NIF", dir, 5) ==
-          L"C:\\rs\\head\\rs7_bass5_lh.nif");
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", dir, 5) ==
+          L"C:\\rs\\head\\rsxr_bass5.nif");
+    CHECK(RsxrAsset_BassPath("DATA/Assets/Gameplay/Guitar_Bass_Inline/Bass_Thunder_LH.NIF", dir, 5) ==
+          L"C:\\rs\\head\\rsxr_bass5_lh.nif");
     // A 2x2 frame gets the in-line model too (there is no 2+2 model).
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 5) ==
-          L"C:\\rs\\head\\rs7_bass5.nif");
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady_lh.nif", dir, 5) ==
-          L"C:\\rs\\head\\rs7_bass5_lh.nif");
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_peg.nif", dir, 5) ==
-          L"C:\\rs\\head\\rs7_bass5.nif");  // the frame check in the handler rejects non-frames
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/thunder_peg.nif", dir, 5).empty());
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_standard_inline/bass_x.nif", dir, 5).empty());
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", L"", 5).empty());
-    CHECK(Rs7Asset_BassPath(nullptr, dir, 5).empty());
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif", dir, 6) ==
-          L"C:\\rs\\head\\rs7_bass6_lh.nif");
-    CHECK(Rs7Asset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 6) ==
-          L"C:\\rs\\head\\rs7_bass6.nif");
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 5) ==
+          L"C:\\rs\\head\\rsxr_bass5.nif");
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady_lh.nif", dir, 5) ==
+          L"C:\\rs\\head\\rsxr_bass5_lh.nif");
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_peg.nif", dir, 5) ==
+          L"C:\\rs\\head\\rsxr_bass5.nif");  // the frame check in the handler rejects non-frames
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass_inline/thunder_peg.nif", dir, 5).empty());
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_standard_inline/bass_x.nif", dir, 5).empty());
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder.nif", L"", 5).empty());
+    CHECK(RsxrAsset_BassPath(nullptr, dir, 5).empty());
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif", dir, 6) ==
+          L"C:\\rs\\head\\rsxr_bass6_lh.nif");
+    CHECK(RsxrAsset_BassPath("data/assets/gameplay/guitar_bass/bass_jackcasady.nif", dir, 6) ==
+          L"C:\\rs\\head\\rsxr_bass6.nif");
 }
 
 TEST(assetload_lefty_model_applies_to_the_inline_left_hand_frame) {
-    CHECK(Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif"));
-    CHECK(Rs7Asset_IsLhCandidate("DATA\\Assets\\Gameplay\\Guitar_Standard_Inline\\Other_LH.NIF"));
-    CHECK(!Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif"));
-    CHECK(!Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif"));
-    CHECK(!Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/sub/x_lh.nif"));
-    CHECK(!Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/wilshire_lh.dds"));
-    CHECK(!Rs7Asset_IsLhCandidate("_lh.nif"));
-    CHECK(!Rs7Asset_IsLhCandidate(nullptr));
-    CHECK(rs7asset::kDefaultFile7Lh == std::wstring(L"rs7_inline7_lh.nif"));
+    CHECK(RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/epi_whilshire_cherry_lh.nif"));
+    CHECK(RsxrAsset_IsLhCandidate("DATA\\Assets\\Gameplay\\Guitar_Standard_Inline\\Other_LH.NIF"));
+    CHECK(!RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif"));
+    CHECK(!RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_bass_inline/bass_thunder_lh.nif"));
+    CHECK(!RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/sub/x_lh.nif"));
+    CHECK(!RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_standard_inline/wilshire_lh.dds"));
+    CHECK(!RsxrAsset_IsLhCandidate("_lh.nif"));
+    CHECK(!RsxrAsset_IsLhCandidate(nullptr));
+    CHECK(rsxrasset::kDefaultFile7Lh == std::wstring(L"rsxr_inline7_lh.nif"));
 }
 
 // Gitarrenkopfplatte = "3+3": the game loads guitar_standard/gib_lespaul.nif (pegs peg_bakelite.nif). Since
 // fix/headstock2 the 7-string model replaces it, and peg_bakelite.nif gets the in-line peg merged in.
 TEST(assetload_3plus3_is_a_layout_row) {
     bool lh = true;
-    const HeadLayout* l = Rs7Asset_LayoutOf("data/assets/gameplay/guitar_standard/gib_lespaul.nif", &lh);
+    const HeadLayout* l = RsxrAsset_LayoutOf("data/assets/gameplay/guitar_standard/gib_lespaul.nif", &lh);
 
     CHECK(l != nullptr && std::strcmp(l->option, "3+3") == 0 && !lh);
     CHECK(std::strcmp(l->stockRh, "LP_RH") == 0 && std::strcmp(l->stockLh, "LP_LH") == 0);
-    l = Rs7Asset_LayoutOf("data/assets/gameplay/guitar_standard/gib_lespaul_lh.nif", &lh);
+    l = RsxrAsset_LayoutOf("data/assets/gameplay/guitar_standard/gib_lespaul_lh.nif", &lh);
     CHECK(l != nullptr && lh);
-    CHECK(Rs7Asset_IsRhCandidate("data/assets/gameplay/guitar_standard/gib_lespaul.nif"));
-    CHECK(Rs7Asset_IsLhCandidate("data/assets/gameplay/guitar_standard/gib_lespaul_lh.nif"));
-    l = Rs7Asset_LayoutOf("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", &lh);
+    CHECK(RsxrAsset_IsRhCandidate("data/assets/gameplay/guitar_standard/gib_lespaul.nif"));
+    CHECK(RsxrAsset_IsLhCandidate("data/assets/gameplay/guitar_standard/gib_lespaul_lh.nif"));
+    l = RsxrAsset_LayoutOf("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif", &lh);
     CHECK(l != nullptr && std::strcmp(l->option, "6 in Reihe") == 0 && l->peg == nullptr);
-    CHECK(Rs7Asset_LayoutOf("data/assets/gameplay/guitar_standard_inline2/epi_wilshire_cherry.nif", &lh) == nullptr);
-    CHECK(Rs7Asset_LayoutOf("data/assets/gameplay/guitar_standard2/gib_lespaul.nif", &lh) == nullptr);
+    CHECK(RsxrAsset_LayoutOf("data/assets/gameplay/guitar_standard_inline2/epi_wilshire_cherry.nif", &lh) == nullptr);
+    CHECK(RsxrAsset_LayoutOf("data/assets/gameplay/guitar_standard2/gib_lespaul.nif", &lh) == nullptr);
 }
 
 TEST(assetload_layout_peg) {
-    CHECK(Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite.nif"));
-    CHECK(Rs7Asset_IsLayoutPeg("DATA\\Assets\\Gameplay\\Guitar_Standard\\PEG_Bakelite.NIF"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard/gib_lespaul.nif"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard_inline/epi_whilshire_peg.nif"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard_inline/peg_bakelite.nif"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard/sub/peg_bakelite.nif"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite.dds"));
-    CHECK(!Rs7Asset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite2.nif"));
-    CHECK(!Rs7Asset_IsLayoutPeg(nullptr));
+    CHECK(RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite.nif"));
+    CHECK(RsxrAsset_IsLayoutPeg("DATA\\Assets\\Gameplay\\Guitar_Standard\\PEG_Bakelite.NIF"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard/gib_lespaul.nif"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard_inline/epi_whilshire_peg.nif"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard_inline/peg_bakelite.nif"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard/sub/peg_bakelite.nif"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite.dds"));
+    CHECK(!RsxrAsset_IsLayoutPeg("data/assets/gameplay/guitar_standard/peg_bakelite2.nif"));
+    CHECK(!RsxrAsset_IsLayoutPeg(nullptr));
 }
 
 // LT1: with no head showing the 7-string model the letter rule gets the InstrumentInfo's own in-line byte.
 TEST(assetload_letter_inline_own_byte) {
     uint8_t info[0x38] = {};
 
-    CHECK(Rs7Asset_LetterInline(info) == 0);
+    CHECK(RsxrAsset_LetterInline(info) == 0);
     info[0x0A] = 1;
-    CHECK(Rs7Asset_LetterInline(info) == 1);
-    CHECK(Rs7Asset_LetterInline(nullptr) == 0);
+    CHECK(RsxrAsset_LetterInline(info) == 1);
+    CHECK(RsxrAsset_LetterInline(nullptr) == 0);
 }
 
-// PGH1: a peg-pass mesh is hidden only inside a culled part next to rs7_alt (or rs7_alt itself).
+// PGH1: a peg-pass mesh is hidden only inside a culled part next to rsxr_alt (or rsxr_alt itself).
 namespace {
 struct PegNode {
     alignas(4) uint8_t b[0xE0] = {};
@@ -158,7 +159,7 @@ TEST(assetload_peg_mesh_hidden_only_in_a_swapped_part) {
     root.Name("Scene Root");
     root.Kids(kids, 3);
     stock.Name("peg_bakelite");
-    alt.Name("rs7_alt");
+    alt.Name("rsxr_alt");
     other.Name("locator_letter");
 
     for (PegNode* n : {&stock, &alt, &other}) {
@@ -170,18 +171,18 @@ TEST(assetload_peg_mesh_hidden_only_in_a_swapped_part) {
     otherMesh.Parent(other);
 
     alt.Cull(true);  // stock peg shown: the in-line knob is the hidden part
-    CHECK(!Rs7Asset_PegMeshHidden(stockMesh.b));
-    CHECK(Rs7Asset_PegMeshHidden(altMesh.b));
+    CHECK(!RsxrAsset_PegMeshHidden(stockMesh.b));
+    CHECK(RsxrAsset_PegMeshHidden(altMesh.b));
     alt.Cull(false);
     stock.Cull(true);  // swapped: the bakelite knob is hidden
-    CHECK(Rs7Asset_PegMeshHidden(stockMesh.b));
-    CHECK(!Rs7Asset_PegMeshHidden(altMesh.b));
-    CHECK(!Rs7Asset_PegMeshHidden(otherMesh.b));
-    root.Cull(true);  // culled without an rs7_alt sibling (a stock hide): drawn as before
-    CHECK(Rs7Asset_PegMeshHidden(stockMesh.b));
+    CHECK(RsxrAsset_PegMeshHidden(stockMesh.b));
+    CHECK(!RsxrAsset_PegMeshHidden(altMesh.b));
+    CHECK(!RsxrAsset_PegMeshHidden(otherMesh.b));
+    root.Cull(true);  // culled without an rsxr_alt sibling (a stock hide): drawn as before
+    CHECK(RsxrAsset_PegMeshHidden(stockMesh.b));
     stock.Cull(false);
-    CHECK(!Rs7Asset_PegMeshHidden(stockMesh.b));
-    CHECK(!Rs7Asset_PegMeshHidden(nullptr));
+    CHECK(!RsxrAsset_PegMeshHidden(stockMesh.b));
+    CHECK(!RsxrAsset_PegMeshHidden(nullptr));
 }
 
 TEST(assetload_headstock_layout_table) {
@@ -208,29 +209,29 @@ TEST(assetload_headstock_layout_table) {
 }
 
 TEST(assetload_resolve_file_value) {
-    CHECK(Rs7Asset_ResolveFile(L"C:\\own\\rs7_inline7.nif", L"D:\\e\\") == L"C:\\own\\rs7_inline7.nif");
-    CHECK(Rs7Asset_ResolveFile(L"  own\\rs7_inline7.nif ", L"D:\\e") == L"D:\\e\\own\\rs7_inline7.nif");
-    CHECK(Rs7Asset_ResolveFile(L"\\\\server\\x.nif", L"D:\\e\\") == L"\\\\server\\x.nif");
+    CHECK(RsxrAsset_ResolveFile(L"C:\\own\\rsxr_inline7.nif", L"D:\\e\\") == L"C:\\own\\rsxr_inline7.nif");
+    CHECK(RsxrAsset_ResolveFile(L"  own\\rsxr_inline7.nif ", L"D:\\e") == L"D:\\e\\own\\rsxr_inline7.nif");
+    CHECK(RsxrAsset_ResolveFile(L"\\\\server\\x.nif", L"D:\\e\\") == L"\\\\server\\x.nif");
 
     for (const wchar_t* off : {L"", L"  ", L"none", L"NONE", L"off", L"0"}) {
-        CHECK(Rs7Asset_ResolveFile(off, L"D:\\e\\").empty());
+        CHECK(RsxrAsset_ResolveFile(off, L"D:\\e\\").empty());
     }
 }
 
 TEST(assetload_dds_names_of_a_nif) {
     // NIF string table style: u32 length + text, plus a path and a near miss.
-    const char raw[] = "\x0e\0\0\0rs7hs_wood.dds\x10\0\0\0cubemap_tail.DDS\x05\0\0\0x.ddsx"
-                       "assets/gameplay/foo/rs7hs_env.dds\0rs7hs_wood.dds\0.dds\0";
-    const auto n = Rs7Asset_DdsNames(reinterpret_cast<const uint8_t*>(raw), sizeof raw - 1);
+    const char raw[] = "\x0e\0\0\0rsxrhs_wood.dds\x10\0\0\0cubemap_tail.DDS\x05\0\0\0x.ddsx"
+                       "assets/gameplay/foo/rsxrhs_env.dds\0rsxrhs_wood.dds\0.dds\0";
+    const auto n = RsxrAsset_DdsNames(reinterpret_cast<const uint8_t*>(raw), sizeof raw - 1);
 
     CHECK_EQ(int(n.size()), 3);
-    CHECK(n.size() == 3 && n[0] == "rs7hs_wood.dds" && n[1] == "cubemap_tail.DDS" && n[2] == "rs7hs_env.dds");
-    CHECK(Rs7Asset_DdsNames(nullptr, 10).empty());
+    CHECK(n.size() == 3 && n[0] == "rsxrhs_wood.dds" && n[1] == "cubemap_tail.DDS" && n[2] == "rsxrhs_env.dds");
+    CHECK(RsxrAsset_DdsNames(nullptr, 10).empty());
 }
 
 TEST(assetload_dds_names_deduplicate_case_and_reject_excessive_references) {
     const char names[] = "WOOD.dds\0wood.DDS\0other.dds\0";
-    const auto unique = Rs7Asset_DdsNames(reinterpret_cast<const uint8_t*>(names), sizeof names);
+    const auto unique = RsxrAsset_DdsNames(reinterpret_cast<const uint8_t*>(names), sizeof names);
 
     CHECK_EQ(unique.size(), 2u);
     CHECK(unique.size() == 2 && unique[0] == "WOOD.dds" && unique[1] == "other.dds");
@@ -244,7 +245,7 @@ TEST(assetload_dds_names_deduplicate_case_and_reject_excessive_references) {
     bool refused = false;
 
     try {
-        Rs7Asset_DdsNames(reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
+        RsxrAsset_DdsNames(reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
     } catch (const std::length_error&) {
         refused = true;
     }
@@ -253,10 +254,10 @@ TEST(assetload_dds_names_deduplicate_case_and_reject_excessive_references) {
 }
 
 TEST(assetload_folder_of_a_resource_name) {
-    CHECK(Rs7Asset_FolderOf("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif") ==
+    CHECK(RsxrAsset_FolderOf("data/assets/gameplay/guitar_standard_inline/epi_wilshire_cherry.nif") ==
           "data/assets/gameplay/guitar_standard_inline/");
-    CHECK(Rs7Asset_FolderOf("x.nif").empty());
-    CHECK(Rs7Asset_FolderOf(nullptr).empty());
+    CHECK(RsxrAsset_FolderOf("x.nif").empty());
+    CHECK(RsxrAsset_FolderOf(nullptr).empty());
 }
 
 TEST(assetload_dxt1_darkening_keeps_every_block_mode) {
@@ -281,7 +282,7 @@ TEST(assetload_dxt1_darkening_keeps_every_block_mode) {
         blk[7] = 0xE4;  // indices 0,1,2,3
     }
 
-    CHECK(Rs7Asset_ScaleDxt1(d.data(), d.size(), 0.5f));
+    CHECK(RsxrAsset_ScaleDxt1(d.data(), d.size(), 0.5f));
 
     for (int b = 0; b < 4; ++b) {
         const uint8_t* blk = d.data() + 128 + 8 * b;
@@ -297,34 +298,34 @@ TEST(assetload_dxt1_darkening_keeps_every_block_mode) {
     CHECK(((w[0] | (w[1] << 8)) >> 11) == 16);
     std::vector<uint8_t> bad(200, 0);
 
-    CHECK(!Rs7Asset_ScaleDxt1(bad.data(), bad.size(), 0.5f));
-    CHECK(!Rs7Asset_ScaleDxt1(d.data(), d.size(), 1.0f));
+    CHECK(!RsxrAsset_ScaleDxt1(bad.data(), bad.size(), 0.5f));
+    CHECK(!RsxrAsset_ScaleDxt1(d.data(), d.size(), 1.0f));
 }
 
 TEST(assetload_wood_colour_texture_names) {
-    CHECK(Rs7Asset_IsWoodColour("rs7hs_wood.dds"));
-    CHECK(Rs7Asset_IsWoodColour("RS7HS_WOOD.DDS"));
-    CHECK(!Rs7Asset_IsWoodColour("rs7hs_wood_gloss.dds"));
-    CHECK(!Rs7Asset_IsWoodColour("rs7hs_hardware.dds"));
-    CHECK(!Rs7Asset_IsWoodColour("wood_n.dds"));
+    CHECK(RsxrAsset_IsWoodColour("rsxrhs_wood.dds"));
+    CHECK(RsxrAsset_IsWoodColour("RSXRHS_WOOD.DDS"));
+    CHECK(!RsxrAsset_IsWoodColour("rsxrhs_wood_gloss.dds"));
+    CHECK(!RsxrAsset_IsWoodColour("rsxrhs_hardware.dds"));
+    CHECK(!RsxrAsset_IsWoodColour("wood_n.dds"));
 }
 
 TEST(assetload_default_dir_is_relative_to_the_dll_folder) {
-    // The built-in dir is rs7string\headstock next to the DLL (the game folder); the 7-string model is in it.
+    // The built-in dir is rsxr\headstock next to the DLL (the game folder); the 7-string model is in it.
     const std::wstring dllDir = L"C:\\Games\\Rocksmith2014\\";
-    const std::wstring dir = Rs7Asset_ResolveDir(L"", dllDir);
+    const std::wstring dir = RsxrAsset_ResolveDir(L"", dllDir);
 
-    CHECK(dir == L"C:\\Games\\Rocksmith2014\\rs7string\\headstock\\");
-    CHECK(Rs7Asset_ResolveFile(rs7asset::kDefaultFile7, dir) ==
-          L"C:\\Games\\Rocksmith2014\\rs7string\\headstock\\rs7_inline7.nif");
+    CHECK(dir == L"C:\\Games\\Rocksmith2014\\rsxr\\headstock\\");
+    CHECK(RsxrAsset_ResolveFile(rsxrasset::kDefaultFile7, dir) ==
+          L"C:\\Games\\Rocksmith2014\\rsxr\\headstock\\rsxr_inline7.nif");
     // The overlay writes the table's default text back into the INI: the same folder.
-    CHECK(Rs7Asset_ResolveDir(L"rs7string\\headstock\\", dllDir) == dir);
+    CHECK(RsxrAsset_ResolveDir(L"rsxr\\headstock\\", dllDir) == dir);
     // Absolute values are kept; a relative value without a DLL folder stays relative.
-    CHECK(Rs7Asset_ResolveDir(L"D:\\models", dllDir) == L"D:\\models");
-    CHECK(Rs7Asset_ResolveDir(L"models\\", L"") == L"models\\");
+    CHECK(RsxrAsset_ResolveDir(L"D:\\models", dllDir) == L"D:\\models");
+    CHECK(RsxrAsset_ResolveDir(L"models\\", L"") == L"models\\");
     // The built-in defaults name no user profile.
-    CHECK(std::wcsstr(rs7asset::kDefaultDir, L"Users") == nullptr);
-    CHECK(std::wcsstr(rs7asset::kDefaultFile7, L"Users") == nullptr);
+    CHECK(std::wcsstr(rsxrasset::kDefaultDir, L"Users") == nullptr);
+    CHECK(std::wcsstr(rsxrasset::kDefaultFile7, L"Users") == nullptr);
 }
 
 namespace {
@@ -354,10 +355,10 @@ int FakeType(const uint8_t* prop) {
 }  // namespace
 
 TEST(assetload_layer_property_offsets_match_the_game) {  // 0x534CE0..: type 0xC, u16 at +20h
-    static_assert(offsetof(FakeProp, layer) == rs7asset::kLayerValue, "fake layout");
-    static_assert(offsetof(FakeObj, props) == rs7asset::kPropList, "fake layout");
+    static_assert(offsetof(FakeProp, layer) == rsxrasset::kLayerValue, "fake layout");
+    static_assert(offsetof(FakeObj, props) == rsxrasset::kPropList, "fake layout");
 
-    CHECK(rs7asset::kLayerType == 0xC);
+    CHECK(rsxrasset::kLayerType == 0xC);
 }
 
 TEST(assetload_string_size_7_gets_string_size_6s_draw_layer) {  // issue #23
@@ -370,16 +371,16 @@ TEST(assetload_string_size_7_gets_string_size_6s_draw_layer) {  // issue #23
 
     seg6.props = &n6a;
     seg7.props = &n7;
-    CHECK(rs7asset::FindProperty(reinterpret_cast<uint8_t*>(&seg7), 0xC, FakeType) ==
+    CHECK(rsxrasset::FindProperty(reinterpret_cast<uint8_t*>(&seg7), 0xC, FakeType) ==
           reinterpret_cast<uint8_t*>(&layer7));
     uint16_t value = 0, was = 0;
 
-    CHECK(rs7asset::CopyLayer(reinterpret_cast<uint8_t*>(&seg6), reinterpret_cast<uint8_t*>(&seg7), FakeType, &value,
-                              &was) == 1);
+    CHECK(rsxrasset::CopyLayer(reinterpret_cast<uint8_t*>(&seg6), reinterpret_cast<uint8_t*>(&seg7), FakeType, &value,
+                               &was) == 1);
     CHECK(value == 11 && was == 1 && layer7.layer == 11);
     CHECK(shade7.layer == 99 && alpha7.layer == 98 && layer6.layer == 11);  // nothing else written
-    CHECK(rs7asset::CopyLayer(reinterpret_cast<uint8_t*>(&seg6), reinterpret_cast<uint8_t*>(&seg7), FakeType, &value,
-                              &was) == 0);
+    CHECK(rsxrasset::CopyLayer(reinterpret_cast<uint8_t*>(&seg6), reinterpret_cast<uint8_t*>(&seg7), FakeType, &value,
+                               &was) == 0);
 }
 
 TEST(assetload_draw_layer_copy_needs_both_layer_properties) {
@@ -391,20 +392,19 @@ TEST(assetload_draw_layer_copy_needs_both_layer_properties) {
     withLayer.props = &nl;
     uint16_t value = 0, was = 7;
 
-    CHECK(rs7asset::CopyLayer(reinterpret_cast<uint8_t*>(&withLayer), reinterpret_cast<uint8_t*>(&noLayer), FakeType,
-                              &value, &was) == -1);
+    CHECK(rsxrasset::CopyLayer(reinterpret_cast<uint8_t*>(&withLayer), reinterpret_cast<uint8_t*>(&noLayer), FakeType,
+                               &value, &was) == -1);
     CHECK(shade.layer == 5 && was == 7);
-    CHECK(rs7asset::CopyLayer(reinterpret_cast<uint8_t*>(&noLayer), reinterpret_cast<uint8_t*>(&withLayer), FakeType,
-                              &value, &was) == -1);
+    CHECK(rsxrasset::CopyLayer(reinterpret_cast<uint8_t*>(&noLayer), reinterpret_cast<uint8_t*>(&withLayer), FakeType,
+                               &value, &was) == -1);
     CHECK(layer.layer == 11);
-    CHECK(rs7asset::CopyLayer(nullptr, reinterpret_cast<uint8_t*>(&withLayer), FakeType, &value, &was) == -1);
-    CHECK(rs7asset::FindProperty(reinterpret_cast<uint8_t*>(&empty), 0xC, FakeType) == nullptr);
-    CHECK(rs7asset::FindProperty(nullptr, 0xC, FakeType) == nullptr);
-    CHECK(rs7asset::GamePropType(nullptr) == -1);
+    CHECK(rsxrasset::CopyLayer(nullptr, reinterpret_cast<uint8_t*>(&withLayer), FakeType, &value, &was) == -1);
+    CHECK(rsxrasset::FindProperty(reinterpret_cast<uint8_t*>(&empty), 0xC, FakeType) == nullptr);
+    CHECK(rsxrasset::FindProperty(nullptr, 0xC, FakeType) == nullptr);
+    CHECK(rsxrasset::GamePropType(nullptr) == -1);
 }
 
 // Review #14: the right-handed and left-handed jobs share one owner of the common build output.
-#include <windows.h>
 
 namespace {
 volatile long g_builds = 0, g_inside = 0, g_overlap = 0;
@@ -462,7 +462,7 @@ struct Caller {
 DWORD WINAPI CallOnce(LPVOID p) {
     auto* c = static_cast<Caller*>(p);
 
-    c->result = Rs7Asset_RunOnce(c->state, c->build, c->context, 5000);
+    c->result = RsxrAsset_RunOnce(c->state, c->build, c->context, 5000);
 
     return 0;
 }
@@ -474,10 +474,10 @@ TEST(assetload_shared_build_runs_once_for_concurrent_left_and_right_jobs) {
     Store(&g_builds, 0);
     Store(&g_inside, 0);
     Store(&g_overlap, 0);
-    BuildEvents events{rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW"),
-                       rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW")};
+    BuildEvents events{rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW"),
+                       rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEventW")};
     Caller a{&state, SlowBuild, false, &events};
-    const HANDLE owner = rs7test::Must(CreateThread(nullptr, 0, CallOnce, &a, 0, nullptr), "CreateThread");
+    const HANDLE owner = rsxrtest::Must(CreateThread(nullptr, 0, CallOnce, &a, 0, nullptr), "CreateThread");
     const DWORD entered = WaitForSingleObject(events.entered, 5000);
 
     CHECK_EQ(entered, WAIT_OBJECT_0);
@@ -485,18 +485,18 @@ TEST(assetload_shared_build_runs_once_for_concurrent_left_and_right_jobs) {
     if (entered == WAIT_OBJECT_0) {
         CHECK_EQ(Load(&state), 1L);
         // The owner cannot complete until released: this caller must observe the pending build.
-        CHECK(!Rs7Asset_RunOnce(&state, SlowBuild, nullptr, 0));
+        CHECK(!RsxrAsset_RunOnce(&state, SlowBuild, nullptr, 0));
         CHECK_EQ(Load(&g_builds), 1L);
     }
 
     SetEvent(events.release);
-    rs7test::Join(owner, 10000);
+    rsxrtest::Join(owner, 10000);
     CloseHandle(events.entered);
     CloseHandle(events.release);
     CHECK_EQ(Load(&g_builds), 1L);  // one owner wrote the files
     CHECK_EQ(Load(&g_overlap), 0L);
     CHECK(a.result);
-    CHECK(Rs7Asset_RunOnce(&state, SlowBuild, nullptr, 0));  // later callers reuse it too, no rebuild
+    CHECK(RsxrAsset_RunOnce(&state, SlowBuild, nullptr, 0));  // later callers reuse it too, no rebuild
     CHECK_EQ(Load(&g_builds), 1L);
 }
 
@@ -504,16 +504,16 @@ TEST(assetload_shared_build_failure_is_shared_and_contained) {
     volatile long state = 0;
 
     g_builds = 0;
-    CHECK(!Rs7Asset_RunOnce(&state, FailingBuild, nullptr, 0));
-    CHECK(!Rs7Asset_RunOnce(&state, FailingBuild, nullptr, 0));  // the waiter does not retry or write
+    CHECK(!RsxrAsset_RunOnce(&state, FailingBuild, nullptr, 0));
+    CHECK(!RsxrAsset_RunOnce(&state, FailingBuild, nullptr, 0));  // the waiter does not retry or write
     CHECK_EQ(g_builds, 1L);
     volatile long thrown = 0;
 
-    CHECK(!Rs7Asset_RunOnce(&thrown, ThrowingBuild, nullptr, 0));  // no exception escapes, state leaves "building"
+    CHECK(!RsxrAsset_RunOnce(&thrown, ThrowingBuild, nullptr, 0));  // no exception escapes, state leaves "building"
     CHECK_EQ(long(thrown), 3L);
     volatile long stuck = 1;  // owner still building: the waiter times out, builds nothing
 
     g_builds = 0;
-    CHECK(!Rs7Asset_RunOnce(&stuck, SlowBuild, nullptr, 100));
+    CHECK(!RsxrAsset_RunOnce(&stuck, SlowBuild, nullptr, 100));
     CHECK_EQ(g_builds, 0L);
 }

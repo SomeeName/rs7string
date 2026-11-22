@@ -10,7 +10,7 @@
 //
 // Threads: Ask, Result, NextReplay and Drop run on the game thread. Publish runs on the indexing workers and only
 // reads names and sets the published flag, under a shared lock that Ask takes exclusively before it reuses a slot.
-namespace rs7menu {
+namespace rsxrmenu {
 enum class Stage : uint8_t { Free, Asked, Rejected };
 
 constexpr uint64_t kFallbackMs = 5000;
@@ -46,4 +46,4 @@ struct Queue {
 };
 
 bool NameMatchesFile(const char* name, const char* file);
-}  // namespace rs7menu
+}  // namespace rsxrmenu

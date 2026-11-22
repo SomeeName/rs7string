@@ -2,12 +2,12 @@
 #pragma once
 #include <intrin.h>
 
-inline void Rs7Spin_Lock(volatile long* spin) {
+inline void RsxrSpin_Lock(volatile long* spin) {
     while (_InterlockedCompareExchange(spin, 1, 0) != 0) {
         _mm_pause();
     }
 }
 
-inline void Rs7Spin_Unlock(volatile long* spin) {
+inline void RsxrSpin_Unlock(volatile long* spin) {
     _InterlockedExchange(spin, 0);
 }

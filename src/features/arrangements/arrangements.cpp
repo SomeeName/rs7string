@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace rs7arr {
+namespace rsxrarr {
 void LabelTag(uint32_t slot, uint32_t offset, uint32_t alternates, char* out, size_t n) {
     out[0] = 0;
 
@@ -53,4 +53,4 @@ int CoopFocusIndex(const char* focus) {
 
     return index;
 }
-}  // namespace rs7arr
+}  // namespace rsxrarr

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'SomeeName/rs7string'
+    if: github.repository == 'SomeeName/rs-extended-range'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           path: site
 
   deploy:
-    if: github.repository == 'SomeeName/rs7string'
+    if: github.repository == 'SomeeName/rs-extended-range'
     needs: build
     runs-on: ubuntu-latest
     environment:

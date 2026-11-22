@@ -1,8 +1,8 @@
-// Rs7_FreezeDescribe: the log line of one Rs7_RunFrozen call (freeze.h).
+// Rsxr_FreezeDescribe: the log line of one Rsxr_RunFrozen call (freeze.h).
 #include "platform/freeze.h"
 #include <cstdio>
 
-void Rs7_FreezeDescribe(const Rs7FreezeStats& st, char* out, size_t cap) {
+void Rsxr_FreezeDescribe(const RsxrFreezeStats& st, char* out, size_t cap) {
     int w = 0;
 
     if (st.readerBusy) {
@@ -16,7 +16,7 @@ void Rs7_FreezeDescribe(const Rs7FreezeStats& st, char* out, size_t cap) {
             st.totalMs, st.graceMs);
     } else if (st.tooMany) {
         w = std::snprintf(out, cap, "freeze: more than %u threads - nothing written",
-                          unsigned(Rs7FreezeStats::kMaxThreads));
+                          unsigned(RsxrFreezeStats::kMaxThreads));
     } else if (st.timedOut && st.lastWasStall) {
         w = std::snprintf(
             out, cap,

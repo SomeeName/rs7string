@@ -1,6 +1,6 @@
 #include "model/stringcolour.h"
 
-void Rs7S7_DimColour(const float rgb[3], float dimValue, float out[3]) {
+void RsxrS7_DimColour(const float rgb[3], float dimValue, float out[3]) {
     const float m = rgb[0] > rgb[1] ? (rgb[0] > rgb[2] ? rgb[0] : rgb[2]) : (rgb[1] > rgb[2] ? rgb[1] : rgb[2]);
     const float k = m > 0.0f ? dimValue / m : 0.0f;
 
@@ -9,6 +9,6 @@ void Rs7S7_DimColour(const float rgb[3], float dimValue, float out[3]) {
     }
 }
 
-void Rs7S7_GlowColour(const float rgb[3], float out[3]) {
-    Rs7S7_DimColour(rgb, 1.0f, out);
+void RsxrS7_GlowColour(const float rgb[3], float out[3]) {
+    RsxrS7_DimColour(rgb, 1.0f, out);
 }

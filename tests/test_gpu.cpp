@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace {
-using rs7d3d::Device;
+using rsxrd3d::Device;
 const uint32_t kRgb[2] = {0xC8C8C8, 0x00FFFF};
 constexpr unsigned kW = 256;
 constexpr float kU0 = 1.0f / (3.0f * kW);  // 1/3 texel at level 0: non-trivial horizontal weights
@@ -137,14 +137,14 @@ bool Same(const std::vector<uint32_t>& a, const std::vector<uint32_t>& b, const 
 }
 
 struct Pair {
-    std::vector<Rs7Image> stock;
-    Rs7RampBuild build;
+    std::vector<RsxrImage> stock;
+    RsxrRampBuild build;
     IDirect3DTexture9* s = nullptr;
     IDirect3DTexture9* o = nullptr;
 
-    Pair(IDirect3DDevice9* dev, std::vector<Rs7Image> lv) : stock(std::move(lv)), build(Rs7Ramp_Build(stock, kRgb)) {
-        s = rs7d3d::MakeTex(dev, stock);
-        o = rs7d3d::MakeTex(dev, build.levels);
+    Pair(IDirect3DDevice9* dev, std::vector<RsxrImage> lv) : stock(std::move(lv)), build(RsxrRamp_Build(stock, kRgb)) {
+        s = rsxrd3d::MakeTex(dev, stock);
+        o = rsxrd3d::MakeTex(dev, build.levels);
     }
 
     ~Pair() {
@@ -164,7 +164,7 @@ const D3DTEXTUREFILTERTYPE kFilters[2] = {D3DTEXF_POINT, D3DTEXF_LINEAR};
 
 TEST(gpu_stock_rows_are_identical_on_every_level_point_and_linear) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
@@ -176,7 +176,7 @@ TEST(gpu_stock_rows_are_identical_on_every_level_point_and_linear) {
     }
 
     for (int variant = 0; variant < 2; ++variant) {
-        Pair p(d.dev, variant ? rs7fix::UniformStock(9) : rs7fix::Stock(9));
+        Pair p(d.dev, variant ? rsxrfix::UniformStock(9) : rsxrfix::Stock(9));
 
         CHECK(bool(p));
         if (!p) {
@@ -210,12 +210,12 @@ TEST(gpu_stock_rows_are_identical_on_every_level_point_and_linear) {
 
 TEST(gpu_preview_row_is_identical) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Target t(d.dev);
-    Pair p(d.dev, rs7fix::Stock(9));
+    Pair p(d.dev, rsxrfix::Stock(9));
 
     CHECK(bool(t) && bool(p));
     if (!t || !p) {
@@ -233,12 +233,12 @@ TEST(gpu_preview_row_is_identical) {
 
 TEST(gpu_v6_samples_the_custom_band_on_levels_0_and_1) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Target t(d.dev);
-    Pair p(d.dev, rs7fix::Stock(9));
+    Pair p(d.dev, rsxrfix::Stock(9));
 
     CHECK(bool(t) && bool(p));
     if (!t || !p) {
@@ -251,14 +251,14 @@ TEST(gpu_v6_samples_the_custom_band_on_levels_0_and_1) {
         for (int m = 0; m < 2; ++m) {
             // The line V6 lands on at level k (both taps hold the same recoloured line), alone in a
             // W_k x 1 helper sampled at V = 0.5: only the U filter remains.
-            const Rs7Image& lv = p.build.levels[k];
-            const unsigned line = Rs7Ramp_Taps(kRs7V6Num[m], kRs7BandDen, lv.h, false)[0].line;
-            Rs7Image h;
+            const RsxrImage& lv = p.build.levels[k];
+            const unsigned line = RsxrRamp_Taps(kRsxrV6Num[m], kRsxrBandDen, lv.h, false)[0].line;
+            RsxrImage h;
 
             h.w = lv.w;
             h.h = 1;
             h.px.assign(lv.px.begin() + size_t(line) * lv.w, lv.px.begin() + size_t(line + 1) * lv.w);
-            IDirect3DTexture9* helper = rs7d3d::MakeTex(d.dev, {h});
+            IDirect3DTexture9* helper = rsxrd3d::MakeTex(d.dev, {h});
 
             CHECK(helper != nullptr);
             if (!helper) {
@@ -266,10 +266,10 @@ TEST(gpu_v6_samples_the_custom_band_on_levels_0_and_1) {
             }
 
             for (auto f : kFilters) {
-                CHECK(Same(Render(d.dev, t, p.o, k, f, kRs7V6[m]), Render(d.dev, t, helper, 0, f, 0.5f),
-                           m ? "V6 colourblind band" : "V6 band", k, f, kRs7V6[m]));
+                CHECK(Same(Render(d.dev, t, p.o, k, f, kRsxrV6[m]), Render(d.dev, t, helper, 0, f, 0.5f),
+                           m ? "V6 colourblind band" : "V6 band", k, f, kRsxrV6[m]));
                 // not vacuous: the stock at V6 shows something else (the band is really ours)
-                CHECK(Render(d.dev, t, p.s, k, f, kRs7V6[m]) != Render(d.dev, t, p.o, k, f, kRs7V6[m]));
+                CHECK(Render(d.dev, t, p.s, k, f, kRsxrV6[m]) != Render(d.dev, t, p.o, k, f, kRsxrV6[m]));
             }
 
             helper->Release();
@@ -279,12 +279,12 @@ TEST(gpu_v6_samples_the_custom_band_on_levels_0_and_1) {
 
 TEST(gpu_v6_on_the_stock_texture_reads_the_preview_row_on_level_0) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Target t(d.dev);
-    Pair p(d.dev, rs7fix::UniformStock(9));
+    Pair p(d.dev, rsxrfix::UniformStock(9));
 
     CHECK(bool(t) && bool(p));
     if (!t || !p) {
@@ -293,10 +293,10 @@ TEST(gpu_v6_on_the_stock_texture_reads_the_preview_row_on_level_0) {
 
     for (int m = 0; m < 2; ++m) {
         for (auto f : kFilters) {
-            const float preview = (kRs7Row6[m] + 0.5f) / 16.0f;
+            const float preview = (kRsxrRow6[m] + 0.5f) / 16.0f;
 
-            CHECK(Same(Render(d.dev, t, p.s, 0, f, kRs7V6[m]), Render(d.dev, t, p.s, 0, f, preview),
-                       "unswapped stock at V6 vs preview row", 0, f, kRs7V6[m]));
+            CHECK(Same(Render(d.dev, t, p.s, 0, f, kRsxrV6[m]), Render(d.dev, t, p.s, 0, f, preview),
+                       "unswapped stock at V6 vs preview row", 0, f, kRsxrV6[m]));
         }
     }
 }

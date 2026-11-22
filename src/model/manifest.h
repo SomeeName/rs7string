@@ -7,7 +7,7 @@
 // JSON vtable as 0x56C950 / 0x889C50 / Play_Tuning_ReadStringOffsets 0x5B84DC do: object vtable +14h find(name) ->
 // node or 0, node vtable +50h -> number object or 0, the double at +8. One reader for the tuner and C-lite.
 // tools/tests/test_manifest_readkey.py compiles this header with the tuner's ReadKey on its own.
-namespace rs7 {
+namespace rsxr {
 using JsonFind = void*(__thiscall*)(void* self, const char* name);
 using JsonNum = uint8_t*(__thiscall*)(void* self);
 
@@ -32,7 +32,7 @@ inline bool JsonNumber(void* obj, const char* key, double* out) {
 
         *out = *reinterpret_cast<const double*>(num + 8);
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
@@ -58,4 +58,4 @@ inline bool HasOffset(void* obj, const char* key) {
 
     return JsonOffset(obj, key, &unused);
 }
-}  // namespace rs7
+}  // namespace rsxr

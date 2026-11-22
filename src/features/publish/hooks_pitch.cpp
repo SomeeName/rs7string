@@ -1,5 +1,5 @@
 // The three guarded pitch readers (PUBNL PUBAN PUBAC): native copies built from tools/gen_publish_pitch.py, chosen per
-// call by Rs7PublishPitch_Target (entry mid-hooks in hooks_entries.cpp), the chord tail their copy calls, the expected
+// call by RsxrPublishPitch_Target (entry mid-hooks in hooks_entries.cpp), the chord tail their copy calls, the expected
 // pitch over the tail the PUBAN copy calls, and the standard-zero expected-pitch sites PUBZ0-PUBZ6.
 #include "features/nslot/nslot.h"
 #include "features/pitch/pitch.h"
@@ -15,8 +15,8 @@
 
 extern "C" {
 #define PAIR(id)                                                                                                       \
-    __declspec(dllexport) uintptr_t g_rs7_pitchcopy_##id = 0;                                                          \
-    __declspec(dllexport) uintptr_t g_rs7_pitchtramp_##id = 0;
+    __declspec(dllexport) uintptr_t g_rsxr_pitchcopy_##id = 0;                                                         \
+    __declspec(dllexport) uintptr_t g_rsxr_pitchtramp_##id = 0;
 PAIR(PUBNL)
 PAIR(PUBAN)
 PAIR(PUBAC)
@@ -27,7 +27,7 @@ namespace {
 struct PitchRel {
     unsigned off;
     uintptr_t target;
-    Rs7Mid::CallIn* callin = nullptr;  // a call-in entry (hooks_callin.cpp) instead of target
+    RsxrMid::CallIn* callin = nullptr;  // a call-in entry (hooks_callin.cpp) instead of target
 };
 
 // A rel target the generated table marks for the expected-pitch call entry built at run time (g_tailPitchCall).
@@ -45,8 +45,8 @@ struct PitchSpec {
 
 #include "features/publish/publish_pitch.generated.h"
 
-using rs7pubhooks::Pair;
-using rs7pubhooks::UncheckedRead;
+using rsxrpubhooks::Pair;
+using rsxrpubhooks::UncheckedRead;
 
 // The detector of a pitch reader's object: a matcher (kind 0) holds it at +4; for a tracker (PUBAN, PUBAC) it is
 // +4 of the detect-input object at tracker+4C19Ch, as the game reads it (CONFIRMED 0x875430: the tuning at
@@ -57,28 +57,28 @@ uint8_t* Detector(uint8_t* object, unsigned kind) {
     }
 
     if (kind) {
-        object = UncheckedRead<uint8_t*>(object, rs7pubhooks::kTrackerInput);
+        object = UncheckedRead<uint8_t*>(object, rsxrpubhooks::kTrackerInput);
         if (!object) {
             return nullptr;
         }
     }
 
-    return UncheckedRead<uint8_t*>(object, rs7::kMatcherDetector);
+    return UncheckedRead<uint8_t*>(object, rsxr::kMatcherDetector);
 }
 
 bool Eligible(uint8_t* d) {
-    if (!g_rs7_publish_ports || !Rs7Pitch_Tailed(d, 1)) {
+    if (!g_rsxr_publish_ports || !RsxrPitch_Tailed(d, 1)) {
         return false;
     }
 
-    const unsigned n = UncheckedRead<unsigned>(d, rs7p::kDetCount);
+    const unsigned n = UncheckedRead<unsigned>(d, rsxrp::kDetCount);
 
-    return n >= 6 && n <= 8 && !rs7::IsBassKind(UncheckedRead<int>(d, rs7::kDetInstrument));
+    return n >= 6 && n <= 8 && !rsxr::IsBassKind(UncheckedRead<int>(d, rsxr::kDetInstrument));
 }
 
-const Pair pairs[] = {{&g_rs7_pitchcopy_PUBNL, &g_rs7_pitchtramp_PUBNL},
-                      {&g_rs7_pitchcopy_PUBAN, &g_rs7_pitchtramp_PUBAN},
-                      {&g_rs7_pitchcopy_PUBAC, &g_rs7_pitchtramp_PUBAC}};
+const Pair pairs[] = {{&g_rsxr_pitchcopy_PUBNL, &g_rsxr_pitchtramp_PUBNL},
+                      {&g_rsxr_pitchcopy_PUBAN, &g_rsxr_pitchtramp_PUBAN},
+                      {&g_rsxr_pitchcopy_PUBAC, &g_rsxr_pitchtramp_PUBAC}};
 
 void Relative(unsigned char* p, uintptr_t target) {
     int32_t r = int32_t(target - reinterpret_cast<uintptr_t>(p + 4));
@@ -89,54 +89,54 @@ void Relative(unsigned char* p, uintptr_t target) {
 // The expected pitch 0x873F80 computes, over an eight-entry tuning (ECX = the int16 tuning, EDX = instrument, ESI =
 // string, [esp+4] = fret; plain ret, the caller pops the fret): EAX = the pitch, EDX = instrument - 2 as the stock
 // cases leave it, ECX / ESI kept; a null tuning gives 0 with EDX kept. Answered for the callee (Before placement).
-void TailPitch(Rs7Mid::Context& c, const int16_t* tuning8) {
+void TailPitch(RsxrMid::Context& c, const int16_t* tuning8) {
     if (!tuning8) {
-        Rs7Mid::Return(c, 0);
+        RsxrMid::Return(c, 0);
         return;
     }
 
     const uint32_t instrument = c.edx;
 
     c.edx = instrument - 2;
-    Rs7Mid::Return(c, rs7p::ExpectedPitch8(tuning8, instrument, c.esi, Rs7Mid::Dword(c.esp + 4)));
+    RsxrMid::Return(c, rsxrp::ExpectedPitch8(tuning8, instrument, c.esi, RsxrMid::Dword(c.esp + 4)));
 }
 
 // The PUBAN copy's call (light; prepared once, lives with the copies).
-Rs7Mid::Hook g_tailPitchCall;
+RsxrMid::Hook g_tailPitchCall;
 }  // namespace
 
 extern "C" {
 // The PUBAN copy's call of the expected pitch (0x8754AA's call of 0x873F80 in the stock function, the copy passes the
 // detector's tuning8 tail +13B8h in ECX): every string over the tail. Light (per analysed mistake, integer only). It
-// replaced the hand-written Rs7_Pitch_Raw8 (frozen at 72da588, tools/tests/test_midhook_asm_sites2.py).
-__declspec(dllexport) void __cdecl Rs7_Mid_PubTailPitch(Rs7Mid::Context& c) {
-    TailPitch(c, Rs7Mid::Ptr<const int16_t>(c.ecx));
+// replaced the hand-written Rsxr_Pitch_Raw8 (frozen at 72da588, tools/tests/test_midhook_asm_sites2.py).
+__declspec(dllexport) void __cdecl Rsxr_Mid_PubTailPitch(RsxrMid::Context& c) {
+    TailPitch(c, RsxrMid::Ptr<const int16_t>(c.ecx));
 }
 
 // PUBZ0-PUBZ6: the calls (PUBZ0, PUBZ4-6: call sites, Before placement) and tail jumps (PUBZ1-3: jmp sites at
 // `jmp 873F80h`, the replay is the relocated jmp) of 0x873F80 with the standard (zero) tuning 0x1199D2C in ECX; at
 // every one [esp] is the caller's return address and [esp+4] the fret. With the publication ports, guitar strings 6/7
-// get the expected pitch over the all-zero eight-entry tuning g_rs7_publish_zero8 (stock: base -1 past the six-entry
+// get the expected pitch over the all-zero eight-entry tuning g_rsxr_publish_zero8 (stock: base -1 past the six-entry
 // table); everything else runs the stock function (with S1). ECX keeps the caller's tuning pointer, as the stock callee
-// does (the old stub left g_rs7_publish_zero8 in it). CONFIRMED dead at every caller (disassembly of the 7
+// does (the old stub left g_rsxr_publish_zero8 in it). CONFIRMED dead at every caller (disassembly of the 7
 // continuations): PUBZ0 `add esp,4; pop esi; pop ebp; ret`; PUBZ1-3 are the three tail jumps of 0x48DC00, whose only
 // caller 0x77EA61 continues `cdq; mov [edi],eax; ...; ret` without reading ECX; PUBZ4 `mov ecx,[ebp+8]`; PUBZ5 `pop
 // ecx` before its `ret`; PUBZ6 `lea ecx,[ebp-0Ch]` before any read. Light: integer only. Converted from the naked stub
-// Rs7_Publish_ZeroRaw (frozen at 72da588, tools/tests/test_midhook_asm_sites2.py); its flags were dead at the return.
-__declspec(dllexport) uintptr_t g_rs7_target_PUBZ0 = 0, g_rs7_target_PUBZ4 = 0, g_rs7_target_PUBZ5 = 0,
-                                g_rs7_target_PUBZ6 = 0;
+// Rsxr_Publish_ZeroRaw (frozen at 72da588, tools/tests/test_midhook_asm_sites2.py); its flags were dead at the return.
+__declspec(dllexport) uintptr_t g_rsxr_target_PUBZ0 = 0, g_rsxr_target_PUBZ4 = 0, g_rsxr_target_PUBZ5 = 0,
+                                g_rsxr_target_PUBZ6 = 0;
 
-__declspec(dllexport) void __cdecl Rs7_Mid_PUBZ(Rs7Mid::Context& c) {
-    if (!g_rs7_publish_ports || c.esi < 6 || c.esi > 7 || c.edx == 2) {
+__declspec(dllexport) void __cdecl Rsxr_Mid_PUBZ(RsxrMid::Context& c) {
+    if (!g_rsxr_publish_ports || c.esi < 6 || c.esi > 7 || c.edx == 2) {
         return;
     }
 
-    TailPitch(c, g_rs7_publish_zero8);
+    TailPitch(c, g_rsxr_publish_zero8);
 }
 }
 
 extern "C" {
-__declspec(dllexport) const int16_t g_rs7_publish_zero8[8] = {};
+__declspec(dllexport) const int16_t g_rsxr_publish_zero8[8] = {};
 }
 
 namespace {
@@ -149,7 +149,7 @@ uintptr_t TailPitchEntry(const unsigned char* call) {
         uint8_t bytes[5] = {0xe8};
 
         std::memcpy(bytes + 1, &rel, 4);
-        if (!g_tailPitchCall.PrepareCall(site, bytes, 5, &Rs7_Mid_PubTailPitch, Rs7Mid::Mode::Light)) {
+        if (!g_tailPitchCall.PrepareCall(site, bytes, 5, &Rsxr_Mid_PubTailPitch, RsxrMid::Mode::Light)) {
             return 0;
         }
     }
@@ -158,7 +158,7 @@ uintptr_t TailPitchEntry(const unsigned char* call) {
 }
 }  // namespace
 
-bool Rs7PublishPitch_BuildCopies() {
+bool RsxrPublishPitch_BuildCopies() {
     // Dedicated builder: variable-length stack/branch edits and the 3KB note matcher cannot
     // use fncopy's 800h temporary buffer. Every original byte is verified before installation.
     static_assert(std::size(kPitchSpecs) == std::size(pairs), "one copy pair per pitch reader");
@@ -166,8 +166,8 @@ bool Rs7PublishPitch_BuildCopies() {
     for (size_t k = 0; k < std::size(kPitchSpecs); ++k) {
         const auto& s = kPitchSpecs[k];
 
-        if (Rs7Fn_Fnv(reinterpret_cast<const uint8_t*>(s.va), s.stockLen) != s.hash) {
-            Rs7Log("native_publish: pitch reader %s bytes differ", s.id);
+        if (RsxrFn_Fnv(reinterpret_cast<const uint8_t*>(s.va), s.stockLen) != s.hash) {
+            RsxrLog("native_publish: pitch reader %s bytes differ", s.id);
             return false;
         }
 
@@ -183,13 +183,13 @@ bool Rs7PublishPitch_BuildCopies() {
             uintptr_t target = s.rels[r].target;
 
             if (s.rels[r].callin && !(target = s.rels[r].callin->Entry())) {
-                Rs7Log("native_publish: pitch reader %s: no call-in entry", s.id);
+                RsxrLog("native_publish: pitch reader %s: no call-in entry", s.id);
                 VirtualFree(p, 0, MEM_RELEASE);
                 return false;
             }
 
             if (target == kTailPitchCall && !(target = TailPitchEntry(p + s.rels[r].off - 1))) {
-                Rs7Log("native_publish: pitch reader %s: no expected-pitch entry", s.id);
+                RsxrLog("native_publish: pitch reader %s: no expected-pitch entry", s.id);
                 VirtualFree(p, 0, MEM_RELEASE);
                 return false;
             }
@@ -210,7 +210,7 @@ bool Rs7PublishPitch_BuildCopies() {
     return true;
 }
 
-extern "C" uintptr_t __cdecl Rs7PublishPitch_Target(unsigned kind, uint8_t* object) {
+extern "C" uintptr_t __cdecl RsxrPublishPitch_Target(unsigned kind, uint8_t* object) {
     if (kind >= 3) {
         return 0;
     }
@@ -218,12 +218,12 @@ extern "C" uintptr_t __cdecl Rs7PublishPitch_Target(unsigned kind, uint8_t* obje
     return *pairs[kind].copy && Eligible(Detector(object, kind)) ? *pairs[kind].copy : *pairs[kind].tramp;
 }
 
-extern "C" void __cdecl Rs7PublishPitch_ChordTail(int32_t* out, const uint8_t* tpl, const uint8_t* tracker) {
-    const uint8_t* t8 = tpl ? Rs7Ns_AsT8(tpl) : nullptr;
+extern "C" void __cdecl RsxrPublishPitch_ChordTail(int32_t* out, const uint8_t* tpl, const uint8_t* tracker) {
+    const uint8_t* t8 = tpl ? RsxrNs_AsT8(tpl) : nullptr;
     auto det = Detector(const_cast<uint8_t*>(tracker), 1);
-    const unsigned n = det ? UncheckedRead<unsigned>(det, rs7p::kDetCount) : 6;
+    const unsigned n = det ? UncheckedRead<unsigned>(det, rsxrp::kDetCount) : 6;
 
     for (unsigned s = 6; s < 8; ++s) {
-        out[s] = t8 && s < n ? UncheckedRead<int32_t>(t8, rs7ns::kT8Midi + 4 * s) : -1;
+        out[s] = t8 && s < n ? UncheckedRead<int32_t>(t8, rsxrns::kT8Midi + 4 * s) : -1;
     }
 }

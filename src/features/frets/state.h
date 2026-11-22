@@ -2,7 +2,7 @@
 #include "features/frets/frets.h"
 #include "model/objtable.h"
 
-namespace rs7fretglue {
+namespace rsxrfretglue {
 // Per Rnd_Guitar. A full table replaces its entries in turn.
 struct GuitarState {
     bool applied;    // bars re-placed and scaled (by F1 or F2) and not restored since
@@ -18,7 +18,7 @@ struct GlowBar {
 
 struct State {
     // spin guards the guitar table for hook callbacks and overlay statistics.
-    rs7::ObjTable<const void*, GuitarState, rs7frets::kMaxGuitars> guitars;
+    rsxr::ObjTable<const void*, GuitarState, rsxrfrets::kMaxGuitars> guitars;
     volatile long spin = 0;
 
     // Hook callbacks and song setup access log gates through interlocked operations; no table lock.
@@ -33,4 +33,4 @@ struct State {
 };
 
 extern State g_state;
-}  // namespace rs7fretglue
+}  // namespace rsxrfretglue

@@ -1,15 +1,16 @@
 # 14. Mid-hook contract and cold-site conversion
 
-Part of the [rs7string architecture](../ARCHITECTURE.md).
+Part of the [RS Extended Range architecture](../ARCHITECTURE.md).
 
 
-Design record of the generic mid-hook (`src/platform/midhook.*`) and of converting hand-written naked
-stubs to it. Tags as above; measurements are one machine and one microbenchmark.
+This chapter is the design record of the generic mid-hook (`src/platform/midhook.*`) and of the work to
+convert hand-written naked stubs to it. The evidence tags mean the same as in the other
+chapters. All measurements come from one machine and one microbenchmark.
 
 ## Reading map
 
-Start with the **contract** and **relocator** when adding a hook. The mode sections explain which
-CPU state each thunk preserves; the conversion sections explain how old and new paths are compared.
+When you add a hook, start with the **contract** and the **relocator**. The mode sections explain which
+CPU state each thunk preserves. The conversion sections explain how the old and new paths are compared.
 
 | Mode | State saved by the thunk | Use and constraint |
 |---|---|---|
@@ -26,7 +27,7 @@ flowchart LR
     thunk --> replay["Replay instructions<br/>and continue"]
 ```
 
-This diagram shows the normal replay path; a callback may instead select a validated continuation.
+The diagram shows the normal replay path. A callback may instead select a validated continuation.
 
 ## Source
 
@@ -35,40 +36,47 @@ Builders create per-site entries that jump to shared MASM thunks. Native tests, 
 <details markdown="1">
 <summary><b>Source and implementation evidence</b></summary>
 
-The per-site entries are emitted at runtime by `Rs7Mid_Build`, `Rs7Mid_BuildLight` and `Rs7Mid_BuildCall`
-(`midhook.cpp`). The three shared thunks they jump to, `Rs7Mid_Thunk`, `Rs7Mid_ThunkLight` and `Rs7Mid_ThunkSse`, are one MASM file,
-`src/platform/midhook_thunks.asm` (ml.exe, wired into `rs7string.vcxproj` and `tests/rs7string_tests.vcxproj`
-through the `masm` build customisation, exported with `PROC EXPORT`), not inline `__asm`; the WOW64 syscall of
-`Rs7_Protect` is `src/platform/protect_syscall.asm` the same way, so `src/platform/` has no inline assembly. Why a
-MASM file: the thunks stay ordinary code in the image's `.text` with the same exports, so the native tests, the
-emulator tests (which load the DLL and run the exported thunks in Unicorn) and the benchmark use them unchanged, and
-the assembler reads like the old inline block with labels, comments and a `FOR` macro for the light thunk's unrolled
-copy. Emitting the thunk bodies as bytes at runtime would need executable storage and a byte emitter for about 70
-instructions, hide them from the export table and the emulator harness, and buy nothing in speed. The move changed no
-byte: CONFIRMED, both thunks in `dinput8.dll` are byte-identical to the inline-asm build (`f7cb7e8`, 92 and 159
-bytes), and the pre-guard benchmark was unchanged by that move (full 150-157 ns, light 21-25 ns before and after,
-three runs each).
+`RsxrMid_Build`, `RsxrMid_BuildLight` and `RsxrMid_BuildCall` (`midhook.cpp`) emit the per-site entries at
+runtime. The three shared thunks they jump to, `RsxrMid_Thunk`, `RsxrMid_ThunkLight` and `RsxrMid_ThunkSse`, are
+in one MASM file, `src/platform/midhook_thunks.asm`, not in inline `__asm`. The file is built with ml.exe, wired
+into `rsxr.vcxproj` and `tests/rsxr_tests.vcxproj` through the `masm` build customization, and exported with
+`PROC EXPORT`. The WOW64 syscall of `Rsxr_Protect` is in `src/platform/protect_syscall.asm` the same way, so
+`src/platform/` has no inline assembly.
 
-Since beta.4 every thunk calls the callback through `Rs7Mid_Guard` (`midhook.cpp`) instead of directly. The guard
-copies the Context, runs the callback inside `__try`, and on a fault (access violation, divide by zero, illegal
-instruction, an escaped C++ exception) restores the copy, so the site resumes with its own registers and default
-continuation as if the callback had not run. It also undoes what lies outside the Context: an SSE-mode `LoadSt0` is
-dropped (the replayed displaced `fld` is then the only load) and a full-mode FXSAVE image gets its first 160 bytes
-back (control words and ST0-ST7, all the St0 edits touch). Other memory the callback wrote before the fault stays
-written.
+The thunks are in a MASM file so that they stay ordinary code in the image's `.text` with the same exports. The
+native tests, the emulator tests (which load the DLL and run the exported thunks in Unicorn) and the benchmark
+use them unchanged. The assembler also reads like the old inline block, with labels, comments and a `FOR` macro
+for the light thunk's unrolled copy. Emitting the thunk bodies as bytes at runtime would need executable storage
+and a byte emitter for about 70 instructions. It would also hide them from the export table and the emulator
+harness, and it would buy nothing in speed.
 
-A lock held at the fault stays held (with `/EHsc` the unwind runs `__finally` blocks, not C++ destructors), and the
-next hit would then hang the game instead of crashing it. So a callback never reads game memory or calls game code
-while it holds a lock: read before taking the lock, or read through the fault-safe helpers (`Rs7_SafeCopy`, `Rd`), or
-catch the fault inside the locked region as `RefOp` in `diagrams/hooks.cpp` does.
+The move changed no byte. CONFIRMED: both thunks in `dinput8.dll` are byte-identical to the inline-asm build
+(`f7cb7e8`, 92 and 159 bytes). The pre-guard benchmark was unchanged by the move (full 150-157 ns, light
+21-25 ns before and after, three runs each).
 
-Faults are counted, and the first 20 are logged as `hook fault: callback dinput8+<offset>`. The guard's normal path has
-no FPU or SSE code (REP MOVSD copies), so the light and SSE thunks keep their no-x87 contract; on a fault from a light
-or SSE callback the logger runs between an FXSAVE and FXRSTOR of the guard's own, because formatting a line may use
-x87 and XMM registers; `test_midhook_guard.cpp` covers both thunk kinds and the SSE and FPU cases. Cost, the benchmark below on an
-idle machine (three runs): light 50-51 ns per hit (21-25 before), SSE 55-59 ns, full 237-245 ns (150-157 before; the
-full thunk also copies the 160 bytes of x87 state twice). So the guard adds about 27 ns per light hit and about 85 ns
-per full hit: 200 light hits per frame cost about 10 us, inside the budget below.
+Since beta.4, every thunk calls the callback through `RsxrMid_Guard` (`midhook.cpp`) instead of directly. The
+guard copies the Context and runs the callback inside `__try`. On a fault (access violation, divide by zero,
+illegal instruction, an escaped C++ exception) it restores the copy. The site then resumes with its own registers
+and default continuation, as if the callback had not run. The guard also undoes what lies outside the Context.
+An SSE-mode `LoadSt0` is dropped, so the replayed displaced `fld` is the only load. A full-mode FXSAVE image gets
+its first 160 bytes back (control words and ST0-ST7, which is everything the St0 edits touch). Other memory that
+the callback wrote before the fault stays written.
+
+A lock held at the fault stays held, because with `/EHsc` the unwind runs `__finally` blocks but not C++
+destructors. The next hit would then hang the game instead of crashing it. So a callback never reads game memory
+or calls game code while it holds a lock. Read before taking the lock, read through the fault-safe helpers
+(`Rsxr_SafeCopy`, `Rd`), or catch the fault inside the locked region as `RefOp` in `diagrams/hooks.cpp` does.
+
+Faults are counted, and the first 20 are logged as `hook fault: callback dinput8+<offset>`. The guard's normal
+path has no FPU or SSE code (it copies with REP MOVSD), so the light and SSE thunks keep their no-x87 contract. On
+a fault from a light or SSE callback, the logger runs between an FXSAVE and an FXRSTOR of the guard's own, because
+formatting a line may use x87 and XMM registers. `test_midhook_guard.cpp` covers both thunk kinds and the SSE and
+FPU cases.
+
+The cost, from the benchmark below on an idle machine (three runs), is 50-51 ns per light hit (21-25 before),
+55-59 ns per SSE hit and 237-245 ns per full hit (150-157 before). The full thunk also copies the 160 bytes of x87
+state twice. So the guard adds about 27 ns per light hit and about 85 ns per full hit. 200 light hits per frame
+cost about 10 us, which is inside the budget below.
 
 </details>
 
@@ -76,14 +84,14 @@ per full hit: 200 light hits per frame cost about 10 us, inside the budget below
 
 The callback receives a `Context` and must return normally without throwing. It can edit registers, flags, ESP and the continuation (`jump`).
 
-- Leave `jump` unchanged to replay the displaced instructions; choose a validated continuation to skip or redirect them.
+- Leave `jump` unchanged to replay the displaced instructions. Choose a validated continuation to skip or redirect them.
 - Provide at least 40 writable bytes below the requested ESP, plus stack space for the callback.
-- Floating-point state depends on the selected mode; see the mode table above.
+- The floating-point state depends on the selected mode. See the mode table above.
 
 <details markdown="1">
 <summary><b>Context layout and continuation rules</b></summary>
 
-`Rs7Mid::Context` is 44 bytes: EDI, ESI, EBP, original ESP, EBX, EDX, ECX, EAX, EFLAGS
+`RsxrMid::Context` is 44 bytes: EDI, ESI, EBP, original ESP, EBX, EDX, ECX, EAX, EFLAGS
 (nine dwords), then the thunk-owned `fpu` slot (the callback address on entry; while the callback runs the FXSAVE
 image in full mode, 0 in light mode, the result block with bit 0 set in sse mode) and the writable `jump`. Compile-time offset assertions
 bind it to the thunk. GPRs, ESP, flags and `jump` are writable; the callback is `cdecl`, must return
@@ -92,24 +100,28 @@ and restored with FXRSTOR, so a callback changes the resumed floating-point stat
 (below); light mode saves no floating-point state, sse mode only XMM0-7 and MXCSR (their own paragraphs below; AVX
 upper halves and privileged state are outside the game's ABI). The generated 15-byte entry pushes the replay
 address and the callback, then jumps to the shared thunk; the full thunk saves GPRs and flags, copies the context,
-aligns a 512-byte FXSAVE area, clears DF, initialises x87, calls C++, restores floating-point state
+aligns a 512-byte FXSAVE area, clears DF, initializes x87, calls C++, restores floating-point state
 and copies the edited register frame under the requested ESP (direction-aware for overlapping
 frames), then POPAD/POPFD/RET. ESP is the site's pointer, not PUSHAD's; at least 40 writable bytes
 below the requested ESP and enough stack for the callback are required. Bytes below the live stack are
 scratch for both the thunk and the old stubs, so equivalence compares live memory only.
 
-`jump` starts at the relocated copy of the displaced instructions. Leave it for normal replay; set it to
-`site + length` to skip the replay (the callback then does the stock work itself, including any
-`push`), to a branch target of the displaced code, or to another validated continuation. Never target
-the middle of an instruction or the hook's own entry. A trailing displaced `RET` already returns
-directly. `Context::Compare32(lhs, rhs)` reproduces the arithmetic flags of `cmp` and keeps every
-other flag; use it when the stub being replaced left comparison flags that a continuation could read.
+`jump` starts at the relocated copy of the displaced instructions. Leave it unchanged for normal replay. You
+can also set it to one of these:
+
+- `site + length`, to skip the replay. The callback then does the stock work itself, including any `push`.
+- a branch target of the displaced code
+- another validated continuation
+
+Never target the middle of an instruction or the hook's own entry. A trailing displaced `RET` already returns
+directly. `Context::Compare32(lhs, rhs)` reproduces the arithmetic flags of `cmp` and keeps every other flag. Use
+it when the stub being replaced left comparison flags that a continuation could read.
 
 </details>
 
 ## Relocator
 
-The relocator accepts a whitelist of instruction forms and rejects unsupported encodings; it never blindly copies unknown instructions. Relative branches are remapped. Live unload is unsupported.
+The relocator accepts a whitelist of instruction forms and rejects unsupported encodings. It never blindly copies unknown instructions. Relative branches are remapped. Live unload is not supported.
 
 <details markdown="1">
 <summary><b>Supported instructions and test evidence</b></summary>
@@ -133,11 +145,11 @@ needs thread quiescence and is unsupported.
 
 ## Pilot (SE1/SE2/SE3, song-end diagnostics) - CONFIRMED
 
-The old stubs `cmp`'d `g_rs7_endlog` before
-saving anything, so the callback reproduces those flags; the logger takes `Context` plus the original
-stack pointer (never `&ctx.edi` as a PUSHAD frame: the private fields would pose as the return address
-and argument). 180 old-vs-new Unicorn comparisons (3 sites x 5 setting values x 3 incoming flag
-patterns x 2 stack alignments x 2 helper behaviours) pass.
+The old stubs ran `cmp` on `g_rsxr_endlog` before they saved anything, so the callback reproduces those
+flags. The logger takes `Context` plus the original stack pointer. It never takes `&ctx.edi` as a PUSHAD frame,
+because the private fields would then pose as the return address and argument. 180 old-vs-new Unicorn
+comparisons pass (3 sites x 5 setting values x 3 incoming flag patterns x 2 stack alignments x 2 helper
+behaviors).
 
 ## Conversion method
 
@@ -146,10 +158,10 @@ The emulator runs the frozen old stub and the new hook against the same machine 
 <details markdown="1">
 <summary><b>Oracle coverage and flag contract</b></summary>
 
-For every converted site the old compiled stub is frozen (`tools/freeze_stubs.py`
-from a DLL built before the change: bytes plus symbolic fixups, verified by re-linking; no game
-bytes) and `tools/tests/test_midhook_cold.py` / `midhook_oracle.py` run it and the production
-entry + callback on identical machine state in Unicorn. Compared: all eight GPRs, EFLAGS, the exit
+For every converted site, the old compiled stub is frozen with `tools/freeze_stubs.py` from a DLL built
+before the change. The frozen stub is bytes plus symbolic fixups, verified by re-linking, with no game bytes.
+`tools/tests/test_midhook_cold.py` / `midhook_oracle.py` then run it and the production entry + callback on
+identical machine state in Unicorn. Compared: all eight GPRs, EFLAGS, the exit
 taken (final EIP), x87 status/top/ST0-1, XMM0/XMM7, the live stack from the first pushed byte up, a
 data page, every other machine write, exported switches, and the complete input of every helper call
 (arguments, pointed-to bytes, order). Helpers are replaced by `ret` that dirties EAX/ECX/EDX, flags and
@@ -165,14 +177,14 @@ flags that no continuation reads ("dead") the hook leaves the incoming ones; eve
 
 ## What converts and what stays
 
-**HYPOTHESIS:** cold, infrequently hit sites fit the full thunk’s cost budget. Hot sites need a cheaper mode, profiling or hand-written code. Some calling conventions and return-address-sensitive sites also remain hand-written.
+**HYPOTHESIS:** cold sites that are hit rarely fit the cost budget of the full thunk. Hot sites need a cheaper mode, profiling or hand-written code. Sites with some calling conventions, and return-address-sensitive sites, also stay hand-written.
 
 <details markdown="1">
 <summary><b>Site selection and exceptions</b></summary>
 
 HYPOTHESIS (estimate, not measured runtime frequency): load, free,
 setup, song-start and teardown hooks with straight replay run rarely enough that the thunk's
-fixed cost is irrelevant. Hot per-note, per-frame, lane, grid, colour, pitch and audio-thread hooks stay
+fixed cost is irrelevant. Hot per-note, per-frame, lane, grid, color, pitch and audio-thread hooks stay
 hand-written until profiling justifies full-context overhead (or convert to the light mode below once its callback is integer-only). Wrappers that call the original and do work
 around it use the Wrap placement (below). Also stay hand-written: callee `RET imm` cleanups and epilogues, replaced `CALL` sites
 that tail-jump, sites whose displaced bytes use a prefix other than `66` or INT3 padding, custom saved-frame consumers,
@@ -185,19 +197,19 @@ stock instruction's effect itself; where the old stub left compare flags, the ca
 
 ## Light mode
 
-**Use for hot, integer-only callbacks.** The callback and everything it calls must avoid x87, MMX and SSE; even struct copies or zero-initialization can generate those instructions. Register the callback in `LIGHT_CALLBACKS` so the emulator checks it.
+**Use light mode for hot, integer-only callbacks.** The callback and everything it calls must avoid x87, MMX and SSE. Even struct copies or zero-initialization can generate those instructions. Register the callback in `LIGHT_CALLBACKS` so that the emulator checks it.
 
 <details markdown="1">
 <summary><b>Thunk behavior and verification</b></summary>
 
-`Rs7Hook::midMode = Rs7Mid::Mode::Light` (`Rs7Mid_BuildLight`) uses the same 15-byte entry,
+`RsxrHook::midMode = RsxrMid::Mode::Light` (`RsxrMid_BuildLight`) uses the same 15-byte entry,
 `Context` layout and continuation rules, so converting a stub is only writing the callback. Its thunk
-(`Rs7Mid_ThunkLight`) saves GPRs and EFLAGS, places the context 44 bytes below the entry slots as the full
+(`RsxrMid_ThunkLight`) saves GPRs and EFLAGS, places the context 44 bytes below the entry slots as the full
 thunk does (a callback may still `Push` up to eleven dwords), clears DF, calls C++ and writes the edited frame
 back with unrolled moves (no REP MOVSD, no STD). It does no FXSAVE, FNINIT or FXRSTOR and no 16-byte stack
 alignment. Contract: the callback and everything it calls execute no x87, MMX or SSE instruction (they would
 change the game's live floating-point state). In MSVC with `/arch:SSE2` that excludes not only `float`/`double`
-but also zero-initialised structs and arrays and struct copies, which the compiler emits as `xorps`/`movups`/`movq`
+but also zero-initialized structs and arrays and struct copies, which the compiler emits as `xorps`/`movups`/`movq`
 (several existing cold callbacks contain exactly that). Enforcement: a site listed in `LIGHT_CALLBACKS`
 (`tools/tests/emu_harness.py`, kept in sync with the registration) is built with the light builder in the
 emulator tests, and `test_light_callbacks_use_no_fp` disassembles its callback and every direct callee
@@ -211,25 +223,25 @@ relocated JCC/CALL, register/flag/ESP/jump edits) run against both thunks.
 
 ## Sse mode
 
-**Use for hot callbacks that need SSE.** The thunk preserves XMM0–7 and MXCSR; callbacks and callees must avoid x87 and MMX. Register callbacks in `SSE_CALLBACKS`. Use `Rs7Mid::LoadSt0` when the game needs an x87 result.
+**Use SSE mode for hot callbacks that need SSE.** The thunk preserves XMM0–7 and MXCSR. Callbacks and their callees must avoid x87 and MMX. Register the callbacks in `SSE_CALLBACKS`. Use `RsxrMid::LoadSt0` when the game needs an x87 result.
 
 <details markdown="1">
 <summary><b>Floating-point behavior, limits and verification</b></summary>
 
-`Rs7Hook::midMode = Rs7Mid::Mode::Sse` (`Rs7Mid_BuildSse`; mode 2 for `Rs7Mid_BuildCall` /
-`Rs7Mid_BuildWrap`) is for hot sites whose callback computes with floats: the light thunk's frame handling plus
+`RsxrHook::midMode = RsxrMid::Mode::Sse` (`RsxrMid_BuildSse`; mode 2 for `RsxrMid_BuildCall` /
+`RsxrMid_BuildWrap`) is for hot sites whose callback computes with floats: the light thunk's frame handling plus
 XMM0-7 (MOVUPS, unaligned) and MXCSR (STMXCSR / LDMXCSR) around the callback, which runs with MXCSR `1F80h` (round to
 nearest, exceptions masked, no FTZ / DAZ) whatever the game set. No FXSAVE, no FNINIT: the game's x87 stack stays
 live, so the callback and its callees execute no x87 or MMX instruction. With MSVC `/arch:SSE2` that rules out a
-non-inlined function returning `float` / `double` (the x86 ABI returns them in ST0; `Rs7S7_ExtrapolateLane` is inline
-for this) and CRT math. An x87 result goes through `Rs7Mid::LoadSt0(c, value)`: `Context::fpu` points at a result block
-(`Rs7Mid::SseResult`, bit 0 set; the x87 accessors see no image and fail), and after restoring the thunk does
+non-inlined function returning `float` / `double` (the x86 ABI returns them in ST0; `RsxrS7_ExtrapolateLane` is inline
+for this) and CRT math. An x87 result goes through `RsxrMid::LoadSt0(c, value)`: `Context::fpu` points at a result block
+(`RsxrMid::SseResult`, bit 0 set; the x87 accessors see no image and fail), and after restoring the thunk does
 `fld dword` of the value, as a displaced `fld dword [..]` would (one load per hit; a full stack faults like the game's
 own `fld`). The gap below the entry slots is 52 bytes, so the block and the context tail stay below the eleven dwords
 a callback may `Push`. Enforcement: `SSE_CALLBACKS` (`tools/tests/emu_harness.py`) selects the builder in the emulator
 tests, and `test_sse_callbacks_use_no_x87_or_mmx` runs the light check's scan allowing XMM instructions, with no
-exemption: R2's D1 logger `Rs7_DiagNoteHead` only queues the line (integer, a lock-free 16-slot ring) and the full-mode
-diagnostic hooks D2 D3 D5, written under the same `[debug] diagnostics=1`, log it (`Rs7Diag_FlushNoteHeads`). CONFIRMED:
+exemption: R2's D1 logger `Rsxr_DiagNoteHead` only queues the line (integer, a lock-free 16-slot ring) and the full-mode
+diagnostic hooks D2 D3 D5, written under the same `[debug] diagnostics=1`, log it (`RsxrDiag_FlushNoteHeads`). CONFIRMED:
 `tests/test_midhook_sse.cpp` (hardware: the loaded value, XMM / MXCSR / x87 state around the hook, `LoadSt0` fails in
 the other modes), `test_midhook_emu.py` (Unicorn: registers, flags, ESP edits and real-site replay against all three
 thunks; the callback sees MXCSR `1F80h` and the game's x87 stack). Cost: see the table under "Cost". `Context::Add32`
@@ -247,25 +259,26 @@ precision, round to nearest); HYPOTHESIS: the game runs round to nearest at 24-b
 stored float is the same. W compares the 80-bit mean exactly (a mean one 64-bit ulp off 34.0 included); its replay
 and the remap read the game's constant k at `0x1224C6C` (its address from the ref site `X_WTHR`, the operand of W's
 `fcomp`), CONFIRMED 34.0 in the unpacked image; ST0 becomes k - 1, k or k + 1 (the old stub used its own 34.0f,
-`g_rs7_wrong_stock`, retired). The sse thunk on a full x87 stack loads like the game's `fld` (stack fault, compared
+`g_rsxr_wrong_stock`, retired). The sse thunk on a full x87 stack loads like the game's `fld` (stack fault, compared
 with the hardware), and `BuildCall` / `BuildWrap` run with mode 2 in their emulator tests.
 
 </details>
 
 ## Call sites
 
-A `Rs7Kind::Call` site is a `call rel32` whose rel32 startup retargets to the hook's entry
-(`Rs7Hook::callback` on a call site, `Rs7Mid::Hook::PrepareCall`, `Rs7Mid_BuildCall`). Nothing is relocated, and the
-game's own `call` pushes the real return address. Same thunks, `Context`, full/light rules and flag contract as jump
-sites; only the entry and the meaning of `jump` differ, chosen per hook by `Rs7Hook::midCall`:
+A `RsxrKind::Call` site is a `call rel32`. At startup the mod retargets its rel32 to the hook's entry
+(`RsxrHook::callback` on a call site, `RsxrMid::Hook::PrepareCall`, `RsxrMid_BuildCall`). Nothing is relocated, and
+the game's own `call` pushes the real return address. Call sites use the same thunks, `Context`, full/light rules
+and flag contract as jump sites. Only the entry and the meaning of `jump` differ. `RsxrHook::midCall` chooses them
+per hook.
 
 | Placement | Entry | When the callback runs | `jump` starts at |
 |---|---|---|---|
-| `Rs7Mid::Call::Before` (default) | `push callee; push callback; jmp thunk` (15 bytes) | at the callee's entry: `esp` points at the return address (site + 5), arguments at `esp + 4` | the original callee |
-| `Rs7Mid::Call::After` | `lea esp,[esp+4]` (drops the game's return address, keeps the flags); `call callee; push site+5; push callback; jmp thunk` (24 bytes) | after the callee returned: EAX/EDX/flags are the callee's, `esp` is past its own `ret N` cleanup | site + 5 |
+| `RsxrMid::Call::Before` (default) | `push callee; push callback; jmp thunk` (15 bytes) | at the callee's entry: `esp` points at the return address (site + 5), arguments at `esp + 4` | the original callee |
+| `RsxrMid::Call::After` | `lea esp,[esp+4]` (drops the game's return address, keeps the flags); `call callee; push site+5; push callback; jmp thunk` (24 bytes) | after the callee returned: EAX/EDX/flags are the callee's, `esp` is past its own `ret N` cleanup | site + 5 |
 
 Before: leaving `jump` tail-jumps into the callee with the game's stack and return address unchanged (what the old
-`jmp g_rs7_target_X` stubs did); another `jump` replaces the callee (same convention); `Rs7Mid::Return(c, value,
+`jmp g_rsxr_target_X` stubs did); another `jump` replaces the callee (same convention); `RsxrMid::Return(c, value,
 argBytes)` skips it: EAX = value, the return address and `argBytes` of a `ret N` callee are popped, and execution
 continues at site + 5. After: the callback may replace the integer return value (EAX, EDX); the callee sees a return
 address inside the entry, so return-address-sensitive callees (table above) cannot use it, as with a relocated
@@ -280,32 +293,32 @@ with its frozen stub in `tools/tests/test_midhook_nslot.py`.
 
 ## Call-in entries
 
-Call-in entries are calls inserted into relocated function copies. They use the same thunks and mode constraints as hook sites, but have no original callee.
+Call-in entries are calls inserted into relocated function copies. They use the same thunks and mode constraints as hook sites, but they have no original callee.
 
 <details markdown="1">
 <summary><b>Entry behavior and verification</b></summary>
 
 The calls written into relocated function copies (platform/fncopy.h; a call edit replaces one
 stock instruction or call with `call` + NOPs) are not sites: nothing is relocated and there is no callee. A
-`Rs7Mid::CallIn {callback, mode, argBytes}` builds the call entry with no callee (`Rs7Mid_BuildCallIn`, 16 or 18
+`RsxrMid::CallIn {callback, mode, argBytes}` builds the call entry with no callee (`RsxrMid_BuildCallIn`, 16 or 18
 bytes): `push continuation; push callback; jmp thunk`, the continuation a `ret` / `ret argBytes` right after it. The
 callback runs with the copy's registers and flags, `esp` at the copy's return address, arguments at `esp + 4`.
 Leaving `jump` returns to the copy with the edited `Context` (registers, flags) and pops `argBytes` (a stdcall helper's
-`ret N`); assigning it tail-jumps (into the stock callee, with the copy's stack: `Rs7_CallIn_Attach` for strings 0-5).
+`ret N`); assigning it tail-jumps (into the stock callee, with the copy's stack: `Rsxr_CallIn_Attach` for strings 0-5).
 A callback that must run a game function and continue afterwards pushes copies of its arguments and a second call-in
-entry as the return address (`Rs7_CallIn_Shape` / `Rs7_CallIn_ShapeDone`), so the game function runs with the game's
-own x87 state. The generators name the call-in object instead of a DLL function (`g_rs7_callin_<name>`, the edit row's
-`Rs7FnEdit::callin`); `Rs7Fn_Build` writes `CallIn::Entry()` (built on first use, before the copy) into the copy. Same
+entry as the return address (`Rsxr_CallIn_Shape` / `Rsxr_CallIn_ShapeDone`), so the game function runs with the game's
+own x87 state. The generators name the call-in object instead of a DLL function (`g_rsxr_callin_<name>`, the edit row's
+`RsxrFnEdit::callin`); `RsxrFn_Build` writes `CallIn::Entry()` (built on first use, before the copy) into the copy. Same
 thunks, full / light rules and cost budget as sites; a light call-in callback is checked for x87/SSE code like a light
 site (`test_light_and_sse_callins_use_no_fp`). An x87 result (ST0 left for the copy) comes from an Sse-mode call-in
-with `Rs7Mid::LoadSt0`: the SSE thunk does the `fld` after restoring (`Rs7_CallIn_GlowRead`, the GSGL copy's glow
-read; frozen at `06733ba`). **Game code from a full-mode callback** runs under `Rs7Mid::GameFcw` (`midhook.h`): the thunk's FNINIT
+with `RsxrMid::LoadSt0`: the SSE thunk does the `fld` after restoring (`Rsxr_CallIn_GlowRead`, the GSGL copy's glow
+read; frozen at `06733ba`). **Game code from a full-mode callback** runs under `RsxrMid::GameFcw` (`midhook.h`): the thunk's FNINIT
 control word (37Fh, 64-bit precision) is replaced for the scope by the game's own from the saved image (the D3D9 device
 sets 24-bit precision), as under the naked stubs these callbacks replaced. Audit (2026-10-18, every full-mode callback
-that reaches a game function through `call` or a function-pointer cast): `Rs7_CallIn_Attach`, AUD1, DGB, DGM, F1, FGHK,
+that reaches a game function through `call` or a function-pointer cast): `Rsxr_CallIn_Attach`, AUD1, DGB, DGM, F1, FGHK,
 GKT (around the rebuild: the callback uses `__try`), GSC1, IN1, MD1 (before), N5, NG9, PL1, PSL2, PUBGA, PUBGB, SF1,
 TJ (both), TK, TN (both), TU, TUT, XB1. CONFIRMED by `midhook_game_fcw_runs_game_code_with_the_callers_control_word`
-and the call-in oracle (it runs with the game control word 27Fh and records the one Rs7Gs_AttachExt and the attach
+and the call-in oracle (it runs with the game control word 27Fh and records the one RsxrGs_AttachExt and the attach
 stand-in see). CONFIRMED by `tests/test_midhook_call.cpp` (sizes, rejections,
 the `ret N` return with edited registers in both modes) and `tools/tests/test_midhook_callin.py` (`callin_oracle.py`:
 each call against its frozen asm helper and the edit's stock bytes in Unicorn).
@@ -314,20 +327,20 @@ each call against its frozen asm helper and the edit's stock bytes in Unicorn).
 
 ## Wrap placement
 
-Use `Wrap` when a callback needs to work before and after a call, including when the after callback needs the original arguments. Return-address-sensitive callees require another approach.
+Use `Wrap` when a callback needs to do work before and after a call, including when the after callback needs the original arguments. Return-address-sensitive callees need another approach.
 
 <details markdown="1">
 <summary><b>Frame layout, constraints and verification</b></summary>
 
-`Rs7Mid::Call::Wrap` is for the wrappers After cannot express: the callback needs the callee's
+`RsxrMid::Call::Wrap` is for the wrappers After cannot express: the callback needs the callee's
 arguments or the registers it was called with after it returned, skips it conditionally, or passes it arguments it
 builds itself. The entry runs the callee as a subroutine on **copies** of its stack arguments, so the originals stay
 live above the game's return address for the whole call; nothing is added to `Context` and the thunks are unchanged.
-Per site the hook row declares `Rs7Hook::midWrap`, an `Rs7Mid::Wrap {args, conv, locals}`: the stack argument dwords
+Per site the hook row declares `RsxrHook::midWrap`, an `RsxrMid::Wrap {args, conv, locals}`: the stack argument dwords
 to copy, who cleans them up (`Conv::Stdcall`, also for a thiscall callee: the callee's `ret 4 * args`; `Conv::Cdecl`: the
 caller) and the bytes of scratch the callbacks may use (a multiple of 4, at most 256). The same constant is the
-callbacks' view of the frame. The callbacks are `Rs7Hook::midBefore` (optional) and `Rs7Hook::callback` (after;
-optional when there is a before callback), one mode for both. Entry (`Rs7Mid_BuildWrap`), at the game's `call`:
+callbacks' view of the frame. The callbacks are `RsxrHook::midBefore` (optional) and `RsxrHook::callback` (after;
+optional when there is a before callback), one mode for both. Entry (`RsxrMid_BuildWrap`), at the game's `call`:
 
 ```
 push edx; push ecx; push eax; push 0     ; the frame: user dword, then EAX/ECX/EDX at the call
@@ -341,11 +354,11 @@ T:  lea  esp, [esp + locals + 16]
     ret  4 * args  |  ret                 ; the cleanup the game expects from the callee
 ```
 
-Both callbacks see `Context::esp` at the frame, `Rs7Mid::Frame(c, wrap)` (`midhook.h`):
+Both callbacks see `Context::esp` at the frame, `RsxrMid::Frame(c, wrap)` (`midhook.h`):
 
 | `c.esp + ...` | Content |
 |---|---|
-| 0 | `locals` bytes of scratch (`Rs7Mid::Locals(c)`), uninitialised |
+| 0 | `locals` bytes of scratch (`RsxrMid::Locals(c)`), uninitialized |
 | `locals` | `user`: 0 at the call; the before callback may leave a value for the after callback (a handle) |
 | `locals + 4 / 8 / 12` | EAX, ECX, EDX as the game called (not the before callback's edits) |
 | `locals + 16` | the game's return address (site + 5) |
@@ -353,11 +366,11 @@ Both callbacks see `Context::esp` at the frame, `Rs7Mid::Frame(c, wrap)` (`midho
 
 Before callback: the registers, flags and arguments the callee gets. It may edit registers (resumed into the callee)
 and arguments (copied after it returns, so the callee sees the edits; a built argument may point into `Locals`), set
-`user`, or skip the callee: `Rs7Mid::WrapReturn(c, wrap, value)` (EAX = value, frame, return address and the callee's
+`user`, or skip the callee: `RsxrMid::WrapReturn(c, wrap, value)` (EAX = value, frame, return address and the callee's
 cleanup popped, continue at the return address). After callback: EAX/EDX/ECX/flags and the x87 stack (full mode:
 `St0` / `SetSt0`) are the callee's, ESP is the frame (the callee's copies are gone), the arguments and `user` are
 readable; it may replace the return value; `jump` = T. A **jmp site at a function entry** may use the same placement
-(`Rs7Mid::Hook::Prepare` with a `Wrap`): the entry's callee is the relocated prologue followed by a jump to site +
+(`RsxrMid::Hook::Prepare` with a `Wrap`): the entry's callee is the relocated prologue followed by a jump to site +
 length, i.e. the stock function, and T returns from the function. Limits: the callee runs with a return address inside
 the entry and its arguments 16 + `locals` + 4 * `args` bytes lower than at the site (return-address-sensitive callees
 and callees that read past their declared arguments cannot use it); register arguments are whatever the registers hold
@@ -377,7 +390,7 @@ from there with the call retargeted.
 
 ## x87 ST0 (full mode)
 
-Full-mode callbacks use context accessors to inspect or edit the saved x87 stack. Light mode has no saved x87 image; SSE mode uses `LoadSt0` for an x87 result.
+Full-mode callbacks use the context accessors to inspect or edit the saved x87 stack. Light mode has no saved x87 image. SSE mode uses `LoadSt0` for an x87 result.
 
 <details markdown="1">
 <summary><b>Accessors, behavior and verification</b></summary>
@@ -389,7 +402,7 @@ empty stack) and `PushSt0(v)` (what `fld` does: TOP - 1, the value in ST0, C1 = 
 eight registers are valid, where `fld` would overflow). The image keeps ST(i) in stack order and the abridged tag
 byte by physical register, so a push shifts ST0..ST6 down and updates TOP and the tag together; FXRSTOR then loads
 a consistent stack. The conversions are integer code (no x87 instruction, no dependence on the callback's control
-word): double -> 80 bits is exact (a signalling NaN is quietened, as `fld qword` does), 80 bits -> double rounds as
+word): double -> 80 bits is exact (a signaling NaN is quieted, as `fld qword` does), 80 bits -> double rounds as
 `fstp qword` does under the FNINIT control word (unnormals give the default NaN). Light mode has no image: `fpu` is 0,
 `FpuDepth()` is 0 and every edit fails, and a light callback still must not execute floating-point code (the accessors
 take and return `double`). CONFIRMED by `tests/test_midhook_st0.cpp` (native, real entries): round trips of zero,
@@ -397,7 +410,7 @@ signed zero, normal, `DBL_MIN`/`DBL_MAX`, the smallest and largest denormal, inf
 tag unchanged), `SetSt0` bytes equal to the hardware `fld` of the same value, round-to-nearest-even ties and the carry
 into the exponent, push / full-stack refusal and the light-mode case. Jump-site callbacks run before the replay, so an
 x87 result of the displaced code is produced by skipping the replay and pushing it (`PushSt0`), as R3a-R3c and R4 do
-(`features/string7/hooks_lanes.cpp`, string 6: `2 * cell0 - cell1` (`Rs7S7_ExtrapolateLane`) into the scratch vec3,
+(`features/string7/hooks_lanes.cpp`, string 6: `2 * cell0 - cell1` (`RsxrS7_ExtrapolateLane`) into the scratch vec3,
 EAX = the scratch, ST0 = its x, R4 also its `pop esi`). On a full x87 stack `PushSt0` refuses (both edits are
 `[[nodiscard]]`); the hook then rebases EAX so that the replayed `lea; fld` loads the scratch, overflow included,
 which is what the old stub did, and logs it once. Their float result equals the old x87 code's for finite results (both correctly
@@ -420,10 +433,10 @@ A `jmp_atomic8` site is installed with one locked qword exchange, because the co
 A `jmp_atomic8` site is a 5-byte jmp inside one aligned qword, written with one locked exchange
 (the code may run on another thread while it is patched). A mid-hook is prepared for it as for a `jmp` site, with the
 whole `expect` span as the replay (the jmp ends inside an instruction, which the relocator would reject), and startup
-writes the entry with the same locked exchange (`Rs7_PrepareMid` in `platform/hooktable.cpp`, called and applied from `startup_sites.cpp`; one condition more). S3 and
+writes the entry with the same locked exchange (`Rsxr_PrepareMid` in `platform/hooktable.cpp`, called and applied from `startup_sites.cpp`; one condition more). S3 and
 PT1 (the guitar / bass exits `mov [eax+1356h],cx|dx; ret` of `Play_Detector_SetTuning`, cold) are the first: the
 callback does the store itself, calls the helper, which sees the finished detector as before, and returns for the
-function (`Rs7Mid::Ret`); the old stubs left the helper's flags at the return, where no one reads them (contract
+function (`RsxrMid::Ret`); the old stubs left the helper's flags at the return, where no one reads them (contract
 "dead"). Compared with their frozen stubs in `tools/tests/test_midhook_x87.py` (fixture `midhook_318618f.json`, with
 R3a-R3c and R4).
 
@@ -431,9 +444,9 @@ R3a-R3c and R4).
 
 ## Cost
 
-Native QPC microbenchmark (`tests/test_midhook_bench.cpp`, dummy `mov eax,7; ret` site, no-op
-callback, median of 7 x 200,000 hits, several runs, Ryzen 7 5800X, Release Win32).
-CONFIRMED with `Rs7Mid_Guard` on an idle machine (three runs):
+These numbers come from a native QPC microbenchmark (`tests/test_midhook_bench.cpp`). It uses a dummy
+`mov eax,7; ret` site and a no-op callback, and reports the median of 7 x 200,000 hits over several runs
+(Ryzen 7 5800X, Release Win32). CONFIRMED with `RsxrMid_Guard` on an idle machine (three runs).
 
 | Production mode | ns per hit |
 |---|---|
@@ -441,8 +454,8 @@ CONFIRMED with `Rs7Mid_Guard` on an idle machine (three runs):
 | Light | 50-51 |
 | SSE | 55-59 |
 
-The older measurements below are **before the guard**. They compare the then-current thunks with ablated
-copies of the full thunk:
+The older measurements below are from **before the guard**. They compare the thunks of that time with
+ablated copies of the full thunk.
 
 | Variant | ns per hit | Over stock |
 |---|---|---|
@@ -454,30 +467,32 @@ copies of the full thunk:
 | **sse thunk (pre-guard)** | **20-31** | **18-30** |
 | PUSHFD / PUSHAD / call / POPAD / POPFD only (lower bound, not a valid thunk) | 18-24 | 15-21 |
 
-Breakdown of the pre-guard full thunk's about 150 ns: FXSAVE + FXRSTOR about 65 ns, FNINIT about 20 ns, the two REP MOVSD
-context copies with STD/CLD about 45 ns, the register save and call about 20 ns. The HYPOTHESIS that most of the
-cost is FXSAVE/FXRSTOR is partly CONFIRMED: the floating-point handling is the largest part (about 57 % with
-FNINIT, 42 % without), but the string copies are a third of it, which is why the light thunk also unrolls them.
-Not frame time, and the callback's own work is extra (a 64-entry table scan for the PegSet sites, a short
-loop for GSSS/GSSE). With the guard, 10,000 hits per frame cost about 2.4 ms in full mode, 0.5 ms in light mode
-and 0.6 ms in SSE mode. Use full mode where hits per frame x 245 ns stays well under about 20 us (per-frame
-drivers, a few calls per frame, per song or load, once per event). Hot sites use light mode for integer-only
-callbacks, SSE mode for SSE math without x87, or asm.
-HYPOTHESIS (hit counts not measured in game): the converted sites run a few to a few dozen times
-per guitar load, tuner session or song (PSM2 at most 8 per renderer setup), i.e. well under 10 microseconds
-per song.
+The pre-guard full thunk took about 150 ns. FXSAVE + FXRSTOR took about 65 ns, FNINIT about 20 ns, the two
+REP MOVSD context copies with STD/CLD about 45 ns, and the register save and call about 20 ns. The HYPOTHESIS that
+most of the cost is FXSAVE/FXRSTOR is partly CONFIRMED. The floating-point handling is the largest part (about
+57 % with FNINIT, 42 % without), but the string copies are a third of the cost. That is why the light thunk also
+unrolls them.
+
+These numbers are not frame time, and the callback's own work comes on top (a 64-entry table scan for the PegSet
+sites, a short loop for GSSS/GSSE). With the guard, 10,000 hits per frame cost about 2.4 ms in full mode, 0.5 ms
+in light mode and 0.6 ms in SSE mode. Use full mode where hits per frame x 245 ns stays well under about 20 us.
+That covers per-frame drivers, a few calls per frame, and code that runs per song, per load or once per event.
+Hot sites use light mode for integer-only callbacks, SSE mode for SSE math without x87, or asm.
+
+HYPOTHESIS (hit counts not measured in game): the converted sites run a few to a few dozen times per guitar load,
+tuner session or song (PSM2 at most 8 per renderer setup). That is well under 10 microseconds per song.
 
 ## Remaining stubs
 
-Keep hand-written stubs only when a mid-hook cannot express the site. Preserve the game state and document the site, original behavior and changes.
+Keep a hand-written stub only when a mid-hook cannot express the site. The stub must preserve the game state and document the site, the original behavior and the changes.
 
 <details markdown="1">
 <summary><b>Stub contract</b></summary>
 
 The few naked stubs left (in `src/features/<name>/hooks_stubs*.cpp`: chords, headstock, nextgrid, nslot, pitch;
 each file starts with a map of its stubs) keep these rules: a stub is a naked function the patcher jumps to from a game address; it replays
-the displaced instructions, does its work and jumps back. It is exported as `Rs7_Stub_<ID>` with its link variables
-`g_rs7_resume_<ID>` (site + length; the stub ends with `jmp g_rs7_resume_<ID>`) and `g_rs7_target_<ID>` (an
+the displaced instructions, does its work and jumps back. It is exported as `Rsxr_Stub_<ID>` with its link variables
+`g_rsxr_resume_<ID>` (site + length; the stub ends with `jmp g_rsxr_resume_<ID>`) and `g_rsxr_target_<ID>` (an
 original branch / call target), all plain `extern "C" __declspec(dllexport)` declarations in the stub's file. It
 preserves every register and flag the stock code reads afterwards (flags only where the comment says "flags dead"),
 leaves the x87 / SSE state alone unless the comment says it is saved, and never names an inline-asm operand like a
@@ -488,8 +503,9 @@ stock code does and what changes. No new stub where a mid-hook does the job.
 
 ## Conversion status
 
-Which site families are mid-hooks and which are still stubs, with the source file and the emulator test that
-compares each converted site with its frozen stub ("stub frozen at `<commit>`" names the fixture's build).
+This section lists which site families are mid-hooks and which are still stubs. For each converted site it
+names the source file and the emulator test that compares the site with its frozen stub. "stub frozen at
+`<commit>`" names the build of the fixture.
 
 <details markdown="1">
 <summary><b>Site-by-site status</b></summary>
@@ -503,28 +519,28 @@ test files are named after.
 | tuner session / tuning names / SNG load | TK, TS, TUT, XB1 | mid-hook |
 | pool request counts, GuitarStrings / InstrumentInfo / PegSet free sizes | N1, N21, GSZ1, GIZ1, PSA2 | mid-hook |
 | native PegSet destructor / unload / ctor / load | PSD1, PSD2, PSU3, PSC1, PSL1 | mid-hook |
-| native PegSet mesh latch / colour reset / colour name; GuitarStrings dimming at song start / end | PSM2, PSR1, PSN1, GSSS, GSSE | mid-hook |
+| native PegSet mesh latch / color reset / color name; GuitarStrings dimming at song start / end | PSM2, PSR1, PSN1, GSSS, GSSE | mid-hook |
 | relocator rejected the displaced bytes before PR #54 (`66`, `INC`/`DEC r/m8`, `IMUL`, `TEST r/m,imm`); `fcomp` since the sse pass | W | mid-hook, full mode (`features/tuner/hooks.cpp`: the replayed `fcomp [34.0]` on ST0 remapped to 33 / 34 / 35 by `Context::CompareSt0` against the session threshold; BT1 went with `RET imm16`; PSU1, PSU2, PSM1, NG1, PUBEDGE, CLBM, CLBA in batch 5) |
-| sse pass (stubs frozen at `7f80b7b`, `tools/tests/fixtures/midhook_7f80b7b.json`, `tools/tests/test_midhook_sse_sites.py`, frozen stubs and stock bytes): string 6's note head z and lane offset y per note / gem and frame (`LoadSt0`); the per-cell position query, the whole function (`Rs7Mid::Ret`) | R2, R6; PUBGP (R1) | mid-hook, sse mode (`features/string7/hooks_lanes.cpp`, `features/publish/hooks_gridsites.cpp`) |
+| sse pass (stubs frozen at `7f80b7b`, `tools/tests/fixtures/midhook_7f80b7b.json`, `tools/tests/test_midhook_sse_sites.py`, frozen stubs and stock bytes): string 6's note head z and lane offset y per note / gem and frame (`LoadSt0`); the per-cell position query, the whole function (`RsxrMid::Ret`) | R2, R6; PUBGP (R1) | mid-hook, sse mode (`features/string7/hooks_lanes.cpp`, `features/publish/hooks_gridsites.cpp`) |
 | call-kind sites that stay asm: call game functions with a custom convention (B2), a cdecl C++ function that replaces the callee directly, no stub (PP_SNGD) | PP_SNGD, B2 | stub (reasons in the stubs' header comments) |
-| call sites, batch 4: string-mask test (callee replaced, `Rs7Mid::Return`) and eval target arrays (one callback each, light); song tuning, tailed expected pitch of a tracked note / an analysed mistake (full); PegSet load complete (After placement, full) | TM1-TM6, EV1-EV5; S4, PC2, PC3; PSL2 | mid-hook (`features/nslot/hooks_calls.cpp`, `features/pitch/hooks_calls.cpp`, `features/headstock/hooks_mid.cpp`; stubs frozen at `b6071a8`, `tools/tests/fixtures/midhook_b6071a8.json`, `tools/tests/test_midhook_calls.py`) |
+| call sites, batch 4: string-mask test (callee replaced, `RsxrMid::Return`) and eval target arrays (one callback each, light); song tuning, tailed expected pitch of a tracked note / an analyzed mistake (full); PegSet load complete (After placement, full) | TM1-TM6, EV1-EV5; S4, PC2, PC3; PSL2 | mid-hook (`features/nslot/hooks_calls.cpp`, `features/pitch/hooks_calls.cpp`, `features/headstock/hooks_mid.cpp`; stubs frozen at `b6071a8`, `tools/tests/fixtures/midhook_b6071a8.json`, `tools/tests/test_midhook_calls.py`) |
 | Wrap placement (full mode): wrappers that read the callee's arguments or the registers it was called with after it returned (PP1, IN1, F1), skip it (PSN2), build its arguments in the scratch (AM1), hand a handle from before to after (TJ, TU, TN; within the budget, CONFIRMED in game with a temporary per-second hit counter, 2026-10-18: TJ about 194 calls once per song-list build, then 0 while the list or a song is shown; TU 1 per song start; TN 1 every 2-3 s in the pause tuner and the menu tuner, 0 during a song. Never per frame: with the guard, the largest burst costs about 95 us once (194 calls, two full-mode callbacks each)) | PP1, IN1, F1, PSN2, AM1, TJ, TU, TN | mid-hook (`features/nslot/hooks_wrap.cpp`, `features/frets/hooks_wrap.cpp`, `features/headstock/hooks_mid.cpp`, `features/tuner/hooks_wrap.cpp`; stubs frozen at `b72bc52`, `tools/tests/fixtures/midhook_b72bc52.json`, `tools/tests/test_midhook_wrap_sites.py`, which also runs their stock-bytes references) |
-| asm-reduction pass (stubs frozen at `b72bc52` / `c15ca8d`, `tools/tests/test_midhook_asm_sites.py`, frozen stubs and stock bytes): the guitar ctor's allocations and GuitarStrings ctor re-sited to their `call` (GSA1 Before: the size argument; GSC1 Wrap: the entry runs the stock ctor with the game's x87 state, Rs7Gs_Construct adds the native layout after it; GIA1 Wrap: size before, extension after), MD1 (Wrap, a function entry), GRM3 (`PushSt0`, cold), BT1 (the relocated `ret 14h` epilogue, full: memcpy), AG1-AG3 and PE0 (whole functions answered by a light callback, `Rs7Mid::Ret`; PE0 per note) | GSA1, GSC1, GIA1, MD1, GRM3, BT1, AG1-AG3, PE0 | mid-hook (`features/strings/hooks_mid.cpp`, `hooks_wrap.cpp`, `features/nslot/hooks_wrap.cpp`, `hooks_eval.cpp`, `features/pitch/hooks_mid.cpp`) |
-| asm reduction part 2 (stubs frozen at `72da588`, `tools/tests/fixtures/midhook_72da588.json`, `tools/tests/test_midhook_asm_sites2.py`, frozen stubs and stock bytes): the per-frame tailed expected pitch of a tracked note (PC1, PC4: light call sites, Before; `Rs7Pitch_Tailed` reads the registry of tailed allocations instead of `_msize`), the standard-zero expected pitch (PUBZ0, PUBZ4-6 call sites, PUBZ1-3 jmp sites whose replay is the relocated `jmp`; one light callback for the old `Rs7_Publish_ZeroRaw`) and the PUBAN copy's call of the expected pitch over the tail (a light call entry built at copy time, `Rs7_Mid_PubTailPitch`, for the old `Rs7_Pitch_Raw8`) | PC1, PC4, PUBZ0-PUBZ6 | mid-hook (`features/pitch/hooks_calls.cpp`, `features/publish/hooks_pitch.cpp`) |
+| asm-reduction pass (stubs frozen at `b72bc52` / `c15ca8d`, `tools/tests/test_midhook_asm_sites.py`, frozen stubs and stock bytes): the guitar ctor's allocations and GuitarStrings ctor re-sited to their `call` (GSA1 Before: the size argument; GSC1 Wrap: the entry runs the stock ctor with the game's x87 state, RsxrGs_Construct adds the native layout after it; GIA1 Wrap: size before, extension after), MD1 (Wrap, a function entry), GRM3 (`PushSt0`, cold), BT1 (the relocated `ret 14h` epilogue, full: memcpy), AG1-AG3 and PE0 (whole functions answered by a light callback, `RsxrMid::Ret`; PE0 per note) | GSA1, GSC1, GIA1, MD1, GRM3, BT1, AG1-AG3, PE0 | mid-hook (`features/strings/hooks_mid.cpp`, `hooks_wrap.cpp`, `features/nslot/hooks_wrap.cpp`, `hooks_eval.cpp`, `features/pitch/hooks_mid.cpp`) |
+| asm reduction part 2 (stubs frozen at `72da588`, `tools/tests/fixtures/midhook_72da588.json`, `tools/tests/test_midhook_asm_sites2.py`, frozen stubs and stock bytes): the per-frame tailed expected pitch of a tracked note (PC1, PC4: light call sites, Before; `RsxrPitch_Tailed` reads the registry of tailed allocations instead of `_msize`), the standard-zero expected pitch (PUBZ0, PUBZ4-6 call sites, PUBZ1-3 jmp sites whose replay is the relocated `jmp`; one light callback for the old `Rsxr_Publish_ZeroRaw`) and the PUBAN copy's call of the expected pitch over the tail (a light call entry built at copy time, `Rsxr_Mid_PubTailPitch`, for the old `Rsxr_Pitch_Raw8`) | PC1, PC4, PUBZ0-PUBZ6 | mid-hook (`features/pitch/hooks_calls.cpp`, `features/publish/hooks_pitch.cpp`) |
 | bend direction guards (light mode); gem position log, chord frame marks (full mode, their helpers use SSE) | BD1-BD4; D5, B1 | mid-hook (refactor step 7, stubs frozen at `0cf5874`, `tools/tests/fixtures/midhook_0cf5874.json`) |
 | string 6 in the SNG section mask (song load); native pitch tails at matcher creation, detector reset, matcher tuning | N12, N13; PM0, PR0, PM1 | mid-hook, full mode (refactor step 7 batch 2, stubs frozen at `24bfba8`, `tools/tests/fixtures/midhook_24bfba8.json`) |
 | tuner camera reference string, slide end cell stride (light) | TF1, V2 | mid-hook (refactor step 7 batch 3, `features/tuner/hooks_camera.cpp`, `features/fretgrid/hooks_slide.cpp`; stubs frozen at `b8c0ed7`, `tools/tests/fixtures/midhook_b8c0ed7.json`) |
 | N-slot template / ChordNotes redirects (one callback, a per-site register table); eval arrays, tails, mask test, child slots; technique-check latches (light; TP11, DS1 on the loader thread and PL1 with its FP pluck helper: full) | TP1-TP8, TP11, TP12, CP1, CP2, DS1; LU3, WC2, CS1, CC3, CH3, PL1; UP1-UP3, PD2-PD5 | mid-hook (batch 3, `features/nslot/hooks_records.cpp`, `hooks_eval.cpp`, `hooks_latches.cpp`; `tools/tests/test_midhook_nslot.py`) |
 | N-slot sites that call game code from the live tracker state | RL1, RL2 | stub (reasons in the header of `features/nslot/hooks_stubs_tracker.cpp`) |
-| calls written into the GuitarStrings copies, call-in entries: template record (TP2), glow ramp, headstock segment flag / colour, shape lookup (light); glow colour, attach point (full: float helpers); glow read (sse: the x87 result via `LoadSt0`, frozen at `06733ba`); the helper `Rs7_NsTplAt` went with TP2 | `Rs7_Call_TP2`, `_GlowSetup`, `_GlowColour`, `_HsLoaded`, `_HsSeg`, `_Attach`, `_Shape`, `_GlowRead` | call-in (`features/strings/hooks_callin.cpp`; helpers frozen at `304b9d3`, `tools/tests/fixtures/midhook_304b9d3.json`, `tools/tests/test_midhook_callin.py`) |
-| calls written into the publication, pitch-reader and tuner copies, call-in entries: base pitch, wire count, reverse tail (light; `sub` flags via `Context::Compare32`); classification, chord tail, tuner edge, the session copies' stdcall steps (full: C helpers, per analysed note / frame / key press) | `Rs7_Call_PubBaseG`, `_PubBaseB`, `_PubClassify`, `_PubWireCount`, `_PubChordTail`, `_PubEdge`, `Rs7_Publish_ReverseTail`, `Rs7Tu8_Advance`, `Rs7Tu8_First` | call-in (`features/publish/hooks_callin.cpp`, `features/tuner/hooks_callin.cpp`; same fixture, `tools/tests/test_midhook_callin2.py`) |
+| calls written into the GuitarStrings copies, call-in entries: template record (TP2), glow ramp, headstock segment flag / color, shape lookup (light); glow color, attach point (full: float helpers); glow read (sse: the x87 result via `LoadSt0`, frozen at `06733ba`); the helper `Rsxr_NsTplAt` went with TP2 | `Rsxr_Call_TP2`, `_GlowSetup`, `_GlowColour`, `_HsLoaded`, `_HsSeg`, `_Attach`, `_Shape`, `_GlowRead` | call-in (`features/strings/hooks_callin.cpp`; helpers frozen at `304b9d3`, `tools/tests/fixtures/midhook_304b9d3.json`, `tools/tests/test_midhook_callin.py`) |
+| calls written into the publication, pitch-reader and tuner copies, call-in entries: base pitch, wire count, reverse tail (light; `sub` flags via `Context::Compare32`); classification, chord tail, tuner edge, the session copies' stdcall steps (full: C helpers, per analyzed note / frame / key press) | `Rsxr_Call_PubBaseG`, `_PubBaseB`, `_PubClassify`, `_PubWireCount`, `_PubChordTail`, `_PubEdge`, `Rsxr_Publish_ReverseTail`, `RsxrTu8_Advance`, `RsxrTu8_First` | call-in (`features/publish/hooks_callin.cpp`, `features/tuner/hooks_callin.cpp`; same fixture, `tools/tests/test_midhook_callin2.py`) |
 | song destructor (call site, Before placement) | SF1 | mid-hook, full mode (`features/nslot/hooks_free.cpp`; stub frozen at `44135a2`, `tools/tests/fixtures/midhook_44135a2.json`) |
 | jmp_atomic8 sites (one locked qword write over `mov [eax+1356h],r16; ret`) | S3, PT1 | mid-hook, full mode (`features/pitch/hooks_mid.cpp`; stubs frozen at `318618f`, `tools/tests/fixtures/midhook_318618f.json`) |
 | string-6 lane position of spawned note effects (x87 result via `Context::PushSt0`) | R3a-R3c, R4 | mid-hook, full mode (`features/string7/hooks_lanes.cpp`; same fixture) |
-| per-frame driver, string-6 bends while held (full: a few hits per frame); string-6 releases (light, integer-only Rs7_S7BendObject); inverse pitch of string 6 (full, once per analysed mistake) | N5, N18; N19, N20; I1 | mid-hook (batch 2b, stubs frozen at `6d1a62c`, `tools/tests/fixtures/midhook_6d1a62c.json`) |
+| per-frame driver, string-6 bends while held (full: a few hits per frame); string-6 releases (light, integer-only Rsxr_S7BendObject); inverse pitch of string 6 (full, once per analyzed mistake) | N5, N18; N19, N20; I1 | mid-hook (batch 2b, stubs frozen at `6d1a62c`, `tools/tests/fixtures/midhook_6d1a62c.json`) |
 | per-frame, per-note, audio thread, copied-function entries, custom conventions | S1 (rel32 branch target, helper not light-safe), NGP (stack probe) | stub (hot, x87 or custom ABI) |
 | cold or diagnostic, same shape as converted ones, not converted in this pass | (AT, LT1, AL1 went in batch 5) | - |
 | feature stubs of refactor step 7 batch 5: chord loops (light); next-note grid NG1 (light), NG9; FretGrid FGRB; chord diagrams DGB, DGM, DGS, TP13; tuner entries TU8H/C/A and the 21 TS8*, TU8INIT, TU8FREE, AT; publication entries PUBCL/TO/WU/NL/AN/AC, guards PUBGS/GE1/GE2, PUBGC, PUBGO, PUBEDGE (light) and PUBGB, PUBGA, PUBGF; PegSet PSU1, PSU2, PSM1, LT1, AL1 (continues in a C wrapper); GuitarStrings entries GSFR-GSHC, GRM1, GRM2 | CLBM, CLBA, CLGU, CLGE, CLVB; NG1, NG9; FGRB; DGB, DGM, DGS, TP13; TU8H, TU8C, TU8A, TS8*, TU8INIT, TU8FREE, AT; PUB*; PSU1, PSU2, PSM1, LT1, AL1; TICK, JUD1, JUD2, AUD1; GS* entries, GRM1, GRM2 | mid-hook (`features/*/hooks_cl.cpp`, `hooks_mid.cpp`, `hooks_entries.cpp`, `hooks_gridsites.cpp`, `hooks_build.cpp`; stubs frozen at `9c0e44f`, `tools/tests/fixtures/midhook_9c0e44f.json`, `tools/tests/test_midhook_features.py`) |
-| the plain-PSARC unit's jmp_atomic8 sites (cold: per archive / SNG load), written by the unit with its own qword CAS next to the CDLC enabler; the unit builds their entries with `Rs7_PrepareMid` (the whole `expect` replayed) | PP_TOC, PP_SNGF | mid-hook, full mode (asm reduction part 3, `features/psarc/hooks_mid.cpp`; stubs frozen at `fdfddcf`, `tools/tests/fixtures/midhook_fdfddcf.json`, `tools/tests/test_midhook_asm_sites3.py`) |
+| the plain-PSARC unit's jmp_atomic8 sites (cold: per archive / SNG load), written by the unit with its own qword CAS next to the CDLC enabler; the unit builds their entries with `Rsxr_PrepareMid` (the whole `expect` replayed) | PP_TOC, PP_SNGF | mid-hook, full mode (asm reduction part 3, `features/psarc/hooks_mid.cpp`; stubs frozen at `fdfddcf`, `tools/tests/fixtures/midhook_fdfddcf.json`, `tools/tests/test_midhook_asm_sites3.py`) |
 
 </details>

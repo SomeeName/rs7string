@@ -1,4 +1,4 @@
-"""Wrap placement (Rs7Mid_BuildWrap, ARCHITECTURE.md section 14 "Wrap placement") executed in Unicorn against both
+"""Wrap placement (RsxrMid_BuildWrap, ARCHITECTURE.md section 14 "Wrap placement") executed in Unicorn against both
 thunks and both cleanups: a caller `push A1; push A0; call site; [add esp,8]` runs stock and hooked on identical
 machine state. The callee counts its runs, returns A0 + A1 + ECX (flags from the ADD), scribbles over its first
 argument slot and cleans up with `ret 8` (stdcall) or `ret` (cdecl). A function-entry wrap replays the prologue of a
@@ -42,7 +42,7 @@ CALLBACKS = {
 
 
 def skip(pops: int) -> str:
-    """Rs7Mid::WrapReturn(c, {2, conv, 0}, 77): esp past the frame, jump = the return address, then its pops."""
+    """RsxrMid::WrapReturn(c, {2, conv, 0}, 77): esp past the frame, jump = the return address, then its pops."""
     return CTX + f" 83 C1 10 8B 11 89 50 28 83 C1 {4 + pops:02X} 89 48 0C C7 40 1C 4D 00 00 00 C3"
 
 
@@ -87,7 +87,7 @@ def machine(before: str | None, after: str | None, light: int, cdecl: int, entry
     args = (RET_MAGIC, ENTRY, 256, ENTRY, 0 if entry else CALLEE, source if entry else 0, FRAMED_HOOKED, 6)
     args += (BEFORE if before else 0, AFTER if after else 0, 2, pops, 0, light)
     emu.uc.mem_write(STACK + 0x70000, struct.pack(f"<{len(args)}I", *args))
-    emu.run(emu.exports["Rs7Mid_BuildWrap"], RET_MAGIC, {UC_X86_REG_ESP: STACK + 0x70000})
+    emu.run(emu.exports["RsxrMid_BuildWrap"], RET_MAGIC, {UC_X86_REG_ESP: STACK + 0x70000})
     assert emu.uc.reg_read(ALL_REGS[0]) > 0
     return emu
 

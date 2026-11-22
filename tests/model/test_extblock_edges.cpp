@@ -5,14 +5,14 @@
 
 namespace {
 using Bytes = std::vector<uint8_t>;
-using rs7ext::Block;
-using rs7ext::Status;
+using rsxrext::Block;
+using rsxrext::Status;
 
 constexpr size_t kHeaderSizeOffset = 6;
 constexpr size_t kBlockSizeOffset = 8;
 constexpr size_t kSectionCountOffset = 12;
 constexpr size_t kSectionSizeOffset = 8;
-constexpr size_t kStrsPayload = rs7ext::kHeaderSize + rs7ext::kSectionHeader;
+constexpr size_t kStrsPayload = rsxrext::kHeaderSize + rsxrext::kSectionHeader;
 constexpr size_t kStrsStringCount = kStrsPayload + 1;
 constexpr size_t kStrsColumnCount = kStrsPayload + 2;
 constexpr size_t kStrsColumns = kStrsPayload + 4;
@@ -21,9 +21,9 @@ void U32(Bytes& b, size_t at, uint32_t v) {
     std::memcpy(b.data() + at, &v, 4);
 }
 
-// Synthetic wire data only. Sizes and fields follow RS7X-SPEC, sections 2/3.
+// Synthetic wire data only. Sizes and fields follow extension-block.md, sections 2/3.
 Bytes Header() {
-    return {'R', 'S', '7', 'X', 1, 0, 16, 0, 16, 0, 0, 0, 0, 0, 0, 0};
+    return {'R', 'S', 'X', 'R', 1, 0, 16, 0, 16, 0, 0, 0, 0, 0, 0, 0};
 }
 
 size_t Section(Bytes& b, const char* id, const Bytes& payload, uint8_t version = 1, uint8_t flags = 0) {
@@ -56,7 +56,7 @@ Bytes Strings(int n = 7) {
 }
 
 Status Parse(const Bytes& b, Block* out, uint32_t templates = 0, uint32_t notes = 0, uint32_t tuning = 7) {
-    return rs7ext::Parse(b.data(), b.size(), templates, notes, tuning, out, nullptr, 0);
+    return rsxrext::Parse(b.data(), b.size(), templates, notes, tuning, out, nullptr, 0);
 }
 }  // namespace
 
@@ -287,12 +287,12 @@ TEST(extblock_edges_reason_buffer_is_bounded_and_optional) {
     Block out;
     char why[3] = {'x', 'x', 'z'};
 
-    CHECK(rs7ext::Parse(b.data(), b.size(), 0, 0, 7, &out, why, 2) == Status::Invalid);
+    CHECK(rsxrext::Parse(b.data(), b.size(), 0, 0, 7, &out, why, 2) == Status::Invalid);
     CHECK(why[0] != 0 && why[1] == 0 && why[2] == 'z');
-    CHECK(rs7ext::Parse(b.data(), b.size(), 0, 0, 7, &out, why, 0) == Status::Invalid);
+    CHECK(rsxrext::Parse(b.data(), b.size(), 0, 0, 7, &out, why, 0) == Status::Invalid);
     CHECK(why[2] == 'z');
-    CHECK(rs7ext::Parse(nullptr, 1, 0, 0, 7, &out, nullptr, 0) == Status::Invalid);
-    CHECK(rs7ext::Parse(b.data(), b.size(), 0, 0, 7, nullptr, nullptr, 0) == Status::Invalid);
+    CHECK(rsxrext::Parse(nullptr, 1, 0, 0, 7, &out, nullptr, 0) == Status::Invalid);
+    CHECK(rsxrext::Parse(b.data(), b.size(), 0, 0, 7, nullptr, nullptr, 0) == Status::Invalid);
 }
 
 TEST(extblock_edges_string_counts_and_column_order_are_validated) {

@@ -161,7 +161,7 @@ def test_instrumentinfo_flag_fill_stays_inside_the_native_info():
     active = int(re.search(r"kInfoActive = (0x[0-9A-F]+)", h).group(1), 16)
     stock = int(re.search(r"kStockInfoSize = (0x[0-9A-F]+)", h).group(1), 16)
     assert stock == 0x38  # stock: slot 6 would be past the object
-    assert 0x20 + 4 * 8 <= active <= size  # native: slots 6/7 end before the rs7 tail (+40h)
+    assert 0x20 + 4 * 8 <= active <= size  # native: slots 6/7 end before the rsxr tail (+40h)
 
 
 def test_session_harmony_rows_are_six_strings_wide():

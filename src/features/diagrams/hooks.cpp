@@ -10,15 +10,15 @@
 #include <algorithm>
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_dkey = 0, g_rs7_dnumber = 0, g_rs7_dset = 0, g_rs7_ddrop = 0;
+__declspec(dllexport) uintptr_t g_rsxr_dkey = 0, g_rsxr_dnumber = 0, g_rsxr_dset = 0, g_rsxr_ddrop = 0;
 }
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_diagrams = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_diagrams = 0;
 
-void Rs7Diagram_Configure(const wchar_t* ini) {
-    g_rs7_diagrams = Rs7Config_ReadInt(L"chords", L"diagrams7", 1, ini) != 0;
-    Rs7Log("config: [chords] diagrams7=%u (default on)", unsigned(g_rs7_diagrams));
-    Rs7DiagramMovie_Configure(ini);
+void RsxrDiagram_Configure(const wchar_t* ini) {
+    g_rsxr_diagrams = RsxrConfig_ReadInt(L"chords", L"diagrams7", 1, ini) != 0;
+    RsxrLog("config: [chords] diagrams7=%u (default on)", unsigned(g_rsxr_diagrams));
+    RsxrDiagramMovie_Configure(ini);
 }
 
 namespace {
@@ -26,8 +26,8 @@ using Method = void*(__thiscall*)(void*);
 using Find = void*(__thiscall*)(void*, const char*);
 using Ref = void(__thiscall*)(void*);
 
-// AddRef (0) / Release (4) through the object's vtable. Guarded: Rs7Diagram_Bind / _Drop call it while holding
-// g_bindingLock, and a fault caught further up (Rs7Mid_Guard) would leave the lock held.
+// AddRef (0) / Release (4) through the object's vtable. Guarded: RsxrDiagram_Bind / _Drop call it while holding
+// g_bindingLock, and a fault caught further up (RsxrMid_Guard) would leave the lock held.
 void RefOp(void* p, int offset) {
     if (!p) {
         return;
@@ -45,7 +45,7 @@ struct Binding {
     void* dictionary = nullptr;
 };
 
-Binding g_bindings[kRs7NsEntries];
+Binding g_bindings[kRsxrNsEntries];
 SRWLOCK g_bindingLock = SRWLOCK_INIT;
 
 // The game objects below are reached from mid-hook callbacks (asm thunks, no SEH frame): every vtable call and raw
@@ -57,7 +57,7 @@ void* Dictionary(void* p) {
 
     __try {
         return reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(p))[0x5c / 4])(p);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -70,7 +70,7 @@ void* NodeNumberObject(void* node) {
 
     __try {
         return reinterpret_cast<Method>((*reinterpret_cast<uintptr_t**>(node))[0x54 / 4])(node);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -79,7 +79,7 @@ void* NodeNumberObject(void* node) {
 void* ChordIdNode(void* chord) {
     __try {
         return reinterpret_cast<Find>((*reinterpret_cast<uintptr_t**>(chord))[0x18 / 4])(chord, "ChordId");
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
@@ -92,7 +92,7 @@ bool NodeNumber(void* node, double max, int* out) {
     }
 
     double d = 0;
-    if (!Rs7_SafeCopy(&d, static_cast<uint8_t*>(number) + 8, sizeof d)) {
+    if (!Rsxr_SafeCopy(&d, static_cast<uint8_t*>(number) + 8, sizeof d)) {
         return false;
     }
 
@@ -105,7 +105,7 @@ bool NodeNumber(void* node, double max, int* out) {
     return true;
 }
 
-bool LoadedManifest(void* attributes, void* chord, rs7diagram::Shape* shape) {
+bool LoadedManifest(void* attributes, void* chord, rsxrdiagram::Shape* shape) {
     void* dictionary = Dictionary(attributes);
     if (!dictionary || !chord) {
         return false;
@@ -126,17 +126,17 @@ bool LoadedManifest(void* attributes, void* chord, rs7diagram::Shape* shape) {
             continue;
         }
 
-        for (const auto& e : g_rs7_ns) {
+        for (const auto& e : g_rsxr_ns) {
             if (e.song != reinterpret_cast<uintptr_t>(b.song) || !e.tplBegin || !e.t8 || uint32_t(id) >= e.tplCount) {
                 continue;
             }
 
-            auto block = Rs7Ext_Find(b.song);
+            auto block = RsxrExt_Find(b.song);
             if (!block || !block->hasTemplates || block->stringCount < 7 || block->stringCount > 8) {
                 continue;
             }
 
-            ok = rs7diagram::MergeManifestT8(reinterpret_cast<const uint8_t*>(e.t8 + id * rs7ns::kT8Size), shape);
+            ok = rsxrdiagram::MergeManifestT8(reinterpret_cast<const uint8_t*>(e.t8 + id * rsxrns::kT8Size), shape);
             break;
         }
 
@@ -152,7 +152,7 @@ bool LoadedManifest(void* attributes, void* chord, rs7diagram::Shape* shape) {
 void GamePut(void* object, const char* text, int value) {
     void* key = nullptr;
 
-    reinterpret_cast<void(__fastcall*)(const char*, void*, void**)>(g_rs7_dkey)(text, nullptr, &key);
+    reinterpret_cast<void(__fastcall*)(const char*, void*, void**)>(g_rsxr_dkey)(text, nullptr, &key);
     if (!key) {
         return;
     }
@@ -165,23 +165,23 @@ void GamePut(void* object, const char* text, int value) {
         sub esp,8
         fld d
         fstp qword ptr [esp]
-        call g_rs7_dnumber
+        call g_rsxr_dnumber
         add esp,8
     }
 
     if (number) {
-        reinterpret_cast<void(__stdcall*)(void*, void**, void**)>(g_rs7_dset)(object, &key, &number);
+        reinterpret_cast<void(__stdcall*)(void*, void**, void**)>(g_rsxr_dset)(object, &key, &number);
         RefOp(number, 4);
     }
 
     if (key) {
-        __asm mov esi, key __asm call g_rs7_ddrop
+        __asm mov esi, key __asm call g_rsxr_ddrop
     }
 }
 
 int ArrayCount(void* array) {
     uintptr_t a[6] = {};
-    if (!array || !Rs7_SafeCopy(a, array, sizeof a) || a[5] < a[4] || (a[5] - a[4]) % 4) {
+    if (!array || !Rsxr_SafeCopy(a, array, sizeof a) || a[5] < a[4] || (a[5] - a[4]) % 4) {
         return 0;
     }
 
@@ -193,46 +193,47 @@ bool ArrayNumber(void* array, int i, int* value) {
         return false;
     }
 
-    const auto begin = Rs7_SafeRead<uintptr_t>(array, 4 * sizeof(uintptr_t));
+    const auto begin = Rsxr_SafeRead<uintptr_t>(array, 4 * sizeof(uintptr_t));
 
-    return NodeNumber(Rs7_SafeRead<void*>(reinterpret_cast<const void*>(begin), size_t(i) * sizeof(void*)), 255, value);
+    return NodeNumber(Rsxr_SafeRead<void*>(reinterpret_cast<const void*>(begin), size_t(i) * sizeof(void*)), 255,
+                      value);
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7Diagram_Loaded(void** holder, const uint8_t* tpl) {
-    if (!g_rs7_diagrams || !holder || !*holder) {
+extern "C" void __cdecl RsxrDiagram_Loaded(void** holder, const uint8_t* tpl) {
+    if (!g_rsxr_diagrams || !holder || !*holder) {
         return;
     }
 
-    rs7diagram::Shape shape;
-    const uint8_t* t8 = Rs7Ns_AsT8(tpl);
+    rsxrdiagram::Shape shape;
+    const uint8_t* t8 = RsxrNs_AsT8(tpl);
 
-    // Some lesson callers pass a stock-vector pointer directly, bypassing TP13. This mirrors Rs7Ns_TplRecord
+    // Some lesson callers pass a stock-vector pointer directly, bypassing TP13. This mirrors RsxrNs_TplRecord
     // (features/nslot/hooks.cpp) in reverse: stock template address -> T8 record.
     if (!t8) {
-        for (const auto& e : g_rs7_ns) {
+        for (const auto& e : g_rsxr_ns) {
             uintptr_t p = reinterpret_cast<uintptr_t>(tpl);
 
-            if (e.tplBegin && e.t8 && p >= e.tplBegin && p < e.tplBegin + e.tplCount * rs7ns::kTplSize &&
-                (p - e.tplBegin) % rs7ns::kTplSize == 0) {
-                t8 = reinterpret_cast<const uint8_t*>(e.t8 + (p - e.tplBegin) / rs7ns::kTplSize * rs7ns::kT8Size);
+            if (e.tplBegin && e.t8 && p >= e.tplBegin && p < e.tplBegin + e.tplCount * rsxrns::kTplSize &&
+                (p - e.tplBegin) % rsxrns::kTplSize == 0) {
+                t8 = reinterpret_cast<const uint8_t*>(e.t8 + (p - e.tplBegin) / rsxrns::kTplSize * rsxrns::kT8Size);
                 break;
             }
         }
     }
 
-    if (rs7diagram::FromT8(t8, &shape)) {
-        rs7diagram::Emit(shape, GamePut, *holder);
+    if (rsxrdiagram::FromT8(t8, &shape)) {
+        rsxrdiagram::Emit(shape, GamePut, *holder);
     }
 }
 
-extern "C" void __cdecl Rs7Diagram_Manifest(void* object, void* frets, void* fingers, void* attributes, void* chord,
-                                            int capo) {
-    if (!g_rs7_diagrams || !object) {
+extern "C" void __cdecl RsxrDiagram_Manifest(void* object, void* frets, void* fingers, void* attributes, void* chord,
+                                             int capo) {
+    if (!g_rsxr_diagrams || !object) {
         return;
     }
 
-    rs7diagram::Shape shape;
+    rsxrdiagram::Shape shape;
 
     shape.count = std::min(ArrayCount(frets), ArrayCount(fingers));
     if (shape.count < 6 || shape.count > 8) {
@@ -256,11 +257,11 @@ extern "C" void __cdecl Rs7Diagram_Manifest(void* object, void* frets, void* fin
         return;
     }
 
-    rs7diagram::Emit(shape, GamePut, object);
+    rsxrdiagram::Emit(shape, GamePut, object);
 }
 
-extern "C" void __cdecl Rs7Diagram_Bind(void* song, void* attributes) {
-    if (!g_rs7_diagrams || !song) {
+extern "C" void __cdecl RsxrDiagram_Bind(void* song, void* attributes) {
+    if (!g_rsxr_diagrams || !song) {
         return;
     }
 
@@ -292,7 +293,7 @@ extern "C" void __cdecl Rs7Diagram_Bind(void* song, void* attributes) {
     ReleaseSRWLockExclusive(&g_bindingLock);
 }
 
-int Rs7Diagram_Bindings() {
+int RsxrDiagram_Bindings() {
     int n = 0;
 
     AcquireSRWLockShared(&g_bindingLock);
@@ -306,7 +307,7 @@ int Rs7Diagram_Bindings() {
     return n;
 }
 
-void Rs7Diagram_Drop(void* song) {
+void RsxrDiagram_Drop(void* song) {
     AcquireSRWLockExclusive(&g_bindingLock);
 
     for (auto& b : g_bindings) {

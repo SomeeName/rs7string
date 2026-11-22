@@ -6,21 +6,23 @@
 // Extended bass (docs/architecture/06-detection-and-scoring.md "Extended bass"): single notes on a fifth (low B,
 // string 4, B0 = MIDI 23) or sixth (high C, string 5, C3 = MIDI 48) bass string, on their own lane and with the right
 // expected pitch. Stock bass strings stay 0-3. Natively like the 7-string guitar: C-lite builds the bass with 5 / 6
-// strings (GKB, Rs7String4 / Rs7String5 manifest keys), its attach points 4 / 5 continue the stock row
-// (features/strings Rs7Gs_AttachExt), the game lays out lanes, strings, frets and pegs itself (edited headstock
+// strings (GKB, RsxrString4 / RsxrString5 manifest keys), its attach points 4 / 5 continue the stock row
+// (features/strings RsxrGs_AttachExt), the game lays out lanes, strings, frets and pegs itself (edited headstock
 // model with Locator_Peg_5 / 6). This unit adds what the game cannot know: the expected pitch (pitch feature: PE0,
 // PC1-PC4) and the detector's open MIDI and lowest open MIDI (pitch: PT1, PR0, S4; the raw floor follows it,
-// rs7p::Floor).
+// rsxrp::Floor).
 //
-// Activation: only an arrangement whose SNG carries an RS7X block with STRS instrument 1 (docs/release/RS7X-SPEC.md)
-// and is played on a bass detector. Everything else (4-string bass, guitar) keeps the stock behaviour.
-namespace rs7bass {
-constexpr uint32_t kStockStrings = rs7::kStockBassStrings;  // the native count of a stock bass arrangement
-constexpr int kBaseB = rs7::kBassOpenMidi[4];               // string 4: B0
-constexpr int kBaseC = rs7::kBassOpenMidi[5];               // string 5: C3
+// Activation: only an arrangement whose SNG carries an extension block with STRS instrument 1
+// (docs/architecture/extension-block.md) and is played on a bass detector. Everything else (4-string bass, guitar)
+// keeps the stock behaviour.
+namespace rsxrbass {
+constexpr uint32_t kStockStrings = rsxr::kStockBassStrings;  // the native count of a stock bass arrangement
+constexpr int kBaseB = rsxr::kBassOpenMidi[4];               // string 4: B0
+constexpr int kBaseC = rsxr::kBassOpenMidi[5];               // string 5: C3
 constexpr int kNoBase = -1;
 
-// The song's bass string count: 5 or 6 for an RS7X bass block on a bass detector (instrument 2), else 0 (stock).
+// The song's bass string count: 5 or 6 for an extension block bass block on a bass detector (instrument 2), else 0
+// (stock).
 uint32_t SongStrings(bool hasBlock, int blockInstrument, int blockStrings, int detInstrument);
 
 // Base MIDI of extra string `string` (4 -> 23, 5 -> 48) when `strings` (0, 5 or 6) includes it, else kNoBase.
@@ -81,7 +83,7 @@ struct BendHold {
     float time = 0.0f;           // the song time of the last read
     float lowSince = -1.0f;      // since when the readings are below the held one (-1: they are not)
     bool valid = false;
-    // Per-note counts for the log (Rs7_Mid_PBH): reads, reads without a pitch, low reads held, longest gap.
+    // Per-note counts for the log (Rsxr_Mid_PBH): reads, reads without a pitch, low reads held, longest gap.
     uint32_t reads = 0, missed = 0, low = 0;
     float gapSince = -1.0f, longestGap = 0.0f, peak = 0.0f;
 };
@@ -90,18 +92,18 @@ struct BendHold {
 // read counts as successful; `*semis` may be replaced by the held value.
 bool HoldBend(BendHold& h, const void* note, bool ok, float* semis, float now);
 
-}  // namespace rs7bass
+}  // namespace rsxrbass
 
 extern "C" {
 // 0 = off; 5 / 6 = the largest extended bass of this song's players (S4). Read by the per-note pitch callbacks (light /
 // sse, no lock): they only ask about strings 4 / 5, which only an extended bass plays.
-__declspec(dllexport) extern volatile uint32_t g_rs7_bass_strings;
-// The players' setups (rs7bass::SetupPlayer); game thread writes, readers compare the detector.
-__declspec(dllexport) extern rs7bass::Players g_rs7_bass_players;
+__declspec(dllexport) extern volatile uint32_t g_rsxr_bass_strings;
+// The players' setups (rsxrbass::SetupPlayer); game thread writes, readers compare the detector.
+__declspec(dllexport) extern rsxrbass::Players g_rsxr_bass_players;
 }
 
 // S4 (pitch hooks_mode.cpp): binds or clears the mode for the song whose SNG tuning vector `tuning` is (song + 110h,
 // CONFIRMED at 0x7DF0CC) on detector `det`. Returns the song's bass string count (0 = stock). Never throws.
-uint32_t Rs7Bass_OnSong(const void* det, const void* tuning, int detInstrument) noexcept;
+uint32_t RsxrBass_OnSong(const void* det, const void* tuning, int detInstrument) noexcept;
 // The bass string count set up on this detector (0: none, or another detector).
-uint32_t Rs7Bass_DetectorStrings(const void* det) noexcept;
+uint32_t RsxrBass_DetectorStrings(const void* det) noexcept;

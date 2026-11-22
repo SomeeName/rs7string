@@ -12,12 +12,12 @@
 #include <intrin.h>
 #include <iterator>
 
-using namespace rs7frets;
-using namespace rs7fretglue;
+using namespace rsxrfrets;
+using namespace rsxrfretglue;
 
 namespace {
 void GlowEndsRaw(uint8_t* fx, const uint8_t* player) {
-    uint8_t* guitar = *reinterpret_cast<uint8_t* const*>(player + rs7::kSessionGuitar);
+    uint8_t* guitar = *reinterpret_cast<uint8_t* const*>(player + rsxr::kSessionGuitar);
     const int lanes = ExtraLanes(guitar);
     if (lanes < 1) {
         return;
@@ -84,10 +84,10 @@ void GlowEndsRaw(uint8_t* fx, const uint8_t* player) {
         }
     }
 
-    if (Rs7Log_Once(&g_state.logGlow)) {
-        Rs7Log("frets FRG1: fret range glow %p of guitar %p: %d of 4 wire ends moved %d string spacing(s) past string "
-               "0, bars x%.3f",
-               fx, guitar, moved, lanes, double(k));
+    if (RsxrLog_Once(&g_state.logGlow)) {
+        RsxrLog("frets FRG1: fret range glow %p of guitar %p: %d of 4 wire ends moved %d string spacing(s) past string "
+                "0, bars x%.3f",
+                fx, guitar, moved, lanes, double(k));
     }
 }
 }  // namespace
@@ -98,16 +98,16 @@ void GlowEndsRaw(uint8_t* fx, const uint8_t* player) {
 // stock wire ends; on an instrument with strings beyond string 0 the bars were extended past them, so the glow stopped
 // short of the low B / 7th / 8th string. The thunk replays `fld [13610C8h]`; the game then derives the glow's centres
 // from the moved ends.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FRG1(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FRG1(RsxrMid::Context& c) {
     uint8_t* fx = reinterpret_cast<uint8_t*>(c.ebx);
     const uint8_t* player = *reinterpret_cast<const uint8_t* const*>(c.ebp + 0x0C);
-    if (!g_rs7_frets_on || !fx || !player) {
+    if (!g_rsxr_frets_on || !fx || !player) {
         return;
     }
 
     __try {
         GlowEndsRaw(fx, player);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 }
 
@@ -127,8 +127,8 @@ void GlowBarRaw(uint8_t* obj) {
         // The glow's two bar effects and its box (FRG1).
         if (entity && (hash == 0xAF25DCE0u || hash == 0x68058637u || hash == 0xFA400094u)) {
             GameSetScale(entity, k);
-            if (Rs7Log_Once(&g_state.logGlowBar)) {
-                Rs7Log("frets FRG2: fret range glow piece %p (effect %08X) scaled x%.3f", obj, hash, double(k));
+            if (RsxrLog_Once(&g_state.logGlowBar)) {
+                RsxrLog("frets FRG2: fret range glow piece %p (effect %08X) scaled x%.3f", obj, hash, double(k));
             }
         }
 
@@ -142,15 +142,15 @@ void GlowBarRaw(uint8_t* obj) {
 // +0Ch its effect hash, +10h the entity, created by now. A fret range glow bar FRG1 recorded gets the uniform scale
 // that makes it span all strings (Entity_SetScale; the effect's own scale at +14h does not change its size). The thunks
 // replay `mov eax, [ebx+10h]` / `push 1`.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FRG2(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FRG2(RsxrMid::Context& c) {
     uint8_t* obj = reinterpret_cast<uint8_t*>(c.ebx);
-    if (!g_rs7_frets_on || !obj) {
+    if (!g_rsxr_frets_on || !obj) {
         return;
     }
 
     __try {
         GlowBarRaw(obj);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 }
 
@@ -158,19 +158,19 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FRG2(Rs7Mid::Context& c) {
 // object, hash FA400094, +10h the entity). The box FRG1 recorded gets the same uniform scale as the bars: its bones sit
 // on the two fret centres, its height is the stock model's (#283). The thunk replays `movzx eax, byte [edi+18h]` /
 // `push eax`.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FRG3(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FRG3(RsxrMid::Context& c) {
     uint8_t* obj = reinterpret_cast<uint8_t*>(c.edi);
-    if (!g_rs7_frets_on || !obj) {
+    if (!g_rsxr_frets_on || !obj) {
         return;
     }
 
     __try {
         GlowBarRaw(obj);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 }
 
-void rs7fretglue::ResetGlow() {
+void rsxrfretglue::ResetGlow() {
     std::fill(std::begin(g_state.glowBars), std::end(g_state.glowBars), GlowBar{});
     _InterlockedExchange(&g_state.logGlow, 0);
     _InterlockedExchange(&g_state.logGlowBar, 0);

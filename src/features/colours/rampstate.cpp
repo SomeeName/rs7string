@@ -6,7 +6,7 @@
 #include <cstring>
 
 namespace {
-using rs7colour::g_colour;
+using rsxrcolour::g_colour;
 
 LONG Bits(float f) {
     LONG u;
@@ -17,26 +17,26 @@ LONG Bits(float f) {
 }
 
 bool V6IsOn() {
-    return g_rs7_v6[0] != 0.0f;
+    return g_rsxr_v6[0] != 0.0f;
 }
 
 void StoreV6(bool on) {
     for (int m = 0; m < 2; ++m) {
-        InterlockedExchange(reinterpret_cast<volatile LONG*>(&g_rs7_v6[m]), on ? Bits(kRs7V6[m]) : 0);
+        InterlockedExchange(reinterpret_cast<volatile LONG*>(&g_rsxr_v6[m]), on ? Bits(kRsxrV6[m]) : 0);
     }
 
     // Callers include the ramp worker (our own thread). Never touch the colour manager here: mark the palette
     // pending; the game thread publishes it (CMBUILD / FGHK / the SetTexture hook, hooks_publish.cpp).
-    rs7colour::RequestPublish();
+    rsxrcolour::RequestPublish();
 }
 }  // namespace
 
-int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj) {
+int RsxrCand_Add(void* d3d, RsxrFamily f, const char* path, uintptr_t obj) {
     if (!d3d) {
         return -1;
     }
 
-    // The game's file name, copied before the lock: a fault reading it (caught by Rs7Mid_Guard further up) must
+    // The game's file name, copied before the lock: a fault reading it (caught by RsxrMid_Guard further up) must
     // not leave addLock held.
     char name[sizeof g_colour.cands[0].path] = {};
 
@@ -54,18 +54,18 @@ int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj) {
             break;
         }
 
-        if (freeSlot < 0 && g_colour.cands[i].state == Rs7CandState::Retired) {
+        if (freeSlot < 0 && g_colour.cands[i].state == RsxrCandState::Retired) {
             freeSlot = int(i);
         }
     }
 
-    if (idx < 0 && (freeSlot >= 0 || n < kRs7MaxCands)) {
+    if (idx < 0 && (freeSlot >= 0 || n < kRsxrMaxCands)) {
         const int slot = freeSlot >= 0 ? freeSlot : int(n);
-        Rs7Cand& c = g_colour.cands[slot];
+        RsxrCand& c = g_colour.cands[slot];
 
         c.d3d = nullptr;  // a reused slot: unpublished while it is rewritten
         c.family = f;
-        c.state = Rs7CandState::Pending;
+        c.state = RsxrCandState::Pending;
         c.stock = nullptr;
         c.ours = nullptr;
         c.hash = 0;
@@ -88,7 +88,7 @@ int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj) {
     return idx;
 }
 
-Rs7Cand* Rs7Cand_Find(const void* d3d) {
+RsxrCand* RsxrCand_Find(const void* d3d) {
     if (!d3d) {
         return nullptr;
     }
@@ -104,43 +104,43 @@ Rs7Cand* Rs7Cand_Find(const void* d3d) {
     return nullptr;
 }
 
-int Rs7Cand_Count() {
+int RsxrCand_Count() {
     return int(g_colour.candCount);
 }
 
-Rs7Cand* Rs7Cand_At(int i) {
+RsxrCand* RsxrCand_At(int i) {
     return i >= 0 && i < int(g_colour.candCount) ? &g_colour.cands[i] : nullptr;
 }
 
-bool Rs7Cand_Claim(Rs7Cand* c, const void* d3d) {
+bool RsxrCand_Claim(RsxrCand* c, const void* d3d) {
     if (!c || !d3d) {
         return false;
     }
 
     AcquireSRWLockExclusive(&g_colour.addLock);
-    const bool ok = c->d3d == d3d && (c->state == Rs7CandState::Pending || c->state == Rs7CandState::Retry);
+    const bool ok = c->d3d == d3d && (c->state == RsxrCandState::Pending || c->state == RsxrCandState::Retry);
 
     if (ok) {
-        c->state = Rs7CandState::Busy;
+        c->state = RsxrCandState::Busy;
     }
     ReleaseSRWLockExclusive(&g_colour.addLock);
 
     return ok;
 }
 
-bool Rs7Cand_Retire(Rs7Cand* c, const void* d3d, bool byOwner) {
+bool RsxrCand_Retire(RsxrCand* c, const void* d3d, bool byOwner) {
     if (!c || !d3d) {
         return false;
     }
 
     AcquireSRWLockExclusive(&g_colour.addLock);
-    const Rs7CandState s = c->state;
-    const bool ok = c->d3d == d3d && s != Rs7CandState::Retired &&
-                    (byOwner || (s != Rs7CandState::Active && s != Rs7CandState::Busy));
+    const RsxrCandState s = c->state;
+    const bool ok = c->d3d == d3d && s != RsxrCandState::Retired &&
+                    (byOwner || (s != RsxrCandState::Active && s != RsxrCandState::Busy));
 
     if (ok) {
         InterlockedExchangePointer(const_cast<void**>(&c->d3d), nullptr);  // Find stops matching first
-        c->state = Rs7CandState::Retired;
+        c->state = RsxrCandState::Retired;
         c->stock = nullptr;
         c->ours = nullptr;
         c->gone = 0;
@@ -152,7 +152,7 @@ bool Rs7Cand_Retire(Rs7Cand* c, const void* d3d, bool byOwner) {
     return ok;
 }
 
-bool Rs7Ramp_V6Rule(bool enabled, bool deviceOk) {
+bool RsxrRamp_V6Rule(bool enabled, bool deviceOk) {
     if (!enabled || !deviceOk) {
         return false;
     }
@@ -161,16 +161,16 @@ bool Rs7Ramp_V6Rule(bool enabled, bool deviceOk) {
     const LONG n = g_colour.candCount;
 
     for (LONG i = 0; i < n; ++i) {
-        const Rs7CandState s = g_colour.cands[i].state;
-        if (g_colour.cands[i].family == Rs7Family::Embedded) {
+        const RsxrCandState s = g_colour.cands[i].state;
+        if (g_colour.cands[i].family == RsxrFamily::Embedded) {
             continue;
         }
 
-        if (s == Rs7CandState::Refused || s == Rs7CandState::Retry) {
+        if (s == RsxrCandState::Refused || s == RsxrCandState::Retry) {
             return false;
         }
 
-        if (s == Rs7CandState::Active && g_colour.cands[i].family == Rs7Family::Note) {
+        if (s == RsxrCandState::Active && g_colour.cands[i].family == RsxrFamily::Note) {
             noteActive = true;
         }
     }
@@ -178,15 +178,15 @@ bool Rs7Ramp_V6Rule(bool enabled, bool deviceOk) {
     return noteActive;
 }
 
-void Rs7Ramp_UpdateV6(bool enabled, bool deviceOk, const char* reason) {
+void RsxrRamp_UpdateV6(bool enabled, bool deviceOk, const char* reason) {
     AcquireSRWLockExclusive(&g_colour.v6Lock);
-    const bool on = Rs7Ramp_V6Rule(enabled, deviceOk);
+    const bool on = RsxrRamp_V6Rule(enabled, deviceOk);
 
     if (on != V6IsOn()) {
         StoreV6(on);
 
         try {  // in order with the store; never leave the lock held
-            Rs7Log("ramp: V6 %s (%s) tid %lu", on ? "ON" : "OFF", reason ? reason : "", GetCurrentThreadId());
+            RsxrLog("ramp: V6 %s (%s) tid %lu", on ? "ON" : "OFF", reason ? reason : "", GetCurrentThreadId());
         } catch (...) {
         }
     }
@@ -194,21 +194,21 @@ void Rs7Ramp_UpdateV6(bool enabled, bool deviceOk, const char* reason) {
     ReleaseSRWLockExclusive(&g_colour.v6Lock);
 }
 
-void Rs7Ramp_CountSwap() {
+void RsxrRamp_CountSwap() {
     InterlockedIncrement(&g_colour.swaps);
 }
 
-void Rs7Ramp_CountHidden() {
+void RsxrRamp_CountHidden() {
     InterlockedIncrement(&g_colour.hidden);
 }
 
-void Rs7Ramp_CountFault() {
+void RsxrRamp_CountFault() {
     InterlockedIncrement(&g_colour.faults);
 }
 
-void Rs7Ramp_LogStats() {
-    constexpr unsigned kCandStates = unsigned(Rs7CandState::Retired) + 1;
-    unsigned st[kCandStates] = {};  // indexed by Rs7CandState
+void RsxrRamp_LogStats() {
+    constexpr unsigned kCandStates = unsigned(RsxrCandState::Retired) + 1;
+    unsigned st[kCandStates] = {};  // indexed by RsxrCandState
     const LONG n = g_colour.candCount;
 
     for (LONG i = 0; i < n; ++i) {
@@ -219,16 +219,17 @@ void Rs7Ramp_LogStats() {
         }
     }
 
-    st[unsigned(Rs7CandState::Pending)] += st[unsigned(Rs7CandState::Busy)];
-    const unsigned live = unsigned(n) - st[unsigned(Rs7CandState::Retired)];
+    st[unsigned(RsxrCandState::Pending)] += st[unsigned(RsxrCandState::Busy)];
+    const unsigned live = unsigned(n) - st[unsigned(RsxrCandState::Retired)];
 
-    Rs7Log("ramp stats: swaps=%u hidden=%u faults=%u candidates %u (active %u, refused %u, retry %u, pending %u) v6=%s",
-           unsigned(g_colour.swaps), unsigned(g_colour.hidden), unsigned(g_colour.faults), live,
-           st[unsigned(Rs7CandState::Active)], st[unsigned(Rs7CandState::Refused)], st[unsigned(Rs7CandState::Retry)],
-           st[unsigned(Rs7CandState::Pending)], V6IsOn() ? "ON" : "OFF");
+    RsxrLog(
+        "ramp stats: swaps=%u hidden=%u faults=%u candidates %u (active %u, refused %u, retry %u, pending %u) v6=%s",
+        unsigned(g_colour.swaps), unsigned(g_colour.hidden), unsigned(g_colour.faults), live,
+        st[unsigned(RsxrCandState::Active)], st[unsigned(RsxrCandState::Refused)], st[unsigned(RsxrCandState::Retry)],
+        st[unsigned(RsxrCandState::Pending)], V6IsOn() ? "ON" : "OFF");
 }
 
-void Rs7Cand_ResetForTests() {
+void RsxrCand_ResetForTests() {
     AcquireSRWLockExclusive(&g_colour.addLock);
     InterlockedExchange(&g_colour.candCount, 0);
     std::memset(g_colour.cands, 0, sizeof g_colour.cands);

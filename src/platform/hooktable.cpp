@@ -3,9 +3,9 @@
 #include "platform/sites.h"
 #include <cstring>
 
-const Rs7Hook* Rs7_FindHookIn(const Rs7HookTable* const* tables, size_t n, const char* id) {
+const RsxrHook* Rsxr_FindHookIn(const RsxrHookTable* const* tables, size_t n, const char* id) {
     for (size_t k = 0; k < n; ++k) {
-        const Rs7HookTable* t = tables[k];
+        const RsxrHookTable* t = tables[k];
 
         for (size_t i = 0; i < t->count; ++i) {
             if (std::strcmp(t->hooks[i].id, id) == 0) {
@@ -17,7 +17,7 @@ const Rs7Hook* Rs7_FindHookIn(const Rs7HookTable* const* tables, size_t n, const
     return nullptr;
 }
 
-const Rs7HookTable* Rs7_TableOf(const Rs7HookTable* const* tables, size_t n, const Rs7Hook& h) {
+const RsxrHookTable* Rsxr_TableOf(const RsxrHookTable* const* tables, size_t n, const RsxrHook& h) {
     for (size_t k = 0; k < n; ++k) {
         if (tables[k]->Has(h)) {
             return tables[k];
@@ -27,17 +27,17 @@ const Rs7HookTable* Rs7_TableOf(const Rs7HookTable* const* tables, size_t n, con
     return nullptr;
 }
 
-bool Rs7_PrepareMid(Rs7Mid::Hook& mid, const Rs7Resolved& r, const Rs7Hook& h) {
-    if (h.midCall == Rs7Mid::Call::Wrap) {
-        return (r.site->kind == Rs7Kind::Call || r.site->kind == Rs7Kind::Jmp) &&
-               mid.PrepareWrap(r.addr, r.original.data(), r.original.size(), r.site->kind == Rs7Kind::Call, h.midWrap,
+bool Rsxr_PrepareMid(RsxrMid::Hook& mid, const RsxrResolved& r, const RsxrHook& h) {
+    if (h.midCall == RsxrMid::Call::Wrap) {
+        return (r.site->kind == RsxrKind::Call || r.site->kind == RsxrKind::Jmp) &&
+               mid.PrepareWrap(r.addr, r.original.data(), r.original.size(), r.site->kind == RsxrKind::Call, h.midWrap,
                                h.midBefore, h.callback, h.midMode);
     }
 
-    if (r.site->kind == Rs7Kind::Call) {
+    if (r.site->kind == RsxrKind::Call) {
         return mid.PrepareCall(r.addr, r.original.data(), r.original.size(), h.callback, h.midMode, h.midCall);
     }
 
-    return (r.site->kind == Rs7Kind::Jmp || r.site->kind == Rs7Kind::JmpAtomic8) &&
+    return (r.site->kind == RsxrKind::Jmp || r.site->kind == RsxrKind::JmpAtomic8) &&
            mid.Prepare(r.addr, r.original.data(), r.original.size(), h.callback, h.midMode);
 }

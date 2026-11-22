@@ -25,10 +25,10 @@ from emu_harness import (
 pytestmark = needs_emu
 
 
-BUILDERS = ["Rs7Mid_Build", "Rs7Mid_BuildLight", "Rs7Mid_BuildSse"]
+BUILDERS = ["RsxrMid_Build", "RsxrMid_BuildLight", "RsxrMid_BuildSse"]
 
 
-def build(emu, raw, source=CODE + 0x1000, callback=CODE + 0x3000, builder="Rs7Mid_Build"):
+def build(emu, raw, source=CODE + 0x1000, callback=CODE + 0x3000, builder="RsxrMid_Build"):
     out = CODE + 0x2000
     emu.read(source, len(raw))
     emu.uc.mem_write(source, raw)
@@ -259,7 +259,7 @@ def test_pgh1_site_replays_like_the_game():
     assert results[0][1] == struct.pack("<I", 0x0E)
 
 
-# Light mid-hook (Rs7Mid::Mode::Light): the thunk executes no x87/MMX/SSE instruction at all. CR0.TS makes every such
+# Light mid-hook (RsxrMid::Mode::Light): the thunk executes no x87/MMX/SSE instruction at all. CR0.TS makes every such
 # instruction raise #NM, so a run that completes proves it; the FXSAVE image around the run is compared as well.
 def _fp_state(emu, value):
     from unicorn.x86_const import UC_X86_REG_XMM0, UC_X86_REG_XMM7
@@ -287,7 +287,7 @@ def test_light_thunk_executes_no_fp_and_keeps_fp_state(flags):
     from unicorn import UcError
 
     emu = Emu(False)
-    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="Rs7Mid_BuildLight")
+    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="RsxrMid_BuildLight")
     before = _fp_state(emu, True)
     regs = dict(zip(ALL_REGS, [0x111, 0x222, 0x333, 0x444, 0x555, 0x666, 0x777, STACK + 0x80000]))
     regs[UC_X86_REG_EFLAGS] = flags
@@ -300,7 +300,7 @@ def test_light_thunk_executes_no_fp_and_keeps_fp_state(flags):
     assert emu.uc.reg_read(UC_X86_REG_EFLAGS) == flags
     assert _fp_state(emu, False) == before
     # The check has teeth: the full thunk (FXSAVE) faults under CR0.TS.
-    full, _ = build(emu, bytes.fromhex("90 90 90 90 90"), builder="Rs7Mid_Build")
+    full, _ = build(emu, bytes.fromhex("90 90 90 90 90"), builder="RsxrMid_Build")
     _set_ts(emu, True)
     try:
         with pytest.raises(UcError):
@@ -344,8 +344,8 @@ def _fp_instructions(emu, start, sse=False):
 
 def test_fp_scan_flags_the_full_thunk_and_passes_the_light_one():
     emu = Emu(False)
-    assert any("fxsave" in line for line in _fp_instructions(emu, emu.exports["Rs7Mid_Thunk"]))
-    assert _fp_instructions(emu, emu.exports["Rs7Mid_ThunkLight"]) == []
+    assert any("fxsave" in line for line in _fp_instructions(emu, emu.exports["RsxrMid_Thunk"]))
+    assert _fp_instructions(emu, emu.exports["RsxrMid_ThunkLight"]) == []
 
 
 @pytest.mark.parametrize("sid", sorted(LIGHT_CALLBACKS))
@@ -364,14 +364,14 @@ def test_fp_scan_in_sse_mode_allows_sse_and_still_finds_x87():
     """The sse scan has teeth: the SSE thunk's only x87 instruction is its result load, the full thunk's FXSAVE /
     FNINIT are found, and the SSE thunk's MOVUPS / LDMXCSR are allowed."""
     emu = Emu(False)
-    sse = _fp_instructions(emu, emu.exports["Rs7Mid_ThunkSse"], sse=True)
+    sse = _fp_instructions(emu, emu.exports["RsxrMid_ThunkSse"], sse=True)
     assert len(sse) == 1 and "fld dword ptr [ebp + 0x2c]" in sse[0], sse
-    assert any("movups" in line for line in _fp_instructions(emu, emu.exports["Rs7Mid_ThunkSse"]))
-    assert any("fxsave" in line for line in _fp_instructions(emu, emu.exports["Rs7Mid_Thunk"], sse=True))
+    assert any("movups" in line for line in _fp_instructions(emu, emu.exports["RsxrMid_ThunkSse"]))
+    assert any("fxsave" in line for line in _fp_instructions(emu, emu.exports["RsxrMid_Thunk"], sse=True))
 
 
-# Sse mid-hook (Rs7Mid::Mode::Sse): XMM0-7 and MXCSR restored, the x87 state untouched (no FXSAVE / FNINIT), and the
-# callback's float loaded with `fld dword` when it requests one (Rs7Mid::LoadSt0). The callbacks are bytes: they
+# Sse mid-hook (RsxrMid::Mode::Sse): XMM0-7 and MXCSR restored, the x87 state untouched (no FXSAVE / FNINIT), and the
+# callback's float loaded with `fld dword` when it requests one (RsxrMid::LoadSt0). The callbacks are bytes: they
 # clobber every XMM register and MXCSR and optionally store a result in the block Context::fpu points at.
 def _sse_callback(load: int | None) -> bytes:
     code = bytearray()
@@ -392,7 +392,7 @@ def test_sse_thunk_restores_sse_keeps_x87_and_loads_the_result(flags, load):
     from unicorn.x86_const import UC_X86_REG_FPSW, UC_X86_REG_MXCSR
 
     emu = Emu(False)
-    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="Rs7Mid_BuildSse")
+    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="RsxrMid_BuildSse")
     emu.uc.mem_write(callback, _sse_callback(load))
     before = _fp_state(emu, True)  # fld1; fldpi; XMM0 / XMM7 markers
     mxcsr = emu.uc.reg_read(UC_X86_REG_MXCSR)
@@ -415,7 +415,7 @@ def test_sse_thunk_callback_sees_default_mxcsr_and_the_game_x87_stack():
     from unicorn.x86_const import UC_X86_REG_MXCSR
 
     emu = Emu(False)
-    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="Rs7Mid_BuildSse")
+    out, callback = build(emu, bytes.fromhex("90 90 90 90 90"), builder="RsxrMid_BuildSse")
     seen = DATA + 0x9000
     record = bytes.fromhex("0F AE 1D") + struct.pack("<I", seen)  # stmxcsr [seen]
     record += bytes.fromhex("DF E0 66 A3") + struct.pack("<I", seen + 4)  # fnstsw ax; mov [seen+4],ax (test only)

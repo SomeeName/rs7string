@@ -5,7 +5,7 @@
 #include <cstring>
 
 namespace {
-std::string Err(const Rs7Site& s, const char* what) {
+std::string Err(const RsxrSite& s, const char* what) {
     return std::string(s.id) + ": " + what;
 }
 
@@ -22,17 +22,18 @@ int32_t ReadRel(const uint8_t* p, int size) {
 }
 }  // namespace
 
-Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* text, size_t size, uintptr_t textVa) {
-    Rs7ResolveResult r{true, {}, {}, {}, {}};
+RsxrResolveResult Rsxr_ResolveAll(const RsxrSite* sites, int count, const uint8_t* text, size_t size,
+                                  uintptr_t textVa) {
+    RsxrResolveResult r{true, {}, {}, {}, {}};
     size_t hist[256];  // one pass over .text: each pattern scans for its rarest fixed byte
 
-    Rs7_ByteHistogram(text, size, hist);
+    Rsxr_ByteHistogram(text, size, hist);
 
     for (int i = 0; i < count; ++i) {
-        const Rs7Site& s = sites[i];
-        Rs7Pattern pat, exp;
+        const RsxrSite& s = sites[i];
+        RsxrPattern pat, exp;
 
-        if (!Rs7_ParsePattern(s.pattern, pat) || !Rs7_ParsePattern(s.expect, exp)) {
+        if (!Rsxr_ParsePattern(s.pattern, pat) || !Rsxr_ParsePattern(s.expect, exp)) {
             r.errors.push_back(Err(s, "bad pattern"));
             r.failed.push_back(&s);
             continue;
@@ -45,7 +46,7 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
             continue;
         }
 
-        const auto hits = Rs7_FindAll(text, size, pat, 2, hist);
+        const auto hits = Rsxr_FindAll(text, size, pat, 2, hist);
 
         if (hits.size() != 1) {
             char msg[64];
@@ -73,7 +74,7 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
             continue;
         }
 
-        Rs7Resolved res{&s, textVa + off, 0, exp.bytes};
+        RsxrResolved res{&s, textVa + off, 0, exp.bytes};
 
         if (s.targetRelAt >= 0) {
             const size_t relSize = s.targetRelSize == 1 ? 1u : 4u;  // ReadRel reads 4 bytes for anything but 1
@@ -87,7 +88,7 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
             res.target = textVa + off + s.targetInsnEnd + ReadRel(text + off + s.targetRelAt, s.targetRelSize);
         }
 
-        if (s.kind == Rs7Kind::Ref) {  // data reference: the "target" is the dword at the site
+        if (s.kind == RsxrKind::Ref) {  // data reference: the "target" is the dword at the site
             if (off + 4 > size) {
                 r.errors.push_back(Err(s, "ref site runs past .text"));
                 r.failed.push_back(&s);
@@ -112,6 +113,6 @@ Rs7ResolveResult Rs7_ResolveAll(const Rs7Site* sites, int count, const uint8_t* 
     return r;
 }
 
-bool Rs7_ResolveSettled(const Rs7ResolveResult& res, const std::vector<const Rs7Site*>& previous, int count) {
+bool Rsxr_ResolveSettled(const RsxrResolveResult& res, const std::vector<const RsxrSite*>& previous, int count) {
     return res.ok || (!res.failed.empty() && res.failed.size() * 20 <= size_t(count) && res.failed == previous);
 }

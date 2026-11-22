@@ -15,22 +15,22 @@
 #include <utility>
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_dds = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_nfctor = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_nfdtor = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_dds = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_nfctor = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_nfdtor = 0;
 }
 
-using namespace rs7asset;
-using rs7head::g_head;
+using namespace rsxrasset;
+using rsxrhead::g_head;
 
-bool rs7asset::FilePresent(const std::wstring& path) {
+bool rsxrasset::FilePresent(const std::wstring& path) {
     WIN32_FILE_ATTRIBUTE_DATA data{};
 
     return !path.empty() && GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) &&
            !(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (data.nFileSizeHigh || data.nFileSizeLow);
 }
 
-std::vector<std::string> Rs7Asset_DdsNames(const uint8_t* buf, size_t size) {
+std::vector<std::string> RsxrAsset_DdsNames(const uint8_t* buf, size_t size) {
     std::vector<std::string> out;
     std::unordered_set<std::string> seen;
     if (!buf) {
@@ -89,7 +89,7 @@ std::vector<std::string> Rs7Asset_DdsNames(const uint8_t* buf, size_t size) {
     return out;
 }
 
-bool Rs7Asset_ScaleDxt1(uint8_t* dds, size_t size, float k) {
+bool RsxrAsset_ScaleDxt1(uint8_t* dds, size_t size, float k) {
     if (!dds || size < 128 + 8 || !(k > 0.0f && k < 1.0f)) {
         return false;
     }
@@ -140,7 +140,7 @@ bool Rs7Asset_ScaleDxt1(uint8_t* dds, size_t size, float k) {
     return true;
 }
 
-bool Rs7Asset_IsWoodColour(const std::string& name) {
+bool RsxrAsset_IsWoodColour(const std::string& name) {
     std::string low = name;
 
     for (char& ch : low) {
@@ -162,16 +162,16 @@ namespace {
 // 0x4A7BB9..0x4A7C02 does: the game's NiFile adapter (Res_NiFileAdapter_Ctor 0x49FF90, ESI = 0x1C
 // adapter, EDI = IFile*; destroyed by 0x4A0030), over an IFile - here our own in-memory one with the
 // interface the resource manager's memory IFile (vtable 0x11A33F8) has.
-using MemFile = rs7::MemoryFile;
+using MemFile = rsxr::MemoryFile;
 
 // Borrowed bytes and a stack object: neither release nor destruction frees storage.
 void __fastcall MfDtor(MemFile*, void*, uint32_t) {}
 
 long __fastcall MfRelease(MemFile* f, void*) {
-    return rs7::MemoryFileOps::DropRef(f);
+    return rsxr::MemoryFileOps::DropRef(f);
 }
 
-const auto kMemFileVt = rs7::MemoryFileVtable<true, true>(MfDtor, MfRelease);
+const auto kMemFileVt = rsxr::MemoryFileVtable<true, true>(MfDtor, MfRelease);
 
 int DdsFilter(EXCEPTION_POINTERS* ep) {
     g_head.ddsFaultCode = ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0;
@@ -188,7 +188,7 @@ __declspec(noinline) void AdapterCtor(uint8_t* adapter, MemFile* file) {  // 0x4
         push edi
         mov esi, adapter
         mov edi, file
-        call dword ptr [g_rs7_fn_nfctor]
+        call dword ptr [g_rsxr_fn_nfctor]
         pop edi
         pop esi
         pop ebx
@@ -201,7 +201,7 @@ __declspec(noinline) void AdapterDtor(uint8_t* adapter) {  // 0x4A0030: ECX = ad
         push esi
         push edi
         mov ecx, adapter
-        call dword ptr [g_rs7_fn_nfdtor]
+        call dword ptr [g_rsxr_fn_nfdtor]
         pop edi
         pop esi
         pop ebx
@@ -215,7 +215,7 @@ std::wstring DirOf(const std::wstring& path) {
 }
 }  // namespace
 
-namespace rs7asset {
+namespace rsxrasset {
 bool ReadFileBytes(const std::wstring& path, std::vector<uint8_t>& out) {
     out.clear();
     const HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
@@ -249,7 +249,7 @@ bool ReadFileBytes(const std::wstring& path, std::vector<uint8_t>& out) {
 void* CallDdsHandler(const char* key, const uint8_t* bytes, uint32_t size) {
     g_head.ddsFaultCode = 0;
     g_head.ddsFaultAt = 0;
-    if (!g_rs7_fn_dds || !g_rs7_fn_nfctor || !g_rs7_fn_nfdtor || g_head.ddsDead) {
+    if (!g_rsxr_fn_dds || !g_rsxr_fn_nfctor || !g_rsxr_fn_nfdtor || g_head.ddsDead) {
         return nullptr;
     }
 
@@ -259,7 +259,7 @@ void* CallDdsHandler(const char* key, const uint8_t* bytes, uint32_t size) {
 
     __try {
         AdapterCtor(adapter, &file);
-        res = reinterpret_cast<void*(__cdecl*)(const char*, void*, void*)>(g_rs7_fn_dds)(key, adapter, nullptr);
+        res = reinterpret_cast<void*(__cdecl*)(const char*, void*, void*)>(g_rsxr_fn_dds)(key, adapter, nullptr);
         AdapterDtor(adapter);
     } __except (DdsFilter(GetExceptionInformation())) {
         return nullptr;
@@ -279,7 +279,7 @@ bool INameIn(const std::string& n, const std::vector<std::string>& list) {
 }
 
 std::vector<std::string> StockDdsNames(const void* stockBuf, uint32_t stockSize) {
-    return Rs7Asset_DdsNames(static_cast<const uint8_t*>(stockBuf), stockBuf ? stockSize : 0);
+    return RsxrAsset_DdsNames(static_cast<const uint8_t*>(stockBuf), stockBuf ? stockSize : 0);
 }
 
 // Every texture the model names that the stock model does not name and that lies next to the model
@@ -289,14 +289,14 @@ std::vector<std::string> StockDdsNames(const void* stockBuf, uint32_t stockSize)
 int RegisterTextures(const char* name, const std::wstring& path, const std::vector<uint8_t>& model,
                      const void* stockBuf, uint32_t stockSize, std::vector<std::string>* done) {
     const std::vector<std::string> stock = StockDdsNames(stockBuf, stockSize);
-    const std::string folder = Rs7Asset_FolderOf(name);
+    const std::string folder = RsxrAsset_FolderOf(name);
     const std::wstring dir = DirOf(path);
     int n = 0;
 
-    for (const std::string& tex : Rs7Asset_DdsNames(model.data(), model.size())) {
+    for (const std::string& tex : RsxrAsset_DdsNames(model.data(), model.size())) {
         if (INameIn(tex, stock)) {
-            if (Rs7Log_Upto(&g_head.logTex, 24)) {
-                Rs7Log("assetload: texture %s: shared with the stock model - the game's", tex.c_str());
+            if (RsxrLog_Upto(&g_head.logTex, 24)) {
+                RsxrLog("assetload: texture %s: shared with the stock model - the game's", tex.c_str());
             }
             continue;
         }
@@ -311,43 +311,43 @@ int RegisterTextures(const char* name, const std::wstring& path, const std::vect
         std::vector<uint8_t> bytes;
 
         if (!ReadFileBytes(file, bytes)) {
-            if (Rs7Log_Upto(&g_head.logTex, 24)) {
-                Rs7Log("assetload: texture %s: no %ls - left to the game (it may render untextured)", tex.c_str(),
-                       file.c_str());
+            if (RsxrLog_Upto(&g_head.logTex, 24)) {
+                RsxrLog("assetload: texture %s: no %ls - left to the game (it may render untextured)", tex.c_str(),
+                        file.c_str());
             }
             continue;
         }
 
-        if (g_head.wood < 1.0f && Rs7Asset_IsWoodColour(tex)) {
-            const bool ok = Rs7Asset_ScaleDxt1(bytes.data(), bytes.size(), g_head.wood);
+        if (g_head.wood < 1.0f && RsxrAsset_IsWoodColour(tex)) {
+            const bool ok = RsxrAsset_ScaleDxt1(bytes.data(), bytes.size(), g_head.wood);
 
-            if (Rs7Log_Upto(&g_head.logTex, 24)) {
-                Rs7Log("assetload: texture %s: [assets] headstock7_wood=%.2f %s", tex.c_str(), double(g_head.wood),
-                       ok ? "applied (DXT1 end points scaled)" : "NOT applied (not a plain DXT1 .dds)");
+            if (RsxrLog_Upto(&g_head.logTex, 24)) {
+                RsxrLog("assetload: texture %s: [assets] headstock7_wood=%.2f %s", tex.c_str(), double(g_head.wood),
+                        ok ? "applied (DXT1 end points scaled)" : "NOT applied (not a plain DXT1 .dds)");
             }
         }
 
         const std::string key = folder + tex;
         void* res = CallDdsHandler(key.c_str(), bytes.data(), uint32_t(bytes.size()));
-        uint8_t* t = res ? Rs7_SafeRead<uint8_t*>(res, kResTexture) : nullptr;
+        uint8_t* t = res ? Rsxr_SafeRead<uint8_t*>(res, kResTexture) : nullptr;
 
         if (t) {
             ++n;
-            Rs7Alloc_Inc(kAkAssetTextures);
+            RsxrAlloc_Inc(kAkAssetTextures);
             if (done) {
                 done->push_back(tex);
             }
         }
 
-        if (Rs7Log_Upto(&g_head.logTex, 24)) {
-            Rs7Log("assetload: texture %s (%u bytes) registered by the game's dds handler as \"%s\": resource %p, "
-                   "texture %p "
-                   "(renderer data %p)",
-                   tex.c_str(), unsigned(bytes.size()), key.c_str(), res, t,
-                   t ? Rs7_SafeRead<void*>(t, 0x2C) : nullptr);
+        if (RsxrLog_Upto(&g_head.logTex, 24)) {
+            RsxrLog("assetload: texture %s (%u bytes) registered by the game's dds handler as \"%s\": resource %p, "
+                    "texture %p "
+                    "(renderer data %p)",
+                    tex.c_str(), unsigned(bytes.size()), key.c_str(), res, t,
+                    t ? Rsxr_SafeRead<void*>(t, 0x2C) : nullptr);
             if (g_head.ddsFaultCode) {
-                Rs7Log("assetload: texture %s: dds handler FAULT %08lX at %p - not called again", tex.c_str(),
-                       g_head.ddsFaultCode, reinterpret_cast<void*>(g_head.ddsFaultAt));
+                RsxrLog("assetload: texture %s: dds handler FAULT %08lX at %p - not called again", tex.c_str(),
+                        g_head.ddsFaultCode, reinterpret_cast<void*>(g_head.ddsFaultAt));
             }
         }
         // The resource is kept (never released), like the merged model's.
@@ -356,11 +356,11 @@ int RegisterTextures(const char* name, const std::wstring& path, const std::vect
     return n;
 }
 
-// Diagnostic (once): the engine's NiTexture list entries whose file name contains "rs7hs" (our
+// Diagnostic (once): the engine's NiTexture list entries whose file name contains "rsxrhs" (our
 // textures): one per texture with renderer data = the model's NiSourceTextures resolved to the
 // registered ones; more, or none with renderer data = they did not.
 void LogTextureList(const char* when) {
-    if (!g_rs7_texlist_cs || !g_rs7_texlist_head) {
+    if (!g_rsxr_texlist_cs || !g_rsxr_texlist_head) {
         return;
     }
 
@@ -371,35 +371,35 @@ void LogTextureList(const char* when) {
 
     E found[24];
     int n = 0, nodes = 0;
-    auto* cs = reinterpret_cast<CRITICAL_SECTION*>(g_rs7_texlist_cs);
+    auto* cs = reinterpret_cast<CRITICAL_SECTION*>(g_rsxr_texlist_cs);
 
     EnterCriticalSection(cs);
-    uintptr_t p = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(g_rs7_texlist_head), 0);
+    uintptr_t p = Rsxr_SafeRead<uintptr_t>(reinterpret_cast<void*>(g_rsxr_texlist_head), 0);
 
     for (; p && nodes < 8192; ++nodes) {
-        const char* file = Rs7_SafeRead<const char*>(reinterpret_cast<void*>(p), 0x3C);
+        const char* file = Rsxr_SafeRead<const char*>(reinterpret_cast<void*>(p), 0x3C);
         char buf[64] = {};
 
         if (file) {
-            Rs7_SafeCopyZero(buf, file, sizeof buf - 1);
+            Rsxr_SafeCopyZero(buf, file, sizeof buf - 1);
         }
 
-        if (std::strstr(buf, "rs7hs") && n < 24) {
+        if (std::strstr(buf, "rsxrhs") && n < 24) {
             found[n].obj = p;
-            found[n].rd = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x2C);
+            found[n].rd = Rsxr_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x2C);
             std::memcpy(found[n].file, buf, sizeof buf);
             ++n;
         }
 
-        p = Rs7_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x34);
+        p = Rsxr_SafeRead<uintptr_t>(reinterpret_cast<void*>(p), 0x34);
     }
 
     LeaveCriticalSection(cs);
-    Rs7Log("assetload: texture list (%s): %d of %d node(s) are rs7hs textures", when, n, nodes);
+    RsxrLog("assetload: texture list (%s): %d of %d node(s) are rsxrhs textures", when, n, nodes);
 
     for (int i = 0; i < n; ++i) {
-        Rs7Log("assetload:   %p \"%s\" renderer data %p", reinterpret_cast<void*>(found[i].obj), found[i].file,
-               reinterpret_cast<void*>(found[i].rd));
+        RsxrLog("assetload:   %p \"%s\" renderer data %p", reinterpret_cast<void*>(found[i].obj), found[i].file,
+                reinterpret_cast<void*>(found[i].rd));
     }
 }
-}  // namespace rs7asset
+}  // namespace rsxrasset

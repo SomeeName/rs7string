@@ -39,7 +39,7 @@ pytestmark = needs_emu
 
 
 def set_asset(emu: Emu, on: int):
-    emu.uc.mem_write(emu.exports["g_rs7_asset_on"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_asset_on"], struct.pack("<I", on))
 
 
 def test_al1_off_replays_the_stock_prologue(emus):
@@ -53,21 +53,21 @@ def test_al1_off_replays_the_stock_prologue(emus):
 
 
 def test_al1_on_tail_jumps_into_the_c_wrapper(emus):
-    """headstock7=1: the stub leaves the stack untouched and jumps to Rs7_NifHandler (cdecl, same
-    arguments); Rs7_NifHandlerStock is the same replayed prologue as the off path."""
+    """headstock7=1: the stub leaves the stack untouched and jumps to Rsxr_NifHandler (cdecl, same
+    arguments); Rsxr_NifHandlerStock is the same replayed prologue as the off path."""
     _, patched = emus
     set_asset(patched, 1)
     try:
         esp = S7_ESP
         patched.uc.mem_write(esp, stack(RET_MAGIC, S7_MEM, S7_MEM + 0x100, 0x200, 0))
         va = site_va("AL1")
-        patched.run(va, patched.exports["Rs7_NifHandler"], {**S7_REGS, UC_X86_REG_ESP: esp})
+        patched.run(va, patched.exports["Rsxr_NifHandler"], {**S7_REGS, UC_X86_REG_ESP: esp})
         assert patched.uc.reg_read(UC_X86_REG_ESP) == esp
         assert patched.read(esp, 4) == stack(RET_MAGIC)
     finally:
         set_asset(patched, 0)
     stock, _ = emus
-    for emu, start in ((stock, site_va("AL1")), (patched, patched.exports["Rs7_NifHandlerStock"])):
+    for emu, start in ((stock, site_va("AL1")), (patched, patched.exports["Rsxr_NifHandlerStock"])):
         emu.uc.mem_write(S7_ESP, stack(RET_MAGIC, S7_MEM, S7_MEM + 0x100, 0x200, 0))
         emu.run(start, site_va("AL1") + 8, {**S7_REGS})
     assert patched.regs(*ALL_REGS) == stock.regs(*ALL_REGS)
@@ -83,7 +83,7 @@ private_features.extend(__name__, globals())
 
 
 def set_tn(emu: Emu, on: int):
-    set_u32(emu, "g_rs7_tn_on", on)
+    set_u32(emu, "g_rsxr_tn_on", on)
 
 
 def test_tut_off_replays_the_three_instructions(emus):
@@ -105,7 +105,7 @@ SE_SITES = {
 
 
 def set_endlog(emu: Emu, on: int):
-    emu.uc.mem_write(emu.exports["g_rs7_endlog"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_endlog"], struct.pack("<I", on))
 
 
 def se_mem():
@@ -127,7 +127,7 @@ def test_se_stub_off_replays_stock(emus, sid):
     _, patched = emus
     set_endlog(patched, 0)
     try:
-        with entry_calls(patched, "Rs7End_OnContext") as calls:
+        with entry_calls(patched, "RsxrEnd_OnContext") as calls:
             stock, ours = run_s7_site(emus, sid, SE_SITES[sid][1], se_mem())
     finally:
         set_endlog(patched, 1)
@@ -138,12 +138,12 @@ def test_se_stub_off_replays_stock(emus, sid):
 
 @pytest.mark.parametrize("sid", list(SE_SITES))
 def test_se_stub_on_calls_in_and_is_transparent(emus, sid):
-    """song_end_log=1 (default): one call Rs7End_OnContext(site, context); the context points to the
+    """song_end_log=1 (default): one call RsxrEnd_OnContext(site, context); the context points to the
     original game stack; registers, FPU top and memory equal stock."""
     _, patched = emus
     set_endlog(patched, 1)
     site, regs = SE_SITES[sid]
-    with entry_calls(patched, "Rs7End_OnContext") as calls:
+    with entry_calls(patched, "RsxrEnd_OnContext") as calls:
         stock, ours = run_s7_site(emus, sid, regs, se_mem())
     ours, stock = se_live(sid, ours, stock)
     assert ours == stock
@@ -155,9 +155,9 @@ def test_se_stub_on_calls_in_and_is_transparent(emus, sid):
         assert stock[0][0] == 0x00C0FFEE and stock[0][3] == S7_MEM + 0x200  # EAX, EDX of the replay
 
 
-# ---- XB1: RS7X extension block at the end of SNG_Song_Load (core/extblock.h) -----------
+# ---- XB1: extension block at the end of SNG_Song_Load (core/extblock.h) -----------
 def test_xb1_hands_over_song_and_stream_then_replays_the_destructor(emus):
-    """One call Rs7Ext_OnSngLoaded(song = [EBP+8], stream = site ESP+14h), then the stock
+    """One call RsxrExt_OnSngLoaded(song = [EBP+8], stream = site ESP+14h), then the stock
     `lea ecx,[esp+14h]; call 0x9D8B10` (the stream's destructor; +20h set = buffer not owned, so it
     only rewrites the vtables): registers, flags, FPU top and memory equal stock."""
     _, patched = emus
@@ -168,7 +168,7 @@ def test_xb1_hands_over_song_and_stream_then_replays_the_destructor(emus):
         S7_ESP: stack(0x11, 0x22, 0x33, 0x44, 0x55) + bytes(stream) + stack(0x66, 0x77),
         S7_EBP + 8: stack(S7_MEM + 0x400),
     }
-    with entry_calls(patched, "Rs7Ext_OnSngLoaded") as calls:
+    with entry_calls(patched, "RsxrExt_OnSngLoaded") as calls:
         stock, ours = run_s7_site(emus, "XB1", {}, mem, flags=True)
     assert ours == stock
     assert len(calls) == 1 and calls[0][1][:2] == (S7_MEM + 0x400, S7_ESP + 0x14)

@@ -39,40 +39,40 @@ void* TestHeapAlloc(HANDLE heap, DWORD flags, SIZE_T n) {
 #include "features/diagrams/hooks_mid.cpp"
 #include "features/nslot/hooks.cpp"
 #include "features/nslot/records.cpp"
-#include "platform/safecopy.cpp"  // Rs7_SafeCopy* (the shared safe-copy helpers)
+#include "platform/safecopy.cpp"  // Rsxr_SafeCopy* (the shared safe-copy helpers)
 #undef HeapAlloc
-extern "C" uintptr_t g_rs7_diagrams = 0, g_rs7_publish_ports = 0;
+extern "C" uintptr_t g_rsxr_diagrams = 0, g_rsxr_publish_ports = 0;
 static int arrays = 0;
 
-void Rs7Log(const char*, ...) {}
+void RsxrLog(const char*, ...) {}
 
-void Rs7Alloc_Inc(Rs7AllocKind) {
+void RsxrAlloc_Inc(RsxrAllocKind) {
     ++arrays;
 }
 
-void Rs7Alloc_Dec(Rs7AllocKind) {
+void RsxrAlloc_Dec(RsxrAllocKind) {
     --arrays;
 }
 
-void Rs7Diagram_Drop(void*) {}
+void RsxrDiagram_Drop(void*) {}
 
-extern "C" void __cdecl Rs7Diagram_Bind(void*, void*) {}
+extern "C" void __cdecl RsxrDiagram_Bind(void*, void*) {}
 
-extern "C" void __cdecl Rs7Diagram_Manifest(void*, void*, void*, void*, void*, int) {}
+extern "C" void __cdecl RsxrDiagram_Manifest(void*, void*, void*, void*, void*, int) {}
 
-extern "C" void __cdecl Rs7Diagram_Loaded(void**, const uint8_t*) {}
+extern "C" void __cdecl RsxrDiagram_Loaded(void**, const uint8_t*) {}
 
-extern "C" void __cdecl Rs7Mid_Fldcw(uint32_t) {}
+extern "C" void __cdecl RsxrMid_Fldcw(uint32_t) {}
 
-std::shared_ptr<const rs7ext::Block> Rs7Ext_Find(const void*) {
+std::shared_ptr<const rsxrext::Block> RsxrExt_Find(const void*) {
     return {};
 }
 
-int rs7ext::Block::Column(int) const {
+int rsxrext::Block::Column(int) const {
     return -1;
 }
 
-bool rs7ext::Block::TemplateColumn(uint32_t, int, int*, int*) const {
+bool rsxrext::Block::TemplateColumn(uint32_t, int, int*, int*) const {
     return false;
 }
 
@@ -89,16 +89,16 @@ bool DiagramConsumer(uintptr_t begin, uint32_t id, uintptr_t record) {
     Vector(holder, 0x94, begin, begin);
 
     for (uint32_t on = 0; on < 2; ++on) {
-        Rs7Mid::Context c = {1, reinterpret_cast<uint32_t>(holder), 3, 4, 5, 6, 7, id, 9, 0, 11};
-        Rs7Mid::Context want = c;
+        RsxrMid::Context c = {1, reinterpret_cast<uint32_t>(holder), 3, 4, 5, 6, 7, id, 9, 0, 11};
+        RsxrMid::Context want = c;
 
         want.edx = static_cast<uint32_t>(begin);
         want.ecx = id * 9;
-        want.eax = on ? static_cast<uint32_t>(record) : static_cast<uint32_t>(begin) + id * rs7ns::kTplSize;
-        want.jump = static_cast<uint32_t>(g_rs7_resume_TP13);
-        g_rs7_diagrams = on;
-        Rs7_Mid_TP13(c);
-        g_rs7_diagrams = 0;
+        want.eax = on ? static_cast<uint32_t>(record) : static_cast<uint32_t>(begin) + id * rsxrns::kTplSize;
+        want.jump = static_cast<uint32_t>(g_rsxr_resume_TP13);
+        g_rsxr_diagrams = on;
+        Rsxr_Mid_TP13(c);
+        g_rsxr_diagrams = 0;
 
         if (std::memcmp(&c, &want, sizeof c)) {
             std::puts("FAIL: TP13 pointer or preserved registers");
@@ -111,16 +111,16 @@ bool DiagramConsumer(uintptr_t begin, uint32_t id, uintptr_t record) {
 
 // Catches stock-sized pointers escaping failed construction into the widened render / matcher readers.
 bool EmptyConsumers(uintptr_t begin, uintptr_t cnBegin, uint32_t id = 0) {
-    using namespace rs7ns;
-    const auto* t8 = reinterpret_cast<const uint8_t*>(Rs7Ns_TplRecord(static_cast<uint32_t>(begin), id));
-    const auto* c8 = reinterpret_cast<const uint8_t*>(Rs7Ns_CnRecord(static_cast<uint32_t>(cnBegin), id));
+    using namespace rsxrns;
+    const auto* t8 = reinterpret_cast<const uint8_t*>(RsxrNs_TplRecord(static_cast<uint32_t>(begin), id));
+    const auto* c8 = reinterpret_cast<const uint8_t*>(RsxrNs_CnRecord(static_cast<uint32_t>(cnBegin), id));
 
     if (reinterpret_cast<uintptr_t>(t8) == begin || reinterpret_cast<uintptr_t>(c8) == cnBegin) {
         std::puts("FAIL: stock-sized record reached widened consumer");
         return false;
     }
 
-    if (Rs7Ns_AsT8(t8) != t8 || Rs7Ns_AsC8(c8) != c8) {
+    if (RsxrNs_AsT8(t8) != t8 || RsxrNs_AsC8(c8) != c8) {
         return false;
     }
     if (!DiagramConsumer(begin, id, static_cast<uint32_t>(begin) + id * kTplSize)) {
@@ -160,7 +160,7 @@ bool EmptyConsumers(uintptr_t begin, uintptr_t cnBegin, uint32_t id = 0) {
     uint8_t eval[0xC28];
 
     std::memset(eval, 0x5A, sizeof eval);
-    Rs7Ns_OnEvalBuilt(eval, t8, c8);
+    RsxrNs_OnEvalBuilt(eval, t8, c8);
 
     return *reinterpret_cast<const int32_t*>(eval + kEvMidi67) == -1 &&
            *reinterpret_cast<const int32_t*>(eval + kEvMidi67 + 4) == -1 &&
@@ -173,20 +173,20 @@ int main(int argc, char** argv) {
     }
 
     const char* mode = argv[1];
-    uint8_t song[0x120] = {}, tpl[rs7ns::kTplSize] = {}, cn[rs7ns::kCnSize] = {};
+    uint8_t song[0x120] = {}, tpl[rsxrns::kTplSize] = {}, cn[rsxrns::kCnSize] = {};
     auto restore = [&]() {
         Vector(song, 0x94, reinterpret_cast<uintptr_t>(tpl), reinterpret_cast<uintptr_t>(tpl + sizeof tpl));
         Vector(song, 0xAC, reinterpret_cast<uintptr_t>(cn), reinterpret_cast<uintptr_t>(cn + sizeof cn));
     };
 
     restore();
-    Rs7Ns_OnSngLoaded(song);
-    Rs7Ns_OnPostProcessed(song);
-    if (!g_rs7_ns[0].tplBegin || !g_rs7_ns[0].cnBegin || arrays != 2) {
+    RsxrNs_OnSngLoaded(song);
+    RsxrNs_OnPostProcessed(song);
+    if (!g_rsxr_ns[0].tplBegin || !g_rsxr_ns[0].cnBegin || arrays != 2) {
         return 8;
     }
-    if (!DiagramConsumer(reinterpret_cast<uintptr_t>(tpl), 0, g_rs7_ns[0].t8) ||
-        !DiagramConsumer(reinterpret_cast<uintptr_t>(tpl), 1, reinterpret_cast<uintptr_t>(tpl) + rs7ns::kTplSize)) {
+    if (!DiagramConsumer(reinterpret_cast<uintptr_t>(tpl), 0, g_rsxr_ns[0].t8) ||
+        !DiagramConsumer(reinterpret_cast<uintptr_t>(tpl), 1, reinterpret_cast<uintptr_t>(tpl) + rsxrns::kTplSize)) {
         return 6;
     }
 
@@ -195,9 +195,9 @@ int main(int argc, char** argv) {
     if (reload || !std::strcmp(mode, "partial")) {
         Vector(song, 0x94, reinterpret_cast<uintptr_t>(tpl), reinterpret_cast<uintptr_t>(tpl + sizeof tpl - 1));
     } else if (!std::strcmp(mode, "template-copy")) {
-        Vector(song, 0x94, 1, 1 + rs7ns::kTplSize);
+        Vector(song, 0x94, 1, 1 + rsxrns::kTplSize);
     } else if (!std::strcmp(mode, "record-copy")) {
-        Vector(song, 0xAC, 1, 1 + rs7ns::kCnSize);
+        Vector(song, 0xAC, 1, 1 + rsxrns::kCnSize);
     } else if (!std::strcmp(mode, "template-allocation")) {
         failArray = 0;
     } else if (!std::strcmp(mode, "scratch-allocation")) {
@@ -205,21 +205,21 @@ int main(int argc, char** argv) {
     } else if (!std::strcmp(mode, "c8-allocation")) {
         failHeap = true;
     } else if (!std::strcmp(mode, "t8-allocation")) {
-        Rs7Ns_OnSongFree(song);
+        RsxrNs_OnSongFree(song);
         failHeap = true;
         reload = true;
     } else if (!std::strcmp(mode, "load-scratch-allocation")) {
-        Rs7Ns_OnSongFree(song);
+        RsxrNs_OnSongFree(song);
         failArray = 0;
         reload = true;
     } else if (!std::strcmp(mode, "user-allocation")) {
-        g_rs7_ns[0].origCn = 0;
+        g_rsxr_ns[0].origCn = 0;
         failArray = 2;
     } else if (!std::strcmp(mode, "registry-full")) {
-        Rs7Ns_OnSongFree(song);
+        RsxrNs_OnSongFree(song);
 
-        for (int i = 0; i < kRs7NsEntries; ++i) {
-            g_rs7_ns[i].song = i + 1;
+        for (int i = 0; i < kRsxrNsEntries; ++i) {
+            g_rsxr_ns[i].song = i + 1;
         }
 
         reload = true;
@@ -228,11 +228,11 @@ int main(int argc, char** argv) {
     }
 
     if (reload) {
-        Rs7Ns_OnSngLoaded(song);
+        RsxrNs_OnSngLoaded(song);
     } else {
-        Rs7Ns_OnPostProcessed(song);
+        RsxrNs_OnPostProcessed(song);
     }
-    const Rs7NsEntry& e = g_rs7_ns[0];
+    const RsxrNsEntry& e = g_rsxr_ns[0];
 
     if (e.tplBegin || e.cnBegin || e.t8 || e.c8 || e.tplCount || e.cnCount || arrays) {
         std::printf("FAIL: %s retained published or allocated arrays\n", mode);
@@ -271,20 +271,20 @@ int main(int argc, char** argv) {
 
     ReleaseSRWLockExclusive(&g_lock);
     if (full) {
-        std::memset(g_rs7_ns, 0, sizeof g_rs7_ns);
+        std::memset(g_rsxr_ns, 0, sizeof g_rsxr_ns);
     }
     restore();
     if (reload) {
-        Rs7Ns_OnSngLoaded(song);
+        RsxrNs_OnSngLoaded(song);
     }
-    Rs7Ns_OnPostProcessed(song);
+    RsxrNs_OnPostProcessed(song);
 
     if (!e.tplBegin || !e.cnBegin || arrays != 2) {
         std::puts("FAIL: retry failed");
         return 4;
     }
 
-    Rs7Ns_OnSongFree(song);
+    RsxrNs_OnSongFree(song);
     if (arrays) {
         return 5;
     }

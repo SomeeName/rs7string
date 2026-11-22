@@ -1,4 +1,4 @@
-// The Wrap placement (Rs7Mid_BuildWrap, Hook::PrepareWrap; ARCHITECTURE.md section 14 "Wrap placement"): a caller
+// The Wrap placement (RsxrMid_BuildWrap, Hook::PrepareWrap; ARCHITECTURE.md section 14 "Wrap placement"): a caller
 // `push A1; push A0; call callee; [add esp,8]; ret` runs stock and hooked on identical registers and flags. The callee
 // counts its runs, returns A0 + A1 + ECX (flags from the ADD) in EAX and 5150h in EDX, scribbles over its first
 // argument slot and cleans up with `ret 8` (stdcall) or `ret` (cdecl). A function-entry wrap runs a copy of a small
@@ -10,11 +10,11 @@
 #include <cstring>
 
 namespace {
-using namespace Rs7MidRun;
+using namespace RsxrMidRun;
 
 uint32_t g_calleeRuns, g_callbacks, g_befores;
 constexpr uint32_t kA0 = 0x11223344, kA1 = 0x01020304, kEdx = 0x5150;
-Rs7Mid::Wrap g_wrap;  // the frame the callbacks read (set with the entry)
+RsxrMid::Wrap g_wrap;  // the frame the callbacks read (set with the entry)
 
 // page + 0: stock caller, + 32: hooked caller (its call at + 42), + 64: callee, + 128: the entry, + 448 / + 480: a
 // framed function (stock / hooked copy whose first five bytes jump to the entry).
@@ -82,16 +82,16 @@ struct Page {
 
     uintptr_t Entry() const { return uintptr_t(p + 128); }
 
-    Rs7Mid::Wrap Spec(uint16_t locals = 0) const {
-        return {2, cdeclConv ? Rs7Mid::Conv::Cdecl : Rs7Mid::Conv::Stdcall, locals};
+    RsxrMid::Wrap Spec(uint16_t locals = 0) const {
+        return {2, cdeclConv ? RsxrMid::Conv::Cdecl : RsxrMid::Conv::Stdcall, locals};
     }
 
     // The entry for the hooked caller's call (call site) or for the hooked framed function (entry), and the callers.
-    bool Hook(Rs7Mid::Callback before, Rs7Mid::Callback after, bool light, bool entry = false, uint16_t locals = 0) {
+    bool Hook(RsxrMid::Callback before, RsxrMid::Callback after, bool light, bool entry = false, uint16_t locals = 0) {
         g_wrap = Spec(locals);
-        const size_t n = Rs7Mid_BuildWrap(p + 128, 256, Entry(), entry ? 0 : Callee(), entry ? p + 448 : nullptr,
-                                          uintptr_t(p + 480), 6, uintptr_t(before), uintptr_t(after), g_wrap.args,
-                                          g_wrap.PopBytes(), g_wrap.locals, light ? 1 : 0);
+        const size_t n = RsxrMid_BuildWrap(p + 128, 256, Entry(), entry ? 0 : Callee(), entry ? p + 448 : nullptr,
+                                           uintptr_t(p + 480), 6, uintptr_t(before), uintptr_t(after), g_wrap.args,
+                                           g_wrap.PopBytes(), g_wrap.locals, light ? 1 : 0);
 
         Caller(0, entry ? uintptr_t(p + 448) : Callee());
         Caller(32, entry ? uintptr_t(p + 480) : Entry());
@@ -106,66 +106,66 @@ struct Page {
 };
 
 struct Seen {
-    Rs7Mid::Context c;
-    Rs7Mid::WrapFrame frame;
+    RsxrMid::Context c;
+    RsxrMid::WrapFrame frame;
     uint32_t arg0, arg1;
 } g_after, g_before;
 
-Seen Observe(const Rs7Mid::Context& c) {
-    Rs7Mid::WrapFrame& f = Rs7Mid::Frame(c, g_wrap);
+Seen Observe(const RsxrMid::Context& c) {
+    RsxrMid::WrapFrame& f = RsxrMid::Frame(c, g_wrap);
 
     return {c, f, f.Arg(0), f.Arg(1)};
 }
 
-void __cdecl After(Rs7Mid::Context& c) {
+void __cdecl After(RsxrMid::Context& c) {
     g_after = Observe(c);
     ++g_callbacks;
 }
 
-void __cdecl Double(Rs7Mid::Context& c) {
+void __cdecl Double(RsxrMid::Context& c) {
     After(c);
     c.eax *= 2;
 }
 
-void __cdecl Before(Rs7Mid::Context& c) {
+void __cdecl Before(RsxrMid::Context& c) {
     g_before = Observe(c);
     ++g_befores;
 }
 
-void __cdecl BeforeEdits(Rs7Mid::Context& c) {
+void __cdecl BeforeEdits(RsxrMid::Context& c) {
     Before(c);
-    Rs7Mid::Frame(c, g_wrap).user = 0x55;
-    Rs7Mid::Frame(c, g_wrap).Arg(1) = 1000;
+    RsxrMid::Frame(c, g_wrap).user = 0x55;
+    RsxrMid::Frame(c, g_wrap).Arg(1) = 1000;
     c.ecx = 100;
 }
 
-void __cdecl BeforeSkips(Rs7Mid::Context& c) {
+void __cdecl BeforeSkips(RsxrMid::Context& c) {
     Before(c);
-    Rs7Mid::WrapReturn(c, g_wrap, 77);
+    RsxrMid::WrapReturn(c, g_wrap, 77);
 }
 
 // Builds argument 0 in the scratch: a pointer to it (the callee adds the pointer value), with a marker behind it.
-void __cdecl BeforeBuilds(Rs7Mid::Context& c) {
+void __cdecl BeforeBuilds(RsxrMid::Context& c) {
     Before(c);
-    uint8_t* locals = Rs7Mid::Locals(c);
+    uint8_t* locals = RsxrMid::Locals(c);
 
     Dword(locals, 0xc0ffee);
-    Rs7Mid::Frame(c, g_wrap).Arg(0) = uint32_t(uintptr_t(locals));
+    RsxrMid::Frame(c, g_wrap).Arg(0) = uint32_t(uintptr_t(locals));
 }
 
 uint32_t g_localsAfter;
 
-void __cdecl AfterReadsLocals(Rs7Mid::Context& c) {
+void __cdecl AfterReadsLocals(RsxrMid::Context& c) {
     After(c);
-    std::memcpy(&g_localsAfter, Rs7Mid::Locals(c), 4);
+    std::memcpy(&g_localsAfter, RsxrMid::Locals(c), 4);
 }
 
-void __cdecl ClobberFp(Rs7Mid::Context& c) {
+void __cdecl ClobberFp(RsxrMid::Context& c) {
     After(c);
     reinterpret_cast<void (*)()>(Helpers().clobber)();
 }
 
-void __cdecl HalveSt0(Rs7Mid::Context& c) {
+void __cdecl HalveSt0(RsxrMid::Context& c) {
     ClobberFp(c);
     CHECK(c.HasSt0() && c.St0() == 1.0);
     CHECK(c.SetSt0(0.5));
@@ -181,23 +181,23 @@ TEST(midhook_wrap_build_rejections) {
     uint8_t out[256]{};
     const auto build = [&](size_t capacity, uintptr_t before, uintptr_t after, uint32_t args, uint32_t pops,
                            uint32_t locals) {
-        return Rs7Mid_BuildWrap(out, capacity, 0x3000, 0x2000, nullptr, 0x1000, 5, before, after, args, pops, locals,
-                                0);
+        return RsxrMid_BuildWrap(out, capacity, 0x3000, 0x2000, nullptr, 0x1000, 5, before, after, args, pops, locals,
+                                 0);
     };
 
     CHECK(build(sizeof out, 0, 0x4000, 2, 8, 0) > 0);
     CHECK(build(sizeof out, 0x4000, 0, 2, 0, 16) > 0);
     CHECK_EQ(build(sizeof out, 0, 0, 2, 8, 0), 0u);  // no callback
-    CHECK_EQ(build(sizeof out, 0, 0x4000, Rs7Mid::kWrapMaxArgs + 1, 0, 0), 0u);
+    CHECK_EQ(build(sizeof out, 0, 0x4000, RsxrMid::kWrapMaxArgs + 1, 0, 0), 0u);
     CHECK_EQ(build(sizeof out, 0, 0x4000, 2, 4, 0), 0u);  // pops neither 0 nor 4 * args
     CHECK_EQ(build(sizeof out, 0, 0x4000, 2, 8, 6), 0u);  // locals not dword-sized
-    CHECK_EQ(build(sizeof out, 0, 0x4000, 2, 8, Rs7Mid::kWrapMaxLocals + 4), 0u);
+    CHECK_EQ(build(sizeof out, 0, 0x4000, 2, 8, RsxrMid::kWrapMaxLocals + 4), 0u);
     CHECK_EQ(build(20, 0, 0x4000, 2, 8, 0), 0u);  // capacity
-    CHECK_EQ(Rs7Mid_BuildWrap(out, sizeof out, 0x3000, 0, nullptr, 0x1000, 5, 0, 0x4000, 0, 0, 0, 0), 0u);
-    const size_t maximal = build(sizeof out, 0x4000, 0x4000, Rs7Mid::kWrapMaxArgs, 0, Rs7Mid::kWrapMaxLocals);
+    CHECK_EQ(RsxrMid_BuildWrap(out, sizeof out, 0x3000, 0, nullptr, 0x1000, 5, 0, 0x4000, 0, 0, 0, 0), 0u);
+    const size_t maximal = build(sizeof out, 0x4000, 0x4000, RsxrMid::kWrapMaxArgs, 0, RsxrMid::kWrapMaxLocals);
 
     CHECK(maximal > 0 && maximal <= 200);  // Hook::Emit's 256 bytes hold the largest entry and a replay
-    Rs7Mid::Hook hook;
+    RsxrMid::Hook hook;
     const uint8_t jmp[] = {0xe9, 0, 0, 0, 0};
 
     CHECK(!hook.PrepareWrap(0x1000, jmp, sizeof jmp, true, {1}, nullptr, &After));
@@ -306,7 +306,7 @@ TEST(midhook_wrap_before_builds_an_argument_in_the_scratch) {
         CHECK(page.p && page.Hook(&BeforeBuilds, &AfterReadsLocals, light, false, 32));
         Reset();
         const Regs r = Run(page.Hooked(), 0x202);
-        const uint32_t locals = uint32_t(uintptr_t(Rs7Mid::Locals(g_before.c)));
+        const uint32_t locals = uint32_t(uintptr_t(RsxrMid::Locals(g_before.c)));
 
         CHECK_EQ(r.eax, locals + kA1 + 5);
         CHECK_EQ(g_after.c.esp, g_before.c.esp);  // the same frame, the scratch intact
@@ -401,9 +401,9 @@ TEST(midhook_wrap_without_arguments_returns_with_a_plain_ret) {
         Dword(page.p + 1, uint32_t(uintptr_t(page.p + 400) - uintptr_t(page.p + 5)));
         Dword(page.p + 33, uint32_t(page.Entry() - uintptr_t(page.p + 37)));
         page.p[5] = page.p[37] = 0xc3;
-        g_wrap = {0, Rs7Mid::Conv::Stdcall};
-        const size_t n = Rs7Mid_BuildWrap(page.p + 128, 256, page.Entry(), uintptr_t(page.p + 400), nullptr,
-                                          uintptr_t(page.p + 32), 5, 0, uintptr_t(&Double), 0, 0, 0, light ? 1 : 0);
+        g_wrap = {0, RsxrMid::Conv::Stdcall};
+        const size_t n = RsxrMid_BuildWrap(page.p + 128, 256, page.Entry(), uintptr_t(page.p + 400), nullptr,
+                                           uintptr_t(page.p + 32), 5, 0, uintptr_t(&Double), 0, 0, 0, light ? 1 : 0);
 
         CHECK(n > 0 && page.p[128 + n - 1] == 0xc3);  // the entry ends with a plain `ret`
         Regs stock = Run(page.Stock(), 0x202);

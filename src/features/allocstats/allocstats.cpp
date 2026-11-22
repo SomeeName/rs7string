@@ -23,20 +23,20 @@ const char* const kNames[kAkCount] = {"gs",       "strobj",   "info",   "t8",   
                                       "diagfile", "headslot", "merges", "textures", "bindalt"};
 }  // namespace
 
-void Rs7Alloc_Configure(const wchar_t* iniPath) {
-    const bool on = iniPath && Rs7Config_ReadInt(L"debug", L"alloc_stats", 0, iniPath) != 0;
+void RsxrAlloc_Configure(const wchar_t* iniPath) {
+    const bool on = iniPath && RsxrConfig_ReadInt(L"debug", L"alloc_stats", 0, iniPath) != 0;
 
     InterlockedExchange(&g_enabled, on ? 1 : 0);
-    Rs7Log("config: [debug] alloc_stats=%d -> %s", int(on),
-           on ? "live/total counts of the DLL's allocations are logged at song start and song end (allocstats lines)"
-              : "off");
+    RsxrLog("config: [debug] alloc_stats=%d -> %s", int(on),
+            on ? "live/total counts of the DLL's allocations are logged at song start and song end (allocstats lines)"
+               : "off");
 }
 
-void Rs7Alloc_SetEnabledForTests(bool on) {
+void RsxrAlloc_SetEnabledForTests(bool on) {
     InterlockedExchange(&g_enabled, on ? 1 : 0);
 }
 
-void Rs7Alloc_Inc(Rs7AllocKind k) {
+void RsxrAlloc_Inc(RsxrAllocKind k) {
     if (k < 0 || k >= kAkCount) {
         return;
     }
@@ -45,25 +45,25 @@ void Rs7Alloc_Inc(Rs7AllocKind k) {
     InterlockedIncrement(&g_total[k]);
 }
 
-void Rs7Alloc_Dec(Rs7AllocKind k) {
+void RsxrAlloc_Dec(RsxrAllocKind k) {
     if (k >= 0 && k < kAkCount) {
         InterlockedDecrement(&g_live[k]);
     }
 }
 
-long Rs7Alloc_Live(Rs7AllocKind k) {
+long RsxrAlloc_Live(RsxrAllocKind k) {
     return k >= 0 && k < kAkCount ? g_live[k] : 0;
 }
 
-long Rs7Alloc_Total(Rs7AllocKind k) {
+long RsxrAlloc_Total(RsxrAllocKind k) {
     return k >= 0 && k < kAkCount ? g_total[k] : 0;
 }
 
-const char* Rs7Alloc_Name(Rs7AllocKind k) {
+const char* RsxrAlloc_Name(RsxrAllocKind k) {
     return k >= 0 && k < kAkCount ? kNames[k] : "?";
 }
 
-void Rs7Alloc_ResetForTests() {
+void RsxrAlloc_ResetForTests() {
     for (int i = 0; i < kAkCount; ++i) {
         g_live[i] = g_total[i] = 0;
     }
@@ -71,7 +71,7 @@ void Rs7Alloc_ResetForTests() {
     g_songs = 0;
 }
 
-std::string Rs7Alloc_Line(const char* when, int song) {
+std::string RsxrAlloc_Line(const char* when, int song) {
     char buf[1400];
     int n = std::snprintf(buf, sizeof buf, "allocstats %s #%d:", when, song);
     auto add = [&](const char* fmt, auto... a) {
@@ -102,40 +102,40 @@ std::string Rs7Alloc_Line(const char* when, int song) {
         add(" %s=%ld/%ld", kNames[i], g_live[i], g_total[i]);  // live/total
     }
 
-    Rs7GsStats gs{};
+    RsxrGsStats gs{};
 
-    Rs7Gs_Stats(&gs);
-    Rs7S7Stats s7{};
+    RsxrGs_Stats(&gs);
+    RsxrS7Stats s7{};
 
-    Rs7S7_Stats(&s7);
-    Rs7HeadStats hs{};
+    RsxrS7_Stats(&s7);
+    RsxrHeadStats hs{};
 
-    Rs7Head_Stats(&hs);
-    Rs7TunerStats tn{};
+    RsxrHead_Stats(&hs);
+    RsxrTunerStats tn{};
 
-    Rs7Tuner_Stats(&tn);
-    Rs7SwapStats sw{};
+    RsxrTuner_Stats(&tn);
+    RsxrSwapStats sw{};
 
-    Rs7Swap_Stats(&sw);
+    RsxrSwap_Stats(&sw);
     int candLive = 0;
 
-    for (int i = 0; i < Rs7Cand_Count(); ++i) {
-        const Rs7Cand* c = Rs7Cand_At(i);
+    for (int i = 0; i < RsxrCand_Count(); ++i) {
+        const RsxrCand* c = RsxrCand_At(i);
 
-        if (c && c->state != Rs7CandState::Retired) {
+        if (c && c->state != RsxrCandState::Retired) {
             ++candLive;
         }
     }
 
     add(" | gsNative=%d s7Tab=%d s7Modes=%d pegCtors=%d tunerSess=%d nsSongs=%d extBlocks=%d diagBind=%d side=%d "
         "rampCands=%d rampCopies=%u rampActive=%u",
-        gs.native, s7.guitars, s7.sevenGuitars, hs.pegsets, tn.sessions, Rs7Ns_LiveSongs(), Rs7Ext_StoredBlocks(),
-        Rs7Diagram_Bindings(), Rs7Store_Count(), candLive, sw.copies, sw.active);
+        gs.native, s7.guitars, s7.sevenGuitars, hs.pegsets, tn.sessions, RsxrNs_LiveSongs(), RsxrExt_StoredBlocks(),
+        RsxrDiagram_Bindings(), RsxrStore_Count(), candLive, sw.copies, sw.active);
 
     return std::string(buf);
 }
 
-void Rs7Alloc_Snapshot(const char* when) {
+void RsxrAlloc_Snapshot(const char* when) {
     if (!g_enabled) {
         return;
     }
@@ -144,7 +144,7 @@ void Rs7Alloc_Snapshot(const char* when) {
         const int song = std::strcmp(when, "song start") == 0 ? int(InterlockedIncrement(&g_songs))
                                                               : int(InterlockedCompareExchange(&g_songs, 0, 0));
 
-        Rs7Log("%s", Rs7Alloc_Line(when, song).c_str());
+        RsxrLog("%s", RsxrAlloc_Line(when, song).c_str());
     } catch (...) {
     }
 }

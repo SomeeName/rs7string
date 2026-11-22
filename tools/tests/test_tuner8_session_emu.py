@@ -37,10 +37,10 @@ def machine():
     for sec in pe.sections:
         uc.mem_write(base + sec.VirtualAddress, sec.get_data())
     exports = {e.name.decode(): base + e.address for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name}
-    assert "Rs7_Mid_TU8INIT" in exports, "session owner hook missing from DLL"
+    assert "Rsxr_Mid_TU8INIT" in exports, "session owner hook missing from DLL"
     for addr in (SESSION, STACK, RET, ENTRIES):
         uc.mem_map(addr, 0x10000)
-    # The mid-hook entries (features/tuner/hooks_entries.cpp), built from the sites' game bytes as Rs7_Startup does.
+    # The mid-hook entries (features/tuner/hooks_entries.cpp), built from the sites' game bytes as Rsxr_Startup does.
     for k, sid in enumerate(("TU8INIT", "TU8FREE")):
         va = site_va(sid)
         page = va & ~0xFFF
@@ -50,8 +50,8 @@ def machine():
             pages.update((page, page + 0x1000))
         exports["entry_" + sid] = site_mid_entry(uc, exports, sid, ENTRIES + 0x100 * k, STACK + 0xF000, RET)
     uc.mem_write(RET, b"\xf4")
-    uc.mem_write(exports["g_rs7_native_tuner"], struct.pack("<I", 1))
-    uc.mem_write(exports["g_rs7_resume_TU8FREE"], struct.pack("<I", RET))
+    uc.mem_write(exports["g_rsxr_native_tuner"], struct.pack("<I", 1))
+    uc.mem_write(exports["g_rsxr_resume_TU8FREE"], struct.pack("<I", RET))
     return uc, exports
 
 
@@ -104,9 +104,9 @@ def free_size(uc, exports):
 @pytest.mark.parametrize("enabled", [False, True])
 def test_ctor_return_initializes_tail_and_sized_free_unregisters_it(enabled):
     uc, exports = machine()
-    uc.mem_write(exports["g_rs7_native_tuner"], struct.pack("<I", enabled))
+    uc.mem_write(exports["g_rsxr_native_tuner"], struct.pack("<I", enabled))
     initialise(uc, exports)
-    uc.mem_write(exports["g_rs7_native_tuner"], struct.pack("<I", 0))
+    uc.mem_write(exports["g_rsxr_native_tuner"], struct.pack("<I", 0))
     assert free_size(uc, exports) == 0x380
     assert free_size(uc, exports) == 0x278
 

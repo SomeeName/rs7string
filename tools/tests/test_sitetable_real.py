@@ -33,7 +33,7 @@ def test_every_site_has_exactly_one_registered_owner(rows):
         if site.id in fast:
             assert site.kind == "bytes"
         else:
-            assert rows[site.id].startswith("Rs7_Ref(") == (site.kind in sitetable.REF_KINDS), site.id
+            assert rows[site.id].startswith("Rsxr_Ref(") == (site.kind in sitetable.REF_KINDS), site.id
 
 
 @pytest.mark.parametrize(
@@ -51,7 +51,7 @@ def test_native_site_metadata_matches_registration_gates(rows, field, gate):
     registered = {
         sid
         for sid, row in rows.items()
-        if re.search(rf"kRs7Gate{gate}\b", row) or (field == "nextgrid" and row.startswith("NgHook("))
+        if re.search(rf"kRsxrGate{gate}\b", row) or (field == "nextgrid" and row.startswith("NgHook("))
     }
     assert registered, f"no registered {field} sites found"
     assert {s.id for s in _sites() if getattr(s, field) == "native"} == registered

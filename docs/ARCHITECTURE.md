@@ -1,10 +1,10 @@
-# rs7string architecture
+# RS Extended Range architecture
 
 **How the mod works, which decisions shaped it, and what is known to be open.**
 
-[Contributing](../CONTRIBUTING.md) · [Development](DEVELOPMENT.md) · **Architecture** · [RS7X spec](release/RS7X-SPEC.md) · [Chart tools](release/CHART-TOOLS.md) · [Releasing](RELEASING.md) · [Agents](../AGENTS.md)
+[Contributing](../CONTRIBUTING.md) · [Development](DEVELOPMENT.md) · **Architecture** · [Extension block](architecture/extension-block.md) · [Chart tools](release/CHART-TOOLS.md) · [Releasing](RELEASING.md) · [Agents](../AGENTS.md)
 
-For build, test and tooling see [DEVELOPMENT.md](DEVELOPMENT.md); for players see the
+For build, test and tooling, see [DEVELOPMENT.md](DEVELOPMENT.md). Player documentation is in the
 [README](../README.md) and [docs/release](release/README.md).
 
 > [!NOTE]
@@ -21,8 +21,8 @@ For build, test and tooling see [DEVELOPMENT.md](DEVELOPMENT.md); for players se
 
 Older notes, per-job reports and review logs from the development of 1.0 were removed from the tree
 before the repository went public. They remain only in the maintainer's private development history. Commit
-hashes elsewhere in these docs (for example the frozen stub fixtures in chapter 14) name that history too; the
-fixture files themselves are in the tree.
+hashes elsewhere in these docs also point into that history, for example those of the frozen stub fixtures in
+chapter 14. The fixture files themselves are in the tree.
 
 ## Find a topic
 
@@ -39,7 +39,7 @@ fixture files themselves are in the tree.
 
 | Chapter | What it explains |
 |---|---|
-| [5. Rendering](architecture/05-rendering-the-extra-strings.md) | Lanes, colours, strings, frets and headstocks. |
+| [5. Rendering](architecture/05-rendering-the-extra-strings.md) | Lanes, colors, strings, frets and headstocks. |
 | [6. Detection and scoring](architecture/06-detection-and-scoring.md) | Expected pitches, low tunings and extended bass. |
 | [7. Chords](architecture/07-chords-on-the-extra-strings.md) | Expanded records, matching and rendering. |
 | [8. Tuner and tuning names](architecture/08-tuner-and-tuning-names.md) | Tuning order, name resolution and limits. |
@@ -48,23 +48,29 @@ fixture files themselves are in the tree.
 
 ### Integration and development
 
-CONFIRMED: the menu load-group update (`0x59DB80`) can wait indefinitely with objectReady (`+0x10`) set and
-movieMade (`+0x11`) clear. The movie request (`0xC192A0`, resolved from its setup call) asks the asset locator for
-the menu's Flash file; while boot is still building the local file index, the lookup fails, the locator discards
-the request (`0x906C38 -> 0x906C8D`, state `+0x120` zero) and returns false, and the caller (`0xC19335`) ignores
-the result. Nothing asks again. The `menuload` feature records each request at setup (`0xC167A0`), reads the
-locator's answer at `0xC19335` (AL; ESI = movie + 9Ch), and is told by the index writer's tail (`0x49DF80`, index
-lock released, `[EBP-38h]` = file name) when a file with the requested name is published. On the next load-group
-update the game thread sends that rejected request once more. Accepted requests are never resent. Only if no
-matching file is seen within 5 s (a loss path not observed yet) is a rejected request resent anyway, every 5 s and at
-most 6 times, with a warning in the log. It checks the movie vtable, owner and absent Flash instance before each
-request. Full mid-hooks and a full call-in preserve CPU state without new assembly stubs. `[fixes] menu_retry=0` disables it;
-any mismatch at its sites isolates this feature before writes, including another mod's detour (RSMods' develop
-branch hooks `0xC167A0` and `0x59DB80` for its own timed retry).
+CONFIRMED: the menu load-group update (`0x59DB80`) can wait forever with objectReady (`+0x10`) set and
+movieMade (`+0x11`) clear. This is how it happens. The movie request (`0xC192A0`, resolved from its setup call)
+asks the asset locator for the menu's Flash file. While boot is still building the local file index, this lookup
+fails. The locator then discards the request (`0x906C38 -> 0x906C8D`, state `+0x120` zero) and returns false. The
+caller (`0xC19335`) ignores the result, and nothing asks again.
+
+The `menuload` feature handles this case. It records each request at setup (`0xC167A0`) and reads the locator's
+answer at `0xC19335` (AL; ESI = movie + 9Ch). The index writer's tail (`0x49DF80`, index lock released,
+`[EBP-38h]` = file name) tells it when a file with the requested name is published. On the next load-group update,
+the game thread sends that rejected request once more. Accepted requests are never resent. If no matching file is
+seen within 5 s, the feature resends the rejected request anyway. It does this every 5 s, at most 6 times, and logs
+a warning. This loss path has not been observed yet. Before each request, the feature checks the movie vtable, the owner
+and that the Flash instance is absent. Full mid-hooks and a full call-in preserve CPU state without new assembly
+stubs.
+
+`[fixes] menu_retry=0` disables the feature. Any mismatch at its sites isolates this feature before writes, and
+another mod's detour counts as a mismatch. RSMods' develop branch, for example, hooks `0xC167A0` and `0x59DB80` for
+its own timed retry.
 
 | Chapter | What it explains |
 |---|---|
 | [10. Plain PSARC loading](architecture/10-plain-psarc-loading.md) | Unencrypted custom packages and enabler coexistence. |
+| [Native format](NATIVE-FORMAT.md) | The supported extended chart format: N-string packages, manifests and charts, translated at load. |
 | [11. Window, input, overlay and logging](architecture/11-window-input-overlay-logging.md) | Window handling, F9 and diagnostics. |
 | [13. Known limitations and open risks](architecture/13-known-limitations-and-open-risks.md) | Outstanding checks and release-candidate risks. |
 | [14. Mid-hook contract](architecture/14-mid-hook-contract-and-cold-site-conversion.md) | CPU state, callbacks, relocation and conversion tests. |

@@ -5,7 +5,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace rs7fg;
+using namespace rsxrfg;
 
 namespace {
 void PutF(uint8_t* p, uint32_t off, float v) {
@@ -34,16 +34,16 @@ TEST(fretgrid_layout_arithmetic) {
 }
 
 TEST(fretgrid_configure_sets_switch_and_stride) {
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
     Configure(true);
-    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(1));
+    CHECK_EQ(g_rsxr_native_fretgrid, uintptr_t(1));
     CHECK_EQ(RowStride(), kRowNative);
     Configure(false);
-    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(0));
+    CHECK_EQ(g_rsxr_native_fretgrid, uintptr_t(0));
     CHECK_EQ(RowStride(), kRowStock);
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }
 
 TEST(fretgrid_extra_cells_extrapolate_local_points) {
@@ -98,59 +98,59 @@ TEST(fretgrid_build_extra_is_off_by_default_and_only_for_six_string_infos_on_nat
     std::vector<uint8_t> g(kSizeNative, 0);
     uint8_t info[0x40] = {};
 
-    info[rs7::kInfoStrings] = 6;
-    info[rs7::kInfoFrets] = 2;
+    info[rsxr::kInfoStrings] = 6;
+    info[rsxr::kInfoFrets] = 2;
     uint8_t* inf = info;
     uint8_t guitar[0x40] = {};
 
     std::memcpy(guitar + 0x24, &inf, 4);
     Cell(g.data(), 0, 0)[0] = 1;
     Cell(g.data(), 0, 1)[0] = 1;
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
     ResetRegistry();
-    g_rs7_native_fretgrid = 0;
-    g_rs7_fg_row = kRowNative;
+    g_rsxr_native_fretgrid = 0;
+    g_rsxr_fg_row = kRowNative;
     MarkNative(g.data());
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));  // switch off: nothing
-    g_rs7_native_fretgrid = 1;
-    g_rs7_fg_row = kRowStock;  // switch on, layout not written yet (ConfigureDeferred)
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    g_rsxr_native_fretgrid = 1;
+    g_rsxr_fg_row = kRowStock;  // switch on, layout not written yet (ConfigureDeferred)
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
-    g_rs7_fg_row = kRowNative;
+    g_rsxr_fg_row = kRowNative;
     ResetRegistry();  // a stock-size grid built before the layout (not registered): migrated later, not filled
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
     DisableMigration();  // registry failure does not establish this grid's layout
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
     ResetRegistry();
     MarkNative(g.data());
     info[0xB] = 4;  // bass
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(0));
     info[0xB] = 6;
-    Rs7Fg_BuildExtra(g.data(), guitar);
+    RsxrFg_BuildExtra(g.data(), guitar);
     CHECK_EQ(Cell(g.data(), 0, 6)[0], uint8_t(1));
-    Rs7Fg_BuildExtra(g.data(), nullptr);  // no crash
+    RsxrFg_BuildExtra(g.data(), nullptr);  // no crash
     ResetRegistry();
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }
 
 TEST(fretgrid_deferred_configure_keeps_the_stock_stride) {
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
-    rs7fg::ConfigureDeferred(true);
-    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(1));
-    CHECK_EQ(rs7fg::RowStride(), rs7fg::kRowStock);  // the layout is not in the code yet
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    rsxrfg::ConfigureDeferred(true);
+    CHECK_EQ(g_rsxr_native_fretgrid, uintptr_t(1));
+    CHECK_EQ(rsxrfg::RowStride(), rsxrfg::kRowStock);  // the layout is not in the code yet
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }
 
 TEST(fretgrid_migrate_moves_every_region_to_its_native_offset) {
-    using namespace rs7fg;
+    using namespace rsxrfg;
     std::vector<uint8_t> old(kSizeStock, 0), fresh(kSizeNative, 0xEE);
 
     for (size_t i = 0; i < old.size(); ++i) {
@@ -173,7 +173,7 @@ TEST(fretgrid_migrate_moves_every_region_to_its_native_offset) {
 }
 
 TEST(fretgrid_registry_migrates_every_preexisting_grid_once) {
-    using namespace rs7fg;
+    using namespace rsxrfg;
 
     ResetRegistry();
     uint8_t oldA[8], oldB[8], created[8];
@@ -216,8 +216,8 @@ ApplyResult RetryingApply(bool lastAttempt) {  // the freeze times out g_retries
 // patching; an update before SetDeferredApply used to switch native_fretgrid off silently (native_publish then
 // waited for the layout forever). It must wait for the hand-over instead.
 TEST(fretgrid_update_before_the_deferred_handover_waits) {
-    using namespace rs7fg;
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    using namespace rsxrfg;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
     ConfigureDeferred(true);
     ResetRegistry();
@@ -229,7 +229,7 @@ TEST(fretgrid_update_before_the_deferred_handover_waits) {
     MarkNative(grid);  // no migration (GameNew is the game's allocator)
     g_applyCalls = 0;
     OnGuitarUpdate(guitar);  // startup has not handed over the sites yet (no other test does)
-    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(1));
+    CHECK_EQ(g_rsxr_native_fretgrid, uintptr_t(1));
     CHECK_EQ(RowStride(), kRowStock);
     CHECK(LayoutPending());
     CHECK_EQ(g_applyCalls, 0);
@@ -242,16 +242,16 @@ TEST(fretgrid_update_before_the_deferred_handover_waits) {
     OnGuitarUpdate(guitar);
     CHECK_EQ(g_applyCalls, 1);
     ResetRegistry();
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }
 
 // 2026-10-30: a startup thread freeze that timed out (DEADLINE) switched the native layout - and with it the
 // native tuner, C-lite, GKT and native publish - off for the whole session. Nothing is written then, so the game
 // thread tries again on a later update; the stock layout stays meanwhile.
 TEST(fretgrid_timed_out_deferred_write_is_retried_on_a_later_update) {
-    using namespace rs7fg;
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    using namespace rsxrfg;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
     ConfigureDeferred(true);
     uint8_t grid[16] = {};
@@ -268,7 +268,7 @@ TEST(fretgrid_timed_out_deferred_write_is_retried_on_a_later_update) {
     CHECK_EQ(g_applyCalls, 1);
     CHECK_EQ(RowStride(), kRowStock);
     CHECK(LayoutPending());
-    CHECK_EQ(g_rs7_native_fretgrid, uintptr_t(1));
+    CHECK_EQ(g_rsxr_native_fretgrid, uintptr_t(1));
     OnGuitarUpdate(guitar);  // too early for the next try
     CHECK_EQ(g_applyCalls, 1);
     Sleep(kApplyRetryMs + 50);
@@ -278,12 +278,12 @@ TEST(fretgrid_timed_out_deferred_write_is_retried_on_a_later_update) {
     CHECK_EQ(RowStride(), kRowNative);
     CHECK(!LayoutPending());
     ResetRegistry();
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }
 
 TEST(fretgrid_registry_exhaustion_never_makes_a_live_native_grid_look_stock) {
-    using namespace rs7fg;
+    using namespace rsxrfg;
 
     ResetRegistry();
     static_assert(noexcept(MarkNative(nullptr)) && noexcept(NeedsMigration(nullptr)), "registry must not throw");
@@ -309,8 +309,8 @@ TEST(fretgrid_registry_exhaustion_never_makes_a_live_native_grid_look_stock) {
 
 // Review #7: a failed registration must not escape and must never let a native grid look stock-size.
 TEST(fretgrid_failed_registration_disables_migration_instead_of_throwing) {
-    using namespace rs7fg;
-    const uintptr_t sw = g_rs7_native_fretgrid, row = g_rs7_fg_row;
+    using namespace rsxrfg;
+    const uintptr_t sw = g_rsxr_native_fretgrid, row = g_rsxr_fg_row;
 
     ConfigureDeferred(true);
     uint8_t grid[16] = {}, other[16] = {}, guitar[0x40] = {};
@@ -336,6 +336,6 @@ TEST(fretgrid_failed_registration_disables_migration_instead_of_throwing) {
     CHECK(!NeedsMigration(other));  // fail-safe: the unregistered native grid is not "migrated"
     CHECK(!NeedsMigration(grid));
     ResetRegistry();
-    g_rs7_native_fretgrid = sw;
-    g_rs7_fg_row = row;
+    g_rsxr_native_fretgrid = sw;
+    g_rsxr_fg_row = row;
 }

@@ -10,67 +10,67 @@
 // for code outside src/features/strings/.
 
 // The copy / trampoline of every copied function (hooks_copies.cpp, read by its entry stub in hooks_stubs.cpp).
-#define RS7_FNEXT(id) extern "C" __declspec(dllexport) uintptr_t g_rs7_fncopy_##id, g_rs7_fntramp_##id;
-RS7_FNEXT(GSFR)
-RS7_FNEXT(GSBD)
-RS7_FNEXT(GSUL)
-RS7_FNEXT(GSLD)
-RS7_FNEXT(GSFO)
-RS7_FNEXT(GSFI)
-RS7_FNEXT(GSXF)
-RS7_FNEXT(GSWD)
-RS7_FNEXT(GSUP)
-RS7_FNEXT(GSRS)
-RS7_FNEXT(GSPK)
-RS7_FNEXT(GSVB)
-RS7_FNEXT(GSIC)
-RS7_FNEXT(GSDM)
-RS7_FNEXT(GSGL)
-RS7_FNEXT(GSHC)
-#undef RS7_FNEXT
+#define RSXR_FNEXT(id) extern "C" __declspec(dllexport) uintptr_t g_rsxr_fncopy_##id, g_rsxr_fntramp_##id;
+RSXR_FNEXT(GSFR)
+RSXR_FNEXT(GSBD)
+RSXR_FNEXT(GSUL)
+RSXR_FNEXT(GSLD)
+RSXR_FNEXT(GSFO)
+RSXR_FNEXT(GSFI)
+RSXR_FNEXT(GSXF)
+RSXR_FNEXT(GSWD)
+RSXR_FNEXT(GSUP)
+RSXR_FNEXT(GSRS)
+RSXR_FNEXT(GSPK)
+RSXR_FNEXT(GSVB)
+RSXR_FNEXT(GSIC)
+RSXR_FNEXT(GSDM)
+RSXR_FNEXT(GSGL)
+RSXR_FNEXT(GSHC)
+#undef RSXR_FNEXT
 
 // The extra palette of strings 6/7 (non-native colours, filled by hooks_copies.cpp FillPalette): the RGB of
-// g_rs7_ns_rgb[mode][s - 6][state] (state 0 lit, 1 dimmed, 2 glow).
-inline float* Rs7Gs_NsRgb(uint32_t mode, uint32_t s, uint32_t state) {
-    return g_rs7_ns_rgb + ((mode * 2 + (s - 6)) * 3 + state) * 3;
+// g_rsxr_ns_rgb[mode][s - 6][state] (state 0 lit, 1 dimmed, 2 glow).
+inline float* RsxrGs_NsRgb(uint32_t mode, uint32_t s, uint32_t state) {
+    return g_rsxr_ns_rgb + ((mode * 2 + (s - 6)) * 3 + state) * 3;
 }
 
 extern "C" {
 
 // Mid-hook callbacks (hooks_entries.cpp: the GS<xx> entries, GRM1, GRM2; hooks_mid.cpp: the rest).
-#define RS7_GS_MID_DECL(ID) __declspec(dllexport) void __cdecl Rs7_Mid_##ID(Rs7Mid::Context&);
+#define RSXR_GS_MID_DECL(ID) __declspec(dllexport) void __cdecl Rsxr_Mid_##ID(RsxrMid::Context&);
 // clang-format off
-RS7_GS_MID_DECL(GSFR) RS7_GS_MID_DECL(GSBD) RS7_GS_MID_DECL(GSUL) RS7_GS_MID_DECL(GSLD) RS7_GS_MID_DECL(GSFO)
-RS7_GS_MID_DECL(GSFI) RS7_GS_MID_DECL(GSXF) RS7_GS_MID_DECL(GSWD) RS7_GS_MID_DECL(GSUP) RS7_GS_MID_DECL(GSRS)
-RS7_GS_MID_DECL(GSPK) RS7_GS_MID_DECL(GSVB) RS7_GS_MID_DECL(GSIC) RS7_GS_MID_DECL(GSDM) RS7_GS_MID_DECL(GSGL)
-RS7_GS_MID_DECL(GSHC) RS7_GS_MID_DECL(GRM1) RS7_GS_MID_DECL(GRM2)
+RSXR_GS_MID_DECL(GSFR) RSXR_GS_MID_DECL(GSBD) RSXR_GS_MID_DECL(GSUL) RSXR_GS_MID_DECL(GSLD) RSXR_GS_MID_DECL(GSFO)
+RSXR_GS_MID_DECL(GSFI) RSXR_GS_MID_DECL(GSXF) RSXR_GS_MID_DECL(GSWD) RSXR_GS_MID_DECL(GSUP) RSXR_GS_MID_DECL(GSRS)
+RSXR_GS_MID_DECL(GSPK) RSXR_GS_MID_DECL(GSVB) RSXR_GS_MID_DECL(GSIC) RSXR_GS_MID_DECL(GSDM) RSXR_GS_MID_DECL(GSGL)
+RSXR_GS_MID_DECL(GSHC) RSXR_GS_MID_DECL(GRM1) RSXR_GS_MID_DECL(GRM2)
 // clang-format on
-#undef RS7_GS_MID_DECL
-                __declspec(dllexport) void __cdecl Rs7_Mid_GSZ1(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GIZ1(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GSSS(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GSSE(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GSA1(Rs7Mid::Context&);  // call site, Before
-__declspec(dllexport) void __cdecl Rs7_Mid_GRM3(Rs7Mid::Context&);
+#undef RSXR_GS_MID_DECL
+                __declspec(dllexport) void __cdecl Rsxr_Mid_GSZ1(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GIZ1(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GSSS(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GSSE(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GSA1(RsxrMid::Context&);  // call site, Before
+__declspec(dllexport) void __cdecl Rsxr_Mid_GRM3(RsxrMid::Context&);
 // GIA1, GSC1: Wrap sites (hooks_wrap.cpp).
-__declspec(dllexport) void __cdecl Rs7_Mid_GSC1(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GIA1Before(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GIA1(Rs7Mid::Context&);
-__declspec(dllexport) void __cdecl Rs7_Mid_GIP1(Rs7Mid::Context&);  // FromProfile, After
-__declspec(dllexport) extern uintptr_t g_rs7_target_GIP1;           // hooks_wrap.cpp, bound by Rs7_Startup
+__declspec(dllexport) void __cdecl Rsxr_Mid_GSC1(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GIA1Before(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GIA1(RsxrMid::Context&);
+__declspec(dllexport) void __cdecl Rsxr_Mid_GIP1(RsxrMid::Context&);  // FromProfile, After
+__declspec(dllexport) extern uintptr_t g_rsxr_target_GIP1;            // hooks_wrap.cpp, bound by Rsxr_Startup
 
-// Link variables of the sites (hooks_mid.cpp, GRM1 / GRM2: hooks_entries.cpp), bound by Rs7_Startup from the sites'
+// Link variables of the sites (hooks_mid.cpp, GRM1 / GRM2: hooks_entries.cpp), bound by Rsxr_Startup from the sites'
 // resume / target.
-__declspec(dllexport) extern uintptr_t g_rs7_target_GSA1, g_rs7_resume_GRM1, g_rs7_resume_GRM2, g_rs7_resume_GRM3,
-    g_rs7_resume_GSZ1, g_rs7_resume_GIZ1, g_rs7_resume_GSSS, g_rs7_target_GSSS, g_rs7_target_GSSE;
+__declspec(dllexport) extern uintptr_t g_rsxr_target_GSA1, g_rsxr_resume_GRM1, g_rsxr_resume_GRM2, g_rsxr_resume_GRM3,
+    g_rsxr_resume_GSZ1, g_rsxr_resume_GIZ1, g_rsxr_resume_GSSS, g_rsxr_target_GSSS, g_rsxr_target_GSSE;
 }
 
 // GIA1's frame: the allocator 0x8F9D40 (size, flags; cdecl), the size argument edited by the before callback.
-inline constexpr Rs7Mid::Wrap kRs7WrapGIA1{2, Rs7Mid::Conv::Cdecl};
+inline constexpr RsxrMid::Wrap kRsxrWrapGIA1{2, RsxrMid::Conv::Cdecl};
 // GSC1's frame: Rnd_GuitarStrings_Ctor 0x599CE0 (the allocation; `ret 4`), run by the entry with the game's x87 state.
-inline constexpr Rs7Mid::Wrap kRs7WrapGSC1{1, Rs7Mid::Conv::Stdcall};
+inline constexpr RsxrMid::Wrap kRsxrWrapGSC1{1, RsxrMid::Conv::Stdcall};
 
-namespace rs7gs {
+namespace rsxrgs {
 constexpr int kMaxInfos = 64;
 
 // The feature's state (g_strings, hooks.cpp). Counters and log caps are interlocked: the owners run on resource-loader
@@ -78,7 +78,7 @@ constexpr int kMaxInfos = 64;
 struct State {
     // Native InstrumentInfos (allocated by GIA1 with kInfoSize): a fixed set, lock-free.
     uint8_t* volatile infos[kMaxInfos];
-    // Rs7Gs_Stats.
+    // RsxrGs_Stats.
     volatile long native, active7, raised, lowered;
     // Log once / a few times.
     volatile long logCtor, logNoInfo, logUse[kGsKinds], logRaise, logLower, logAttach, logShape, logLoad,
@@ -105,7 +105,7 @@ void GameShow(uint8_t* entity, uint32_t show);  // EAX = entity, cdecl(show)
 void GameDetach(uint8_t* entity, uint32_t detach);
 // ClipFade_FadeInEntity 0x824E70 / FadeOutEntity 0x825000 (EAX entity; mgr, seconds, 0, 1) ret 10h.
 void GameFade(uint8_t* entity, bool in, float seconds);
-}  // namespace rs7gs
+}  // namespace rsxrgs
 
 // The call-in entries the copies' calls need beyond their own (hooks_callin.cpp), before the copies are built.
-bool Rs7Gs_PrepareCallIns();
+bool RsxrGs_PrepareCallIns();

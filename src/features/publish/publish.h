@@ -20,43 +20,43 @@
 // Logic: publish.cpp (prerequisites, classification), grid.cpp (ranks, finger span, cells, the wait table), song.cpp
 // (count, lowest open note). registration.cpp holds the hook table (group Publish). Native tests: tests/publish/.
 
-struct Rs7HookTable;
-struct Rs7Int16Vec;
+struct RsxrHookTable;
+struct RsxrInt16Vec;
 
 extern "C" {
 // Requested and all prerequisites met (the ports are built and their sites written).
-__declspec(dllexport) extern uintptr_t g_rs7_publish_ports;
+__declspec(dllexport) extern uintptr_t g_rsxr_publish_ports;
 // The ports are on and publication is ready: a guitar shows the string count it was built with.
-__declspec(dllexport) extern uintptr_t g_rs7_native_publish;
+__declspec(dllexport) extern uintptr_t g_rsxr_native_publish;
 // [debug] publish_trace=1: GridBuild logs its not-ready reason (rate limited 1/s, 100 lines); the LS* probes.
-__declspec(dllexport) extern uintptr_t g_rs7_publish_trace;
+__declspec(dllexport) extern uintptr_t g_rsxr_publish_trace;
 // 1 while the guitar's GridBuild timed out (a 7/8-built guitar whose neck has no cells 6/7): the song's
 // detector is not widened. Cleared when its grid builds or that guitar is destroyed.
-__declspec(dllexport) int __cdecl Rs7Publish_NeckFailed(const void* guitar);
-void __cdecl Rs7Publish_GridForget(const void* guitar);
-__declspec(dllexport) void __cdecl Rs7Publish_GridForgetAll();
+__declspec(dllexport) int __cdecl RsxrPublish_NeckFailed(const void* guitar);
+void __cdecl RsxrPublish_GridForget(const void* guitar);
+__declspec(dllexport) void __cdecl RsxrPublish_GridForgetAll();
 // The TU8A copy of StringAction (features/tuner) contains the PUBEDGE site: its edge string over the native count.
-__declspec(dllexport) unsigned __cdecl Rs7Publish_EdgeCopy(uint8_t* info, unsigned first);
-// S4 (features/pitch/hooks_mode.cpp), game thread. Native 7-string mode only (g_rs7_native_publish). A 7/8-entry guitar
-// tuning on a guitar that was built with that many strings: detector +13D8h = count and +11F8h = the lowest open MIDI
-// over all strings; the count survives the SetTuning that S4 runs after it (Rs7Pitch_SongCount). Any other
-// song (6 strings, bass, a guitar built with another count, detector without the native tail) is left at the
-// stock width and logged.
-__declspec(dllexport) void __cdecl Rs7Song_WidenDetector(void* session, void* detector, const Rs7Int16Vec* tuning);
+__declspec(dllexport) unsigned __cdecl RsxrPublish_EdgeCopy(uint8_t* info, unsigned first);
+// S4 (features/pitch/hooks_mode.cpp), game thread. Native 7-string mode only (g_rsxr_native_publish). A 7/8-entry
+// guitar tuning on a guitar that was built with that many strings: detector +13D8h = count and +11F8h = the lowest open
+// MIDI over all strings; the count survives the SetTuning that S4 runs after it (RsxrPitch_SongCount). Any other song
+// (6 strings, bass, a guitar built with another count, detector without the native tail) is left at the stock width and
+// logged.
+__declspec(dllexport) void __cdecl RsxrSong_WidenDetector(void* session, void* detector, const RsxrInt16Vec* tuning);
 }
 
 // Startup (hooks.cpp): [debug] publish_trace, read before any site is patched.
-void Rs7Publish_ReadIni(const wchar_t* ini);
+void RsxrPublish_ReadIni(const wchar_t* ini);
 // Startup: `requested` is the C-lite mode (native PegSet and tuner); checks the prerequisites and builds the ports.
-void Rs7Publish_Start(bool requested);
+void RsxrPublish_Start(bool requested);
 
 // The PUB* sites and R1 (group Publish), registration.cpp.
-extern const Rs7HookTable kRs7PublishHooks;
+extern const RsxrHookTable kRsxrPublishHooks;
 // LSA LSG LSC LSE, the load-step probes (group Core).
-extern const Rs7HookTable kRs7LoadProbeHooks;
+extern const RsxrHookTable kRsxrLoadProbeHooks;
 
 // ---- logic (publish.cpp), for the tests
-namespace rs7pub {
+namespace rsxrpub {
 constexpr unsigned kPrerequisites = 31;  // strings, fretgrid, nextgrid, pitch, colours
 unsigned Missing(unsigned mask);
 bool PortsEnabled(bool requested, unsigned mask);
@@ -64,10 +64,10 @@ bool PublicationReady();
 // Exact scalar form of 875240..8753D2: candidate order and early exit match the stock unroll.
 // Only guitar; count must be 6, 7 or 8. Writes record +14h (fret), +18h (string) on a match.
 int Classify(uint8_t* record, const int16_t* tuning, unsigned count, int midi, int initial);
-}  // namespace rs7pub
+}  // namespace rsxrpub
 
 // ---- logic (grid.cpp), for the tests
-namespace rs7pubgrid {
+namespace rsxrpubgrid {
 unsigned PhysicalRank(unsigned string, unsigned count);
 unsigned PhysicalEdge(unsigned count, bool first, bool bass = false);
 // Exact stock scan for stock templates; native T8 scans physical ranks.
@@ -97,12 +97,12 @@ void WaitDone(WaitEntry* table, size_t n, const void* grid,
 void MarkFailed(WaitEntry* table, size_t n, const void* grid);
 bool Failed(const WaitEntry* table, size_t n, const void* owner);
 int GetCellPos(const uint8_t* grid, unsigned count, unsigned fret, unsigned k, unsigned string, float* out);
-}  // namespace rs7pubgrid
+}  // namespace rsxrpubgrid
 
 // ---- logic (song.cpp), for the tests
-namespace rs7pubstate {
+namespace rsxrpubstate {
 // A validated tuning vector determines the instrument's width. Unsupported guitar widths fail
 // closed to six; bass always retains its stock four strings.
 unsigned Count(size_t tuningCount, bool bass);
 int Lowest(const int16_t tuning[8], unsigned count, bool bass);
-}  // namespace rs7pubstate
+}  // namespace rsxrpubstate

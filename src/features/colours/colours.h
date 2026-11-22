@@ -1,5 +1,5 @@
 #pragma once
-#include "platform/config.h"  // Rs7_ParseRgb
+#include "platform/config.h"  // Rsxr_ParseRgb
 #include "platform/midhook.h"
 #include <cstdint>
 #include <string>
@@ -16,42 +16,42 @@
 // glue; state.h (the feature's state); registration.cpp (the hook tables src/registry.cpp looks the sites up in);
 // settings.cpp (the [color] keys and their startup read).
 
-struct Rs7HookTable;
-struct Rs7SetTable;
+struct RsxrHookTable;
+struct RsxrSetTable;
 
 // String 6's own colour, read by the native colour matrix: V per colour mode, 0 = the stock preview row
 // colorUV[mode][17][0] (set by the ramp swap), and RGB [mode*3 + channel] from [color] string6_color /
-// string6_color_cb, set by Rs7_Startup before any site is patched.
-extern "C" __declspec(dllexport) float g_rs7_v6[2];
-extern "C" __declspec(dllexport) float g_rs7_fx_rgb[6];
-// Data references (ref sites, never written), bound by Rs7_Startup before any site is patched.
-extern "C" __declspec(dllexport) uintptr_t g_rs7_colormgr;      // &g_pRnd_ColorManager (X_CM)
-extern "C" __declspec(dllexport) uintptr_t g_rs7_texlist_cs;    // CRITICAL_SECTION* of the NiTexture list (X_TCS)
-extern "C" __declspec(dllexport) uintptr_t g_rs7_texlist_head;  // &list head (X_THEAD)
+// string6_color_cb, set by Rsxr_Startup before any site is patched.
+extern "C" __declspec(dllexport) float g_rsxr_v6[2];
+extern "C" __declspec(dllexport) float g_rsxr_fx_rgb[6];
+// Data references (ref sites, never written), bound by Rsxr_Startup before any site is patched.
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_colormgr;      // &g_pRnd_ColorManager (X_CM)
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_texlist_cs;    // CRITICAL_SECTION* of the NiTexture list (X_TCS)
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_texlist_head;  // &list head (X_THEAD)
 
-// The CM* sites (group Colours, written only with g_rs7_native_colours) and GLW (group Glow, only with
-// g_rs7_glow_fix).
-extern const Rs7HookTable kRs7ColourHooks;
-extern const Rs7HookTable kRs7GlowHooks;
+// The CM* sites (group Colours, written only with g_rsxr_native_colours) and GLW (group Glow, only with
+// g_rsxr_glow_fix).
+extern const RsxrHookTable kRsxrColourHooks;
+extern const RsxrHookTable kRsxrGlowHooks;
 // X_CM X_TCS X_THEAD (data references, group Core).
-extern const Rs7HookTable kRs7ColourRefHooks;
+extern const RsxrHookTable kRsxrColourRefHooks;
 
 // ---- settings (settings.cpp)
 
 // String 6's default colour: light grey (owner's choice), 0xRRGGBB.
-constexpr uint32_t kRs7DefaultColour = 0xC8C8C8;
+constexpr uint32_t kRsxrDefaultColour = 0xC8C8C8;
 // String 7's (the eighth string's) default colours, normal / colourblind: both pink.
-constexpr uint32_t kRs7DefaultColour7 = 0xFF66CC;  // pink: no stock, colourblind or Extended Range string uses it
+constexpr uint32_t kRsxrDefaultColour7 = 0xFF66CC;  // pink: no stock, colourblind or Extended Range string uses it
 
 // [color]: string6_color, string6_color_cb, string7_color, string7_color_cb, rsmods_extended_range.
-extern const Rs7SetTable kRs7ColourSettings;
+extern const RsxrSetTable kRsxrColourSettings;
 // The Colour tab and the ramp copy status row (platform/uilayout.h).
-struct Rs7UiTable;
-extern const Rs7UiTable kRs7ColourUi;
+struct RsxrUiTable;
+extern const RsxrUiTable kRsxrColourUi;
 // The colour manager's mode for player 0: "normal", "colourblind" or "unknown" (overlay, SEH-guarded read).
-const char* Rs7Colour_ModeName();
+const char* RsxrColour_ModeName();
 // The same as 0 (normal) or 1 (colourblind); 0 while unknown.
-uint32_t Rs7Colour_Mode();
+uint32_t RsxrColour_Mode();
 
 // [color] as read at startup.
 //   string6_color=RRGGBB     string 6's colour (default C8C8C8; "#" prefix allowed). Invalid text
@@ -62,47 +62,47 @@ uint32_t Rs7Colour_Mode();
 //   string7_color=RRGGBB     string 7's (the eighth string's) colour (default FF66CC); invalid: the default, logged.
 //   string7_color_cb=RRGGBB  the same in colourblind mode (default FF66CC); invalid: the default, logged.
 // The gem colour copy always runs; DXT1/DXT5 ramps are refused.
-struct Rs7ColourConfig {
-    bool colorValid = true;                   // string6_color missing, empty or valid
-    uint32_t string6Rgb = kRs7DefaultColour;  // 0xRRGGBB
-    std::wstring string6Raw;                  // the text as read (for the log)
-    bool colorCbSet = false;                  // string6_color_cb present and non-empty
-    bool colorCbValid = true;                 // string6_color_cb missing, empty or valid
-    uint32_t string6RgbCb = kRs7DefaultColour;
+struct RsxrColourConfig {
+    bool colorValid = true;                    // string6_color missing, empty or valid
+    uint32_t string6Rgb = kRsxrDefaultColour;  // 0xRRGGBB
+    std::wstring string6Raw;                   // the text as read (for the log)
+    bool colorCbSet = false;                   // string6_color_cb present and non-empty
+    bool colorCbValid = true;                  // string6_color_cb missing, empty or valid
+    uint32_t string6RgbCb = kRsxrDefaultColour;
     std::wstring string6CbRaw;
     bool color7Valid = true;  // string7_color missing, empty or valid
-    uint32_t string7Rgb = kRs7DefaultColour7;
+    uint32_t string7Rgb = kRsxrDefaultColour7;
     bool color7CbValid = true;  // string7_color_cb missing, empty or valid
-    uint32_t string7RgbCb = kRs7DefaultColour7;
+    uint32_t string7RgbCb = kRsxrDefaultColour7;
     bool rsmodsExtendedRange = true;  // [color] rsmods_extended_range: use RSMods ER low B when available
 };
 
 // Reads [color] from a resolved ini path (nullptr: the defaults).
-Rs7ColourConfig Rs7Colour_ReadIni(const wchar_t* iniPath);
-// The last startup read (Rs7Set_ReadIni).
-const Rs7ColourConfig& Rs7Colour_Config();
+RsxrColourConfig RsxrColour_ReadIni(const wchar_t* iniPath);
+// The last startup read (RsxrSet_ReadIni).
+const RsxrColourConfig& RsxrColour_Config();
 
 // ---- startup (hooks.cpp)
 
-// After d3d9.dll appeared: finds RSMods (rs7rsmods::Init), resolves string 6's effective colours into
-// cfg.string6Rgb / string6RgbCb ([color] rsmods_extended_range), stores the palette and sets g_rs7_glow_fix.
-void Rs7Colour_Start(Rs7ColourConfig& cfg);
+// After d3d9.dll appeared: finds RSMods (rsxrrsmods::Init), resolves string 6's effective colours into
+// cfg.string6Rgb / string6RgbCb ([color] rsmods_extended_range), stores the palette and sets g_rsxr_glow_fix.
+void RsxrColour_Start(RsxrColourConfig& cfg);
 // After the sites are resolved, before any is written: the native layout is valid only for a manager the patched
-// ctor builds, so a manager the game already built turns g_rs7_native_colours off. d3d9Tick: for the log.
-void Rs7Colour_CheckManager(uint32_t d3d9Tick);
+// ctor builds, so a manager the game already built turns g_rsxr_native_colours off. d3d9Tick: for the log.
+void RsxrColour_CheckManager(uint32_t d3d9Tick);
 // Inside the successful patch freeze only: refuse an existing/unreadable manager or an in-flight stock build.
 // The two resolved anchors are CM5184F6 (constructor) and CM518AC4 (creation allocation).
-bool Rs7Colour_CanPatchFrozen(uintptr_t ctorSite, uintptr_t allocSite);
+bool RsxrColour_CanPatchFrozen(uintptr_t ctorSite, uintptr_t allocSite);
 // After the freeze only: describe the first refusal saved by CanPatchFrozen (no locks taken while frozen).
-void Rs7Colour_LogPatchRefusal();
+void RsxrColour_LogPatchRefusal();
 
 // ---- colour text and channels (rgb.cpp)
 
 // out = {R, G, B} / 255.0f.
-void Rs7_RgbToFloats(uint32_t rgb, float out[3]);
+void Rsxr_RgbToFloats(uint32_t rgb, float out[3]);
 // One channel of the grey ramp line g recoloured to colour c around anchor a:
 // g <= a: (c*g + a/2)/a; else c + ((255-c)*(g-a) + (255-a)/2)/(255-a). Identity when c == a.
-uint8_t Rs7_Recolor(uint8_t g, uint8_t anchor, uint8_t c);
+uint8_t Rsxr_Recolor(uint8_t g, uint8_t anchor, uint8_t c);
 
 // ---- the native colour matrix (native.cpp, hooks_publish.cpp)
 
@@ -110,22 +110,22 @@ uint8_t Rs7_Recolor(uint8_t g, uint8_t anchor, uint8_t c);
 // prefix/source lists/modes unchanged; stock six-column ABI retained through DD0h.
 // Appended [2][28][8] RGB pointers at DD0h and UV floats at 14D0h; size 1BD0h.
 // Stock pointer entries alias the native RGB values for RSMods. Owned RGB has process lifetime.
-extern "C" __declspec(dllexport) uintptr_t g_rs7_native_colours;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_native_colours;
 
-namespace rs7colour {
+namespace rsxrcolour {
 constexpr uint32_t kPtr = 0xDD0, kUV = 0x14D0, kSize = 0x1BD0;
 constexpr uint32_t kStates = 28, kWidth = 8;
 
 inline uint32_t Width() {
-    return g_rs7_native_colours ? kWidth : 6;
+    return g_rsxr_native_colours ? kWidth : 6;
 }
 
 inline uint32_t PtrOffset(uint32_t mode, uint32_t state, uint32_t slot = 0) {
-    return (g_rs7_native_colours ? kPtr : 0x350) + 4 * ((mode * kStates + state) * Width() + slot);
+    return (g_rsxr_native_colours ? kPtr : 0x350) + 4 * ((mode * kStates + state) * Width() + slot);
 }
 
 inline uint32_t UVOffset(uint32_t mode, uint32_t state, uint32_t slot = 0) {
-    return (g_rs7_native_colours ? kUV : 0x890) + 4 * ((mode * kStates + state) * Width() + slot);
+    return (g_rsxr_native_colours ? kUV : 0x890) + 4 * ((mode * kStates + state) * Width() + slot);
 }
 
 const float* GetRGB(const uint8_t* mgr, uint32_t mode, uint32_t state, uint32_t slot);
@@ -144,7 +144,7 @@ void ResetThreadForTests();
 // else the stock 6-column manager that already exists (native_colours must stay off).
 void* ExistingManager(uintptr_t ref);
 // Queues a complete string 6 palette (mode 0 normal, 1 colourblind). After CMINIT only the manager thread
-// applies it to g_rs7_fx_rgb and the fallback colours, before publication; startup applies it immediately.
+// applies it to g_rsxr_fx_rgb and the fallback colours, before publication; startup applies it immediately.
 void SetPalette(const uint32_t rgb[2]);
 // String 7's (the eighth string's) colour from rgb[mode] = 0xRRGGBB; the next Publish uses it.
 void SetPalette8(const uint32_t rgb[2]);
@@ -164,13 +164,13 @@ void SetBassShift(unsigned player, bool on);
 constexpr uint32_t BassSlot(uint32_t string, bool shift) {
     return shift && string == 4 ? 6u : string;
 }
-}  // namespace rs7colour
+}  // namespace rsxrcolour
 
-void __cdecl Rs7Colour_CMINIT(Rs7Mid::Context& c);
-void __cdecl Rs7Colour_CMBUILD(Rs7Mid::Context& c);
-void __cdecl Rs7Colour_CMUV(Rs7Mid::Context& c);
-void __cdecl Rs7Colour_CMIX(Rs7Mid::Context& c);
-void __cdecl Rs7Colour_CMFALL(Rs7Mid::Context& c);
+void __cdecl RsxrColour_CMINIT(RsxrMid::Context& c);
+void __cdecl RsxrColour_CMBUILD(RsxrMid::Context& c);
+void __cdecl RsxrColour_CMUV(RsxrMid::Context& c);
+void __cdecl RsxrColour_CMIX(RsxrMid::Context& c);
+void __cdecl RsxrColour_CMFALL(RsxrMid::Context& c);
 
 // ---- the ramp copy model (ramp.cpp)
 
@@ -179,12 +179,12 @@ void __cdecl Rs7Colour_CMFALL(Rs7Mid::Context& c);
 // of 8 lines; the game samples row i at V = (2i+1)/32. Our copy has the stock's exact size, format
 // and level count; it repaints only lines that no stock V ever reads, at V6 below.
 
-struct Rs7Image {
+struct RsxrImage {
     unsigned w = 0, h = 0;
     std::vector<uint32_t> px;
 };  // 0xAARRGGBB, row-major
 
-struct Rs7Tap {
+struct RsxrTap {
     unsigned line;
     unsigned w4;
 };  // weight in quarters
@@ -194,36 +194,37 @@ struct Rs7Tap {
 // ascending. The line set is always exact; w4 is exact whenever the weight is a multiple of 1/4
 // (every stock V on h >= 8, V6 on h >= 32), otherwise rounded into 1..3 so a nonzero tap never
 // disappears.
-std::vector<Rs7Tap> Rs7Ramp_Taps(unsigned num, unsigned den, unsigned h, bool bilinear);
+std::vector<RsxrTap> RsxrRamp_Taps(unsigned num, unsigned den, unsigned h, bool bilinear);
 
-constexpr unsigned kRs7RampRows = 16;
+constexpr unsigned kRsxrRampRows = 16;
 // V6 per mode (copy layout, D3): mode 0 = 57/128 = 0.4453125, mode 1 = 121/128 = 0.9453125.
-constexpr unsigned kRs7V6Num[2] = {57, 121};
-constexpr unsigned kRs7BandDen = 128;  // denominator of both bands, V6 and V7
-constexpr float kRs7V6[2] = {0.4453125f, 0.9453125f};
+constexpr unsigned kRsxrV6Num[2] = {57, 121};
+constexpr unsigned kRsxrBandDen = 128;  // denominator of both bands, V6 and V7
+constexpr float kRsxrV6[2] = {0.4453125f, 0.9453125f};
 // V7 (the eighth string's band) per mode: 62/128 and 126/128, in row 7 / 15 beyond the stock taps (lines 61-62 and
 // 125-126 at height 128); painted with [color] string7_color whenever V6 is.
-constexpr unsigned kRs7V7Num[2] = {62, 126};
-constexpr float kRs7V7[2] = {0.484375f, 0.984375f};
-constexpr uint8_t kRs7Anchor[2] = {0x90, 0x4C};  // D8, HYPOTHESIS (RSMods anchor table)
-constexpr unsigned kRs7Row6[2] = {7, 15};        // the row the custom band is recoloured from
+constexpr unsigned kRsxrV7Num[2] = {62, 126};
+constexpr float kRsxrV7[2] = {0.484375f, 0.984375f};
+constexpr uint8_t kRsxrAnchor[2] = {0x90, 0x4C};  // D8, HYPOTHESIS (RSMods anchor table)
+constexpr unsigned kRsxrRow6[2] = {7, 15};        // the row the custom band is recoloured from
 
 // Lines of a level that any stock V (2i+1)/32, i = 0..15, reads with point or bilinear filtering.
-std::vector<bool> Rs7Ramp_Protected(unsigned h);
+std::vector<bool> RsxrRamp_Protected(unsigned h);
 
-struct Rs7RampBuild {
-    std::vector<Rs7Image> levels;  // same sizes as the stock levels
-    unsigned customLevels = 0;     // levels 0..customLevels-1 hold the pure custom colour at V6 (both modes)
+struct RsxrRampBuild {
+    std::vector<RsxrImage> levels;  // same sizes as the stock levels
+    unsigned customLevels = 0;      // levels 0..customLevels-1 hold the pure custom colour at V6 (both modes)
 };
 
 // Copy of `stock` with only the V6 taps (both modes, point + bilinear) repainted, on every level where
-// they avoid all protected lines; content = Rs7_Recolor of the stock row kRs7Row6[mode] at that level
+// they avoid all protected lines; content = Rsxr_Recolor of the stock row kRsxrRow6[mode] at that level
 // (its point line; the alpha byte is copied from that line). rgb[mode] = 0xRRGGBB. With rgb8 the V7 taps are
 // repainted the same way in rgb8[mode] (the eighth string).
 // Stops at the first level where they collide (everything below that level stays a pure copy).
-Rs7RampBuild Rs7Ramp_Build(const std::vector<Rs7Image>& stock, const uint32_t rgb[2], const uint32_t* rgb8 = nullptr);
+RsxrRampBuild RsxrRamp_Build(const std::vector<RsxrImage>& stock, const uint32_t rgb[2],
+                             const uint32_t* rgb8 = nullptr);
 
-struct Rs7RampCheck {
+struct RsxrRampCheck {
     bool exact;
     bool v6Pure;
     unsigned changedLines;
@@ -233,61 +234,61 @@ struct Rs7RampCheck {
 // exact: every protected line of every level is identical to stock and nothing else outside the V6 taps
 // changed; v6Pure: customLevels >= 1 and on levels < customLevels every V6 tap holds the recoloured
 // line. why: the first problem found (empty if none).
-Rs7RampCheck Rs7Ramp_Verify(const std::vector<Rs7Image>& stock, const Rs7RampBuild& b, const uint32_t rgb[2],
-                            const uint32_t* rgb8 = nullptr);
+RsxrRampCheck RsxrRamp_Verify(const std::vector<RsxrImage>& stock, const RsxrRampBuild& b, const uint32_t rgb[2],
+                              const uint32_t* rgb8 = nullptr);
 
 // D3DFORMAT / D3DPOOL / D3DUSAGE values used by the policy.
-constexpr uint32_t kRs7FmtA8R8G8B8 = 21, kRs7FmtX8R8G8B8 = 22;
-constexpr uint32_t kRs7FmtDxt1 = 0x31545844, kRs7FmtDxt5 = 0x35545844;  // MAKEFOURCC('D','X','T','1'/'5')
-constexpr uint32_t kRs7PoolManaged = 1;
+constexpr uint32_t kRsxrFmtA8R8G8B8 = 21, kRsxrFmtX8R8G8B8 = 22;
+constexpr uint32_t kRsxrFmtDxt1 = 0x31545844, kRsxrFmtDxt5 = 0x35545844;  // MAKEFOURCC('D','X','T','1'/'5')
+constexpr uint32_t kRsxrPoolManaged = 1;
 
-enum class Rs7RampVerdict { Swap, Refuse };
+enum class RsxrRampVerdict { Swap, Refuse };
 
-struct Rs7RampDesc {
+struct RsxrRampDesc {
     uint32_t format;
     unsigned w, h, levels;
     uint32_t pool;
     uint32_t usage;
 };
 
-struct Rs7RampPlan {
-    Rs7RampVerdict verdict;
+struct RsxrRampPlan {
+    RsxrRampVerdict verdict;
     const char* why;
 };
 
 // 256x128 level 0, >= 1 level; A8R8G8B8 (21)/X8R8G8B8 (22) -> Swap (exact copy in the stock format);
 // pool != MANAGED (1) -> Refuse; any usage bit (RENDERTARGET, DYNAMIC, AUTOGENMIPMAP, ...) -> Refuse; anything else,
 // DXT1/DXT5 too -> Refuse.
-Rs7RampPlan Rs7Ramp_Plan(const Rs7RampDesc& d);
-uint64_t Rs7Ramp_Hash(const std::vector<Rs7Image>& levels);  // FNV-1a 64 over sizes + texels
+RsxrRampPlan RsxrRamp_Plan(const RsxrRampDesc& d);
+uint64_t RsxrRamp_Hash(const std::vector<RsxrImage>& levels);  // FNV-1a 64 over sizes + texels
 
 // nonUniformRows: rows (h/16 lines each) whose lines are not all identical; grey7/grey15: every texel
 // of that row has R == G == B.
-struct Rs7RowStats {
+struct RsxrRowStats {
     unsigned nonUniformRows;
     bool grey7, grey15;
 };
 
-Rs7RowStats Rs7Ramp_RowStats(const Rs7Image& level0);  // for the log
+RsxrRowStats RsxrRamp_RowStats(const RsxrImage& level0);  // for the log
 
 // ---- the ramp candidate table and the V6 rule (rampstate.cpp)
 
 // Ramp-swap state: the candidate table (stock ramp textures found in the engine's
-// texture list), the V6 rule that drives g_rs7_v6, and counters logged at song setup.
+// texture list), the V6 rule that drives g_rsxr_v6, and counters logged at song setup.
 // Pure bookkeeping: no D3D calls, candidates' texture pointers are compared, never dereferenced.
 
 // Embedded: an unnamed 256x128 texture of a NIF model (the neck targets' outline ramp), a candidate by size only;
 // processing checks its content and refuses what is not a ramp. Its state never counts in the V6 rule.
-enum class Rs7Family : uint8_t { Note, Additive, Embedded };
+enum class RsxrFamily : uint8_t { Note, Additive, Embedded };
 // Pending: found by the worker, never processed. Busy: the render thread is processing it (Claim).
 // Active: our copy is bound in its place (stock + ours referenced). Refused: never swapped. Retry:
 // processing failed transiently, again at retryAtMs. Retired: free slot (stale entry; d3d = nullptr).
-enum class Rs7CandState : uint8_t { Pending, Active, Refused, Retry, Busy, Retired };
+enum class RsxrCandState : uint8_t { Pending, Active, Refused, Retry, Busy, Retired };
 
-struct Rs7Cand {         // written by the worker (Pending, Retire) and the render thread (rest)
+struct RsxrCand {        // written by the worker (Pending, Retire) and the render thread (rest)
     void* volatile d3d;  // stock IDirect3DBaseTexture9* (raw until Active: compare only)
-    Rs7Family family;
-    volatile Rs7CandState state;
+    RsxrFamily family;
+    volatile RsxrCandState state;
     void* stock;  // Active: IDirect3DTexture9* we hold a reference on
     void* ours;   // Active: our IDirect3DTexture9* (one reference per candidate)
     uint64_t hash;
@@ -299,53 +300,53 @@ struct Rs7Cand {         // written by the worker (Pending, Retire) and the rend
     char path[120];      // platform filename, for the log
 };
 
-constexpr int kRs7MaxCands = 32;
+constexpr int kRsxrMaxCands = 32;
 // Writers (Add, Claim, Retire, ResetForTests) are serialised by a lock; Find is lock-free. Add reuses a
 // Retired slot before appending; a slot's fields are written before its d3d pointer is published.
-int Rs7Cand_Add(void* d3d, Rs7Family f, const char* path, uintptr_t obj = 0);  // -1 full; existing index if present
-Rs7Cand* Rs7Cand_Find(const void* d3d);                                        // nullptr if unknown (no deref of d3d)
-int Rs7Cand_Count();                                                           // slots in use (Retired included)
-Rs7Cand* Rs7Cand_At(int i);                                                    // nullptr outside [0, Count)
+int RsxrCand_Add(void* d3d, RsxrFamily f, const char* path, uintptr_t obj = 0);  // -1 full; existing index if present
+RsxrCand* RsxrCand_Find(const void* d3d);                                        // nullptr if unknown (no deref of d3d)
+int RsxrCand_Count();                                                            // slots in use (Retired included)
+RsxrCand* RsxrCand_At(int i);                                                    // nullptr outside [0, Count)
 // Render thread: Pending/Retry -> Busy iff c still holds d3d. False: leave it alone.
-bool Rs7Cand_Claim(Rs7Cand* c, const void* d3d);
+bool RsxrCand_Claim(RsxrCand* c, const void* d3d);
 // -> Retired (d3d = nullptr, slot reusable) iff c still holds d3d. byOwner = false (the worker): only
 // Pending/Refused/Retry. byOwner = true (the render thread, which owns Busy and Active entries; it
 // releases stock/ours first): any live state. True if retired.
-bool Rs7Cand_Retire(Rs7Cand* c, const void* d3d, bool byOwner);
+bool RsxrCand_Retire(RsxrCand* c, const void* d3d, bool byOwner);
 // D6: on iff enabled && deviceOk && >= 1 Note Active && no Refused/Retry of either family.
-bool Rs7Ramp_V6Rule(bool enabled, bool deviceOk);
-// Applies the rule to g_rs7_v6 (both modes, atomic dword stores); logs "ramp: V6 ON/OFF (reason)" on change
+bool RsxrRamp_V6Rule(bool enabled, bool deviceOk);
+// Applies the rule to g_rsxr_v6 (both modes, atomic dword stores); logs "ramp: V6 ON/OFF (reason)" on change
 // (inside the lock, so lines from concurrent callers keep the order of the stores).
-void Rs7Ramp_UpdateV6(bool enabled, bool deviceOk, const char* reason);
+void RsxrRamp_UpdateV6(bool enabled, bool deviceOk, const char* reason);
 // Counters (Interlocked) and the S4 log line.
-void Rs7Ramp_CountSwap();
-void Rs7Ramp_CountHidden();
-void Rs7Ramp_CountFault();
+void RsxrRamp_CountSwap();
+void RsxrRamp_CountHidden();
+void RsxrRamp_CountFault();
 // "ramp stats: swaps=%u hidden=%u faults=%u candidates %u (active %u, refused %u, retry %u, pending %u) v6=%s";
 // candidates = live entries (Retired excluded), pending includes Busy.
-void Rs7Ramp_LogStats();
-// Tests: empties the table, zeroes the counters and g_rs7_v6 (no log line).
-void Rs7Cand_ResetForTests();
+void RsxrRamp_LogStats();
+// Tests: empties the table, zeroes the counters and g_rsxr_v6 (no log line).
+void RsxrCand_ResetForTests();
 
 // What the ramp-copy hook (d3d/swap_*.cpp, app layer) provides to the colour settings and the overlay; defined in
 // d3d/swap_ramp.cpp.
 // Overlay ([color] string6_color / _cb live, any thread): the render thread's next SetTexture on the
 // hooked device rebuilds string 6's lines of every live copy with these colours (same build and
 // self-check as the first copy) and drops cached copies no candidate uses. Later copies use them too.
-void Rs7Swap_RequestRecolour(const uint32_t rgb[2]);
+void RsxrSwap_RequestRecolour(const uint32_t rgb[2]);
 
 // Overlay status (render thread).
-struct Rs7SwapStats {
+struct RsxrSwapStats {
     bool installed, deviceOk;
     unsigned copies, active, refused, retry, pending;
     uint32_t rgb[2];
 };
 
-void Rs7Swap_Stats(Rs7SwapStats* out);
+void RsxrSwap_Stats(RsxrSwapStats* out);
 
 // ---- RSMods (rsmods.cpp, glow.cpp)
 
-namespace rs7rsmods {
+namespace rsxrrsmods {
 struct Colour {
     bool valid = false;
     uint32_t rgb = 0;
@@ -387,17 +388,17 @@ void HslToRgb(float h, float s, float l, float out[3]);
 // The glow RSMods intends for `enabled`: true and out = HSL((hue - 4 + 360) % 360, 1, 0.5) when
 // `custom` (RSMods' custom string colours are in effect) and the hue is 0..3; else false, out = glow.
 bool CorrectGlow(bool custom, const float enabled[3], const float glow[3], float out[3]);
-}  // namespace rs7rsmods
+}  // namespace rsxrrsmods
 
-// Startup (Rs7Colour_Start): 1 when RSMods is the proxy with its custom string colours on and not shaded
-// from the game's colours (rs7rsmods::CustomGlow); the GLW site is written and Rs7_CallIn_GlowColour
+// Startup (RsxrColour_Start): 1 when RSMods is the proxy with its custom string colours on and not shaded
+// from the game's colours (rsxrrsmods::CustomGlow); the GLW site is written and Rsxr_CallIn_GlowColour
 // corrects only then.
-extern "C" __declspec(dllexport) uintptr_t g_rs7_glow_fix;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_glow_fix;
 // The glow colour pointer Rnd_StringRenderer_UpdateGlow uses for string `s` (< 6) of colour manager `mgr`:
 // a corrected copy of RSMods' glow (see above), else `glow` itself. Render thread.
-extern "C" const float* __cdecl Rs7_GlowFixPtr(const float* glow, const uint8_t* mgr, uint32_t s);
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_GLW(Rs7Mid::Context& c);
+extern "C" const float* __cdecl Rsxr_GlowFixPtr(const float* glow, const uint8_t* mgr, uint32_t s);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_GLW(RsxrMid::Context& c);
 // CBUV 0x7A8590 / CBRGB 0x7A8490 / CBSTR 0x598120 (hooks_bass.cpp): the per-player bass low-B slot (SetBassShift).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CBUV(Rs7Mid::Context& c);
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CBRGB(Rs7Mid::Context& c);
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_CBSTR(Rs7Mid::Context& c);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_CBUV(RsxrMid::Context& c);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_CBRGB(RsxrMid::Context& c);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_CBSTR(RsxrMid::Context& c);

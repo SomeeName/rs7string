@@ -23,8 +23,8 @@ def emu():
 def test_pool_request_count(emu, site, reg, count, s7, ports, want):
     e = emu
     put = lambda a, v: e.uc.mem_write(a, struct.pack("<I", v))
-    put(e.exports["g_rs7_s7_on"], s7)
-    put(e.exports["g_rs7_publish_ports"], ports)
+    put(e.exports["g_rsxr_s7_on"], s7)
+    put(e.exports["g_rsxr_publish_ports"], ports)
     profile = DATA + 0x100
     e.uc.mem_write(profile + 0x38, bytes([count]))
     va = site_va(site)
@@ -32,6 +32,6 @@ def test_pool_request_count(emu, site, reg, count, s7, ports, want):
         e.run(va, va + 7, {reg: profile, UC_X86_REG_ESP: STACK + 0x80000})
         seen = e.uc.reg_read(reg)
     finally:
-        put(e.exports["g_rs7_s7_on"], 0)
-        put(e.exports["g_rs7_publish_ports"], 0)
+        put(e.exports["g_rsxr_s7_on"], 0)
+        put(e.exports["g_rsxr_publish_ports"], 0)
     assert seen == want

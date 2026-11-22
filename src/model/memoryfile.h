@@ -4,7 +4,7 @@
 #include <cstring>
 #include <intrin.h>
 
-namespace rs7 {
+namespace rsxr {
 // The twelve-slot resource IFile ABI. Storage and destruction belong to the caller: a borrowed
 // stack stream must never be freed by the game; an owned stream may outlive its loading call.
 struct MemoryFile {
@@ -75,4 +75,4 @@ std::array<const void*, 12> MemoryFileVtable(void(__fastcall* destroy)(MemoryFil
             reinterpret_cast<const void*>(&Ops::True), reinterpret_cast<const void*>(&Ops::Good<RequireData>),
             reinterpret_cast<const void*>(&Ops::True), reinterpret_cast<const void*>(&Ops::True)};
 }
-}  // namespace rs7
+}  // namespace rsxr

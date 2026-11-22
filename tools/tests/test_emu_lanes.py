@@ -150,7 +150,7 @@ def test_r6_lane_offset(emus, string):
 def test_r2_logger_calls_follow_the_diagnostics_switch(emus, diag, string):
     _, patched = emus
     want = 1 if diag and string in (0, 6) else 0
-    logger = patched.exports["Rs7_DiagNoteHead"]  # R2's D1 logger (a `ret` in the emulator)
+    logger = patched.exports["Rsxr_DiagNoteHead"]  # R2's D1 logger (a `ret` in the emulator)
     hits = []
     hook = patched.uc.hook_add(UC_HOOK_CODE, lambda uc, a, s, u: hits.append(a), begin=logger, end=logger)
     try:

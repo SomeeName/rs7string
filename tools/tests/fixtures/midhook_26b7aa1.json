@@ -4,17 +4,17 @@
     "fixups": [
       {
         "offset": 2,
-        "symbol": "g_rs7_endlog",
+        "symbol": "g_rsxr_endlog",
         "relative": false
       },
       {
         "offset": 32,
-        "symbol": "Rs7End_OnSite",
+        "symbol": "RsxrEnd_OnSite",
         "relative": true
       },
       {
         "offset": 55,
-        "symbol": "g_rs7_resume_SE1",
+        "symbol": "g_rsxr_resume_SE1",
         "relative": false
       }
     ],
@@ -25,17 +25,17 @@
     "fixups": [
       {
         "offset": 2,
-        "symbol": "g_rs7_endlog",
+        "symbol": "g_rsxr_endlog",
         "relative": false
       },
       {
         "offset": 32,
-        "symbol": "Rs7End_OnSite",
+        "symbol": "RsxrEnd_OnSite",
         "relative": true
       },
       {
         "offset": 55,
-        "symbol": "g_rs7_resume_SE2",
+        "symbol": "g_rsxr_resume_SE2",
         "relative": false
       }
     ],
@@ -46,17 +46,17 @@
     "fixups": [
       {
         "offset": 2,
-        "symbol": "g_rs7_endlog",
+        "symbol": "g_rsxr_endlog",
         "relative": false
       },
       {
         "offset": 32,
-        "symbol": "Rs7End_OnSite",
+        "symbol": "RsxrEnd_OnSite",
         "relative": true
       },
       {
         "offset": 57,
-        "symbol": "g_rs7_resume_SE3",
+        "symbol": "g_rsxr_resume_SE3",
         "relative": false
       }
     ],

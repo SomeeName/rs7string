@@ -60,8 +60,8 @@ class Machine:
         self.sizes = {MAT: 0x6C, DET: 0x13E0}
         self.entries = {}
         self.reads = []
-        self.u32(self.exports["g_rs7_publish_ports"], 1)
-        self.u32(self.exports["g_rs7_fn_msize"], FAKE)
+        self.u32(self.exports["g_rsxr_publish_ports"], 1)
+        self.u32(self.exports["g_rsxr_fn_msize"], FAKE)
         u.mem_write(FAKE, b"\xc3")
         u.mem_write(FAKE + 0x100, bytes.fromhex("DB E3"))  # FNINIT between independent calls
         u.hook_add(UC_HOOK_CODE, self.msize, begin=FAKE, end=FAKE)
@@ -88,13 +88,13 @@ class Machine:
             self.copies[fn.id] = va
             tramp = va + 0xF00
             u.mem_write(tramp, code[:pro] + b"\xe9" + struct.pack("<i", fn.start + pro - (tramp + pro + 5)))
-            self.u32(self.exports["g_rs7_pubcopy_" + fn.id], va)
-            self.u32(self.exports["g_rs7_pubtramp_" + fn.id], tramp)
+            self.u32(self.exports["g_rsxr_pubcopy_" + fn.id], va)
+            self.u32(self.exports["g_rsxr_pubtramp_" + fn.id], tramp)
         self.u32(TRACKER + 0x4C19C, INPUT)
         self.u32(INPUT + 8, MAT)
         self.u32(MAT + 4, DET)
-        self.u32(MAT + 0x68, 0x38503752)
-        self.u32(DET + 0x13DC, 0x38503752)
+        self.u32(MAT + 0x68, 0x38505852)
+        self.u32(DET + 0x13DC, 0x38505852)
         self.u32(DET + 0x13D8, 6)
         self.u32(DET + 0x11EC, 1)
 
@@ -111,7 +111,7 @@ class Machine:
         return self.entries[sid]
 
     def callin(self, sym):
-        """The call-in entry a copy's call edit goes to (built once), as Rs7Fn_Build writes it."""
+        """The call-in entry a copy's call edit goes to (built once), as RsxrFn_Build writes it."""
         if sym not in self.entries:
             out = COPIES + 0x8000 + 0x100 * len(self.entries)
             self.entries[sym] = callin_entry(self.uc, self.exports, sym, out, STACK + 0x1F000, RET)
@@ -205,18 +205,18 @@ def test_tolerance_copy_and_guard_preserve_six_string_formula_and_stack(m, pitch
     assert out[0] == out[1]
 
 
-@pytest.mark.parametrize("size,magic", [(0x58, 0x38503752), (0x6C, 0)])
+@pytest.mark.parametrize("size,magic", [(0x58, 0x38505852), (0x6C, 0)])
 def test_legacy_matcher_uses_stock_trampoline_without_tail_read(m, size, magic):
     m.sizes[MAT] = size
     m.u32(MAT + 0x68, magic)
     try:
-        m.call(m.exports["Rs7Publish_Target"], (1, MAT))
-        assert m.uc.reg_read(UC_X86_REG_EAX) == m.get32(m.exports["g_rs7_pubtramp_PUBTO"])
+        m.call(m.exports["RsxrPublish_Target"], (1, MAT))
+        assert m.uc.reg_read(UC_X86_REG_EAX) == m.get32(m.exports["g_rsxr_pubtramp_PUBTO"])
         if size == 0x58:
             assert not any(MAT + 0x58 <= a < MAT + 0x6C for a, s in m.reads)
     finally:
         m.sizes[MAT] = 0x6C
-        m.u32(MAT + 0x68, 0x38503752)
+        m.u32(MAT + 0x68, 0x38505852)
 
 
 @pytest.mark.parametrize("n", [4, 6, 7, 8])

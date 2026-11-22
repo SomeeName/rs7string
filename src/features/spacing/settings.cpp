@@ -7,12 +7,12 @@
 #include "platform/uilayout.h"
 #include <string>
 
-float g_rs7_spacing[4] = {};
+float g_rsxr_spacing[4] = {};
 
-bool rs7spacing::Parse(const wchar_t* text, float* out) {
+bool rsxrspacing::Parse(const wchar_t* text, float* out) {
     float v = 0.0f;
     // All four rows share the range 0 .. kMax; below kMin is stock (0), as the overlay's Apply does.
-    const bool ok = !text || !*text || Rs7Set_ParseTableFloat(kRs7SpacingSettings, "neck.spacing_guitar7", text, &v);
+    const bool ok = !text || !*text || RsxrSet_ParseTableFloat(kRsxrSpacingSettings, "neck.spacing_guitar7", text, &v);
 
     *out = OrStock(v);
 
@@ -20,41 +20,41 @@ bool rs7spacing::Parse(const wchar_t* text, float* out) {
 }
 
 namespace {
-using T = Rs7SetType;
-using W = Rs7SetWhen;
+using T = RsxrSetType;
+using W = RsxrSetWhen;
 
 const wchar_t* const kKeys[4] = {L"spacing_bass5", L"spacing_bass6", L"spacing_guitar7", L"spacing_guitar8"};
 
 template <int I>
-void Apply(const Rs7SetValue& v) {
-    g_rs7_spacing[I] = rs7spacing::OrStock(v.f[0]);  // as the ini read (Parse)
+void Apply(const RsxrSetValue& v) {
+    g_rsxr_spacing[I] = rsxrspacing::OrStock(v.f[0]);  // as the ini read (Parse)
 }
 
 template <int I>
-void Startup(Rs7SetValue& v) {
-    v.f[0] = g_rs7_spacing[I];
+void Startup(RsxrSetValue& v) {
+    v.f[0] = g_rsxr_spacing[I];
 }
 
 void Read(const wchar_t* iniPath) {
     for (int i = 0; i < 4; ++i) {
-        g_rs7_spacing[i] = 0.0f;
+        g_rsxr_spacing[i] = 0.0f;
         if (!iniPath) {
             continue;
         }
 
         bool tooLong = false;
-        const std::wstring raw = Rs7Config_ReadString(L"neck", kKeys[i], iniPath, &tooLong);
+        const std::wstring raw = RsxrConfig_ReadString(L"neck", kKeys[i], iniPath, &tooLong);
         float v = 0.0f;
 
-        if (!tooLong && rs7spacing::Parse(raw.c_str(), &v)) {
-            g_rs7_spacing[i] = v;
+        if (!tooLong && rsxrspacing::Parse(raw.c_str(), &v)) {
+            g_rsxr_spacing[i] = v;
         } else {
-            Rs7Log("settings: [neck] %ls=%ls is not a spacing of 0-4: stock spacing", kKeys[i], raw.c_str());
+            RsxrLog("settings: [neck] %ls=%ls is not a spacing of 0-4: stock spacing", kKeys[i], raw.c_str());
         }
     }
 }
 
-const Rs7SetDef kDefs[] = {
+const RsxrSetDef kDefs[] = {
     {"neck.spacing_bass5", L"neck", L"spacing_bass5", T::Float, W::Live, "0", 0, 4, "5-string bass string spacing",
      "Distance between the strings of a 5-string bass on the neck and highway. 0 = stock bass spacing 2.68 (10.7 "
      "wide); 2.01 keeps the 4-string bass width, 1.608 is the guitar spacing. Takes effect when the bass is next "
@@ -77,17 +77,17 @@ const Rs7SetDef kDefs[] = {
 };
 }  // namespace
 
-const Rs7SetTable kRs7SpacingSettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), Read};
+const RsxrSetTable kRsxrSpacingSettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), Read};
 
 namespace {
-using U = Rs7UiTab;
-using K = Rs7UiKind;
+using U = RsxrUiTab;
+using K = RsxrUiKind;
 
-const Rs7UiItem kUi[] = {
+const RsxrUiItem kUi[] = {
     {U::Neck, K::Section, "string spacing"},       {U::Neck, K::Setting, "neck.spacing_bass5"},
     {U::Neck, K::Setting, "neck.spacing_bass6"},   {U::Neck, K::Setting, "neck.spacing_guitar7"},
     {U::Neck, K::Setting, "neck.spacing_guitar8"},
 };
 }  // namespace
 
-const Rs7UiTable kRs7SpacingUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
+const RsxrUiTable kRsxrSpacingUi = {kUi, int(sizeof kUi / sizeof kUi[0])};

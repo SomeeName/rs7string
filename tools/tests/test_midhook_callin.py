@@ -1,6 +1,6 @@
 """The calls written into the native GuitarStrings copies (call-in entries, features/strings/hooks_callin.cpp) against
 the naked helpers they replaced (frozen at 304b9d3, tools/tests/fixtures/midhook_304b9d3.json) and against the stock
-bytes of the edit (six-string cases). Oracle: callin_oracle.py. Rs7_Call_GlowRead (an x87 result, Sse mode) is frozen at
+bytes of the edit (six-string cases). Oracle: callin_oracle.py. Rsxr_Call_GlowRead (an x87 result, Sse mode) is frozen at
 06733ba (tools/tests/fixtures/midhook_06733ba.json).
 """
 
@@ -44,21 +44,23 @@ def ns(*entries) -> bytes:
 
 
 register(
-    Spec("TP2", "Rs7_Call_TP2", 0x4608AC, 6, flags="dead", frozen=("Rs7_NsTplAt",)),
+    Spec("TP2", "Rsxr_Call_TP2", 0x4608AC, 6, flags="dead", frozen=("Rsxr_NsTplAt",)),
     [
-        Case("unregistered", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3}, data={"g_rs7_ns": ns()}, stock=False),
+        Case("unregistered", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3}, data={"g_rsxr_ns": ns()}, stock=False),
         Case(
             "other-vector",
             regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 3},
-            data={"g_rs7_ns": ns((D + 8, 9, T8))},
+            data={"g_rsxr_ns": ns((D + 8, 9, T8))},
             stock=False,
         ),
-        Case("past-count", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 9}, data={"g_rs7_ns": ns((D, 9, T8))}, stock=False),
-        Case("t8", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 4}, data={"g_rs7_ns": ns((D, 9, T8))}, stock=False),
+        Case(
+            "past-count", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 9}, data={"g_rsxr_ns": ns((D, 9, T8))}, stock=False
+        ),
+        Case("t8", regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 4}, data={"g_rsxr_ns": ns((D, 9, T8))}, stock=False),
         Case(
             "t8-second",
             regs={UC_X86_REG_EBX: D, UC_X86_REG_EDI: 0},
-            data={"g_rs7_ns": ns((D + 8, 9, T8 + 0x100), (D, 2, T8))},
+            data={"g_rsxr_ns": ns((D + 8, 9, T8 + 0x100), (D, 2, T8))},
             stock=False,
         ),
     ],
@@ -67,7 +69,7 @@ register(
 # ---- GlowSetup (GSGL 0x544243, EBX = renderer): ESI = [EBX+4] + 80h, EDI = -ESI. The stock lea alone (its neighbour
 # edits are NOPs) is not comparable: no stock case.
 register(
-    Spec("GlowSetup", "Rs7_Call_GlowSetup", 0x544243, 6, flags="dead"),
+    Spec("GlowSetup", "Rsxr_Call_GlowSetup", 0x544243, 6, flags="dead"),
     [
         Case(f"gs{i}", regs={UC_X86_REG_EBX: D}, mem={D: struct.pack("<II", 0, gs)}, stock=False)
         for i, gs in enumerate((D + 0x400, 0xFFFFFF90))
@@ -78,20 +80,20 @@ register(
 register(
     Spec(
         "GlowColour",
-        "Rs7_Call_GlowColour",
+        "Rsxr_Call_GlowColour",
         0x544384,
         7,
         flags="dead",
-        helpers={"Rs7_GlowFixPtr": 3},
-        local={"Rs7_GlowFixPtr": "Rs7_CallIn_GlowColour"},  # not exported
+        helpers={"Rsxr_GlowFixPtr": 3},
+        local={"Rsxr_GlowFixPtr": "Rsxr_CallIn_GlowColour"},  # not exported
     ),
     [
         Case(
             f"m{mode}-s{s}-native{native}-fix{fix}",
             regs={UC_X86_REG_ECX: D, UC_X86_REG_EAX: mode * 0xA8 + s, UC_X86_REG_EDX: s},
             mem={D: PATTERN},
-            words={"g_rs7_native_colours": native, "g_rs7_glow_fix": fix},
-            rets={"Rs7_GlowFixPtr": 0xF1F1F1F1},
+            words={"g_rsxr_native_colours": native, "g_rsxr_glow_fix": fix},
+            rets={"Rsxr_GlowFixPtr": 0xF1F1F1F1},
             stock=not native and not fix and s < 6,
         )
         for mode in (0, 1)
@@ -114,7 +116,7 @@ GLOW = (
     1234.5,
 )  # a denormal among them; none 0.0 (the stock slot of a native case)
 register(
-    Spec("GlowRead", "Rs7_Call_GlowRead", 0x5443B3, 7),
+    Spec("GlowRead", "Rsxr_Call_GlowRead", 0x5443B3, 7),
     [
         Case(
             f"s{s}-{'stock' if at == D + 0x2C else 'native'}",
@@ -130,7 +132,7 @@ register(
 
 # ---- HsLoaded (GSHC 0x58E516): ECX = s, ESI = headstock, EDI = guitar -> the flags of "loaded" ---------------------
 register(
-    Spec("HsLoaded", "Rs7_Call_HsLoaded", 0x58E516, 5, helpers={"Rs7Gs_SegHandle": 2}),
+    Spec("HsLoaded", "Rsxr_Call_HsLoaded", 0x58E516, 5, helpers={"RsxrGs_SegHandle": 2}),
     [
         *(
             Case(
@@ -145,7 +147,7 @@ register(
             Case(
                 f"s{s}-seg{bool(h)}",
                 regs={UC_X86_REG_ECX: s, UC_X86_REG_ESI: D, UC_X86_REG_EDI: D + 0x200},
-                rets={"Rs7Gs_SegHandle": h},
+                rets={"RsxrGs_SegHandle": h},
                 stock=False,
             )
             for s in (6, 7)
@@ -156,7 +158,7 @@ register(
 
 # ---- HsSeg (GSHC 0x58E52D): ECX = s, ESI = headstock -> ECX = the segment's colour param ---------------------------
 register(
-    Spec("HsSeg", "Rs7_Call_HsSeg", 0x58E52D, 7, flags="dead", helpers={"Rs7Gs_SegHandle": 2}),
+    Spec("HsSeg", "Rsxr_Call_HsSeg", 0x58E52D, 7, flags="dead", helpers={"RsxrGs_SegHandle": 2}),
     [
         *(
             Case(
@@ -173,7 +175,7 @@ register(
             Case(
                 f"s{s}-seg{bool(h)}",
                 regs={UC_X86_REG_ECX: s, UC_X86_REG_ESI: D, UC_X86_REG_EDI: D + 0x200},
-                rets={"Rs7Gs_SegHandle": h},
+                rets={"RsxrGs_SegHandle": h},
                 stock=False,
             )
             for s in (6, 7)
@@ -188,23 +190,23 @@ FCW_SEEN = DATA + 0x7F00  # where the attach stand-in stores its x87 control wor
 register(
     Spec(
         "Attach",
-        "Rs7_Call_Attach",
+        "Rsxr_Call_Attach",
         0x59A5E9,
         5,
         flags="free",
-        clobbers=("ecx", "edx"),  # after a call; the old helper left Rs7Gs_AttachExt's
-        helpers={"Rs7Gs_AttachExt": 3},
-        game_fcw=("Rs7Gs_AttachExt",),  # it calls the game's attach query
+        clobbers=("ecx", "edx"),  # after a call; the old helper left RsxrGs_AttachExt's
+        helpers={"RsxrGs_AttachExt": 3},
+        game_fcw=("RsxrGs_AttachExt",),  # it calls the game's attach query
         # fnstcw [FCW_SEEN]; mov eax,[esp+4]; add eax,ecx; ret: the game function records its control word
         standins={ATTACH: "D9 3D " + struct.pack("<I", FCW_SEEN).hex(" ") + " 8B 44 24 04 03 C1 C3"},
-        words={"g_rs7_fn_attach": ATTACH},
+        words={"g_rsxr_fn_attach": ATTACH},
     ),
     [
         Case(
             f"s{s:x}",
             regs={UC_X86_REG_ECX: D},
             stack={0: s, 4: D + 0x400},
-            rets={"Rs7Gs_AttachExt": 1},
+            rets={"RsxrGs_AttachExt": 1},
             stock=(s & 0xFF) < 6,
         )
         for s in (0, 5, 0x105, 6, 7, 0x306)
@@ -215,15 +217,15 @@ register(
 register(
     Spec(
         "Shape",
-        "Rs7_Call_Shape",
+        "Rsxr_Call_Shape",
         0x59A15B,
         5,
         flags="free",
-        clobbers=("ecx", "edx"),  # after a call; the old helper left Rs7Gs_ShapeDone's
-        helpers={"Rs7Gs_ShapeDone": 2},
+        clobbers=("ecx", "edx"),  # after a call; the old helper left RsxrGs_ShapeDone's
+        helpers={"RsxrGs_ShapeDone": 2},
         standins={SHAPE: "8B 44 24 04 03 44 24 0C C2 0C 00"},  # mov eax,[esp+4]; add eax,[esp+0Ch]; ret 0Ch
-        words={"g_rs7_fn_shape": SHAPE},
-        entries={"g_rs7_callin_shape_ret": "ShapeDone"},
+        words={"g_rsxr_fn_shape": SHAPE},
+        entries={"g_rsxr_callin_shape_ret": "ShapeDone"},
     ),
     [
         Case(f"s{s:x}", stack={0: D + 0x600, 4: D + 0x700, 8: s}, stock=(s & 0xFF) < 6)
@@ -297,13 +299,13 @@ def test_light_and_sse_callins_use_no_fp(name):
 
 
 def test_callins_are_read_from_every_definition():
-    """CALLINS parses each `Rs7Mid::CallIn g_rs7_callin_<name>{...};` definition; one written differently is missed."""
+    """CALLINS parses each `RsxrMid::CallIn g_rsxr_callin_<name>{...};` definition; one written differently is missed."""
     import re
 
     from emu_common import REPO
 
     defs = sum(
-        len(re.findall(r"^Rs7Mid::CallIn g_rs7_callin_\w+\{", p.read_text(encoding="utf-8"), re.M))
+        len(re.findall(r"^RsxrMid::CallIn g_rsxr_callin_\w+\{", p.read_text(encoding="utf-8"), re.M))
         for p in (REPO / "src").rglob("*.cpp")
     )
     assert defs > 0 and defs == len(CALLINS)

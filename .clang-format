@@ -46,8 +46,8 @@ LineEnding: LF
 BreakTemplateDeclarations: Yes
 # Macros invoked as whole declarations, without a trailing semicolon.
 StatementMacros:
-  - RS7_FNVARS
-  - RS7_FNEXT
+  - RSXR_FNVARS
+  - RSXR_FNEXT
   - PUB_VAR
   - PAIR
-  - RS7_GPU_THUNK
+  - RSXR_GPU_THUNK

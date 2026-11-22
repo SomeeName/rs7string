@@ -9,12 +9,12 @@
 
 namespace {
 // One line per item: "S title", "E setting id", "R row name", "O on/off row name", "N" (note).
-std::string Layout(Rs7UiTab tab) {
-    const Rs7UiItem* items[kRs7UiMaxTabItems];
-    const int n = Rs7Ui_TabItems(tab, items, kRs7UiMaxTabItems);
+std::string Layout(RsxrUiTab tab) {
+    const RsxrUiItem* items[kRsxrUiMaxTabItems];
+    const int n = RsxrUi_TabItems(tab, items, kRsxrUiMaxTabItems);
     std::string s;
 
-    for (int i = 0; i < n && i < kRs7UiMaxTabItems; ++i) {
+    for (int i = 0; i < n && i < kRsxrUiMaxTabItems; ++i) {
         static const char kKinds[] = "SEROn";
         const char k = kKinds[int(items[i]->kind)];
 
@@ -27,17 +27,17 @@ std::string Layout(Rs7UiTab tab) {
 }  // namespace
 
 TEST(uilayout_status_features_rows) {
-    CHECK(Layout(Rs7UiTab::Status) ==
+    CHECK(Layout(RsxrUiTab::Status) ==
           "O ramp copy (V6)\nO 7th string line\nO fret extend\nO extra tuning pegs\nO 7-string tuner\nO diagnostics\n");
 }
 
 TEST(uilayout_colour_tab) {
-    CHECK(Layout(Rs7UiTab::Colour) == "S string 6 colour\nR ramp copy\nR colour mode\nN\n");
+    CHECK(Layout(RsxrUiTab::Colour) == "S string 6 colour\nR ramp copy\nR colour mode\nN\n");
 }
 
 // The developer keys ([debug] head_*, tuner_autotune, [window] background) are file / pipe only, not in the overlay.
 TEST(uilayout_neck_tab) {
-    CHECK(Layout(Rs7UiTab::Neck) ==
+    CHECK(Layout(RsxrUiTab::Neck) ==
           "S string spacing\n"
           "E neck.spacing_bass5\nE neck.spacing_bass6\nE neck.spacing_guitar7\nE neck.spacing_guitar8\n"
           "S 7-string headstock model\n"
@@ -45,15 +45,15 @@ TEST(uilayout_neck_tab) {
 }
 
 TEST(uilayout_tuner_debug_window_tabs) {
-    CHECK(Layout(Rs7UiTab::Tuner) == "S 7-string tuner\nR sessions\n");
-    CHECK(Layout(Rs7UiTab::Debug) == "S diagnostics\nE debug.diagnostics\nE debug.song_end_log\n");
-    CHECK(Layout(Rs7UiTab::Window) == "S window\nE window.screen\nS overlay\n"
-                                      "E overlay.enabled\nE overlay.open\n");
+    CHECK(Layout(RsxrUiTab::Tuner) == "S 7-string tuner\nR sessions\n");
+    CHECK(Layout(RsxrUiTab::Debug) == "S diagnostics\nE debug.diagnostics\nE debug.song_end_log\n");
+    CHECK(Layout(RsxrUiTab::Window) == "S window\nE window.screen\nS overlay\n"
+                                       "E overlay.enabled\nE overlay.open\n");
 }
 
 // The default view (Player): only what a player would change; everything else is under "Advanced".
 TEST(uilayout_player_view) {
-    CHECK(Layout(Rs7UiTab::Player) ==
+    CHECK(Layout(RsxrUiTab::Player) ==
           "S Extra strings\nE color.rsmods_extended_range\nE color.string6_color\nE color.string6_color_cb\n"
           "E color.string7_color\nE color.string7_color_cb\n"
           "S Guitar\nE neck.string7_line\nE assets.headstock7\n"
@@ -63,18 +63,18 @@ TEST(uilayout_player_view) {
 
 // Player settings, and only they, have a plain label and a one-line hint, without key names or developer terms.
 TEST(uilayout_player_labels_are_plain) {
-    static const char* const kJargon[] = {"ramp", "DXT", "Step", "fncopy", "nslot", "V6",  "atlas", "Rs7",
+    static const char* const kJargon[] = {"ramp", "DXT", "Step", "fncopy", "nslot", "V6",  "atlas", "Rsxr",
                                           "ini",  "_",   "[",    "hook",   "D3D",   "SNG", "native"};
 
-    for (int t = 0; t < kRs7UiTableCount; ++t) {
-        const Rs7UiTable& table = *kRs7UiTables[t];
+    for (int t = 0; t < kRsxrUiTableCount; ++t) {
+        const RsxrUiTable& table = *kRsxrUiTables[t];
 
         for (int i = 0; i < table.count; ++i) {
-            const Rs7UiItem& it = table.items[i];
-            const bool setting = it.tab == Rs7UiTab::Player && it.kind == Rs7UiKind::Setting;
+            const RsxrUiItem& it = table.items[i];
+            const bool setting = it.tab == RsxrUiTab::Player && it.kind == RsxrUiKind::Setting;
 
-            CHECK(it.tab != Rs7UiTab::Player || it.kind == Rs7UiKind::Section || setting);
-            const bool section = it.tab == Rs7UiTab::Player && it.kind == Rs7UiKind::Section;
+            CHECK(it.tab != RsxrUiTab::Player || it.kind == RsxrUiKind::Section || setting);
+            const bool section = it.tab == RsxrUiTab::Player && it.kind == RsxrUiKind::Section;
 
             CHECK((setting || section || !it.label) && (!setting || it.label));
             CHECK(setting == (it.hint != nullptr));
@@ -102,7 +102,7 @@ TEST(uilayout_player_labels_are_plain) {
                 }
             }
 
-            const int k = Rs7Set_Find(it.text);
+            const int k = RsxrSet_Find(it.text);
 
             CHECK(k >= 0);
 
@@ -111,7 +111,7 @@ TEST(uilayout_player_labels_are_plain) {
             }
 
             if (k >= 0) {
-                CHECK(!std::strstr(it.hint, Rs7Set_Def(k).id));
+                CHECK(!std::strstr(it.hint, RsxrSet_Def(k).id));
             }
         }
     }
@@ -119,8 +119,8 @@ TEST(uilayout_player_labels_are_plain) {
 
 // One tab bar: the player tabs come from the Player sections of the tables, and every player setting is in exactly one.
 TEST(uilayout_player_tabs) {
-    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
-    const int n = Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs);
+    RsxrUiPlayerTab tabs[kRsxrUiMaxPlayerTabs];
+    const int n = RsxrUi_PlayerTabs(tabs, kRsxrUiMaxPlayerTabs);
     const char* const kLabels[] = {"Extra strings", "Guitar", "Tuner", "Menu"};
     const char* const kTitles[] = {"Extra strings", "Guitar", "Tuner and tuning names", "This menu"};
     const int kSettings[] = {5, 4, 4, 2};
@@ -134,22 +134,22 @@ TEST(uilayout_player_tabs) {
     }
 
     // The ranges follow each other without a gap or overlap and together hold every Player setting once.
-    const Rs7UiItem* items[kRs7UiMaxTabItems];
-    const int total = Rs7Ui_TabItems(Rs7UiTab::Player, items, kRs7UiMaxTabItems);
+    const RsxrUiItem* items[kRsxrUiMaxTabItems];
+    const int total = RsxrUi_TabItems(RsxrUiTab::Player, items, kRsxrUiMaxTabItems);
     int settings = 0, next = 0;
 
     for (int i = 0; i < total; ++i) {
-        settings += items[i]->kind == Rs7UiKind::Setting ? 1 : 0;
+        settings += items[i]->kind == RsxrUiKind::Setting ? 1 : 0;
     }
 
-    CHECK(total > 0 && items[0]->kind == Rs7UiKind::Section);  // no Player setting before the first section
+    CHECK(total > 0 && items[0]->kind == RsxrUiKind::Section);  // no Player setting before the first section
 
     for (int i = 0; i < n && i < 4; ++i) {
         CHECK_EQ(tabs[i].first, next + 1);  // the section item sits right before the range
-        CHECK(items[tabs[i].first - 1]->kind == Rs7UiKind::Section);
+        CHECK(items[tabs[i].first - 1]->kind == RsxrUiKind::Section);
 
         for (int k = tabs[i].first; k < tabs[i].first + tabs[i].count; ++k) {
-            CHECK(items[k]->kind == Rs7UiKind::Setting);
+            CHECK(items[k]->kind == RsxrUiKind::Setting);
         }
 
         next = tabs[i].first + tabs[i].count;
@@ -161,12 +161,12 @@ TEST(uilayout_player_tabs) {
 
 // The window's default height shows a whole player tab: no tab may have more rows than the budget in ui.cpp assumes.
 TEST(uilayout_player_tab_fits_the_window) {
-    Rs7UiPlayerTab tabs[kRs7UiMaxPlayerTabs];
-    const int n = Rs7Ui_PlayerTabs(tabs, kRs7UiMaxPlayerTabs);
+    RsxrUiPlayerTab tabs[kRsxrUiMaxPlayerTabs];
+    const int n = RsxrUi_PlayerTabs(tabs, kRsxrUiMaxPlayerTabs);
 
-    CHECK(n > 0 && n < kRs7UiMaxPlayerTabs);
+    CHECK(n > 0 && n < kRsxrUiMaxPlayerTabs);
 
-    for (int i = 0; i < n && i < kRs7UiMaxPlayerTabs; ++i) {
+    for (int i = 0; i < n && i < kRsxrUiMaxPlayerTabs; ++i) {
         CHECK(tabs[i].count >= 1 && tabs[i].count <= 8);
         CHECK(tabs[i].locked <= tabs[i].count);
     }
@@ -175,44 +175,44 @@ TEST(uilayout_player_tab_fits_the_window) {
 TEST(uilayout_settings_exist_once_and_live_rows_have_a_reader) {
     int shown[256] = {};
 
-    for (int t = 0; t < kRs7UiTableCount; ++t) {
-        const Rs7UiTable& table = *kRs7UiTables[t];
+    for (int t = 0; t < kRsxrUiTableCount; ++t) {
+        const RsxrUiTable& table = *kRsxrUiTables[t];
 
         for (int i = 0; i < table.count; ++i) {
-            const Rs7UiItem& it = table.items[i];
+            const RsxrUiItem& it = table.items[i];
 
             CHECK(it.text && *it.text);
 
-            if (it.kind == Rs7UiKind::Setting) {
-                const int k = Rs7Set_Find(it.text);
+            if (it.kind == RsxrUiKind::Setting) {
+                const int k = RsxrSet_Find(it.text);
 
                 CHECK(k >= 0 && k < 256);
 
                 if (k >= 0 && k < 256) {
                     CHECK_EQ(++shown[k], 1);
-                    CHECK(std::strcmp(Rs7Set_Def(k).id, it.text) == 0);  // full ids, no bare keys
+                    CHECK(std::strcmp(RsxrSet_Def(k).id, it.text) == 0);  // full ids, no bare keys
                 }
             }
 
-            CHECK((it.kind == Rs7UiKind::Row || it.kind == Rs7UiKind::OnOff) == (it.live != nullptr));
+            CHECK((it.kind == RsxrUiKind::Row || it.kind == RsxrUiKind::OnOff) == (it.live != nullptr));
         }
     }
 }
 
 TEST(uilayout_tab_items_stops_at_max) {
-    const Rs7UiItem* all[kRs7UiMaxTabItems] = {};
-    const Rs7UiItem* items[2] = {};
-    const int n = Rs7Ui_TabItems(Rs7UiTab::Window, all, kRs7UiMaxTabItems);
+    const RsxrUiItem* all[kRsxrUiMaxTabItems] = {};
+    const RsxrUiItem* items[2] = {};
+    const int n = RsxrUi_TabItems(RsxrUiTab::Window, all, kRsxrUiMaxTabItems);
 
     CHECK(n > 2);
-    CHECK_EQ(Rs7Ui_TabItems(Rs7UiTab::Window, items, 2), n);  // the full count, two written
+    CHECK_EQ(RsxrUi_TabItems(RsxrUiTab::Window, items, 2), n);  // the full count, two written
     CHECK(items[0] == all[0] && items[1] == all[1]);
 }
 
 TEST(uilayout_no_tab_exceeds_the_item_cap) {
-    for (int t = 0; t <= int(Rs7UiTab::Player); ++t) {
-        const Rs7UiItem* items[kRs7UiMaxTabItems];
+    for (int t = 0; t <= int(RsxrUiTab::Player); ++t) {
+        const RsxrUiItem* items[kRsxrUiMaxTabItems];
 
-        CHECK(Rs7Ui_TabItems(Rs7UiTab(t), items, kRs7UiMaxTabItems) <= kRs7UiMaxTabItems);
+        CHECK(RsxrUi_TabItems(RsxrUiTab(t), items, kRsxrUiMaxTabItems) <= kRsxrUiMaxTabItems);
     }
 }

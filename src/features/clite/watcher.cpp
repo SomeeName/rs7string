@@ -5,8 +5,8 @@
 #include "platform/seh.h"
 #include <windows.h>
 
-namespace rs7clite::internal {
-using namespace rs7clite;
+namespace rsxrclite::internal {
+using namespace rsxrclite;
 volatile long g_lines = 0;
 volatile LONG64 g_selQpc = 0;          // QPC of the last GKT rebuild request (watcher: "since selection")
 volatile long g_rebuilds[2] = {0, 0};  // per player: GKT rebuilds finished (EnsureForPlayer -> 1)
@@ -53,10 +53,10 @@ Snap Read(uintptr_t mgr, unsigned slot) {
 
             if (info) {
                 s.count =
-                    s.count * 100 + UncheckedRead<uint8_t>(info + rs7::kInfoStrings);  // profile*100 + info (log only)
+                    s.count * 100 + UncheckedRead<uint8_t>(info + rsxr::kInfoStrings);  // profile*100 + info (log only)
             }
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         s.state = -2;
     }
 
@@ -74,8 +74,8 @@ DWORD WINAPI Watcher(void*) {
     // Log only: once the clite log lines are used up there is nothing left to report.
     while (g_lines < kLogCap) {
         Sleep(5);
-        const uintptr_t mgr = g_rs7_clite_mgr;
-        if (!mgr || !g_rs7_clite) {
+        const uintptr_t mgr = g_rsxr_clite_mgr;
+        if (!mgr || !g_rsxr_clite) {
             continue;
         }
 
@@ -99,10 +99,10 @@ DWORD WINAPI Watcher(void*) {
             if (s.holder && !readyLogged[i] && !slowLogged[i] && s.state != 3 && MsSince(born[i]) > 10000.0) {
                 slowLogged[i] = true;  // diagnostic: a guitar that does not finish loading holds the song in state 1
 
-                if (Rs7Log_Upto(&g_lines, kLogCap)) {
-                    Rs7Log("clite: slot %u guitar %08X NOT ready 10 s after it appeared (state %d, count "
-                           "profile*100+info %d)",
-                           i, unsigned(s.guitar), s.state, s.count);
+                if (RsxrLog_Upto(&g_lines, kLogCap)) {
+                    RsxrLog("clite: slot %u guitar %08X NOT ready 10 s after it appeared (state %d, count "
+                            "profile*100+info %d)",
+                            i, unsigned(s.guitar), s.state, s.count);
                 }
             }
 
@@ -113,11 +113,11 @@ DWORD WINAPI Watcher(void*) {
                 readyLogged[i] = false;
                 const LONG64 sel = g_selQpc;
 
-                if (Rs7Log_Upto(&g_lines, kLogCap)) {
-                    Rs7Log("clite: slot %u %s %08X (guitar %08X, profile type %d, count profile*100+info %d, "
-                           "state %d)%s%.1f ms after the last clite request",
-                           i, holderNew ? "new guitar holder" : "new guitar in holder", unsigned(s.holder),
-                           unsigned(s.guitar), s.type, s.count, s.state, sel ? ", " : " - ", sel ? MsSince(sel) : 0.0);
+                if (RsxrLog_Upto(&g_lines, kLogCap)) {
+                    RsxrLog("clite: slot %u %s %08X (guitar %08X, profile type %d, count profile*100+info %d, "
+                            "state %d)%s%.1f ms after the last clite request",
+                            i, holderNew ? "new guitar holder" : "new guitar in holder", unsigned(s.holder),
+                            unsigned(s.guitar), s.type, s.count, s.state, sel ? ", " : " - ", sel ? MsSince(sel) : 0.0);
                 }
             }
 
@@ -125,11 +125,11 @@ DWORD WINAPI Watcher(void*) {
                 readyLogged[i] = true;
                 const LONG64 sel = g_selQpc;
 
-                if (Rs7Log_Upto(&g_lines, kLogCap)) {
-                    Rs7Log("clite: slot %u guitar %08X READY (state 3) %.1f ms after the holder appeared%s%.1f ms "
-                           "after the last clite request; count profile*100+info %d, type %d",
-                           i, unsigned(s.guitar), MsSince(born[i]), sel ? ", " : " - ", sel ? MsSince(sel) : 0.0,
-                           s.count, s.type);
+                if (RsxrLog_Upto(&g_lines, kLogCap)) {
+                    RsxrLog("clite: slot %u guitar %08X READY (state 3) %.1f ms after the holder appeared%s%.1f ms "
+                            "after the last clite request; count profile*100+info %d, type %d",
+                            i, unsigned(s.guitar), MsSince(born[i]), sel ? ", " : " - ", sel ? MsSince(sel) : 0.0,
+                            s.count, s.type);
                 }
             }
 
@@ -147,4 +147,4 @@ void StartWatcher() {
         CloseHandle(h);
     }
 }
-}  // namespace rs7clite::internal
+}  // namespace rsxrclite::internal

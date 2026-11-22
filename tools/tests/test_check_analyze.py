@@ -18,14 +18,14 @@ def _defect(rel, line, code):
 
 def _results(tmp_path, tests_files: dict[str, str], dll=True):
     """A results folder: the tests project's files (name -> XML body) and, if dll, one clean DLL result."""
-    tests = tmp_path / "rs7string_tests" / "tests"
+    tests = tmp_path / "rsxr_tests" / "tests"
     tests.mkdir(parents=True)
     for name, body in tests_files.items():
         (tests / f"{name}.nativecodeanalysis.xml").write_text(body, encoding="utf-8")
 
     if dll:
-        (tmp_path / "rs7string").mkdir()
-        (tmp_path / "rs7string" / "config.nativecodeanalysis.xml").write_text(_XML.format(""), encoding="utf-8")
+        (tmp_path / "rsxr").mkdir()
+        (tmp_path / "rsxr" / "config.nativecodeanalysis.xml").write_text(_XML.format(""), encoding="utf-8")
 
     for project in check_analyze.PROJECTS:
         folder = tmp_path / project
@@ -52,7 +52,7 @@ def test_findings_dedupe_headers_and_skip_third_party_and_stale(tmp_path):
 def test_missing_project_results_fail_instead_of_reporting_everything_fixed(tmp_path):
     results = _results(tmp_path, {"test_patch": _XML.format("")}, dll=False)
 
-    with pytest.raises(check_analyze.AnalyzeError, match="no analysis results for rs7string;"):
+    with pytest.raises(check_analyze.AnalyzeError, match="no analysis results for rsxr;"):
         check_analyze.findings(results)
 
 
@@ -72,21 +72,21 @@ def test_defect_without_location_names_the_file(tmp_path):
 
 def test_missing_translation_unit_report_fails(tmp_path):
     results = _results(tmp_path, {"test_patch": _XML.format(""), "test_gpu": _XML.format("")})
-    (results / "rs7string_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
+    (results / "rsxr_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
     with pytest.raises(check_analyze.AnalyzeError, match="missing analysis report.*test_gpu"):
         check_analyze.findings(results)
 
 
 def test_missing_report_manifest_fails(tmp_path):
     results = _results(tmp_path, {"test_patch": _XML.format("")})
-    (results / "rs7string/analysis-reports.txt").unlink()
+    (results / "rsxr/analysis-reports.txt").unlink()
     with pytest.raises(check_analyze.AnalyzeError, match="analysis-reports.txt"):
         check_analyze.findings(results)
 
 
 def test_update_does_not_shrink_baseline_when_report_is_missing(tmp_path, monkeypatch):
     results = _results(tmp_path / "results", {"test_patch": _XML.format(""), "test_gpu": _XML.format("")})
-    (results / "rs7string_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
+    (results / "rsxr_tests/tests/test_gpu.nativecodeanalysis.xml").unlink()
     baseline = _baseline_file(tmp_path, monkeypatch, 3)
     original = baseline.read_bytes()
     monkeypatch.setattr(check_analyze, "RESULTS", results)
@@ -101,7 +101,7 @@ def test_main_reports_missing_results_in_one_line(tmp_path, monkeypatch, capsys)
 
     assert check_analyze.main() == 1
     assert capsys.readouterr().out.strip().splitlines() == [
-        "check_analyze: no analysis results for rs7string; run build.ps1 (it runs the analysis build)"
+        "check_analyze: no analysis results for rsxr; run build.ps1 (it runs the analysis build)"
     ]
 
 

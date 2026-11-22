@@ -5,7 +5,7 @@
 #include <cstring>
 #include <initializer_list>
 
-namespace rs7test {
+namespace rsxrtest {
 // Small synthetic callees for game functions with register arguments.
 struct Executable {
     uint8_t* p;
@@ -22,4 +22,4 @@ struct Executable {
     Executable(const Executable&) = delete;
     Executable& operator=(const Executable&) = delete;
 };
-}  // namespace rs7test
+}  // namespace rsxrtest

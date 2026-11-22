@@ -1,4 +1,4 @@
-// Call-site mid-hooks (Rs7Mid_BuildCall, Hook::PrepareCall; ARCHITECTURE.md section 14 "Call sites"): a small caller
+// Call-site mid-hooks (RsxrMid_BuildCall, Hook::PrepareCall; ARCHITECTURE.md section 14 "Call sites"): a small caller
 // `push imm32; call callee; ret` runs stock and hooked on identical registers and flags. The callee is
 // `inc [g_calleeRuns]; mov eax,[esp+4]; add eax,ecx; ret 4` (stdcall-like cleanup, flags from the ADD).
 #include "midhook_run.h"
@@ -9,7 +9,7 @@
 #include <float.h>
 
 namespace {
-using namespace Rs7MidRun;
+using namespace RsxrMidRun;
 
 uint32_t g_calleeRuns;
 constexpr uint32_t kArg = 0x11223344;
@@ -57,9 +57,9 @@ struct Page {
     uintptr_t Entry() const { return uintptr_t(p + 128); }
 
     // Builds the entry for the hooked caller's call and retargets that call to it.
-    bool Hook(Rs7Mid::Callback callback, bool light, bool after) {
-        const size_t n = Rs7Mid_BuildCall(p + 128, 256, Site(), Callee(), Entry(), uintptr_t(callback), light ? 1 : 0,
-                                          after ? 1 : 0);
+    bool Hook(RsxrMid::Callback callback, bool light, bool after) {
+        const size_t n = RsxrMid_BuildCall(p + 128, 256, Site(), Callee(), Entry(), uintptr_t(callback), light ? 1 : 0,
+                                           after ? 1 : 0);
 
         Caller(16, Entry());
 
@@ -67,32 +67,32 @@ struct Page {
     }
 };
 
-Rs7Mid::Context g_seen;
+RsxrMid::Context g_seen;
 uint32_t g_seenArg, g_seenReturn, g_callbacks;
 
-void __cdecl Record(Rs7Mid::Context& c) {
+void __cdecl Record(RsxrMid::Context& c) {
     g_seen = c;
-    g_seenReturn = Rs7Mid::Dword(c.esp);
-    g_seenArg = Rs7Mid::Dword(c.esp + 4);
+    g_seenReturn = RsxrMid::Dword(c.esp);
+    g_seenArg = RsxrMid::Dword(c.esp + 4);
     ++g_callbacks;
 }
 
-void __cdecl Skip(Rs7Mid::Context& c) {
+void __cdecl Skip(RsxrMid::Context& c) {
     Record(c);
-    Rs7Mid::Return(c, 77, 4);
+    RsxrMid::Return(c, 77, 4);
 }
 
-void __cdecl EditEcx(Rs7Mid::Context& c) {
+void __cdecl EditEcx(RsxrMid::Context& c) {
     Record(c);
     c.ecx = 100;
 }
 
-void __cdecl Double(Rs7Mid::Context& c) {
+void __cdecl Double(RsxrMid::Context& c) {
     Record(c);
     c.eax *= 2;
 }
 
-void __cdecl ClobberFp(Rs7Mid::Context& c) {
+void __cdecl ClobberFp(RsxrMid::Context& c) {
     Record(c);
     reinterpret_cast<void (*)()>(Helpers().clobber)();
 }
@@ -101,22 +101,22 @@ void __cdecl ClobberFp(Rs7Mid::Context& c) {
 TEST(midhook_call_build_sizes_and_rejections) {
     uint8_t out[64]{};
 
-    CHECK_EQ(Rs7Mid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0x4000, 0, 0), 15u);
+    CHECK_EQ(RsxrMid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0x4000, 0, 0), 15u);
     CHECK_EQ(out[0], 0x68);
-    CHECK_EQ(Rs7Mid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0x4000, 1, 1), 24u);
+    CHECK_EQ(RsxrMid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0x4000, 1, 1), 24u);
     CHECK_EQ(out[0], 0x8d);
     CHECK_EQ(out[4], 0xe8);
-    CHECK_EQ(Rs7Mid_BuildCall(out, 23, 0x1000, 0x2000, 0x3000, 0x4000, 0, 1), 0u);
-    CHECK_EQ(Rs7Mid_BuildCall(out, sizeof out, 0x1000, 0, 0x3000, 0x4000, 0, 0), 0u);
-    CHECK_EQ(Rs7Mid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0, 0, 0), 0u);
-    Rs7Mid::Hook hook;
+    CHECK_EQ(RsxrMid_BuildCall(out, 23, 0x1000, 0x2000, 0x3000, 0x4000, 0, 1), 0u);
+    CHECK_EQ(RsxrMid_BuildCall(out, sizeof out, 0x1000, 0, 0x3000, 0x4000, 0, 0), 0u);
+    CHECK_EQ(RsxrMid_BuildCall(out, sizeof out, 0x1000, 0x2000, 0x3000, 0, 0, 0), 0u);
+    RsxrMid::Hook hook;
     const uint8_t jmp[] = {0xe9, 0, 0, 0, 0};
     const uint8_t call[] = {0xe8, 0xfb, 0x0f, 0, 0};
 
     CHECK(!hook.PrepareCall(0x1000, jmp, sizeof jmp, &Record));
     CHECK(!hook.PrepareCall(0x1000, call, 4, &Record));
     CHECK_EQ(hook.Entry(), 0u);
-    CHECK(hook.PrepareCall(0x1000, call, sizeof call, &Record, Rs7Mid::Mode::Light, Rs7Mid::Call::After));
+    CHECK(hook.PrepareCall(0x1000, call, sizeof call, &Record, RsxrMid::Mode::Light, RsxrMid::Call::After));
     CHECK(hook.Entry() != 0);
     int32_t rel;
 
@@ -222,8 +222,8 @@ TEST(midhook_call_after_keeps_an_x87_return_value_in_full_mode) {
     page.p[48] = 0xe8;
     Dword(page.p + 49, uint32_t(page.Entry() - uintptr_t(page.p + 53)));
     page.p[53] = 0xc3;
-    CHECK_EQ(Rs7Mid_BuildCall(page.p + 128, 256, uintptr_t(page.p + 48), uintptr_t(page.p + 64), page.Entry(),
-                              uintptr_t(&ClobberFp), 0, 1),
+    CHECK_EQ(RsxrMid_BuildCall(page.p + 128, 256, uintptr_t(page.p + 48), uintptr_t(page.p + 64), page.Entry(),
+                               uintptr_t(&ClobberFp), 0, 1),
              24u);
     g_callbacks = 0;
     const float value = reinterpret_cast<float(__cdecl*)()>(page.p + 48)();
@@ -234,33 +234,33 @@ TEST(midhook_call_after_keeps_an_x87_return_value_in_full_mode) {
 
 namespace {
 // A call-in callback in place of the callee: EAX = the argument + ECX, as the callee computes it.
-void __cdecl AddArg(Rs7Mid::Context& c) {
+void __cdecl AddArg(RsxrMid::Context& c) {
     Record(c);
-    c.eax = Rs7Mid::Dword(c.esp + 4) + c.ecx;
+    c.eax = RsxrMid::Dword(c.esp + 4) + c.ecx;
 }
 }  // namespace
 
-// Call-in entries (Rs7Mid::CallIn; ARCHITECTURE.md section 14 "Call-in entries"): the call entry with a `ret N`
+// Call-in entries (RsxrMid::CallIn; ARCHITECTURE.md section 14 "Call-in entries"): the call entry with a `ret N`
 // continuation, no callee.
 TEST(midhook_callin_build_sizes_and_rejections) {
     uint8_t out[32]{};
 
-    CHECK_EQ(Rs7Mid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 0, 0), 16u);
+    CHECK_EQ(RsxrMid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 0, 0), 16u);
     CHECK_EQ(out[15], 0xc3);
-    CHECK_EQ(Rs7Mid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 1, 12), 18u);
+    CHECK_EQ(RsxrMid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 1, 12), 18u);
     CHECK_EQ(out[15], 0xc2);
     CHECK_EQ(out[16], 12);
     CHECK_EQ(out[17], 0);
-    CHECK_EQ(Rs7Mid_BuildCallIn(out, 17, 0x3000, 0x4000, 0, 4), 0u);
-    CHECK_EQ(Rs7Mid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 0, 6), 0u);
-    CHECK_EQ(Rs7Mid_BuildCallIn(out, sizeof out, 0x3000, 0, 0, 0), 0u);
-    CHECK_EQ(Rs7Mid_BuildCallIn(nullptr, sizeof out, 0x3000, 0x4000, 0, 0), 0u);
+    CHECK_EQ(RsxrMid_BuildCallIn(out, 17, 0x3000, 0x4000, 0, 4), 0u);
+    CHECK_EQ(RsxrMid_BuildCallIn(out, sizeof out, 0x3000, 0x4000, 0, 6), 0u);
+    CHECK_EQ(RsxrMid_BuildCallIn(out, sizeof out, 0x3000, 0, 0, 0), 0u);
+    CHECK_EQ(RsxrMid_BuildCallIn(nullptr, sizeof out, 0x3000, 0x4000, 0, 0), 0u);
 }
 
 TEST(midhook_callin_returns_to_the_caller_with_the_edited_registers) {
-    for (const auto mode : {Rs7Mid::Mode::Full, Rs7Mid::Mode::Light}) {
+    for (const auto mode : {RsxrMid::Mode::Full, RsxrMid::Mode::Light}) {
         Page page;
-        Rs7Mid::CallIn callIn{&AddArg, mode, 4};
+        RsxrMid::CallIn callIn{&AddArg, mode, 4};
 
         const uintptr_t entry = callIn.Entry();
 
@@ -287,10 +287,10 @@ TEST(midhook_callin_returns_to_the_caller_with_the_edited_registers) {
 namespace {
 unsigned g_pcInside, g_pcOutside;
 
-// Inside Rs7Mid::GameFcw: the caller's precision control; outside it: the thunk's (FNINIT, 64-bit).
-void __cdecl SeeFcw(Rs7Mid::Context& c) {
+// Inside RsxrMid::GameFcw: the caller's precision control; outside it: the thunk's (FNINIT, 64-bit).
+void __cdecl SeeFcw(RsxrMid::Context& c) {
     {
-        const Rs7Mid::GameFcw fcw(c);
+        const RsxrMid::GameFcw fcw(c);
 
         g_pcInside = _control87(0, 0) & _MCW_PC;
     }
@@ -301,16 +301,16 @@ void __cdecl SeeFcw(Rs7Mid::Context& c) {
 
 TEST(midhook_game_fcw_runs_game_code_with_the_callers_control_word) {
     Page page;
-    Rs7Mid::CallIn callIn{&SeeFcw, Rs7Mid::Mode::Full, 4};
+    RsxrMid::CallIn callIn{&SeeFcw, RsxrMid::Mode::Full, 4};
 
     CHECK(page.p && callIn.Entry() != 0);
     page.Caller(16, callIn.Entry());
-    Rs7Mid_Fldcw(0x27F);  // the caller: 53-bit precision
+    RsxrMid_Fldcw(0x27F);  // the caller: 53-bit precision
     Run(page.Hooked(), 0x202);
 
     const unsigned after = _control87(0, 0) & _MCW_PC;
 
-    Rs7Mid_Fldcw(0x27F);
+    RsxrMid_Fldcw(0x27F);
     CHECK_EQ(g_pcInside, unsigned(_PC_53));
     CHECK_EQ(g_pcOutside, unsigned(_PC_64));
     CHECK_EQ(after, unsigned(_PC_53));  // FXRSTOR gave the caller its own back

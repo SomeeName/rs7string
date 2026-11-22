@@ -46,8 +46,8 @@ def test_profile_assignment_caps_unregistered_info_before_stock_consumers(profil
         emu.uc.mem_write(guitar + 0x0C, struct.pack("<I", gs))
         emu.uc.mem_write(guitar + 0x24, struct.pack("<I", info))
         # Registry exhaustion leaves a stock-sized InstrumentInfo; the native strings still own their extras.
-        emu.uc.mem_write(gs + 0x3A, struct.pack("<H", 0x3752))
-        emu.uc.mem_write(gs + 0xAC, struct.pack("<I", 0x47375352))
+        emu.uc.mem_write(gs + 0x3A, struct.pack("<H", 0x5852))
+        emu.uc.mem_write(gs + 0xAC, struct.pack("<I", 0x47585352))
         emu.uc.mem_write(info + 0x0B, b"\x06")
         emu.uc.mem_write(profile + 0x38, bytes([count]))
         regs = {**S7_REGS, UC_X86_REG_EBX: holder, UC_X86_REG_EDI: info, UC_X86_REG_ESI: profile}

@@ -27,7 +27,7 @@ or split code changes the object file). For moved or split source files build wi
     in the two builds is ignored and counted in a note: which member comes first depends on the objects before
     it;
   * functions folded by the linker (/OPT:ICF) are one address with several names; the first name stands
-    for it; the line number argument of tests/test.h `rs7test::Fail` is masked.
+    for it; the line number argument of tests/test.h `rsxrtest::Fail` is masked.
 
 Every function is compared, exported or not (CRT and ImGui included). With --data the data symbols
 (.data / .rdata / .bss contents between two map symbols) are compared the same way: image pointers become
@@ -397,7 +397,7 @@ def decode(img: Image, start: int, end: int, literal: bool = False) -> list[str]
     ]
     for i, text in enumerate(out):
         # tests/test.h: Fail(__FILE__, __LINE__, expr) pushes the line number, which moves with the source layout
-        if text.startswith("call <") and "rs7test::Fail(" in text and i >= 2 and _PUSH_IMM.match(out[i - 2]):
+        if text.startswith("call <") and "rsxrtest::Fail(" in text and i >= 2 and _PUSH_IMM.match(out[i - 2]):
             out[i - 2] = "push <__LINE__>"
     return out
 

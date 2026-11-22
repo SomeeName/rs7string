@@ -11,24 +11,24 @@
 #include <windows.h>
 #include <cstring>
 
-using Rs7Mid::Context;
-using Rs7Mid::Dword;
-using namespace rs7menu;
+using RsxrMid::Context;
+using RsxrMid::Dword;
+using namespace rsxrmenu;
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_ALTS = 0, g_rs7_target_ALTF = 0, g_rs7_target_ALTL = 0,
-                                           g_rs7_target_ALTR = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_ALTS = 0, g_rsxr_target_ALTF = 0, g_rsxr_target_ALTL = 0,
+                                           g_rsxr_target_ALTR = 0;
 
 namespace {
-constexpr uint32_t kSiteLength = 7;                   // ALTS: lea eax,[esp+10Ch]
-constexpr uint32_t kRecordIndex = 0x34;               // ALTS [esp+34h]: record index
-constexpr uint32_t kFilledSlots = 0x6C;               // ALTS [esp+6Ch]: slots filled so far
-constexpr uint32_t kRecords = 0x388;                  // page +388h/+38Ch: record vector begin/end
-constexpr uint32_t kRecordsP2 = 0x394;                // page +394h/+398h: the second player's record vector
-constexpr uint32_t kSlotParent = rs7menu::kPageNode;  // parent of the slots
-constexpr uint32_t kFindPath = 0x889CA0;              // see FindPath
-constexpr uint32_t kSetMember = 0x8816C0;             // stdcall (node, key*, node**)
-constexpr uint32_t kPlaynexts = 3;                    // the recommendation buttons playnext_slot1..3
-constexpr uint32_t kSelected = 0x3A0;                 // page +3A0h: selected record index
+constexpr uint32_t kSiteLength = 7;                    // ALTS: lea eax,[esp+10Ch]
+constexpr uint32_t kRecordIndex = 0x34;                // ALTS [esp+34h]: record index
+constexpr uint32_t kFilledSlots = 0x6C;                // ALTS [esp+6Ch]: slots filled so far
+constexpr uint32_t kRecords = 0x388;                   // page +388h/+38Ch: record vector begin/end
+constexpr uint32_t kRecordsP2 = 0x394;                 // page +394h/+398h: the second player's record vector
+constexpr uint32_t kSlotParent = rsxrmenu::kPageNode;  // parent of the slots
+constexpr uint32_t kFindPath = 0x889CA0;               // see FindPath
+constexpr uint32_t kSetMember = 0x8816C0;              // stdcall (node, key*, node**)
+constexpr uint32_t kPlaynexts = 3;                     // the recommendation buttons playnext_slot1..3
+constexpr uint32_t kSelected = 0x3A0;                  // page +3A0h: selected record index
 constexpr uint32_t kSlotCounter = 0x3A4;  // page +3A4h: incremented per slot by the builder, reset only on page entry
 constexpr uint32_t kPageVtable = 0x011B4B28;  // the Learn a Song page (constructor 0x63D3FD)
 constexpr DWORD kLeftAfterMs = 500;           // no page tick for this long: the page was left
@@ -62,7 +62,7 @@ Label g_label;
 uint32_t* SlotKey(uint32_t slot) {
     using MakeKey = void(__fastcall*)(const char*, void*, uint32_t*);
 
-    static uint32_t keys[rs7arr::kAltSlots] = {};
+    static uint32_t keys[rsxrarr::kAltSlots] = {};
     uint32_t& key = keys[slot - 1];
 
     if (!key) {
@@ -170,7 +170,7 @@ void Rebuild(uint32_t page) {
     ClearRecords(page + kRecordsP2);
     Field(page + kSlotCounter) = 0;
 
-    for (uint32_t slot = 1; slot <= rs7arr::kAltSlots; ++slot) {
+    for (uint32_t slot = 1; slot <= rsxrarr::kAltSlots; ++slot) {
         if (*SlotKey(slot)) {
             reinterpret_cast<Remove>(uintptr_t(kRemoveMember))(Dword(page + kSlotParent), SlotKey(slot));
         }
@@ -193,9 +193,9 @@ void Rebuild(uint32_t page) {
 // game, no other trigger found), so the focus moves one step away and back with the stock steps. Returns whether the
 // window moved.
 bool ScrollStep(uint32_t page, bool down, const char* by) {
-    const uint32_t offset = rs7arr::Scroll(g_alt.offset, g_alt.alternates, down, !down);
+    const uint32_t offset = rsxrarr::Scroll(g_alt.offset, g_alt.alternates, down, !down);
 
-    Rs7Log("arrangements: %s, offset %u -> %u of %u alternates", by, g_alt.offset, offset, g_alt.alternates);
+    RsxrLog("arrangements: %s, offset %u -> %u of %u alternates", by, g_alt.offset, offset, g_alt.alternates);
     if (offset == g_alt.offset) {
         return false;
     }
@@ -229,7 +229,7 @@ void __fastcall FocusUp(uint32_t page, void*, int steps) {
 }
 
 void __fastcall FocusDown(uint32_t page, void*, int steps) {
-    if (!(FocusIsSlot(page, rs7arr::kAltSlots) && ScrollStep(page, true, "Down"))) {
+    if (!(FocusIsSlot(page, rsxrarr::kAltSlots) && ScrollStep(page, true, "Down"))) {
         reinterpret_cast<FocusStep>(uintptr_t(kStockFocusDown))(page, steps);
     }
 }
@@ -241,16 +241,16 @@ void HookFocusSteps() {
     }
 
     g_alt.focusHooked = true;
-    if (!rs7menu::HookFocusSteps(kPageVtable, uintptr_t(&FocusUp), uintptr_t(&FocusDown))) {
-        Rs7Log("arrangements: focus steps not hooked (vtable +DCh %08X, +E0h %08X); PageUp / PageDown still scroll",
-               Dword(kPageVtable + kFocusUp), Dword(kPageVtable + kFocusDown));
+    if (!rsxrmenu::HookFocusSteps(kPageVtable, uintptr_t(&FocusUp), uintptr_t(&FocusDown))) {
+        RsxrLog("arrangements: focus steps not hooked (vtable +DCh %08X, +E0h %08X); PageUp / PageDown still scroll",
+                Dword(kPageVtable + kFocusUp), Dword(kPageVtable + kFocusDown));
     }
 }
 }  // namespace
 
 // ALTS - 0x63E868: replay the LEA for a record in the window while a slot is free, else join the stock skip path: the
 // JZ rel32 that ends at the site jumps to the loop latch 0x63F258, which reloads every register it reads.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTS(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_ALTS(Context& c) {
     const uint32_t index = Dword(c.esp + kRecordIndex);
     const uint32_t selected = Dword(c.ebx + kSelected);
     const uint32_t count = RecordCount(c.ebx + kRecords);
@@ -258,12 +258,12 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTS(Context& c) {
 
     g_alt.alternates = count > 0 ? count - 1 : 0;
 
-    if (index < count && rs7arr::AltInWindow(index, selected, g_alt.offset) && rs7arr::AltSlotFits(filled)) {
+    if (index < count && rsxrarr::AltInWindow(index, selected, g_alt.offset) && rsxrarr::AltSlotFits(filled)) {
         g_alt.building = filled + 1;
         return;
     }
 
-    const uint32_t site = static_cast<uint32_t>(g_rs7_resume_ALTS) - kSiteLength;
+    const uint32_t site = static_cast<uint32_t>(g_rsxr_resume_ALTS) - kSiteLength;
 
     g_alt.building = 0;
     c.jump = site + Dword(site - 4);
@@ -271,10 +271,10 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTS(Context& c) {
 
 // ALTL - 0x63E9A0, before 0x882810 sets the entry's Label from the game string in EDI: the first / last entry get the
 // number of hidden alternates appended (a copy; the game's string is untouched and destroyed by its stack address).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTL(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_ALTL(Context& c) {
     char tag[16];
 
-    rs7arr::LabelTag(g_alt.building, g_alt.offset, g_alt.alternates, tag, sizeof tag);
+    rsxrarr::LabelTag(g_alt.building, g_alt.offset, g_alt.alternates, tag, sizeof tag);
     // The movie skips an entry whose text equals the one it drew on page entry (CONFIRMED in game: back at offset 0
     // nothing redrew), so a rebuild's labels end in a space.
     if (g_alt.shown) {
@@ -287,7 +287,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTL(Context& c) {
     const size_t tagLen = std::strlen(tag);
     size_t keep = 0;
 
-    rs7::ReadGameString(Rs7Mid::Ptr(c.edi), g_label.text, sizeof g_label.text - tagLen, true, &keep);
+    rsxr::ReadGameString(RsxrMid::Ptr(c.edi), g_label.text, sizeof g_label.text - tagLen, true, &keep);
 
     std::memcpy(g_label.text + keep, tag, tagLen + 1);
     g_label.begin = g_label.text;
@@ -299,7 +299,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTL(Context& c) {
 // ALTR - 0x63E6D3, after 0x5C6C40 (EBX = page) took a new view definition root: on a scroll rebuild the previous
 // root's members are merged into it (the song header and the rest the builder does not write; shared nodes), then the
 // builder replaces the slots and recommendations as on page entry.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTR(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_ALTR(Context& c) {
     using Merge = void(__thiscall*)(uint32_t, uint32_t, uint32_t);
 
     const uint32_t root = Dword(c.ebx + kRoot);
@@ -313,7 +313,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTR(Context& c) {
 
 // ALTF - 0x63DDF9, after the page update's base call 0x5CB7D0 (EDI = the Learn a Song page, game thread; runs only
 // while the page opens): a page opened anew starts at the top of the alternates.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTF(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_ALTF(Context& c) {
     const uint32_t page = c.edi;
     const DWORD now = GetTickCount();
     const bool entered = page != g_alt.page || now - g_alt.tick > kLeftAfterMs;
@@ -334,7 +334,7 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_ALTF(Context& c) {
 // PageDown / PageUp from the game window's procedure, on the game's main thread (the window thread is the render and
 // UI thread, logged by the overlay): scroll the window of the Learn a Song page still on screen and re-run its builder.
 // ALTF cannot do this, it runs only while the page opens (4 ticks, CONFIRMED in game).
-void Rs7Arr_KeyDown(unsigned vk) {
+void RsxrArr_KeyDown(unsigned vk) {
     if (vk != VK_NEXT && vk != VK_PRIOR) {
         return;
     }
@@ -343,15 +343,15 @@ void Rs7Arr_KeyDown(unsigned vk) {
     uint32_t vtable = 0;
     const uint32_t page = g_alt.page;
 
-    if (!Rs7Ui_ReadState(kUiStateGlobal, ui, sizeof ui) || std::strcmp(ui, "LearnASong_SongOptions") != 0 || !page ||
-        !Rs7_SafeCopy(&vtable, reinterpret_cast<const void*>(uintptr_t(page)), sizeof vtable) ||
+    if (!RsxrUi_ReadState(kUiStateGlobal, ui, sizeof ui) || std::strcmp(ui, "LearnASong_SongOptions") != 0 || !page ||
+        !Rsxr_SafeCopy(&vtable, reinterpret_cast<const void*>(uintptr_t(page)), sizeof vtable) ||
         vtable != kPageVtable) {
         return;
     }
 
     __try {  // the page can go away between the checks and the builder (no other guard on this thread)
         ScrollStep(page, vk == VK_NEXT, vk == VK_NEXT ? "PageDown" : "PageUp");
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         // A fault inside Rebuild leaves `shown` set (ALTL would keep appending the space and ALTR would merge a stale
         // root on the next build). Its reference and the focus lists swapped with the dead page stay as they are:
         // touching that page again is what just faulted.

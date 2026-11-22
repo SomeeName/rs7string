@@ -1,10 +1,10 @@
 # gfxpatch — offline 7/8-row chord diagrams
 
-Patches **your own copies** of Rocksmith's `RSChordDisplay` movies. This repository
-contains patcher code and our extension only: no Ubisoft movies, stock class
-sources, textures, encryption keys or archive decryption. It never installs
-anything or launches the game. Generated sources/movies live in ignored `.work/`
-and the explicitly selected output folder; do not distribute those assets.
+This tool patches **your own copies** of Rocksmith's `RSChordDisplay` movies so that chord diagrams can show
+seven or eight rows. This repository contains only the patcher code and our extension. It has no Ubisoft movies,
+stock class sources, textures, encryption keys or archive decryption. The tool never installs anything or launches
+the game. Generated sources and movies go into the ignored `.work/` folder and into the output folder you select.
+Do not distribute those assets.
 
 ## What is patched
 
@@ -18,52 +18,53 @@ re-decompiled the modified classes in the three input movies:
 | `views/ge_game.gfx` | 26 | 85 |
 
 The patcher replaces **one DoInitAction tag (type 59)** per movie. It uses FFDec's
-compiler output only for that tag, transplanting it into the original binary.
-All other tags remain byte-for-byte identical, including class registration,
-imports (and authored `CommonLib.swf` spelling), exports, external DDS names,
+compiler output only for that tag and transplants it into the original binary.
+All other tags stay byte-for-byte identical. That goes for class registration,
+imports with the authored `CommonLib.swf` spelling, exports, external DDS names,
 sprites and linkage. The original GFX/SWF signature, version and frame header
-are retained; declared file length changes to match the new action bytes.
-For compressed movies the body is recompressed; unaffected uncompressed tags
+stay the same. The declared file length changes to match the new action bytes.
+For compressed movies, the body is recompressed, and the unaffected uncompressed tags
 are still identical. No new bitmap export or DDS file is needed.
 
-The stock six `BuildString` and `UpdateString` calls, marker art and horizontal
-positions are retained. Changes are:
+The stock six `BuildString` and `UpdateString` calls, the marker art and the horizontal
+positions stay as they are. The patch makes these changes:
 
-- Add lazily built `LowBString`/`LowBNote` and `LowFsString`/`LowFsNote` clips.
-  Reuse `Chord_NotePurple` for the new fretted notes and tint **those clips only**.
+- It adds `LowBString`/`LowBNote` and `LowFsString`/`LowFsNote` clips, built only when first needed.
+  It reuses `Chord_NotePurple` for the new fretted notes and tints **those clips only**.
   Selected/unselected strips, mute and open markers reuse their stock exports.
-- Infer 6/7/8 rows from the presence of the new fret properties. There is no
-  `StringCount` property in this patch's contract. Missing rows are hidden,
-  including finger text, when an existing component updates back to six rows.
-- Keep row spacing 34 and centers `44 + 34*rank`. Row order keeps the low strings together:
-  inverted (the game's usual diagram, high e on top) is `rank = 5-index` for native 0..5 and
-  `rank = index` for 6/7, so the low B (and F#) rows sit **below** the low E; normal order
-  (low E on top) is `rank = index + (count-6)` for 0..5 and `count-1-index` for 6/7, so they
-  sit above it. Six rows are unchanged (`GfxPatchRank`). Fixed 2026-10-15: the first version
-  drew the 7th row above the high e in the usual inverted view.
-  Left-handed fret/marker placement remains stock, including open/mute positions.
-- Grow backgrounds, gradient and nut/fret grid by `34*(count-6)`; move fret
-  labels down by the same amount. Original six-row dimensions return on update.
+- It infers 6/7/8 rows from whether the new fret properties are present. There is no
+  `StringCount` property in this patch's contract. When an existing component updates back to six rows,
+  the missing rows are hidden, including their finger text.
+- It keeps the row spacing of 34 and the row centers at `44 + 34*rank`. The row order keeps the low strings together:
+  - Inverted order (the game's usual diagram, high e on top): `rank = 5-index` for native 0..5 and
+    `rank = index` for 6/7. The low B (and F#) rows sit **below** the low E.
+  - Normal order (low E on top): `rank = index + (count-6)` for 0..5 and `count-1-index` for 6/7. The new rows
+    sit above the low E.
+  - Six rows are unchanged (`GfxPatchRank`). Fixed 2026-10-15: the first version
+    drew the 7th row above the high e in the usual inverted view.
+  - Left-handed fret/marker placement stays stock, including open/mute positions.
+- It grows the backgrounds, the gradient and the nut/fret grid by `34*(count-6)`, and moves the fret
+  labels down by the same amount. The original six-row dimensions return on update.
   Background heights are 260/294/328, lesson background 285/319/353,
   gradient 190/224/258, bars 192/226/260, fret labels y=232/266/300.
-- Bar vertical scale uses an absolute ratio after generic image scaling,
-  preserving `yScale` without accumulating growth. The bare-name horizontal
-  scaling guard gains the new bare row names. Stock uses suffixed image keys,
-  so actual strips all retain the same generic `xScale` (including lesson 60%).
-- Keep the five-finger hand illustration and its existing `Finger0..4` contract.
+- The vertical scale of the bars uses an absolute ratio after the generic image scaling.
+  This keeps `yScale` without adding growth on each update. The horizontal scaling guard for bare names
+  gains the new bare row names. Stock uses suffixed image keys, so the actual strips all keep the same
+  generic `xScale` (including lesson 60%).
+- It keeps the five-finger hand illustration and its existing `Finger0..4` contract.
 
-Unknown stock class sources are rejected before compilation. The exact UTF-8
+The patcher rejects unknown stock class sources before compilation. The exact UTF-8
 FFDec 26.3.0 export hash (including CRLF) must be
 `54082732b6c24bbb96632e97d6e59ab5920f4b4935be8609056c08b671978ad2`.
-Already patched movies are also rejected. Inputs are hashed again after
-processing to detect changes during the run.
+It also rejects movies that are already patched. It hashes the inputs again after
+processing, to detect changes during the run.
 
 ## Exact native property contract
 
-**CONFIRMED (research):** native serializers `0x757030` (manifest/database) and
-`0x757960` (loaded SNG/lessons) currently send the stock named fields, as recorded
-in the maintainer's research notes (not in this repository). This patcher changes movies
-only; the DLL supplies the new fields on both routes (the `DGM` and `DGS` hooks in `src/features/diagrams/`).
+**CONFIRMED (research):** the native serializers `0x757030` (manifest/database) and
+`0x757960` (loaded SNG/lessons) currently send the stock named fields. The maintainer's research notes record
+this (they are not in this repository). This patcher changes only the movies. The DLL supplies the new fields on
+both routes (the `DGM` and `DGS` hooks in `src/features/diagrams/`).
 
 **New patch-defined contract, proposed for the DLL:**
 
@@ -72,40 +73,40 @@ only; the DLL supplies the new fields on both routes (the `DGM` and `DGS` hooks 
 | 6 | `LowBFret` | `LowB_Finger` | `LowB_Color` | `0x808080` grey |
 | 7 | `LowFsFret` | `LowFs_Finger` | `LowFs_Color` | `0x00FFFF` provisional cyan |
 
-The eighth colour is **TBD**, not an established Rocksmith colour. Use
+The eighth color is **TBD**. It is not an established Rocksmith color. Use
 `--eighth-color RRGGBB` to set the compiled fallback, or send `LowFs_Color` per
-shape. Supplied colour properties override fallbacks; send `LowB_Color=0x808080`
+shape. Color properties that you send override the fallbacks. Send `LowB_Color=0x808080`
 for the requested grey seventh string. RGB is a numeric `0xRRGGBB` value, not a
-string or an ARGB value. These names identify native indices, regardless of tuning.
+string or an ARGB value. These names identify native indices, whatever the tuning is.
 
-Required shape rules:
+Each shape must follow these rules:
 
 - **6 strings:** omit `LowBFret` and `LowFsFret` (or send actual AS2 `undefined`).
-  Do not send `0` or `-1` to mean "absent": those draw open or muted rows.
-- **7 strings:** send `LowBFret`; omit `LowFsFret`.
+  Do not send `0` or `-1` to mean "absent", because those draw open or muted rows.
+- **7 strings:** send `LowBFret`, and omit `LowFsFret`.
 - **8 strings:** send both frets. An orphan `LowFsFret` without `LowBFret` is
   ignored and keeps the component at six rows. Muted extra strings still count.
 - Fret properties use the **same normalized relative fret window as stock**:
-  negative=mute, zero=open, positive=relative fret 1..4. Preserve `StartFret` as
-  the displayed window's starting absolute fret. Compute the window over all N
-  strings on the native side; this patch does not normalize absolute frets.
-- Finger is optional, numeric `0..4`; `0` displays `T` (thumb). Omit absent
-  fingers instead of emitting a negative sentinel. Open/muted rows have no
-  finger labels. Repeated fingers/barres retain stock per-note text behavior.
+  negative=mute, zero=open, positive=relative fret 1..4. Keep `StartFret` as
+  the starting absolute fret of the displayed window. Compute the window over all N
+  strings on the native side, because this patch does not normalize absolute frets.
+- Finger is optional and numeric, `0..4`. `0` displays `T` (thumb). Omit absent
+  fingers instead of sending a negative placeholder value. Open/muted rows have no
+  finger labels. Repeated fingers/barres keep the stock per-note text behavior.
 - Every update must supply a **complete shape object**. Stock `BaseControl.Update`
-  replaces `mDataObj`; leaving old extra keys on a reused native object would
-  keep old rows enabled. Include legacy fields and handedness/inversion each time.
+  replaces `mDataObj`. If old extra keys stay on a reused native object, the old rows
+  stay enabled. Include the legacy fields and handedness/inversion each time.
 
 Legacy fields are unchanged: `LowEFret/LowE_Finger/LowE_Color`,
 `AFret/A_Finger/A_Color`, `DFret/D_Finger/D_Color`, `GFret/G_Finger/G_Color`,
 `BFret/B_Finger/B_Color`, `HighEFret/HighE_Finger/HighE_Color`, plus
-`StartFret`, `Text`, `Visible`, `LeftHanded`, `Inverted`. `LeftHanded=1` mirrors
-horizontal placement; `Inverted=1` reverses the row order over all N rows.
-Optional `ShowHand` and `Finger0Fret..Finger4Fret`/`Finger0Color..Finger4Color`
-remain as before. Hand fields refer to fingers, not string indices.
+`StartFret`, `Text`, `Visible`, `LeftHanded`, `Inverted`. `LeftHanded=1` mirrors the
+horizontal placement, and `Inverted=1` reverses the row order over all N rows.
+The optional `ShowHand` and `Finger0Fret..Finger4Fret`/`Finger0Color..Finger4Color`
+work as before. Hand fields refer to fingers, not string indices.
 
-Example native payload additions for an eight-string shape (JSON illustration,
-to merge into the complete stock object):
+This JSON example shows the fields that a native payload adds for an eight-string shape. Merge them into the
+complete stock object:
 
 ```json
 {
@@ -114,16 +115,16 @@ to merge into the complete stock object):
 }
 ```
 
-Do not extend a native six-element pointer/stack table in place or index the
-stock six-colour fallback beyond its end. The research documents those hazards
-and the loaded-template resolver requirement; they are outside this repository.
+Do not extend a native six-element pointer/stack table in place, and do not index the
+stock six-color fallback beyond its end. The research documents these risks
+and the loaded-template resolver requirement. That research is outside this repository.
 
 ## Run it
 
-Prerequisites: `uv`, Java (tested with Temurin 21), and
+You need `uv`, Java (tested with Temurin 21), and
 [JPEXS FFDec 26.3.0](https://github.com/jindrapetrik/jpexs-decompiler/releases/tag/version26.3.0).
-CLI operations follow the [FFDec CLI documentation](https://github.com/jindrapetrik/jpexs-decompiler/wiki/Commandline-arguments).
-Supply an installed `ffdec.jar`; FFDec is not bundled or downloaded by this tool.
+The CLI operations follow the [FFDec CLI documentation](https://github.com/jindrapetrik/jpexs-decompiler/wiki/Commandline-arguments).
+Point the tool at an installed `ffdec.jar`. This tool does not bundle or download FFDec.
 
 ```powershell
 Set-Location tools\gfxpatch
@@ -134,20 +135,20 @@ uv run python gfxpatch.py `
   --java '<path to>\java.exe'
 ```
 
-Input is the root containing `libs/commonlib.gfx`, `views/contentpanel.gfx`,
-and `views/ge_game.gfx`, **not an archive**. Input and output roots must be
-disjoint. The tool rejects game/native worktree locations and output symlinks
-or junctions escaping the output root. Original input files are only read.
-All three staged copies must pass before publication. Existing edited movies
-require the explicit `--overwrite` flag; source inputs are never overwritten.
-Keep the output `libs/` and `views/` hierarchy. Textures remain at their original
-runtime asset locations; they are neither copied nor modified by this patcher.
+The input is the folder that contains `libs/commonlib.gfx`, `views/contentpanel.gfx`,
+and `views/ge_game.gfx`. It is **not an archive**. The input and output folders must not
+overlap. The tool rejects game/native worktree locations, and output symlinks
+or junctions that point outside the output folder. It only reads the original input files.
+All three staged copies must pass before the tool writes them to the output. To replace existing edited movies,
+pass the `--overwrite` flag. The tool never overwrites the source inputs.
+Keep the `libs/` and `views/` folder structure of the output. Textures stay at their original
+runtime asset locations. This patcher neither copies nor modifies them.
 
-Output movies are already generated at the command's output path. The adjacent
+The command writes the output movies directly to its output path. Next to them,
 `gfxpatch-report.json` records hashes, changed tag indices and local evidence
-paths. `.work/patch-*/` contains the exported original class, generated patched
-source, re-decompiled result and FFDec logs. These intermediates contain game data and are
-ignored by Git.
+paths. `.work/patch-*/` contains the exported original class, the generated patched
+source, the re-decompiled result and the FFDec logs. These intermediate files contain game data, and Git
+ignores them.
 
 ## Verification and limits
 
@@ -158,42 +159,47 @@ node verify_layout.cjs `
   '.work\layout-preview.svg'
 ```
 
-Node is needed only for the optional offline drawing harness, not patching.
-`verification.json` contains the final input/output hashes, changed tag indices,
-test counts and evidence location from this task's audited run.
-The harness executes the **re-decompiled** drawing methods with MovieClip,
-TextFormat and Color stubs. **CONFIRMED in that harness:** 606 scenarios pass
-across the three classes, including stock-six snapshot equivalence at init and
-update, row transitions 6→7→8→6→8→7→6, handedness × inversion, 100%/60% scaling,
-mute/open/frets 1..4, thumb/repeated/absent fingers, five-finger hand illustration,
-default/override colours and orphan-eighth-field fallback. Binary/path unit
-tests cover malformed movies, compressed transplant and unsupported sources.
+You need Node only for the optional offline drawing harness, not for patching.
+`verification.json` contains the final input/output hashes, the changed tag indices,
+the test counts and the evidence location from this task's audited run.
 
-The SVG is an **offline layout schematic using our own marker shapes**, obtained
-from those executed methods. It is not an actual Flash/Scaleform frame; no AVM1
-player or game rendering was exercised. Real bitmap appearance, parent panel
+The harness runs the **re-decompiled** drawing methods with MovieClip,
+TextFormat and Color stubs. **CONFIRMED in that harness:** 606 scenarios pass
+across the three classes. They include:
+
+- stock-six snapshot equivalence at init and update
+- row transitions 6→7→8→6→8→7→6
+- handedness × inversion, 100%/60% scaling
+- mute/open/frets 1..4, thumb/repeated/absent fingers, five-finger hand illustration
+- default/override colors and the orphan-eighth-field fallback
+
+Binary/path unit tests cover malformed movies, compressed transplant and unsupported sources.
+
+The SVG is an **offline layout schematic that uses our own marker shapes**. It comes
+from those executed methods. It is not an actual Flash/Scaleform frame, because no AVM1
+player or game rendering was tested. Real bitmap appearance, parent panel
 clipping, nine-slice behavior, font rendering, the game's asset loader and native
 property delivery remain **HYPOTHESIS / unverified**. The extra height can exceed
-an enclosing stock mask; it must be checked in chord book/popups/lesson panels
-before deployment. Existing lefty behavior for relative frets >4 remains outside
-scope; the DLL should keep the stock four-fret window policy.
+an enclosing stock mask, so it must be checked in the chord book, popups and lesson panels
+before deployment. The existing lefty behavior for relative frets >4 is out of
+scope. The DLL should keep the stock four-fret window policy.
 
 ## How edited movies could be loaded — HYPOTHESIS
 
-**Plain PSARC override:** package the user's patched files under original archive
+**Plain PSARC override:** package the user's patched files under the original archive
 paths `gfxassets/libs/commonlib.gfx`, `gfxassets/views/contentpanel.gfx` and
-`gfxassets/views/ge_game.gfx` in an unencrypted archive you created. The existing
-plain-PSARC enabler is a possible loading route, but it does **not establish** that
-an arbitrary DLC archive overrides `static.psarc` UI assets. Mount order, asset
-lookup precedence, caches and when these movies load must be researched/tested.
-The edited folder itself is not demonstrated to be a loose-file override.
+`gfxassets/views/ge_game.gfx`, in an unencrypted archive that you created. The existing
+plain-PSARC enabler is a possible loading route. But it does **not establish** that
+any DLC archive overrides the `static.psarc` UI assets. Mount order, asset
+lookup precedence, caches and the time when these movies load still need research and tests.
+It is not shown that the edited folder itself works as a loose-file override.
 
 **Runtime route:** a DLL could redirect Scaleform's movie bytes to these edited
 copies before each class registration, or inject an AVM1 prototype extension after
-loading. This patcher has no hook or injection of its own; rs7string's diagrams feature (`src/features/diagrams/`)
-swaps the movies when the game opens them, from the shipped recipes. All
-three local class copies matter: a later movie's registration could replace an
-earlier prototype. Preserve CommonLib import linkage and register-time ordering.
+loading. This patcher has no hook or injection of its own. RS Extended Range's diagrams feature (`src/features/diagrams/`)
+swaps the movies when the game opens them, using the shipped recipes. All
+three local class copies matter, because a later movie's registration could replace an
+earlier prototype. Keep the CommonLib import linkage and the order of registration.
 
-Neither route is deployment advice proved by this task. This task never accessed
+This task did not prove either route, so neither is deployment advice. This task never accessed
 or launched the game folder, modified the native repos, committed or pushed.

@@ -5,7 +5,7 @@ from native_harness import ROOT, compile_harness, run_harness
 
 def _compile_with_stub(name, tmp_path):
     source = (ROOT / "src/features/psarc/hooks.cpp").read_text()
-    start = source.index("using Rs7SngDecrypt =")
+    start = source.index("using RsxrSngDecrypt =")
     (tmp_path / "sngstub.inc").write_text(source[start:])
     harness = tmp_path / name
     harness.write_text((ROOT / "tools/tests/native" / name).read_text())

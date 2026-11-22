@@ -54,7 +54,7 @@ def test_n1_n21_request_capacity_with_publish_ports(emus, sid, reg, idx, ports, 
     """native_publish ports: profile counts 6 and 7 ([neck] clite builds 7) request the 8-slot capacity
     (a pool of 7 left string slot 7 without an entity: detail 15, the guitar never finished loading)."""
     _, patched = emus
-    addr = patched.exports["g_rs7_publish_ports"]
+    addr = patched.exports["g_rsxr_publish_ports"]
     saved = patched.read(addr, 4)
     patched.uc.mem_write(addr, struct.pack("<I", ports))
     try:
@@ -156,7 +156,7 @@ FRETS_MEM = DATA + 0x20000  # guitar / info / FretGrid for the F1 test (the grid
 
 
 def set_frets(emu: Emu, on: int):
-    emu.uc.mem_write(emu.exports["g_rs7_frets_on"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_frets_on"], struct.pack("<I", on))
 
 
 @pytest.mark.parametrize(
@@ -166,7 +166,7 @@ def set_frets(emu: Emu, on: int):
 )
 def test_f1_fret_bar_transforms_without_a_7_string_guitar_are_stock(emus, on, built):
     """No guitar was built with 7/8 strings (info +0Bh; every 6-string / bass guitar, or fret_extend off): F1
-    runs the stock body of 0x58FB20 as a subroutine and Rs7_FretsAfterApply returns at once. Zero fret bars
+    runs the stock body of 0x58FB20 as a subroutine and Rsxr_FretsAfterApply returns at once. Zero fret bars
     (info +0Dh = 0) keep the stock body away from the game's entity setters; it still runs its prologue, the
     count check and the epilogue, so registers, stack and memory must match stock after the `ret`."""
     va = site_va("F1")

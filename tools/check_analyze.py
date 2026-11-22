@@ -7,7 +7,7 @@
   uv run python tools/check_analyze.py --strict          also fail when a count is below its baseline (slack)
   uv run python tools/check_analyze.py --update          shrink the baseline to the current counts (never grows)
 
-build.ps1 compiles both projects with /p:Rs7Analyze=true (analyze.props: rule set, own object folder obj/analyze),
+build.ps1 compiles both projects with /p:RsxrAnalyze=true (analyze.props: rule set, own object folder obj/analyze),
 which leaves one .nativecodeanalysis.xml per source file. A finding is keyed `file::function::Cnnnn` (no line
 numbers, so moving code keeps its key) and counted once per line, also when a header is analysed in several
 translation units. Same model as tools/check_layout.py: a baseline count may shrink but not grow, a new key
@@ -27,7 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BASELINE = REPO / "tools" / "analyze_baseline.json"
 RESULTS = REPO / "obj" / "analyze"
-PROJECTS = ("rs7string", "rs7string_tests")
+PROJECTS = ("rsxr", "rsxr_tests")
 _SUFFIX = ".nativecodeanalysis.xml"
 
 

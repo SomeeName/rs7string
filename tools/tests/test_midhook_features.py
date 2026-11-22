@@ -75,7 +75,7 @@ register(
     ],
 )
 
-# CLGU / CLGE / CLVB: string x stock count x chart bend byte x what Rs7ChordLoops_Target answers.
+# CLGU / CLGE / CLVB: string x stock count x chart bend byte x what RsxrChordLoops_Target answers.
 OWNER, INFO, OBJ = D + 0x400, D + 0x600, D + 0x800
 STRINGS = (0, 5, 6, 7, 8, 0xFF)
 
@@ -88,13 +88,13 @@ def loop_cases(string_reg, owner_reg, info_reg, extra):
                 f"s{s:x}-n{count}-t{found:x}-{name}",
                 regs={string_reg: 0xC1C1C100 | s, owner_reg: OWNER, info_reg: INFO, **regs},
                 mem={OWNER: blob(0x40, s + 3), INFO: bytes(0x0B) + bytes([count]) + bytes(4)},
-                rets={"Rs7ChordLoops_Target": found},
+                rets={"RsxrChordLoops_Target": found},
             )
         )
     return out
 
 
-TARGET = {"Rs7ChordLoops_Target": Helper(3)}
+TARGET = {"RsxrChordLoops_Target": Helper(3)}
 register(
     Spec("CLGU", 13, helpers=TARGET, flags="free", exits=(("resume", 4), ("resume", 0x32))),
     loop_cases(
@@ -141,7 +141,7 @@ register(
     Spec(
         "NG9",
         15,
-        helpers={"Rs7_NeckRow6N": Helper(6), "Rs7_NeckLog": Helper(1)},
+        helpers={"Rsxr_NeckRow6N": Helper(6), "Rsxr_NeckLog": Helper(1)},
         exits=("resume", "target"),
     ),
     [
@@ -150,28 +150,28 @@ register(
             regs={UC_X86_REG_EBP: EBP2, UC_X86_REG_EBX: 0xBBBB0000},
             mem={**NG9_FRAME, EBP2 - 0x34C: dwords(n)},
             stack={0: 0xED1ED1ED, 4: 0xE51E51E5},
-            rets={"Rs7_NeckRow6N": r},
+            rets={"Rsxr_NeckRow6N": r},
         )
         for r, n in itertools.product((0xFFFFFFFF, 0, 5), (0, 3))
     ],
-    always=True,  # Rs7_NeckRow6N runs every frame; Rs7_NeckLog only for a spawned target
+    always=True,  # Rsxr_NeckRow6N runs every frame; Rsxr_NeckLog only for a spawned target
 )
 
 # ---- features/fretgrid: FGRB (the build's "complete" exit) --------------------------------------------------------
 register(
-    Spec("FGRB", 5, helpers={"Rs7Fg_BuildExtra": Helper(2)}, flags="dead"),
+    Spec("FGRB", 5, helpers={"RsxrFg_BuildExtra": Helper(2)}, flags="dead"),
     [Case(f"grid{g:x}", ebp={8: g, 0x0C: 0x6E6E0000}) for g in (0, D + 0x100)],
     always=True,
 )
 
 # ---- features/diagrams: DGB / DGM / DGS (helper + replay) and TP13 (the T8 record) --------------------------------
 register(
-    Spec("DGB", 11, helpers={"Rs7Diagram_Bind": Helper(2)}),
+    Spec("DGB", 11, helpers={"RsxrDiagram_Bind": Helper(2)}),
     [Case(f"attr{a:x}", stack={0x50: a}, ebp={8: 0x50450000}) for a in (0, D + 0x100)],
     always=True,
 )
 register(
-    Spec("DGM", 7, helpers={"Rs7Diagram_Manifest": Helper(6)}),
+    Spec("DGM", 7, helpers={"RsxrDiagram_Manifest": Helper(6)}),
     [
         Case(
             f"capo{capo:x}",
@@ -183,14 +183,14 @@ register(
     always=True,
 )
 register(
-    Spec("DGS", 7, helpers={"Rs7Diagram_Loaded": Helper(2)}),
+    Spec("DGS", 7, helpers={"RsxrDiagram_Loaded": Helper(2)}),
     [Case(f"tpl{t:x}", ebp={8: D + 0x100, 0x0C: t}) for t in (0, D + 0x200)],
     always=True,
 )
 
 
 def registry(slot: int, count: int, begin: int) -> bytes:
-    """g_rs7_ns (64 entries of 32 bytes): entry `slot` registers `begin` with `count` templates."""
+    """g_rsxr_ns (64 entries of 32 bytes): entry `slot` registers `begin` with `count` templates."""
     raw = bytearray(64 * 32)
     raw[slot * 32 : slot * 32 + 32] = dwords(begin, count, 0x33330000, 0x22220000, count, 0x44440000, 0x5000, count)
     return bytes(raw)
@@ -203,8 +203,8 @@ register(
         Case(
             f"on{on:x}-reg{slot}-{n}-id{i:x}",
             regs={UC_X86_REG_EAX: i, UC_X86_REG_ESI: SONG, UC_X86_REG_EDX: 0xD0D0D0D0},
-            mem={SONG + 0x94: dwords(TPL), Sym("g_rs7_ns"): registry(slot, n, TPL if n else 0)},
-            words={"g_rs7_diagrams": on},
+            mem={SONG + 0x94: dwords(TPL), Sym("g_rsxr_ns"): registry(slot, n, TPL if n else 0)},
+            words={"g_rsxr_diagrams": on},
         )
         for on, (slot, n), i in itertools.product((0, 1, 0x80000000), ((0, 0), (0, 10), (63, 10)), (0, 9, 10))
     ],
@@ -225,8 +225,8 @@ def entry_cases(sid: str, helper: str, regs: list[dict]) -> list[Case]:
 OBJECTS = [{UC_X86_REG_EAX: D + 0x100, UC_X86_REG_ECX: 0, UC_X86_REG_ESI: 0xFFFFFFFF}, {UC_X86_REG_EDI: D + 0x200}]
 for sid, length in (("TU8H", 5), ("TU8C", 7), ("TU8A", 6)):
     register(
-        Spec(sid, length, helpers={"Rs7Tuner8_Target": Helper(2)}, flags="dead", exits=(("resume", -length),)),
-        entry_cases(sid, "Rs7Tuner8_Target", OBJECTS),
+        Spec(sid, length, helpers={"RsxrTuner8_Target": Helper(2)}, flags="dead", exits=(("resume", -length),)),
+        entry_cases(sid, "RsxrTuner8_Target", OBJECTS),
         always=True,
     )
 TS8_IDS = re.findall(r"X\((TS8\w+), \d+\)", (ROOT / "src/features/tuner/tuner8s_ids.generated.h").read_text())
@@ -234,40 +234,40 @@ assert TS8_IDS, "no X(TS8..., n) entries: the session-site specs below would reg
 SESSION_FRAME = Helper(2, deref=((1, 32), (1, 4, 40)), opaque=(1,))  # the PUSHAD frame and the entry's [esp+4]
 for sid in TS8_IDS:
     length = next(x.length for x in SITES_ALL if x.id == sid)
-    cases = entry_cases(sid, "Rs7Tuner8_SessTarget", OBJECTS)
+    cases = entry_cases(sid, "RsxrTuner8_SessTarget", OBJECTS)
     if sid == "TS8SEL":
         # Unregistered owners stay stock even with the native tuner enabled; recovery must not probe them.
-        cases += [replace(c, id=f"{c.id}-native1", words={"g_rs7_native_tuner": 1}) for c in cases]
+        cases += [replace(c, id=f"{c.id}-native1", words={"g_rsxr_native_tuner": 1}) for c in cases]
     register(
-        Spec(sid, length, helpers={"Rs7Tuner8_SessTarget": SESSION_FRAME}, flags="dead", exits=(("resume", -length),)),
+        Spec(sid, length, helpers={"RsxrTuner8_SessTarget": SESSION_FRAME}, flags="dead", exits=(("resume", -length),)),
         cases,
         always=True,
     )
 
 INIT_VA = site_va("TU8INIT")
 register(
-    Spec("TU8INIT", 7, helpers={"Rs7Tuner8_InitSession": Helper(1)}, flags="dead", exits=(("resume", -7),)),
+    Spec("TU8INIT", 7, helpers={"RsxrTuner8_InitSession": Helper(1)}, flags="dead", exits=(("resume", -7),)),
     [Case(f"s{s:x}", regs={UC_X86_REG_ESI: s}, ebp={0: EBP_SAVED, 4: INIT_VA}, stack={0: 0xEB0EB0}) for s in (0, D)],
     always=True,
 )
 register(
-    Spec("TU8FREE", 5, helpers={"Rs7Tuner8_FreeSessionSize": Helper(1)}, flags="dead", pushed=4),
-    [Case(f"size{n:x}", regs={UC_X86_REG_ESI: D}, rets={"Rs7Tuner8_FreeSessionSize": n}) for n in (0x278, 0x380)],
+    Spec("TU8FREE", 5, helpers={"RsxrTuner8_FreeSessionSize": Helper(1)}, flags="dead", pushed=4),
+    [Case(f"size{n:x}", regs={UC_X86_REG_ESI: D}, rets={"RsxrTuner8_FreeSessionSize": n}) for n in (0x278, 0x380)],
     always=True,
 )
 
 # AT: autotune off / on x "tuned" or not; the "tuned" exit is the return address (here: the entry itself).
 AT_VA = site_va("AT")
 register(
-    Spec("AT", 11, helpers={"Rs7_TunerAutotune": Helper(1)}, exits=("resume", ("resume", -11)), pushed=8),
+    Spec("AT", 11, helpers={"Rsxr_TunerAutotune": Helper(1)}, exits=("resume", ("resume", -11)), pushed=8),
     [
         Case(
             f"auto{a:x}-r{r:x}",
             regs={UC_X86_REG_ESI: D + 0x100, UC_X86_REG_EAX: 0xAAAAAA00},
             mem={D + 0x100: blob(0x100, 7)},
             stack={0: AT_VA, 4: 1, 8: 2, 0x0C: 3},
-            words={"g_rs7_tuner_auto": a},
-            rets={"Rs7_TunerAutotune": r},
+            words={"g_rsxr_tuner_auto": a},
+            rets={"Rsxr_TunerAutotune": r},
         )
         for a, r in itertools.product((0, 1, 0xFFFFFFFF), (0, 1, 0x80000000))
     ],
@@ -276,7 +276,7 @@ register(
 # ---- features/publish: entry dispatch of the copies (light) and the grid sites ------------------------------------------
 PUB_ENTRIES = {"PUBCL": 6, "PUBTO": 7, "PUBWU": 7}
 PUB_PITCH = {"PUBNL": 9, "PUBAN": 6, "PUBAC": 6}
-for table, helper in ((PUB_ENTRIES, "Rs7Publish_Target"), (PUB_PITCH, "Rs7PublishPitch_Target")):
+for table, helper in ((PUB_ENTRIES, "RsxrPublish_Target"), (PUB_PITCH, "RsxrPublishPitch_Target")):
     for sid, length in table.items():
         register(
             Spec(sid, length, helpers={helper: Helper(2)}, exits=(("resume", -length),)),
@@ -320,8 +320,8 @@ for sid in ("PUBGC", "PUBGO"):
         ],
     )
 register(
-    Spec("PUBGB", 5, helpers={"Rs7Publish_GridBuild": Helper(2)}, flags="dead"),
-    [Case(f"r{r}", ebp={8: D + 0x100, 0x0C: D + 0x200}, rets={"Rs7Publish_GridBuild": r}) for r in (0, 2)],
+    Spec("PUBGB", 5, helpers={"RsxrPublish_GridBuild": Helper(2)}, flags="dead"),
+    [Case(f"r{r}", ebp={8: D + 0x100, 0x0C: D + 0x200}, rets={"RsxrPublish_GridBuild": r}) for r in (0, 2)],
     always=True,
 )
 GA_VA, GF_VA = site_va("PUBGA"), site_va("PUBGF")
@@ -329,7 +329,7 @@ register(
     Spec(
         "PUBGA",
         6,
-        helpers={"Rs7Gs_AttachExt": Helper(3)},
+        helpers={"RsxrGs_AttachExt": Helper(3)},
         flags="free",
         exits=("resume", ("resume", -6)),
         pushed=4,
@@ -340,7 +340,7 @@ register(
             f"s{s:x}-hi{hi:x}",
             regs={UC_X86_REG_ECX: GINFO, UC_X86_REG_EAX: 0xAAAAAAAA},
             stack={0: GA_VA, 4: hi | s, 8: D + 0x300},
-            rets={"Rs7Gs_AttachExt": 1},
+            rets={"RsxrGs_AttachExt": 1},
         )
         for s, hi in itertools.product((0, 5, 6, 7, 8, 0xFF), (0, 0x12345600))
     ],
@@ -349,7 +349,7 @@ register(
     Spec(
         "PUBGF",
         5,
-        helpers={"Rs7Publish_FingerSpan": Helper(3)},
+        helpers={"RsxrPublish_FingerSpan": Helper(3)},
         flags="free",
         exits=("resume", ("resume", -5)),
         pushed=12,
@@ -359,16 +359,16 @@ register(
             f"on{on:x}",
             regs={UC_X86_REG_EDI: 3},
             stack={0: GF_VA, 4: D + 0x100, 8: D + 0x200},
-            words={"g_rs7_native_publish": on},
-            rets={"Rs7Publish_FingerSpan": 4},
+            words={"g_rsxr_native_publish": on},
+            rets={"RsxrPublish_FingerSpan": 4},
         )
         for on in (0, 1, 0x80000000)
     ],
 )
 register(
-    Spec("PUBEDGE", 13, helpers={"Rs7Publish_Edge": Helper(2)}, flags="dead"),
+    Spec("PUBEDGE", 13, helpers={"RsxrPublish_Edge": Helper(2)}, flags="dead"),
     [
-        Case(f"cl{cl:x}-r{r}", regs={UC_X86_REG_EAX: GINFO, UC_X86_REG_ECX: cl}, rets={"Rs7Publish_Edge": r})
+        Case(f"cl{cl:x}-r{r}", regs={UC_X86_REG_EAX: GINFO, UC_X86_REG_ECX: cl}, rets={"RsxrPublish_Edge": r})
         for cl, r in itertools.product((0, 1, 0x100), (0, 6))
     ],
     always=True,
@@ -384,9 +384,9 @@ PEG = D + 0xA00
 
 
 def owners(native: bool) -> dict:
-    """g_rs7_pegsets (64 entries): PEG registered in the last entry, or not at all."""
+    """g_rsxr_pegsets (64 entries): PEG registered in the last entry, or not at all."""
     table = [0x1000 + 0x10 * i for i in range(63)] + [PEG if native else 0x2000]
-    return {Sym("g_rs7_pegsets"): dwords(*table)}
+    return {Sym("g_rsxr_pegsets"): dwords(*table)}
 
 
 for sid, slot_reg, peg_reg, slots in (
@@ -406,9 +406,11 @@ for sid, slot_reg, peg_reg, slots in (
         ],
     )
 register(
-    Spec("LT1", 5, helpers={"Rs7Asset_LetterInline": Helper(1)}, extra_cmp=((Sym("g_rs7_lt1_inline"), 4),)),
+    Spec("LT1", 5, helpers={"RsxrAsset_LetterInline": Helper(1)}, extra_cmp=((Sym("g_rsxr_lt1_inline"), 4),)),
     [
-        Case(f"r{r:x}", regs={UC_X86_REG_EDI: D + 0x100, UC_X86_REG_EAX: 0xAAAAAAAA}, rets={"Rs7Asset_LetterInline": r})
+        Case(
+            f"r{r:x}", regs={UC_X86_REG_EDI: D + 0x100, UC_X86_REG_EAX: 0xAAAAAAAA}, rets={"RsxrAsset_LetterInline": r}
+        )
         for r in (0, 1, 0x100)
     ],
     always=True,
@@ -418,11 +420,11 @@ register(
         "AL1",
         8,
         flags="dead",
-        exits=("resume", Sym("Rs7_NifHandler")),
+        exits=("resume", Sym("Rsxr_NifHandler")),
         pushed=4,  # the replayed `push ebp`
-        words={"g_rs7_frame_global": 0x135FBFC},  # the X_DT ref the old stub's replay reads through
+        words={"g_rsxr_frame_global": 0x135FBFC},  # the X_DT ref the old stub's replay reads through
     ),
-    [Case(f"on{on:x}", words={"g_rs7_asset_on": on}, stack={4: D + 0x100}) for on in (0, 1, 0x80000000)],
+    [Case(f"on{on:x}", words={"g_rsxr_asset_on": on}, stack={4: D + 0x100}) for on in (0, 1, 0x80000000)],
 )
 
 private_features.extend(__name__, globals())
@@ -431,15 +433,15 @@ private_features.extend(__name__, globals())
 GS_ENTRIES = ("GSFR GSBD GSUL GSLD GSFO GSFI GSXF GSWD GSUP GSRS GSPK GSVB GSIC GSDM GSGL GSHC").split()
 for sid in GS_ENTRIES:
     register(
-        Spec(sid, length(sid), helpers={"Rs7Gs_Target": Helper(4)}, flags="dead", exits=(("resume", -length(sid)),)),
-        entry_cases(sid, "Rs7Gs_Target", [*OBJECTS, {UC_X86_REG_ESI: D + 0x300, UC_X86_REG_EAX: 0}]),
+        Spec(sid, length(sid), helpers={"RsxrGs_Target": Helper(4)}, flags="dead", exits=(("resume", -length(sid)),)),
+        entry_cases(sid, "RsxrGs_Target", [*OBJECTS, {UC_X86_REG_ESI: D + 0x300, UC_X86_REG_EAX: 0}]),
         always=True,
     )
 RENDERER, GS = D + 0xB00, D + 0xC00
 register(
-    Spec("GRM1", length("GRM1"), helpers={"Rs7Gs_MeshCount": Helper(1)}, flags="dead"),
+    Spec("GRM1", length("GRM1"), helpers={"RsxrGs_MeshCount": Helper(1)}, flags="dead"),
     [
-        Case(f"n{n}", ebp={8: RENDERER, -0x14: 0x5A5A5A5A}, mem={RENDERER: dwords(0, GS)}, rets={"Rs7Gs_MeshCount": n})
+        Case(f"n{n}", ebp={8: RENDERER, -0x14: 0x5A5A5A5A}, mem={RENDERER: dwords(0, GS)}, rets={"RsxrGs_MeshCount": n})
         for n in (6, 7)
     ],
     always=True,
@@ -448,8 +450,8 @@ register(
 
 def gs_image(native: bool) -> bytes:
     raw = bytearray(blob(0xB0, 9))
-    raw[0x3A:0x3C] = (0x3752 if native else 0x3751).to_bytes(2, "little")
-    raw[0xAC:0xB0] = (0x47375352).to_bytes(4, "little")
+    raw[0x3A:0x3C] = (0x5852 if native else 0x5851).to_bytes(2, "little")
+    raw[0xAC:0xB0] = (0x47585352).to_bytes(4, "little")
     for k in range(8):
         raw[0x04 + 4 * k : 0x08 + 4 * k] = (D + 0xD00 + 0x10 * k).to_bytes(4, "little")  # stock main[] (+4)
     for k in range(8):

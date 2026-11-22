@@ -12,11 +12,11 @@
 #include <memory>
 #include <new>
 
-extern "C" __declspec(dllexport) Rs7NsEntry g_rs7_ns[kRs7NsEntries] = {};
+extern "C" __declspec(dllexport) RsxrNsEntry g_rsxr_ns[kRsxrNsEntries] = {};
 
 namespace {
 
-using namespace rs7ns;
+using namespace rsxrns;
 
 // Redirected pointers can be retained by render objects. Keep the failure records immutable, process-lived and
 // constant-initialized: even allocation failure / registry exhaustion must leave every widened reader in bounds.
@@ -49,29 +49,29 @@ constexpr EmptyRecords kEmptyRecords;
 SRWLOCK g_lock = SRWLOCK_INIT;  // writers only (loader thread, song destructor); readers are lock-free
 volatile LONG g_logged = 0;
 
-using namespace rs7nslot;
+using namespace rsxrnslot;
 
-uint8_t* Alloc(Rs7AllocKind kind, size_t n) {
+uint8_t* Alloc(RsxrAllocKind kind, size_t n) {
     uint8_t* p = n ? static_cast<uint8_t*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, n)) : nullptr;
 
     if (p) {
-        Rs7Alloc_Inc(kind);
+        RsxrAlloc_Inc(kind);
     }
 
     return p;
 }
 
-void Free(Rs7AllocKind kind, uintptr_t p) {
+void Free(RsxrAllocKind kind, uintptr_t p) {
     if (!p) {
         return;
     }
 
     HeapFree(GetProcessHeap(), 0, reinterpret_cast<void*>(p));
-    Rs7Alloc_Dec(kind);
+    RsxrAlloc_Dec(kind);
 }
 
-Rs7NsEntry* FindLocked(uintptr_t song) {
-    for (auto& e : g_rs7_ns) {
+RsxrNsEntry* FindLocked(uintptr_t song) {
+    for (auto& e : g_rsxr_ns) {
         if (e.song == song) {
             return &e;
         }
@@ -81,7 +81,7 @@ Rs7NsEntry* FindLocked(uintptr_t song) {
 }
 
 // Writer lock held. Preserve song/origCn so a failed post-process can retry.
-void DropArraysLocked(Rs7NsEntry* e) {
+void DropArraysLocked(RsxrNsEntry* e) {
     // Unpublish first (readers compare the begin pointers), then free.
     InterlockedExchange(reinterpret_cast<volatile LONG*>(&e->tplBegin), 0);
     InterlockedExchange(reinterpret_cast<volatile LONG*>(&e->cnBegin), 0);
@@ -92,7 +92,7 @@ void DropArraysLocked(Rs7NsEntry* e) {
     e->tplCount = e->cnCount = 0;
 }
 
-void ClearLocked(Rs7NsEntry* e) {
+void ClearLocked(RsxrNsEntry* e) {
     DropArraysLocked(e);
     e->origCn = 0;
     e->song = 0;
@@ -108,7 +108,7 @@ struct SongView {
 bool ReadSong(const void* song, SongView* v) {
     if (!ReadVec(song, kSongTemplates, &v->tpl) || !ReadVec(song, kSongChordNotes, &v->cn) ||
         !ReadVec(song, kSongTuning, &v->tuning) || !ReadVec(song, kSongLevels, &v->levels) ||
-        !Rs7_SafeCopy(&v->capo, static_cast<const uint8_t*>(song) + kSongCapo, 1)) {
+        !Rsxr_SafeCopy(&v->capo, static_cast<const uint8_t*>(song) + kSongCapo, 1)) {
         return false;
     }
 
@@ -127,43 +127,35 @@ bool ReadSong(const void* song, SongView* v) {
     }
 
     return v->n == 0 ||
-           Rs7_SafeCopy(v->tun, reinterpret_cast<const void*>(v->tuning.begin), static_cast<size_t>(v->n) * 2);
+           Rsxr_SafeCopy(v->tun, reinterpret_cast<const void*>(v->tuning.begin), static_cast<size_t>(v->n) * 2);
 }
 
-// Extended columns of template t: the RS7X block, else (7-string arrangements) the old name[31].
-void ExtCols(const rs7ext::Block* b, const uint8_t* tpl, uint32_t t, int n, Col ext[2], bool* fromName) {
+// Extended columns of template t: the extension block, or empty when no block is present.
+void ExtCols(const rsxrext::Block* b, uint32_t t, Col ext[2]) {
     ext[0] = ext[1] = Col();
-    *fromName = false;
-
-    if (b) {
-        for (int i = 0; i < 2; ++i) {
-            int f, g;
-
-            if (b->TemplateColumn(t, 6 + i, &f, &g)) {
-                ext[i] = Col{f, g};
-            }
-        }
-
+    if (!b) {
         return;
     }
 
-    if (n == 7 && DecodeName31(tpl, &ext[0])) {
-        *fromName = true;
+    for (int i = 0; i < 2; ++i) {
+        int f, g;
+
+        if (b->TemplateColumn(t, 6 + i, &f, &g)) {
+            ext[i] = Col{f, g};
+        }
     }
 }
 
 // Builds (or rebuilds in place) the T8 array of a song. Returns the number of templates with an
 // extended column.
-int BuildTemplates(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* b, int* fromName) {
+int BuildTemplates(RsxrNsEntry* e, const SongView& v, const rsxrext::Block* b) {
     const uint32_t count = static_cast<uint32_t>((v.tpl.end - v.tpl.begin) / kTplSize);
-
-    *fromName = 0;
     // Called with the writer lock held: failure must return normally so the caller unlocks.
     std::unique_ptr<uint8_t[]> stock(new (std::nothrow) uint8_t[static_cast<size_t>(count) * kTplSize + 1]);
     if (!stock) {
         return -1;
     }
-    if (count && !Rs7_SafeCopy(stock.get(), reinterpret_cast<const void*>(v.tpl.begin), count * kTplSize)) {
+    if (count && !Rsxr_SafeCopy(stock.get(), reinterpret_cast<const void*>(v.tpl.begin), count * kTplSize)) {
         return -1;
     }
 
@@ -182,16 +174,14 @@ int BuildTemplates(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* b, int
     for (uint32_t t = 0; t < count; ++t) {
         const uint8_t* tpl = stock.get() + t * kTplSize;
         Col c[2];
-        bool byName = false;
 
-        ExtCols(b, tpl, t, v.n, c, &byName);
+        ExtCols(b, t, c);
         uint8_t* out = reinterpret_cast<uint8_t*>(e->t8) + t * kT8Size;
 
         BuildT8(tpl, c, v.tun, v.n, v.capo, out);
         if (out[kT8Used] & 0xC0) {
             ++ext;
         }
-        *fromName += byName;
     }
 
     MemoryBarrier();
@@ -220,8 +210,8 @@ void FindUsers(const SongView& v, uint32_t origCn, uint32_t count, User* users) 
         for (uintptr_t p = notes.begin; p + kNoteSize <= notes.end; p += kNoteSize) {
             int32_t ids[2];
             uint32_t mask;
-            if (!Rs7_SafeCopy(ids, reinterpret_cast<const void*>(p + kNoteChordIds), 8) ||
-                !Rs7_SafeCopy(&mask, reinterpret_cast<const void*>(p + kNoteMask), 4)) {
+            if (!Rsxr_SafeCopy(ids, reinterpret_cast<const void*>(p + kNoteChordIds), 8) ||
+                !Rsxr_SafeCopy(&mask, reinterpret_cast<const void*>(p + kNoteMask), 4)) {
                 return;
             }
 
@@ -245,12 +235,12 @@ void Log(const char* fmt, ...) {
     va_start(a, fmt);
     std::vsnprintf(buf, sizeof buf, fmt, a);
     va_end(a);
-    Rs7Log("%s", buf);
+    RsxrLog("%s", buf);
 }
 
-// ChordNotes record r loaded with the song: the strings 6/7 technique of the RS7X block's CHNT section.
+// ChordNotes record r loaded with the song: the strings 6/7 technique of the extension block's CHNT section.
 // Returns how many of the two carry a technique.
-int BlockTech(const rs7ext::Block& block, uint32_t r, Tech* t, const Tech** tp) {
+int BlockTech(const rsxrext::Block& block, uint32_t r, Tech* t, const Tech** tp) {
     int fromBlock = 0;
 
     for (int i = 0; i < 2; ++i) {
@@ -260,7 +250,7 @@ int BlockTech(const rs7ext::Block& block, uint32_t r, Tech* t, const Tech** tp) 
             continue;
         }
 
-        const rs7ext::Tech& x = block.tech[at];
+        const rsxrext::Tech& x = block.tech[at];
 
         t[i].mask = x.mask;
         t[i].slideTo = x.slideTo;
@@ -277,7 +267,7 @@ int BlockTech(const rs7ext::Block& block, uint32_t r, Tech* t, const Tech** tp) 
 
 // ChordNotes record r added by Fixup: the strings 6/7 technique synthesized from its user note and chord template.
 // Returns how many were synthesized.
-int SynthTech(const Rs7NsEntry& e, const User& u, uint8_t capo, Tech* t, const Tech** tp) {
+int SynthTech(const RsxrNsEntry& e, const User& u, uint8_t capo, Tech* t, const Tech** tp) {
     if (u.chord < 0 || static_cast<uint32_t>(u.chord) >= e.tplCount) {
         return 0;
     }
@@ -305,7 +295,7 @@ struct C8Fill {
 };
 
 // Builds C8 record by record from the song's ChordNotes and the strings 6/7 technique. Caller holds g_lock.
-C8Fill FillC8Locked(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* block, uint32_t count) {
+C8Fill FillC8Locked(RsxrNsEntry* e, const SongView& v, const rsxrext::Block* block, uint32_t count) {
     C8Fill out;
     std::unique_ptr<uint8_t[]> rec(new (std::nothrow) uint8_t[kCnSize]);
 
@@ -330,7 +320,7 @@ C8Fill FillC8Locked(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* block
     }
 
     for (uint32_t r = 0; r < count; ++r) {
-        if (!Rs7_SafeCopy(rec.get(), reinterpret_cast<const void*>(v.cn.begin + r * kCnSize), kCnSize)) {
+        if (!Rsxr_SafeCopy(rec.get(), reinterpret_cast<const void*>(v.cn.begin + r * kCnSize), kCnSize)) {
             out.ok = false;
             out.bad = r;
             return out;
@@ -353,7 +343,7 @@ C8Fill FillC8Locked(Rs7NsEntry* e, const SongView& v, const rs7ext::Block* block
 
 }  // namespace
 
-void Rs7Ns_OnSngLoaded(void* song) {
+void RsxrNs_OnSngLoaded(void* song) {
     try {
         if (!song) {
             return;
@@ -371,10 +361,10 @@ void Rs7Ns_OnSngLoaded(void* song) {
             return;
         }
 
-        const auto block = Rs7Ext_Find(song);
+        const auto block = RsxrExt_Find(song);
 
         AcquireSRWLockExclusive(&g_lock);
-        Rs7NsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
+        RsxrNsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
 
         if (e) {
             ClearLocked(e);  // a recycled song object
@@ -384,14 +374,13 @@ void Rs7Ns_OnSngLoaded(void* song) {
 
         if (!e) {
             ReleaseSRWLockExclusive(&g_lock);
-            Log("nslot: SNG %p: no free registry slot (%d songs live); using empty chords", song, kRs7NsEntries);
+            Log("nslot: SNG %p: no free registry slot (%d songs live); using empty chords", song, kRsxrNsEntries);
             return;
         }
 
         e->song = reinterpret_cast<uintptr_t>(song);
         e->origCn = static_cast<uint32_t>((v.cn.end - v.cn.begin) / kCnSize);
-        int byName = 0;
-        const int ext = BuildTemplates(e, v, block.get(), &byName);
+        const int ext = BuildTemplates(e, v, block.get());
 
         if (ext < 0) {
             DropArraysLocked(e);
@@ -410,16 +399,13 @@ void Rs7Ns_OnSngLoaded(void* song) {
 
         Log("nslot: SNG %p: %u templates -> T8 %p (%d with a 7th/8th-string column, from %s), %u tuning entries, "
             "capo %u, %u ChordNotes, tid %lu",
-            song, tplCount, t8, ext,
-            block    ? "the RS7X block"
-            : byName ? "name[31] (old format)"
-                     : "nothing",
-            v.n, v.capo, origCn, GetCurrentThreadId());
+            song, tplCount, t8, ext, block ? "the extension block" : "nothing", v.n, v.capo, origCn,
+            GetCurrentThreadId());
     } catch (...) {
     }
 }
 
-extern "C" void __cdecl Rs7Ns_OnPostProcessed(void* song) {
+extern "C" void __cdecl RsxrNs_OnPostProcessed(void* song) {
     try {
         if (!song) {
             return;
@@ -438,18 +424,17 @@ extern "C" void __cdecl Rs7Ns_OnPostProcessed(void* song) {
             return;
         }
 
-        const auto block = Rs7Ext_Find(song);
+        const auto block = RsxrExt_Find(song);
 
         AcquireSRWLockExclusive(&g_lock);
-        Rs7NsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
+        RsxrNsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
 
         if (!e) {
             ReleaseSRWLockExclusive(&g_lock);
             return;
         }
 
-        int byName = 0;
-        const int ext = BuildTemplates(e, v, block.get(), &byName);  // PostProcess rewrote names / capo frets
+        const int ext = BuildTemplates(e, v, block.get());  // PostProcess rewrote names / capo frets
 
         if (ext < 0) {
             DropArraysLocked(e);
@@ -508,8 +493,8 @@ extern "C" void __cdecl Rs7Ns_OnPostProcessed(void* song) {
     }
 }
 
-extern "C" void __cdecl Rs7Ns_OnSongFree(void* song) {
-    Rs7Diagram_Drop(song);
+extern "C" void __cdecl RsxrNs_OnSongFree(void* song) {
+    RsxrDiagram_Drop(song);
 
     try {
         if (!song) {
@@ -517,7 +502,7 @@ extern "C" void __cdecl Rs7Ns_OnSongFree(void* song) {
         }
 
         AcquireSRWLockExclusive(&g_lock);
-        Rs7NsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
+        RsxrNsEntry* e = FindLocked(reinterpret_cast<uintptr_t>(song));
 
         if (e) {
             ClearLocked(e);
@@ -529,14 +514,14 @@ extern "C" void __cdecl Rs7Ns_OnSongFree(void* song) {
     }
 }
 
-const uint8_t* Rs7Ns_AsT8(const void* tpl) {
+const uint8_t* RsxrNs_AsT8(const void* tpl) {
     if (tpl == kEmptyRecords.t8) {
         return kEmptyRecords.t8;
     }
 
     const uintptr_t p = reinterpret_cast<uintptr_t>(tpl);
 
-    for (const auto& e : g_rs7_ns) {
+    for (const auto& e : g_rsxr_ns) {
         if (!e.tplBegin || !e.t8) {
             continue;
         }
@@ -548,14 +533,14 @@ const uint8_t* Rs7Ns_AsT8(const void* tpl) {
     return nullptr;
 }
 
-const uint8_t* Rs7Ns_AsC8(const void* cn) {
+const uint8_t* RsxrNs_AsC8(const void* cn) {
     if (cn == kEmptyRecords.c8) {
         return kEmptyRecords.c8;
     }
 
     const uintptr_t p = reinterpret_cast<uintptr_t>(cn);
 
-    for (const auto& e : g_rs7_ns) {
+    for (const auto& e : g_rsxr_ns) {
         if (!e.cnBegin || !e.c8) {
             continue;
         }
@@ -567,8 +552,8 @@ const uint8_t* Rs7Ns_AsC8(const void* cn) {
     return nullptr;
 }
 
-uint32_t Rs7Ns_FindTplRecord(uint32_t begin, uint32_t id) {
-    for (const auto& e : g_rs7_ns) {
+uint32_t RsxrNs_FindTplRecord(uint32_t begin, uint32_t id) {
+    for (const auto& e : g_rsxr_ns) {
         if (begin && e.tplBegin == begin && e.t8 && id < e.tplCount) {
             return static_cast<uint32_t>(e.t8) + id * kT8Size;
         }
@@ -577,14 +562,14 @@ uint32_t Rs7Ns_FindTplRecord(uint32_t begin, uint32_t id) {
     return 0;
 }
 
-uint32_t Rs7Ns_TplRecord(uint32_t begin, uint32_t id) {
-    const uint32_t record = Rs7Ns_FindTplRecord(begin, id);
+uint32_t RsxrNs_TplRecord(uint32_t begin, uint32_t id) {
+    const uint32_t record = RsxrNs_FindTplRecord(begin, id);
 
     return record ? record : static_cast<uint32_t>(reinterpret_cast<uintptr_t>(kEmptyRecords.t8));
 }
 
-uint32_t Rs7Ns_CnRecord(uint32_t begin, uint32_t id) {
-    for (const auto& e : g_rs7_ns) {
+uint32_t RsxrNs_CnRecord(uint32_t begin, uint32_t id) {
+    for (const auto& e : g_rsxr_ns) {
         if (begin && e.cnBegin == begin && e.c8 && id < e.cnCount) {
             return static_cast<uint32_t>(e.c8) + id * kC8Size;
         }
@@ -593,35 +578,35 @@ uint32_t Rs7Ns_CnRecord(uint32_t begin, uint32_t id) {
     return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(kEmptyRecords.c8));
 }
 
-int Rs7Ns_LiveSongs() {
+int RsxrNs_LiveSongs() {
     int n = 0;
 
-    for (const auto& e : g_rs7_ns) {
+    for (const auto& e : g_rsxr_ns) {
         n += e.song != 0;
     }
 
     return n;
 }
 
-extern "C" void __cdecl Rs7Ns_OnEvalBuilt(uint8_t* eval, const uint8_t* tpl, const uint8_t* cn) {
+extern "C" void __cdecl RsxrNs_OnEvalBuilt(uint8_t* eval, const uint8_t* tpl, const uint8_t* cn) {
     if (!eval) {
         return;
     }
 
     // Every template / ChordNotes pointer at play time is a T8 / C8 (TP*/CP*); anything else gets the
     // empty tails rather than bytes past a stock record.
-    rs7ns::WriteEvalTails(eval, tpl ? Rs7Ns_AsT8(tpl) : nullptr, cn ? Rs7Ns_AsC8(cn) : nullptr);
+    rsxrns::WriteEvalTails(eval, tpl ? RsxrNs_AsT8(tpl) : nullptr, cn ? RsxrNs_AsC8(cn) : nullptr);
 }
 
-extern "C" void __cdecl Rs7Ns_Shift8(int32_t* out8, const int32_t* arr6, const uint8_t* tpl, int shift) {
+extern "C" void __cdecl RsxrNs_Shift8(int32_t* out8, const int32_t* arr6, const uint8_t* tpl, int shift) {
     std::memcpy(out8, arr6, 6 * 4);
-    const uint8_t* t8 = tpl ? Rs7Ns_AsT8(tpl) : nullptr;
+    const uint8_t* t8 = tpl ? RsxrNs_AsT8(tpl) : nullptr;
 
     for (int s = 6; s < 8; ++s) {
         int32_t m = -1;
 
         if (t8) {
-            std::memcpy(&m, t8 + rs7ns::kT8Midi + 4 * s, 4);
+            std::memcpy(&m, t8 + rsxrns::kT8Midi + 4 * s, 4);
         }
         out8[s] = m < 0 ? -1 : m + shift;
     }

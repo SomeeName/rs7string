@@ -10,14 +10,14 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-using Rs7Mid::Context;
+using RsxrMid::Context;
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_resume_UP1 = 0, g_rs7_target_UP1 = 0, g_rs7_resume_UP2 = 0;
-__declspec(dllexport) uintptr_t g_rs7_target_UP2 = 0, g_rs7_resume_UP3 = 0, g_rs7_target_UP3 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PD2 = 0, g_rs7_target_PD2 = 0, g_rs7_resume_PD3 = 0;
-__declspec(dllexport) uintptr_t g_rs7_target_PD3 = 0, g_rs7_resume_PD4 = 0, g_rs7_target_PD4 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PD5 = 0, g_rs7_target_PD5 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_UP1 = 0, g_rsxr_target_UP1 = 0, g_rsxr_resume_UP2 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_target_UP2 = 0, g_rsxr_resume_UP3 = 0, g_rsxr_target_UP3 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PD2 = 0, g_rsxr_target_PD2 = 0, g_rsxr_resume_PD3 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_target_PD3 = 0, g_rsxr_resume_PD4 = 0, g_rsxr_target_PD4 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PD5 = 0, g_rsxr_target_PD5 = 0;
 }
 
 namespace {
@@ -64,7 +64,7 @@ void AllUnpitched(Context& c, Reg pointer, Reg accumulator, uintptr_t resume, ui
         return;
     }
 
-    if (rs7track::TailPitched(eval)) {
+    if (rsxrtrack::TailPitched(eval)) {
         SetLow(c.*accumulator, 0);
     }
 }
@@ -80,53 +80,53 @@ void FoldLatch(Context& c, Reg counter, Reg scratch, uint32_t bits, bool byteMas
 
     uint8_t last = Low(c.*scratch);
 
-    SetLow(c.eax, rs7track::FoldTails(eval, bits, byteMask, none, Low(c.eax), &last));
+    SetLow(c.eax, rsxrtrack::FoldTails(eval, bits, byteMask, none, Low(c.eax), &last));
     SetLow(c.*scratch, last);
 }
 }  // namespace
 
 // UP1 - 0x87617D in Play_Tracker_Update 0x8760D0 (pointer ESI, accumulator CL); UP2 - 0x8769CB in 0x876980 (ESI, DL);
 // UP3 - 0x876C6C in 0x876C20 (EDI, DL).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_UP1(Context& c) {
-    AllUnpitched(c, &Context::esi, &Context::ecx, g_rs7_resume_UP1, g_rs7_target_UP1);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_UP1(Context& c) {
+    AllUnpitched(c, &Context::esi, &Context::ecx, g_rsxr_resume_UP1, g_rsxr_target_UP1);
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_UP2(Context& c) {
-    AllUnpitched(c, &Context::esi, &Context::edx, g_rs7_resume_UP2, g_rs7_target_UP2);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_UP2(Context& c) {
+    AllUnpitched(c, &Context::esi, &Context::edx, g_rsxr_resume_UP2, g_rsxr_target_UP2);
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_UP3(Context& c) {
-    AllUnpitched(c, &Context::edi, &Context::edx, g_rs7_resume_UP3, g_rs7_target_UP3);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_UP3(Context& c) {
+    AllUnpitched(c, &Context::edi, &Context::edx, g_rsxr_resume_UP3, g_rsxr_target_UP3);
 }
 
 // PD2 - 0x877D4A, latch of 0x877D20 (counter CL, scratch DL): all sounding strings slide (800h).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PD2(Context& c) {
-    FoldLatch(c, &Context::ecx, &Context::edx, 0x800, false, false, g_rs7_resume_PD2, g_rs7_target_PD2);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PD2(Context& c) {
+    FoldLatch(c, &Context::ecx, &Context::edx, 0x800, false, false, g_rsxr_resume_PD2, g_rsxr_target_PD2);
 }
 
 // PD3 - 0x877DB6, latch of 0x877D60 (BL, CL): no sounding string bends / slides / unpitched slides / tremolos
 // (1000h|800h|400000h|10h).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PD3(Context& c) {
-    FoldLatch(c, &Context::ebx, &Context::ecx, 0x401810, false, true, g_rs7_resume_PD3, g_rs7_target_PD3);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PD3(Context& c) {
+    FoldLatch(c, &Context::ebx, &Context::ecx, 0x401810, false, true, g_rsxr_resume_PD3, g_rsxr_target_PD3);
 }
 
 // PD4 - 0x877DF7, latch of 0x877DD0 (CL, DL): all sounding strings tremolo (byte mask 10h).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PD4(Context& c) {
-    FoldLatch(c, &Context::ecx, &Context::edx, 0x10, true, false, g_rs7_resume_PD4, g_rs7_target_PD4);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PD4(Context& c) {
+    FoldLatch(c, &Context::ecx, &Context::edx, 0x10, true, false, g_rsxr_resume_PD4, g_rsxr_target_PD4);
 }
 
 // PD5 - 0x877E56, latch of 0x877E10: the extreme slide distance (counter BL, pointer ESI = eval + 0BECh + string,
 // step 1, result EAX). EDX = string 7's fret and ECX = the last fretted tail's distance, as the old stub left them.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PD5(Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PD5(Context& c) {
     const uint8_t* eval;
 
-    if (!Step(c, &Context::ebx, &Context::esi, 1, kByteBase, g_rs7_resume_PD5, g_rs7_target_PD5, &eval)) {
+    if (!Step(c, &Context::ebx, &Context::esi, 1, kByteBase, g_rsxr_resume_PD5, g_rsxr_target_PD5, &eval)) {
         return;
     }
 
     int32_t distance = static_cast<int32_t>(c.ecx);
 
-    c.eax = static_cast<uint32_t>(rs7track::ExtremeSlide(eval, static_cast<int32_t>(c.eax), &distance));
+    c.eax = static_cast<uint32_t>(rsxrtrack::ExtremeSlide(eval, static_cast<int32_t>(c.eax), &distance));
     c.ecx = static_cast<uint32_t>(distance);
-    c.edx = eval[rs7ns::kEvFret67 + 1];
+    c.edx = eval[rsxrns::kEvFret67 + 1];
 }

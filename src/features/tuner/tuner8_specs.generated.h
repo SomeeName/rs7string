@@ -3,9 +3,9 @@
 #include "platform/fncopy.h"
 #include "platform/midhook.h"
 
-extern Rs7Mid::CallIn g_rs7_callin_PubEdge;
+extern RsxrMid::CallIn g_rsxr_callin_PubEdge;
 
-static const Rs7FnEdit kRs7FnEdits_TU8H[] = {
+static const RsxrFnEdit kRsxrFnEdits_TU8H[] = {
     {0x0011, 3, "38 58 0B", "38 58 40", nullptr},
     {0x0021, 4, "8B 4C 01 04", "8B 4C 01 40", nullptr},
     {0x0038, 3, "3A 57 0B", "3A 57 40", nullptr},
@@ -15,27 +15,27 @@ static const Rs7FnEdit kRs7FnEdits_TU8H[] = {
     {0x0084, 3, "3A 56 0B", "3A 56 40", nullptr},
     {0x0089, 4, "8B 44 08 04", "8B 44 08 40", nullptr},
 };
-static const Rs7FnRel kRs7FnRels_TU8H[] = {
+static const RsxrFnRel kRsxrFnRels_TU8H[] = {
     {0, 0},
 };
-static const Rs7FnEdit kRs7FnEdits_TU8C[] = {
+static const RsxrFnEdit kRsxrFnEdits_TU8C[] = {
     {0x000D, 3, "38 58 0B", "38 58 40", nullptr},
     {0x001C, 4, "8B 4C 01 04", "8B 4C 01 40", nullptr},
     {0x0033, 3, "3A 57 0B", "3A 57 40", nullptr},
     {0x0038, 4, "8B 44 08 04", "8B 44 08 40", nullptr},
     {0x004D, 4, "0F B6 40 0B", "0F B6 40 40", nullptr},
 };
-static const Rs7FnRel kRs7FnRels_TU8C[] = {
+static const RsxrFnRel kRsxrFnRels_TU8C[] = {
     {0x005D, 0x0059AC20u},
 };
-static const Rs7FnEdit kRs7FnEdits_TU8A[] = {
-    {0x0190, 13, "84 C9 74 04 32 C0 EB 05 8A 40 0B FE C8", "", nullptr, &g_rs7_callin_PubEdge},
+static const RsxrFnEdit kRsxrFnEdits_TU8A[] = {
+    {0x0190, 13, "84 C9 74 04 32 C0 EB 05 8A 40 0B FE C8", "", nullptr, &g_rsxr_callin_PubEdge},
     {0x02D0, 4, "0F B6 51 0B", "0F B6 51 40", nullptr},
     {0x02D8, 2, "7C 29", "72 29", nullptr},
     {0x0325, 4, "8B 44 86 04", "8B 44 86 40", nullptr},
     {0x035C, 4, "8B 44 8E 04", "8B 44 8E 40", nullptr},
 };
-static const Rs7FnRel kRs7FnRels_TU8A[] = {
+static const RsxrFnRel kRsxrFnRels_TU8A[] = {
     {0x003D, 0x00413DF0u},
     {0x004B, 0x004073C0u},
     {0x007B, 0x00413DF0u},
@@ -93,9 +93,9 @@ static const Rs7FnRel kRs7FnRels_TU8A[] = {
     {0x0686, 0x0091FFA0u},
     {0x06AB, 0x00F5AB08u},
 };
-static const Rs7FnSpec kRs7FnSpecs[] = {
-    {"TU8H", 0x005B0770u, 0x009Fu, 0x7AEA9643u, 5, kRs7FnEdits_TU8H, 8, kRs7FnRels_TU8H, 0},
-    {"TU8C", 0x005B0810u, 0x0065u, 0x79B4ED50u, 7, kRs7FnEdits_TU8C, 5, kRs7FnRels_TU8C, 1},
-    {"TU8A", 0x007E7140u, 0x06B5u, 0x32985CC0u, 6, kRs7FnEdits_TU8A, 5, kRs7FnRels_TU8A, 56},
+static const RsxrFnSpec kRsxrFnSpecs[] = {
+    {"TU8H", 0x005B0770u, 0x009Fu, 0x7AEA9643u, 5, kRsxrFnEdits_TU8H, 8, kRsxrFnRels_TU8H, 0},
+    {"TU8C", 0x005B0810u, 0x0065u, 0x79B4ED50u, 7, kRsxrFnEdits_TU8C, 5, kRsxrFnRels_TU8C, 1},
+    {"TU8A", 0x007E7140u, 0x06B5u, 0x32985CC0u, 6, kRsxrFnEdits_TU8A, 5, kRsxrFnRels_TU8A, 56},
 };
-static const int kRs7FnSpecCount = 3;
+static const int kRsxrFnSpecCount = 3;

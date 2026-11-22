@@ -720,7 +720,7 @@ wheels = [
 ]
 
 [[package]]
-name = "rs7string-tools"
+name = "rsxr-tools"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [

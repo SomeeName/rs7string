@@ -19,7 +19,7 @@
 // An SEH guard stays as the last net.
 
 namespace {
-using rs7colour::g_colour;
+using rsxrcolour::g_colour;
 
 void SetManagerThread() {
     AcquireSRWLockExclusive(&g_colour.paletteLock);
@@ -27,22 +27,22 @@ void SetManagerThread() {
     ReleaseSRWLockExclusive(&g_colour.paletteLock);
 }
 
-uint8_t* Manager() {  // *X_CM; the caller checked g_rs7_colormgr
+uint8_t* Manager() {  // *X_CM; the caller checked g_rsxr_colormgr
     uint8_t* mgr = nullptr;
 
-    Rs7_SafeCopyZero(&mgr, reinterpret_cast<const void*>(g_rs7_colormgr), sizeof mgr);
+    Rsxr_SafeCopyZero(&mgr, reinterpret_cast<const void*>(g_rsxr_colormgr), sizeof mgr);
 
     return mgr;
 }
 
 bool PublishGuarded(uint8_t* mgr) {
     __try {
-        rs7colour::Publish(mgr);
+        rsxrcolour::Publish(mgr);
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         if (!InterlockedExchange(&g_colour.loggedFault, 1)) {
-            Rs7Log("colour: publish faulted on thread %lu (manager %p) - retry pending", GetCurrentThreadId(),
-                   static_cast<void*>(mgr));
+            RsxrLog("colour: publish faulted on thread %lu (manager %p) - retry pending", GetCurrentThreadId(),
+                    static_cast<void*>(mgr));
         }
         return false;
     }
@@ -58,26 +58,26 @@ void PublishRequested(uint8_t* mgr) {
         return;
     }
 
-    rs7colour::RequestPublish();
+    rsxrcolour::RequestPublish();
 
     if (++g_colour.publishFailures >= 3) {
         g_colour.built = nullptr;
-        Rs7Log("colour: manager %p failed publication three times - pending until the next build",
-               static_cast<void*>(mgr));
+        RsxrLog("colour: manager %p failed publication three times - pending until the next build",
+                static_cast<void*>(mgr));
     }
 }
 }  // namespace
 
-void rs7colour::RequestPublish() {
+void rsxrcolour::RequestPublish() {
     InterlockedExchange(&g_colour.dirty, 1);
 }
 
-bool rs7colour::PublishPending() {
+bool rsxrcolour::PublishPending() {
     return g_colour.dirty != 0;
 }
 
-void rs7colour::DrainPending() {
-    if (!g_colour.dirty || !g_rs7_native_colours || !g_rs7_colormgr) {
+void rsxrcolour::DrainPending() {
+    if (!g_colour.dirty || !g_rsxr_native_colours || !g_rsxr_colormgr) {
         return;
     }
     if (g_colour.cmTid == 0 || GetCurrentThreadId() != g_colour.cmTid) {
@@ -92,8 +92,8 @@ void rs7colour::DrainPending() {
     PublishRequested(mgr);
 }
 
-void rs7colour::PublishCurrent() {
-    if (!g_rs7_native_colours || !g_rs7_colormgr) {
+void rsxrcolour::PublishCurrent() {
+    if (!g_rsxr_native_colours || !g_rsxr_colormgr) {
         return;
     }
 
@@ -101,9 +101,9 @@ void rs7colour::PublishCurrent() {
 
     if (g_colour.cmTid != 0 && tid != g_colour.cmTid) {  // not the game thread: never touch the manager here
         if (!InterlockedExchange(&g_colour.loggedForeign, 1)) {
-            Rs7Log("colour: PublishCurrent on thread %lu, the manager belongs to thread %lu - deferred to it (logged "
-                   "once)",
-                   tid, static_cast<unsigned long>(g_colour.cmTid));
+            RsxrLog("colour: PublishCurrent on thread %lu, the manager belongs to thread %lu - deferred to it (logged "
+                    "once)",
+                    tid, static_cast<unsigned long>(g_colour.cmTid));
         }
     }
 
@@ -111,7 +111,7 @@ void rs7colour::PublishCurrent() {
     DrainPending();
 }
 
-void __cdecl Rs7Colour_CMINIT(Rs7Mid::Context& c) {
+void __cdecl RsxrColour_CMINIT(RsxrMid::Context& c) {
     SetManagerThread();
     g_colour.built = nullptr;
     g_colour.publishFailures = 0;
@@ -120,22 +120,22 @@ void __cdecl Rs7Colour_CMINIT(Rs7Mid::Context& c) {
 
     if (g_colour.loggedInit != mgr) {  // once per manager
         g_colour.loggedInit = mgr;
-        Rs7Log("colour: CMINIT %p tid %lu", mgr, GetCurrentThreadId());
+        RsxrLog("colour: CMINIT %p tid %lu", mgr, GetCurrentThreadId());
     }
 
     if (!PublishGuarded(reinterpret_cast<uint8_t*>(c.esi))) {
-        rs7colour::RequestPublish();
+        rsxrcolour::RequestPublish();
     }
 }
 
-void __cdecl Rs7Colour_CMBUILD(Rs7Mid::Context& c) {
+void __cdecl RsxrColour_CMBUILD(RsxrMid::Context& c) {
     auto* mgr = reinterpret_cast<uint8_t*>(c.esi);
 
     SetManagerThread();
 
     if (g_colour.loggedBuild != mgr) {  // once per manager
         g_colour.loggedBuild = mgr;
-        Rs7Log("colour: CMBUILD %p tid %lu", static_cast<void*>(mgr), GetCurrentThreadId());
+        RsxrLog("colour: CMBUILD %p tid %lu", static_cast<void*>(mgr), GetCurrentThreadId());
     }
 
     // With bassLowB on, CMINIT's Publish swapped slot 4. The build in between rewrote slot 4 (CONFIRMED, 0x518AF0
@@ -143,11 +143,11 @@ void __cdecl Rs7Colour_CMBUILD(Rs7Mid::Context& c) {
     // ones that still hold the swap's values (native.cpp RestoreSlot4).
     g_colour.built = mgr;
     g_colour.publishFailures = 0;
-    rs7colour::RequestPublish();
+    rsxrcolour::RequestPublish();
     PublishRequested(mgr);
 }
 
-void rs7colour::ResetThreadForTests() {
+void rsxrcolour::ResetThreadForTests() {
     g_colour.cmTid = 0;
     g_colour.dirty = 0;
     g_colour.built = nullptr;

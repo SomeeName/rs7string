@@ -2,8 +2,8 @@
 tools/tests/fixtures/midhook_72da588.json):
 - PC1, PC4: the per-frame calls of 0x873F80 over a matcher's tuning (light call sites, Before placement);
 - PUBZ0-PUBZ6: the standard-zero expected-pitch sites (one light callback; call sites 0 and 4-6, jmp sites 1-3 whose
-  replay is the relocated `jmp 873F80h`), old stub Rs7_Publish_ZeroRaw;
-- the PUBAN copy's expected-pitch call (Rs7_Mid_PubTailPitch, a light call entry), old function Rs7_Pitch_Raw8.
+  replay is the relocated `jmp 873F80h`), old stub Rsxr_Publish_ZeroRaw;
+- the PUBAN copy's expected-pitch call (Rsxr_Mid_PubTailPitch, a light call entry), old function Rsxr_Pitch_Raw8.
 What is compared: midhook_oracle.py and midhook_stock.py; the tail-pitch entry by its own runs below.
 """
 
@@ -59,7 +59,7 @@ def pitch_cases(sid: str) -> list[Case]:
             regs={UC_X86_REG_ECX: obj + 0x44, UC_X86_REG_EDX: instrument, UC_X86_REG_ESI: string},
             mem={obj + 0x58: TAIL},
             stack={0: ret(sid), 4: 9},
-            rets={"Rs7Pitch_Tailed": tailed},
+            rets={"RsxrPitch_Tailed": tailed},
         )
         for string in (0, 5, 6, 7, 8)
         for instrument in (1, 2, 0xFF)
@@ -71,7 +71,7 @@ def pitch_cases(sid: str) -> list[Case]:
 
 for sid in ("PC1", "PC4"):
     register(
-        Spec(sid, 5, helpers={"Rs7Pitch_Tailed": Helper(2)}, flags="dead", exits=("target", "resume"), call=True),
+        Spec(sid, 5, helpers={"RsxrPitch_Tailed": Helper(2)}, flags="dead", exits=("target", "resume"), call=True),
         pitch_cases(sid),
     )
 
@@ -87,7 +87,7 @@ def zero_cases(sid: str) -> list[Case]:
             f"p{ports:x}-s{string}-i{instrument:x}",
             regs={UC_X86_REG_ECX: ZERO_TUNING, UC_X86_REG_EDX: instrument, UC_X86_REG_ESI: string},
             stack={0: back, 4: 9},
-            words={"g_rs7_publish_ports": ports},
+            words={"g_rsxr_publish_ports": ports},
         )
         for ports in (0, 1, 2, 0xFFFFFFFF)
         for string in (0, 5, 6, 7, 8)
@@ -102,9 +102,9 @@ for n in range(7):
         Spec(
             sid,
             5,
-            stub="Rs7_Publish_ZeroRaw",
+            stub="Rsxr_Publish_ZeroRaw",
             flags="dead",  # the old stub left its compare / add flags; the stock entry and the caller rewrite them
-            clobbers=("ecx",),  # the old stub returned with ECX = g_rs7_publish_zero8, the hook keeps the caller's
+            clobbers=("ecx",),  # the old stub returned with ECX = g_rsxr_publish_zero8, the hook keeps the caller's
             exits=("target", "resume") if call else (EXPECTED_PITCH, RET_AT),  # a jmp site: its jmp target, or returned
             call=call,
         ),
@@ -120,7 +120,7 @@ ALWAYS_CALLS: set[str] = set()
 
 
 def expected_pitch8(tuning: tuple, instrument: int, string: int, fret: int) -> int:
-    """rs7p::ExpectedPitch8: tuning[s] + base[s] + fret, past the table fret - 1 (32-bit)."""
+    """rsxrp::ExpectedPitch8: tuning[s] + base[s] + fret, past the table fret - 1 (32-bit)."""
     bass = instrument == 2
     if string >= (4 if bass else 8):
         return (fret - 1) & 0xFFFFFFFF
@@ -137,10 +137,10 @@ def answered(case: Case, eip, pitch: int) -> object:
 
 
 def pc_native(case: Case):
-    """PC1 / PC4, a matcher with the native tail (Rs7Pitch_Tailed stubbed: the registry is DLL state): strings >= 6 are
+    """PC1 / PC4, a matcher with the native tail (RsxrPitch_Tailed stubbed: the registry is DLL state): strings >= 6 are
     answered over the tail, everything else runs the stock callee."""
     string, ecx = case.regs.get(UC_X86_REG_ESI), case.regs.get(UC_X86_REG_ECX)
-    if string < 6 or not ecx or not case.rets.get("Rs7Pitch_Tailed"):
+    if string < 6 or not ecx or not case.rets.get("RsxrPitch_Tailed"):
         return None
     tail = struct.unpack("<8h", TAIL)
     return answered(case, 5, expected_pitch8(tail, case.regs[UC_X86_REG_EDX], string, 9))
@@ -151,7 +151,7 @@ def zero_native(sid: str):
 
     def rule(case: Case):
         ports, string, instrument = (
-            case.words["g_rs7_publish_ports"],
+            case.words["g_rsxr_publish_ports"],
             case.regs[UC_X86_REG_ESI],
             case.regs[UC_X86_REG_EDX],
         )
@@ -179,7 +179,7 @@ REFS: dict[str, Ref] = {
 ) = stock_tests(SPECS, REFS, {})
 
 
-# ---- the PUBAN copy's expected-pitch call: Rs7_Mid_PubTailPitch (light call entry) against the frozen Rs7_Pitch_Raw8 --
+# ---- the PUBAN copy's expected-pitch call: Rsxr_Mid_PubTailPitch (light call entry) against the frozen Rsxr_Pitch_Raw8 --
 RAW_TUNING = D + 0x700
 RAW_TAIL = (3, -1, 0, 2, -5, 1, -2, 4)
 
@@ -187,11 +187,11 @@ RAW_TAIL = (3, -1, 0, 2, -5, 1, -2, 4)
 @pytest.fixture(scope="module")
 def raw8_machine():
     emu = Emu(False)
-    old = place_frozen(emu, "Rs7_Pitch_Raw8", HELPER_AT, {}, {})
+    old = place_frozen(emu, "Rsxr_Pitch_Raw8", HELPER_AT, {}, {})
     out, esp = CODE + 0xE8000, STACK + 0x70000  # below RET_MAGIC (CODE + 0xF0000)
-    args = (RET_MAGIC, out, 256, out, EXPECTED_PITCH, out, emu.exports["Rs7_Mid_PubTailPitch"], 1, 0)
+    args = (RET_MAGIC, out, 256, out, EXPECTED_PITCH, out, emu.exports["Rsxr_Mid_PubTailPitch"], 1, 0)
     emu.uc.mem_write(esp, struct.pack("<9I", *args))
-    emu.run(emu.exports["Rs7Mid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: esp})
+    emu.run(emu.exports["RsxrMid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: esp})
     assert emu.uc.reg_read(UC_X86_REG_EAX) > 0, "the call entry was rejected"
     return emu, old, out
 
@@ -232,8 +232,8 @@ def test_tail_pitch_entry_matches_the_frozen_raw8(raw8_machine, tuning, instrume
 
 
 def test_tail_pitch_callback_uses_no_fp():
-    """Rs7_Mid_PubTailPitch runs in the light thunk but is not a site (LIGHT_CALLBACKS lists sites): the same check."""
+    """Rsxr_Mid_PubTailPitch runs in the light thunk but is not a site (LIGHT_CALLBACKS lists sites): the same check."""
     from test_midhook_emu import _fp_instructions
 
     emu = Emu(False)
-    assert _fp_instructions(emu, emu.exports["Rs7_Mid_PubTailPitch"]) == []
+    assert _fp_instructions(emu, emu.exports["Rsxr_Mid_PubTailPitch"]) == []

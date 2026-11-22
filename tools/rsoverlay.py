@@ -1,13 +1,13 @@
-"""Drive rs7string's in-game overlay in the background (no focus, no real input).
+"""Drive RSXR's in-game overlay in the background (no focus, no real input).
 
     uv run python tools/rsoverlay.py show | hide | toggle | save | status
     uv run python tools/rsoverlay.py tab neck
     uv run python tools/rsoverlay.py set neck.spacing_guitar7 1.34
     uv run python tools/rsoverlay.py raw "o set color.string6_color FF00FF" "o tab colour"
 
-Each command is one line "o ..." on rs7string's DirectInput pipe \\\\.\\pipe\\rs7string (needs
-rs7string.ini [window] background=1 and [overlay] enabled=1); the overlay runs it at the next frame
-and logs "overlay: cmd ... -> result" in rs7string.log. Screenshots: scripts/rsdrive.py shot.
+Each command is one line "o ..." on RSXR's DirectInput pipe \\\\.\\pipe\\rsxr (needs
+rsxr.ini [window] background=1 and [overlay] enabled=1); the overlay runs it at the next frame
+and logs "overlay: cmd ... -> result" in rsxr.log. Screenshots: scripts/rsdrive.py shot.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 import time
 
-PIPE = "\\\\.\\pipe\\rs7string"
+PIPE = "\\\\.\\pipe\\rsxr"
 VERBS = {"show", "hide", "toggle", "save", "status"}
 
 

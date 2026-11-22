@@ -1,8 +1,26 @@
 # Changelog
 
-**What is new in each rs7string version.**
+**What is new in each RS Extended Range version (called rs7string up to 1.0.0-beta.4).**
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · **Changelog**
+
+## 1.0.0-beta.5
+
+### Changed
+
+- **New name: RS Extended Range (RSXR).** The mod started with seven-string guitars and now also covers eight-string
+  guitars and five- and six-string basses, so rs7string no longer fits. The files in the game folder are named
+  `rsxr.ini`, `rsxr.log`, `rsxr_headstock*.bin` and `rsxr\headstock`, and the release zip `rsxr-<version>.zip`.
+  The old file names are no longer read. Rename your settings file and move your own models as described in
+  [updating from 1.0.0-beta.4 or earlier](INSTALL.md#updating-from-100-beta4-or-earlier).
+- **One chart format.** Extended-range charts are now ordinary charts made N strings wide, with one string numbering
+  everywhere (thickest string first), in packages named `<name>_rsxr_p.psarc`. Charts made for 1.0.0-beta.4 or
+  earlier are no longer read: convert them once with `tools\rsxr-convert.exe` from the zip (drag your `dlc` folder
+  onto it), see [updating](INSTALL.md#updating-from-100-beta4-or-earlier). Six-string guitar and four-string bass
+  charts are not affected.
+- Rewrote the charting guide, chart tools guide and diagram for the native format, with a separate public specification.
+- Rewrote the README and guides in plainer English, and the charting guide now explains Charter's seven- and
+  eight-string XML.
 
 ## 1.0.0-beta.4
 
@@ -129,7 +147,7 @@ For chart makers:
   missing guitar tuning offsets, raw PSARC data is kept and damaged compressed blocks are rejected. Release archives
   no longer include stray chord-diagram files.
 - Docs: the documentation is now also a website with search,
-  [someename.github.io/rs7string](https://someename.github.io/rs7string/), with clearer notes on headstock
+  [someename.github.io/rs-extended-range](https://someename.github.io/rs-extended-range/), with clearer notes on headstock
   rebuilds, what bass charts need and which manifest keys set the string count.
 
 ### Known limits
