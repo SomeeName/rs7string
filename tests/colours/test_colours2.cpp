@@ -10,12 +10,12 @@
 TEST(colours2_existing_manager_is_detected) {
     void* global = nullptr;
 
-    CHECK(rs7colour::ExistingManager(0) == nullptr);
-    CHECK(rs7colour::ExistingManager(reinterpret_cast<uintptr_t>(&global)) == nullptr);
+    CHECK(rsxrcolour::ExistingManager(0) == nullptr);
+    CHECK(rsxrcolour::ExistingManager(reinterpret_cast<uintptr_t>(&global)) == nullptr);
     int mgr = 0;
 
     global = &mgr;
-    CHECK(rs7colour::ExistingManager(reinterpret_cast<uintptr_t>(&global)) == &mgr);
+    CHECK(rsxrcolour::ExistingManager(reinterpret_cast<uintptr_t>(&global)) == &mgr);
 }
 
 // The 6-column table read with the 8-column formula is the owner's rotated tuner: state 1 slots 0..5
@@ -39,18 +39,18 @@ TEST(colours2_six_column_table_read_eight_wide_is_the_reported_rotation) {
     CHECK_EQ(got[6] / 6, 2);
     CHECK_EQ(got[6] % 6, 2);
     // and the native offsets are the 8-column ones
-    g_rs7_native_colours = 1;
-    CHECK_EQ(rs7colour::PtrOffset(0, 1, 6), uint32_t(rs7colour::kPtr + 4 * 14));
-    g_rs7_native_colours = 0;
-    CHECK_EQ(rs7colour::PtrOffset(0, 1, 6), uint32_t(0x350 + 4 * 12));
+    g_rsxr_native_colours = 1;
+    CHECK_EQ(rsxrcolour::PtrOffset(0, 1, 6), uint32_t(rsxrcolour::kPtr + 4 * 14));
+    g_rsxr_native_colours = 0;
+    CHECK_EQ(rsxrcolour::PtrOffset(0, 1, 6), uint32_t(0x350 + 4 * 12));
 }
 
 // [neck] clite: with the native ports a guitar shows the count it was built with (info +0Bh), whatever
 // song or tuner is up; capacity (loaded) is 8 strings, 4 for bass.
 TEST(colours2_active_count_is_the_build_count_with_the_ports) {
-    rs7test::Restore restore_g_rs7_publish_ports(g_rs7_publish_ports);
+    rsxrtest::Restore restore_g_rsxr_publish_ports(g_rsxr_publish_ports);
 
-    g_rs7_publish_ports = 1;
+    g_rsxr_publish_ports = 1;
 
     struct Case {
         uint8_t built, active, loaded;
@@ -61,7 +61,7 @@ TEST(colours2_active_count_is_the_build_count_with_the_ports) {
 
         info[0x0B] = c.built;
         info[0x40] = 6;  // a stale active count does not matter
-        rs7gs::RefreshCounts(info, false);
+        rsxrgs::RefreshCounts(info, false);
         CHECK_EQ(int(info[0x40]), int(c.active));
         CHECK_EQ(int(info[0x41]), int(c.loaded));
     }
@@ -70,14 +70,14 @@ TEST(colours2_active_count_is_the_build_count_with_the_ports) {
 
     info[0x0B] = 7;
     info[0x20] = 2;
-    rs7gs::RefreshCounts(info, false);  // the tail's mode[6] / mode[7] mirror string 0's
+    rsxrgs::RefreshCounts(info, false);  // the tail's mode[6] / mode[7] mirror string 0's
     CHECK_EQ(int(info[0x38]), 2);
     CHECK_EQ(int(info[0x3C]), 2);
     uint8_t bass[0x48] = {};
 
     bass[0x0B] = 4;
     bass[0x20] = 2;
-    rs7gs::RefreshCounts(bass, false);
+    rsxrgs::RefreshCounts(bass, false);
     CHECK_EQ(int(bass[0x38]), 0);
 
     // Extended bass: the low B takes the E's bend direction, the high C the G's; a four-string bass is unchanged.
@@ -90,7 +90,7 @@ TEST(colours2_active_count_is_the_build_count_with_the_ports) {
         ext[0x20 + 4 * 3] = 0;  // G
         ext[0x20 + 4 * 4] = 7;  // stale
         ext[0x20 + 4 * 5] = 7;
-        rs7gs::RefreshCounts(ext, false);
+        rsxrgs::RefreshCounts(ext, false);
         CHECK_EQ(int(ext[0x20 + 4 * 4]), n >= 5 ? 1 : 7);
         CHECK_EQ(int(ext[0x20 + 4 * 5]), n == 6 ? 0 : 7);
     }

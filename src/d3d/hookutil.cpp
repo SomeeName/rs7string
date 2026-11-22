@@ -7,7 +7,7 @@
 #include <cstdarg>
 #include <cstdio>
 
-namespace rs7d3d {
+namespace rsxrd3d {
 void LogQuiet(const char* fmt, ...) {
     char buf[512];
     va_list ap;
@@ -17,7 +17,7 @@ void LogQuiet(const char* fmt, ...) {
     va_end(ap);
 
     try {
-        Rs7Log("%s", buf);
+        RsxrLog("%s", buf);
     } catch (...) {
     }
 }
@@ -45,8 +45,8 @@ void ModuleName(const void* a, char* out, size_t n) {
     std::snprintf(out, n, "%s", base);
 }
 
-const char* FamilyName(Rs7Family f) {
-    return f == Rs7Family::Note ? "note" : f == Rs7Family::Additive ? "additive" : "embedded";
+const char* FamilyName(RsxrFamily f) {
+    return f == RsxrFamily::Note ? "note" : f == RsxrFamily::Additive ? "additive" : "embedded";
 }
 
 namespace {
@@ -62,7 +62,7 @@ bool VtSlotPair::Ours(void* const* vt) const {
 bool VtSlotPair::Write(const void* device, void** vt, SlotValues) const {
     unsigned failed = 0;
 
-    if (Rs7_WritePtrPair(SlotAddr(vt, lo), thunk.lo, thunk.hi, &failed)) {
+    if (Rsxr_WritePtrPair(SlotAddr(vt, lo), thunk.lo, thunk.hi, &failed)) {
         return true;
     }
 
@@ -75,11 +75,11 @@ bool VtSlotPair::Write(const void* device, void** vt, SlotValues) const {
 void VtSlotPair::Restore(void** vt, SlotValues orig) const {
     uintptr_t old = 0;
 
-    Rs7_WritePtrAtomic(SlotAddr(vt, lo + 1), orig.hi, &old);
-    Rs7_WritePtrAtomic(SlotAddr(vt, lo), orig.lo, &old);
+    Rsxr_WritePtrAtomic(SlotAddr(vt, lo + 1), orig.hi, &old);
+    Rsxr_WritePtrAtomic(SlotAddr(vt, lo), orig.lo, &old);
 }
 
-void VtSlotPair::Recheck(const void* device, void** vt, SlotValues orig, const Rs7MemReader& mem,
+void VtSlotPair::Recheck(const void* device, void** vt, SlotValues orig, const RsxrMemReader& mem,
                          bool* foreignLogged) const {
     uintptr_t slots[2] = {};
     if (!mem.Read(SlotAddr(vt, lo), slots, sizeof slots)) {
@@ -104,4 +104,4 @@ void VtSlotPair::Recheck(const void* device, void** vt, SlotValues orig, const R
                  unsigned(slots[0]), unsigned(slots[1]));
     }
 }
-}  // namespace rs7d3d
+}  // namespace rsxrd3d

@@ -4,7 +4,7 @@
 #include <vector>
 
 // Portable, pure copy/insert interpreter. No Windows, game, filesystem or keys.
-namespace rs7hs {
+namespace rsxrhs {
 using Bytes = std::vector<uint8_t>;
 
 struct File {
@@ -23,4 +23,4 @@ std::string Hash(const Bytes& bytes);
 bool Build(const Bytes& guitar, const Bytes& peg, const Bytes& package, std::vector<File>& outputs, std::string& error);
 bool Manifest(const Bytes& package, std::vector<Expected>& outputs, std::string& error);
 bool CheckTemplates(const Bytes& guitar, const Bytes& peg, const Bytes& package, std::string& error);
-}  // namespace rs7hs
+}  // namespace rsxrhs

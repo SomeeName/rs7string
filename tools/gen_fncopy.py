@@ -10,8 +10,8 @@ exe (the code the game runs), with only its GuitarStrings array displacements an
 function relocated. The DLL builds the copies at startup from live memory (after checking the bytes
 equal these, FNV-1a), and the function's entry jumps to the copy for a native GuitarStrings only.
 
-    uv run python rs7string/tools/gen_fncopy.py            # -> src/features/strings/fncopy_specs.generated.h
-    uv run python rs7string/tools/gen_fncopy.py --list     # print every edit (review)
+    uv run python tools/gen_fncopy.py            # -> src/features/strings/fncopy_specs.generated.h
+    uv run python tools/gen_fncopy.py --list     # print every edit (review)
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ FNS = [
         0x599F90,
         0x59A711,
         count="loaded",  # Rnd_GuitarStrings_Load
-        calls={0x594530: "g_rs7_callin_Attach", 0x5996A0: "g_rs7_callin_Shape"},
+        calls={0x594530: "g_rsxr_callin_Attach", 0x5996A0: "g_rsxr_callin_Shape"},
     ),
     Fn("GSFO", 0x59A720, 0x59A81F, count="active"),  # FadeOut
     Fn("GSFI", 0x59A820, 0x59A91F, count="active"),  # FadeIn
@@ -95,7 +95,7 @@ FNS = [
         0x4609E3,
         count="active",
         edits={
-            0x4608AC: ("call", "g_rs7_callin_TP2", 6),
+            0x4608AC: ("call", "g_rsxr_callin_TP2", 6),
             0x4608E3: ("bytes", "80 7C 38 04 FF", "80 7C 38 48 FF"),
         },
     ),
@@ -108,13 +108,13 @@ FNS = [
         arrays=False,
         edits={
             0x54423C: ("bytes", "BF 54 FF FF FF", "90 90 90 90 90"),  # (EDI set by GlowSetup)
-            0x544243: ("call", "g_rs7_callin_GlowSetup", 6),  # ESI = &glow[0], EDI = -ESI
+            0x544243: ("call", "g_rsxr_callin_GlowSetup", 6),  # ESI = &glow[0], EDI = -ESI
             0x544249: ("bytes", "2B FB", "90 90"),
             0x54424B: ("bytes", "C7 45 0C 06 00 00 00", "C7 45 0C 08 00 00 00"),
             0x544257: ("bytes", "8B 4C 30 04", "8B 4C 30 40"),  # main[k] at +40h
             0x544366: ("bytes", "83 FA 06", "83 FA 08"),
-            0x544384: ("call", "g_rs7_callin_GlowColour", 7),
-            0x5443B3: ("call", "g_rs7_callin_GlowRead", 7),
+            0x544384: ("call", "g_rsxr_callin_GlowColour", 7),
+            0x5443B3: ("call", "g_rsxr_callin_GlowRead", 7),
         },
         calls={},
     ),
@@ -126,8 +126,8 @@ FNS = [
         0x58E5B7,
         count="active",
         edits={
-            0x58E516: ("call", "g_rs7_callin_HsLoaded", 5),
-            0x58E52D: ("call", "g_rs7_callin_HsSeg", 7),
+            0x58E516: ("call", "g_rsxr_callin_HsLoaded", 5),
+            0x58E52D: ("call", "g_rsxr_callin_HsSeg", 7),
         },
     ),
 ]
@@ -296,7 +296,7 @@ def build(fn: Fn, text: bytes, base: int):
     return code, edits, rel32, pro, insns
 
 
-CALLIN = "g_rs7_callin_"  # a call edit to a call-in entry (Rs7Mid::CallIn, built at startup), not a DLL function
+CALLIN = "g_rsxr_callin_"  # a call edit to a call-in entry (RsxrMid::CallIn, built at startup), not a DLL function
 
 
 def render(results) -> str:
@@ -310,12 +310,12 @@ def render(results) -> str:
     ]
     out += ['#include "platform/midhook.h"'] if callins else []
     out += [""]
-    out += [f"extern Rs7Mid::CallIn {s};" for s in callins]
+    out += [f"extern RsxrMid::CallIn {s};" for s in callins]
     if funcs:
         out += ['extern "C" {', *(f"void {s}();" for s in funcs), "}"]
     out += [""]
     for fn, code, edits, rel32, pro, _ in results:
-        out.append(f"static const Rs7FnEdit kRs7FnEdits_{fn.id}[] = {{")
+        out.append(f"static const RsxrFnEdit kRsxrFnEdits_{fn.id}[] = {{")
         for e in edits:
             exp = e.expect.hex(" ").upper()
             wr = e.write.hex(" ").upper()
@@ -325,20 +325,20 @@ def render(results) -> str:
                 sym = f"reinterpret_cast<const void*>(&{e.sym})" if e.sym else "nullptr"
             out.append(f'    {{0x{e.off:04X}, {len(e.expect)}, "{exp}", "{wr}", {sym}}},')
         out.append("};")
-        out.append(f"static const Rs7FnRel kRs7FnRels_{fn.id}[] = {{")
+        out.append(f"static const RsxrFnRel kRsxrFnRels_{fn.id}[] = {{")
         for off, tgt in rel32:
             out.append(f"    {{0x{off:04X}, 0x{tgt:08X}u}},")
         if not rel32:
             out.append("    {0, 0},")
         out.append("};")
-    out.append("static const Rs7FnSpec kRs7FnSpecs[] = {")
+    out.append("static const RsxrFnSpec kRsxrFnSpecs[] = {")
     for fn, code, edits, rel32, pro, _ in results:
         out.append(
             f'    {{"{fn.id}", 0x{fn.start:08X}u, 0x{len(code):04X}u, 0x{fnv1a(code):08X}u, {pro}, '
-            f"kRs7FnEdits_{fn.id}, {len(edits)}, kRs7FnRels_{fn.id}, {len(rel32)}}},"
+            f"kRsxrFnEdits_{fn.id}, {len(edits)}, kRsxrFnRels_{fn.id}, {len(rel32)}}},"
         )
     out.append("};")
-    out.append(f"static const int kRs7FnSpecCount = {len(results)};")
+    out.append(f"static const int kRsxrFnSpecCount = {len(results)};")
     out.append("")
     return "\n".join(out)
 

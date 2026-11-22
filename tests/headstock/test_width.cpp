@@ -20,9 +20,9 @@ struct Guitar {
     Guitar() {
         uint8_t* p = head;
 
-        std::memcpy(guitar + rs7::kGuitarHead, &p, sizeof p);
+        std::memcpy(guitar + rsxr::kGuitarHead, &p, sizeof p);
         p = info;
-        std::memcpy(guitar + rs7::kGuitarInfo, &p, sizeof p);
+        std::memcpy(guitar + rsxr::kGuitarInfo, &p, sizeof p);
         p = frame;
         std::memcpy(head + 4, &p, sizeof p);
         frame[0xD8] = 1;
@@ -48,41 +48,41 @@ struct Guitar {
 }  // namespace
 
 TEST(headstock_width_keeps_all_live_transforms_and_forgets_destroyed_guitars) {
-    const uintptr_t saved[] = {g_rs7_fn_world, g_rs7_fn_setpos, g_rs7_fn_setrot, g_rs7_fn_euler};
+    const uintptr_t saved[] = {g_rsxr_fn_world, g_rsxr_fn_setpos, g_rsxr_fn_setrot, g_rsxr_fn_euler};
     Guitar guitars[8];
 
     world[0x10C] = 1;
-    g_rs7_fn_world = reinterpret_cast<uintptr_t>(&World);
-    g_rs7_fn_setpos = g_rs7_fn_setrot = g_rs7_fn_euler = 1;  // no native PegSet: no game call
+    g_rsxr_fn_world = reinterpret_cast<uintptr_t>(&World);
+    g_rsxr_fn_setpos = g_rsxr_fn_setrot = g_rsxr_fn_euler = 1;  // no native PegSet: no game call
 
     for (Guitar& g : guitars) {
-        Rs7Asset_ForgetGuitar(g.guitar);
-        Rs7Spacing_Record(g.info, 0.5f);
+        RsxrAsset_ForgetGuitar(g.guitar);
+        RsxrSpacing_Record(g.info, 0.5f);
     }
 
     for (int lap = 0; lap < 3; ++lap) {
         for (Guitar& g : guitars) {
-            Rs7Head_Width(g.guitar, true);
+            RsxrHead_Width(g.guitar, true);
             CHECK_EQ(g.Width(), 0.5f);
         }
     }
 
     Guitar& recycled = guitars[0];
 
-    Rs7Asset_ForgetGuitar(recycled.guitar);
+    RsxrAsset_ForgetGuitar(recycled.guitar);
     recycled.ResetRotation(2.0f);
-    Rs7Head_Width(recycled.guitar, true);
+    RsxrHead_Width(recycled.guitar, true);
     CHECK_EQ(recycled.Width(), 1.0f);
-    Rs7Head_Width(recycled.guitar, false);
+    RsxrHead_Width(recycled.guitar, false);
     CHECK_EQ(recycled.Width(), 2.0f);
 
     for (Guitar& g : guitars) {
-        Rs7Asset_ForgetGuitar(g.guitar);
-        Rs7Spacing_Forget(g.info);
+        RsxrAsset_ForgetGuitar(g.guitar);
+        RsxrSpacing_Forget(g.info);
     }
 
-    g_rs7_fn_world = saved[0];
-    g_rs7_fn_setpos = saved[1];
-    g_rs7_fn_setrot = saved[2];
-    g_rs7_fn_euler = saved[3];
+    g_rsxr_fn_world = saved[0];
+    g_rsxr_fn_setpos = saved[1];
+    g_rsxr_fn_setrot = saved[2];
+    g_rsxr_fn_euler = saved[3];
 }

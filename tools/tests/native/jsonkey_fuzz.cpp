@@ -1,4 +1,4 @@
-// The two manifest-key readers that walk the game's JSON vtables (rs7::JsonNumber, rs7::HasOffset in model/manifest.h) against
+// The two manifest-key readers that walk the game's JSON vtables (rsxr::JsonNumber, rsxr::HasOffset in model/manifest.h) against
 // synthetic objects: null/unreadable objects, vtables, slots and nodes, a number record running into a
 // PAGE_NOACCESS page, and boundary / non-finite / fixed-seed random doubles. They must fail closed, never fault.
 #include <windows.h>
@@ -8,8 +8,8 @@
 #include <cstring>
 #include <initializer_list>
 #include <limits>
-const char* kKey = "Rs7String6";
-#include "model/manifest.h"  // rs7::JsonNumber, rs7::HasOffset (the tuner's and C-lite's readers)
+const char* kKey = "RsxrString6";
+#include "model/manifest.h"  // rsxr::JsonNumber, rsxr::HasOffset (the tuner's and C-lite's readers)
 
 struct Node { void** vt; uint8_t bytes[16]; };
 struct Object { void** vt; void* child; };
@@ -27,8 +27,8 @@ static uint8_t* GuardedEnd() {
 static int failures = 0;
 static void Expect(const char* what, void* obj, bool numberOk, bool hasOk) {
     double out = 12345.0;
-    const bool n = rs7::JsonNumber(obj, kKey, &out);
-    const bool h = rs7::HasOffset(obj, kKey);
+    const bool n = rsxr::JsonNumber(obj, kKey, &out);
+    const bool h = rsxr::HasOffset(obj, kKey);
     if (n != numberOk || h != hasOk || (!n && out != 12345.0)) {
         std::printf("FAIL %s: JsonNumber %d (want %d), HasOffset %d (want %d)\n", what, n, numberOk, h, hasOk);
         ++failures;
@@ -81,8 +81,8 @@ int main() {
         std::memcpy(node.bytes + 8, w, 8);
         double d; std::memcpy(&d, w, 8);
         double out = 0;
-        if (!rs7::JsonNumber(&obj, kKey, &out) || std::memcmp(&out, w, 8) ||
-            rs7::HasOffset(&obj, kKey) != (d > -25.0 && d < 25.0)) {
+        if (!rsxr::JsonNumber(&obj, kKey, &out) || std::memcmp(&out, w, 8) ||
+            rsxr::HasOffset(&obj, kKey) != (d > -25.0 && d < 25.0)) {
             std::printf("FAIL: random value %08x%08x\n", w[1], w[0]); return 2;
         }
     }

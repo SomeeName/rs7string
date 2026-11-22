@@ -92,9 +92,9 @@ class Machine:
 
     def _load_dll(self):
         self.exports = load_dll(self.uc)
-        self.uc.mem_write(self.exports["Rs7_NeckLog"], b"\xc3")
-        self.uc.mem_write(self.exports["g_rs7_fn_spawn"], struct.pack("<I", SPAWN))
-        self.uc.mem_write(self.exports["g_rs7_fn_adv3"], struct.pack("<I", 0x7AA880))
+        self.uc.mem_write(self.exports["Rsxr_NeckLog"], b"\xc3")
+        self.uc.mem_write(self.exports["g_rsxr_fn_spawn"], struct.pack("<I", SPAWN))
+        self.uc.mem_write(self.exports["g_rsxr_fn_adv3"], struct.pack("<I", 0x7AA880))
 
     def _patch(self, mode: str):
         self.mids = 0
@@ -112,11 +112,11 @@ class Machine:
                 stub = build_mid_entry(self.uc, self.exports, s, va, target, out, TOP - 0x4000, RET)
                 self.mids += 1
             else:
-                stub = self.exports[f"Rs7_Stub_{s.id}"]
+                stub = self.exports[f"Rsxr_Stub_{s.id}"]
             self.uc.mem_write(va, b"\xe9" + struct.pack("<i", stub - (va + 5)) + b"\x90" * (s.length - 5))
-            self.uc.mem_write(self.exports[f"g_rs7_resume_{s.id}"], struct.pack("<I", va + s.length))
-            if f"g_rs7_target_{s.id}" in self.exports:
-                self.uc.mem_write(self.exports[f"g_rs7_target_{s.id}"], struct.pack("<I", target))
+            self.uc.mem_write(self.exports[f"g_rsxr_resume_{s.id}"], struct.pack("<I", va + s.length))
+            if f"g_rsxr_target_{s.id}" in self.exports:
+                self.uc.mem_write(self.exports[f"g_rsxr_target_{s.id}"], struct.pack("<I", target))
 
     def read(self, va, n):
         return bytes(self.uc.mem_read(va, n))

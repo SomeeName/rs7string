@@ -1,4 +1,4 @@
-// Malformed movies and R7DA recipes against the real chord-diagram movie swap (features/diagrams/movie.cpp):
+// Malformed movies and RXDA recipes against the real chord-diagram movie swap (features/diagrams/movie.cpp):
 // every truncation, boundary values at every offset and a fixed-seed random run. Both inputs end at a
 // PAGE_NOACCESS page, so a read past either faults; an accepted swap must re-parse with one DoInitAction.
 #include <windows.h>
@@ -30,7 +30,7 @@ static Bytes Recipe(const Bytes& movie) {
     Bytes tag;
     U16(tag, (59 << 6) | 8); U16(tag, kSprite);
     tag.insert(tag.end(), movie.begin() + g_tagAt + 4, movie.begin() + g_tagAt + 8); tag.insert(tag.end(), {'x', 'y'});
-    Bytes r = {'R', '7', 'D', 'A', 1, 0, 0, 0};
+    Bytes r = {'R', 'X', 'D', 'A', 1, 0, 0, 0};
     U32(r, 8); U32(r, uint32_t(tag.size())); U32(r, 3);
     r.resize(84); Sha(movie.data() + g_tagAt, 8, r.data() + 20); Sha(tag.data(), tag.size(), r.data() + 52);
     r.push_back(1); U32(r, 4); r.insert(r.end(), tag.begin(), tag.begin() + 4);  // literal header + sprite
@@ -51,7 +51,7 @@ static uint8_t* GuardedEnd() {
 
 enum { kRejected, kOk, kFault, kThrow };
 static int SwapCatch(const uint8_t* p, size_t n, const uint8_t* r, size_t rn, std::vector<uint8_t>* out) {
-    try { return rs7diagram::SwapMovie(p, n, r, rn, kSprite, out) ? kOk : kRejected; } catch (...) { return kThrow; }
+    try { return rsxrdiagram::SwapMovie(p, n, r, rn, kSprite, out) ? kOk : kRejected; } catch (...) { return kThrow; }
 }
 static int Guarded(const uint8_t* p, size_t n, const uint8_t* r, size_t rn, std::vector<uint8_t>* out) {
     __try { return SwapCatch(p, n, r, rn, out); } __except (EXCEPTION_EXECUTE_HANDLER) { return kFault; }
@@ -69,7 +69,7 @@ static bool Try(const char* what, const Bytes& m, const Bytes& r, bool mustRejec
     if (!bad && x == kOk && mustReject) bad = "accepted";
     if (!bad && x == kOk) {
         uint32_t size; std::memcpy(&size, out.data() + 4, 4);
-        if (size != out.size() || out.size() > rs7diagram::kMovieLimit) bad = "output size field";
+        if (size != out.size() || out.size() > rsxrdiagram::kMovieLimit) bad = "output size field";
     }
     if (!bad && x == kRejected && !out.empty()) bad = "rejected but wrote the output";
     if (bad) {
@@ -91,7 +91,7 @@ int main() {
     if (!g_movieEnd || !g_recipeEnd) return 90;
     const Bytes movie = Movie(), recipe = Recipe(movie);
     std::vector<uint8_t> out;
-    if (!rs7diagram::SwapMovie(movie.data(), movie.size(), recipe.data(), recipe.size(), kSprite, &out) ||
+    if (!rsxrdiagram::SwapMovie(movie.data(), movie.size(), recipe.data(), recipe.size(), kSprite, &out) ||
         out.size() != movie.size() + 2) { std::puts("FAIL: valid movie + recipe rejected"); return 1; }
     if (!Try("valid", movie, recipe, false) || g_ok != 1) return 1;
     if (!Try("empty movie", {}, recipe, true) || !Try("empty recipe", movie, {}, true)) return 2;

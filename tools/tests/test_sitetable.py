@@ -75,9 +75,9 @@ def test_generated_header_lists_every_site(tmp_path):
         ],
     )
     text = gen_sites.render(*sitetable.load(p))
-    assert "kRs7PeChecksum = 0x00B13D7Cu" in text
-    assert '{"S2", "83 FA 05 77 57", 0, "83 FA 05 77 57", Rs7Kind::Jmp, 5, 4, 1, 5, ""},' in text
-    assert "kRs7SiteCount = 1" in text
+    assert "kRsxrPeChecksum = 0x00B13D7Cu" in text
+    assert '{"S2", "83 FA 05 77 57", 0, "83 FA 05 77 57", RsxrKind::Jmp, 5, 4, 1, 5, ""},' in text
+    assert "kRsxrSiteCount = 1" in text
 
 
 def test_callref_kind_is_a_never_written_call(tmp_path):
@@ -87,7 +87,7 @@ def test_callref_kind_is_a_never_written_call(tmp_path):
     )
     _, sites = sitetable.load(p)
     assert (sites[0].length, sites[0].target) == (5, (1, 4, 5))
-    assert "Rs7Kind::CallRef, 5, 1, 4, 5" in gen_sites.render(*sitetable.load(p))
+    assert "RsxrKind::CallRef, 5, 1, 4, 5" in gen_sites.render(*sitetable.load(p))
     with pytest.raises(sitetable.SiteError):
         sitetable.load(
             write(tmp_path, [{"id": "X", "kind": "callref", "pattern": "90", "offset": 0, "expect": "90 01 02 03 04"}])
@@ -133,7 +133,7 @@ def test_generated_header_maps_ref_kind(tmp_path):
         tmp_path, [{"id": "X", "kind": "ref", "pattern": "A1 ?? ?? ?? ??", "offset": "0x1", "expect": "00 0B 36 01"}]
     )
     text = gen_sites.render(*sitetable.load(p))
-    assert '{"X", "A1 ?? ?? ?? ??", 1, "00 0B 36 01", Rs7Kind::Ref, 4, -1, 0, 0, ""},' in text
+    assert '{"X", "A1 ?? ?? ?? ??", 1, "00 0B 36 01", RsxrKind::Ref, 4, -1, 0, 0, ""},' in text
 
 
 def test_bytes_kind_writes_same_length_bytes(tmp_path):
@@ -143,7 +143,7 @@ def test_bytes_kind_writes_same_length_bytes(tmp_path):
     )
     _, sites = sitetable.load(p)
     assert (sites[0].kind, sites[0].length, sites[0].target, sites[0].write) == ("bytes", 1, None, b"")
-    assert '{"W", "80 FA 06 72 C8", 2, "06", Rs7Kind::Bytes, 1, -1, 0, 0, "07"},' in gen_sites.render(
+    assert '{"W", "80 FA 06 72 C8", 2, "06", RsxrKind::Bytes, 1, -1, 0, 0, "07"},' in gen_sites.render(
         *sitetable.load(p)
     )
     for bad in ({"write": "07 07"}, {"write": "06"}, {}):

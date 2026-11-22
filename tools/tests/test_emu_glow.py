@@ -1,7 +1,7 @@
-"""GLW (0x54438B, stock Rnd_StringRenderer_UpdateGlow) and the GSGL copy's call-in Rs7_CallIn_GlowColour against the
+"""GLW (0x54438B, stock Rnd_StringRenderer_UpdateGlow) and the GSGL copy's call-in Rsxr_CallIn_GlowColour against the
 stock bytes: RSMods' custom colours give a string with an Enabled hue of 0..3 a stale glow (features/colours/colours.h).
 
-With g_rs7_glow_fix = 0, or an Enabled hue outside 0..3, the hooked code leaves exactly the stock state; with
+With g_rsxr_glow_fix = 0, or an Enabled hue outside 0..3, the hooked code leaves exactly the stock state; with
 the switch on and a pure red Enabled colour, the glow RGB copied to [ebp-28h..-20h] is HSL(356, 1, 0.5).
 """
 
@@ -59,8 +59,8 @@ def setup(emu: Emu, mode: int, string: int, enabled, native: int, fix: int) -> i
     index = mode * stride + string
     emu.uc.mem_write(MGR + glow + index * 4, struct.pack("<I", RGB))
     emu.uc.mem_write(MGR + ena + index * 4, struct.pack("<I", RGB + 12))
-    emu.uc.mem_write(emu.exports["g_rs7_glow_fix"], struct.pack("<I", fix))
-    emu.uc.mem_write(emu.exports["g_rs7_native_colours"], struct.pack("<I", native))
+    emu.uc.mem_write(emu.exports["g_rsxr_glow_fix"], struct.pack("<I", fix))
+    emu.uc.mem_write(emu.exports["g_rsxr_native_colours"], struct.pack("<I", native))
     return mode * 0xA8 + string  # the copy and the stock code both index with the stock stride
 
 
@@ -112,7 +112,7 @@ def call_glow_colour(emu: Emu, mode: int, string: int, enabled, native: int, fix
     emu.uc.mem_write(esp, struct.pack("<I", RET_MAGIC))
     regs = machine(eax, string, esp)
     fpsw = emu.uc.reg_read(UC_X86_REG_FPSW)
-    if not hasattr(emu, "glow_callin"):  # the GSGL copy's call-in entry (Rs7Mid::CallIn, full mode)
+    if not hasattr(emu, "glow_callin"):  # the GSGL copy's call-in entry (RsxrMid::CallIn, full mode)
         emu.glow_callin = build_callin(emu, "GlowColour")
     emu.run(emu.glow_callin, RET_MAGIC, regs)
     kept = emu.regs(UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP)

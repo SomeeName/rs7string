@@ -15,7 +15,7 @@ void operator delete(void* p, size_t) noexcept { std::free(p); }
 #include "reader.inc"
 int main() {
     wchar_t dir[MAX_PATH]{}, name[MAX_PATH]{};
-    if (!GetTempPathW(MAX_PATH, dir) || !GetTempFileNameW(dir, L"rs7", 0, name)) return 2;
+    if (!GetTempPathW(MAX_PATH, dir) || !GetTempFileNameW(dir, L"rsxr", 0, name)) return 2;
     const std::wstring path(name);
     HANDLE file = CreateFileW(name, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
     DWORD written = 0;

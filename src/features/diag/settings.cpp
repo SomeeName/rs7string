@@ -6,26 +6,26 @@
 #include "platform/uilayout.h"
 
 namespace {
-using T = Rs7SetType;
-using W = Rs7SetWhen;
+using T = RsxrSetType;
+using W = RsxrSetWhen;
 
-Rs7DiagConfig g_diag;
+RsxrDiagConfig g_diag;
 
-void ApplyDiag(const Rs7SetValue& v) {
-    g_rs7_diag = v.i ? 1 : 0;
+void ApplyDiag(const RsxrSetValue& v) {
+    g_rsxr_diag = v.i ? 1 : 0;
 }  // R1/R2 logger calls (D2/D3/D5: startup)
 
 void ReadDiag(const wchar_t* iniPath) {
-    g_diag = Rs7Diag_ReadIni(iniPath);
+    g_diag = RsxrDiag_ReadIni(iniPath);
 }
 
-const Rs7SetDef kDiagDefs[] = {
+const RsxrSetDef kDiagDefs[] = {
     {"debug.diagnostics", L"debug", L"diagnostics", T::Bool, W::Live, "0", 0, 1, "Diagnostics (D1-D5)",
      "Extra diagnostic logging for bug reports. Some parts only take effect after a restart.", ApplyDiag},
 };
 }  // namespace
 
-const Rs7SetTable kRs7DiagSettings = {kDiagDefs, int(sizeof kDiagDefs / sizeof kDiagDefs[0]), ReadDiag};
+const RsxrSetTable kRsxrDiagSettings = {kDiagDefs, int(sizeof kDiagDefs / sizeof kDiagDefs[0]), ReadDiag};
 
 namespace {
 bool LiveDiag(char* buf, size_t n) {
@@ -33,33 +33,33 @@ bool LiveDiag(char* buf, size_t n) {
         buf[0] = 0;
     }
 
-    return g_rs7_diag != 0;
+    return g_rsxr_diag != 0;
 }
 
-using U = Rs7UiTab;
-using K = Rs7UiKind;
+using U = RsxrUiTab;
+using K = RsxrUiKind;
 
-const Rs7UiItem kUi[] = {
+const RsxrUiItem kUi[] = {
     {U::Status, K::OnOff, "diagnostics", LiveDiag},
     {U::Debug, K::Section, "diagnostics"},
     {U::Debug, K::Setting, "debug.diagnostics"},
 };
 }  // namespace
 
-const Rs7UiTable kRs7DiagUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
+const RsxrUiTable kRsxrDiagUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
 
-Rs7DiagConfig Rs7Diag_ReadIni(const wchar_t* iniPath) {
-    Rs7DiagConfig c;
+RsxrDiagConfig RsxrDiag_ReadIni(const wchar_t* iniPath) {
+    RsxrDiagConfig c;
     if (!iniPath) {
         return c;
     }
 
-    c.diagnosticsRaw = Rs7Set_ReadTableInt(kRs7DiagSettings, "debug.diagnostics", iniPath);
+    c.diagnosticsRaw = RsxrSet_ReadTableInt(kRsxrDiagSettings, "debug.diagnostics", iniPath);
     c.diagnostics = c.diagnosticsRaw != 0;
 
     return c;
 }
 
-const Rs7DiagConfig& Rs7Diag_Config() {
+const RsxrDiagConfig& RsxrDiag_Config() {
     return g_diag;
 }

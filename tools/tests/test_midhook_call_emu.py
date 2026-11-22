@@ -1,4 +1,4 @@
-"""Call-site mid-hooks (Rs7Mid_BuildCall, ARCHITECTURE.md section 14 "Call sites") executed in Unicorn against both
+"""Call-site mid-hooks (RsxrMid_BuildCall, ARCHITECTURE.md section 14 "Call sites") executed in Unicorn against both
 thunks and both placements: a caller `push imm32; call site` runs stock and hooked on identical machine state. The
 callee counts its runs, returns [esp+4] + ECX (flags from the ADD) and cleans up with `ret 4`."""
 
@@ -25,7 +25,7 @@ MODES = [(light, after) for light in (0, 1, 2) for after in (0, 1)]
 CTX = "8B 44 24 04"  # mov eax, [esp+4]: the Context
 CALLBACKS = {
     "noop": "C3",
-    # Rs7Mid::Return(c, 77, 4): jump = [c.esp], c.esp += 8, c.eax = 77
+    # RsxrMid::Return(c, 77, 4): jump = [c.esp], c.esp += 8, c.eax = 77
     "skip": CTX + " 8B 48 0C 8B 11 89 50 28 83 C1 08 89 48 0C C7 40 1C 4D 00 00 00 C3",
     "ecx100": CTX + " C7 40 18 64 00 00 00 C3",  # c.ecx = 100
     "double": CTX + " D1 60 1C C3",  # c.eax *= 2
@@ -46,7 +46,7 @@ def machine(callback: str, light: int, after: int) -> Emu:
     emu.uc.mem_write(CALLBACK, bytes.fromhex(CALLBACKS[callback]))
     args = (RET_MAGIC, ENTRY, 256, SITE, CALLEE, ENTRY, CALLBACK, light, after)
     emu.uc.mem_write(STACK + 0x70000, struct.pack("<9I", *args))
-    emu.run(emu.exports["Rs7Mid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: STACK + 0x70000})
+    emu.run(emu.exports["RsxrMid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: STACK + 0x70000})
     assert emu.uc.reg_read(ALL_REGS[0]) == (24 if after else 15)
     return emu
 

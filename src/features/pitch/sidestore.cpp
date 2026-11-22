@@ -3,12 +3,12 @@
 #include <unordered_map>
 
 namespace {
-using rs7p::g_state;
+using rsxrp::g_state;
 
-std::unordered_map<uintptr_t, Rs7Entry>& Map() {
+std::unordered_map<uintptr_t, RsxrEntry>& Map() {
     // Keep the map's original first-use construction and destruction order, including its local-static guard.
     struct MapLifetime {
-        std::unordered_map<uintptr_t, Rs7Entry>& map = g_state.store.emplace();
+        std::unordered_map<uintptr_t, RsxrEntry>& map = g_state.store.emplace();
 
         ~MapLifetime() { g_state.store.reset(); }
     };
@@ -32,7 +32,7 @@ struct SharedGuard {
 }  // namespace
 
 // No exception may leave these: they are called from naked asm stubs inside game frames.
-void Rs7Store_Set(const void* key, Rs7Entry e) {
+void RsxrStore_Set(const void* key, RsxrEntry e) {
     ExclusiveGuard guard;
 
     try {
@@ -45,7 +45,7 @@ void Rs7Store_Set(const void* key, Rs7Entry e) {
             return;
         }
 
-        if (Map().size() >= kRs7StoreMax && Map().find(reinterpret_cast<uintptr_t>(key)) == Map().end()) {
+        if (Map().size() >= kRsxrStoreMax && Map().find(reinterpret_cast<uintptr_t>(key)) == Map().end()) {
             Map().clear();
         }
         Map()[reinterpret_cast<uintptr_t>(key)] = e;
@@ -54,7 +54,7 @@ void Rs7Store_Set(const void* key, Rs7Entry e) {
     }
 }
 
-bool Rs7Store_Get(const void* key, Rs7Entry* out) {
+bool RsxrStore_Get(const void* key, RsxrEntry* out) {
     SharedGuard guard;
     const auto it = Map().find(reinterpret_cast<uintptr_t>(key));
     if (it == Map().end()) {
@@ -66,7 +66,7 @@ bool Rs7Store_Get(const void* key, Rs7Entry* out) {
     return true;
 }
 
-bool Rs7Store_AnyActive() {
+bool RsxrStore_AnyActive() {
     SharedGuard guard;
 
     for (const auto& kv : Map()) {
@@ -78,13 +78,13 @@ bool Rs7Store_AnyActive() {
     return false;
 }
 
-void Rs7Store_ClearAll() {
+void RsxrStore_ClearAll() {
     ExclusiveGuard guard;
 
     Map().clear();
 }
 
-int Rs7Store_Count() {
+int RsxrStore_Count() {
     SharedGuard guard;
 
     return int(Map().size());

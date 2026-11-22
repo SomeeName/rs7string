@@ -16,21 +16,21 @@
 #include <memory>
 
 namespace {
-constexpr size_t kLimit = rs7diagram::kMovieLimit;
+constexpr size_t kLimit = rsxrdiagram::kMovieLimit;
 std::array<std::vector<uint8_t>, 3> g_recipes;
 bool g_trace = false;  // [debug] diagrams_trace=1
 volatile LONG g_traceCalls = 0;
 constexpr uint16_t kSprites[] = {1103, 28, 26};
-const wchar_t* const kFiles[] = {L"commonlib.rs7da", L"contentpanel.rs7da", L"ge_game.rs7da"};
+const wchar_t* const kFiles[] = {L"commonlib.rsxrda", L"contentpanel.rsxrda", L"ge_game.rsxrda"};
 DWORD WINAPI InstallThread(void*);
 }  // namespace
 
-void Rs7DiagramMovie_Configure(const wchar_t* ini) {
-    if (!g_rs7_diagrams) {
+void RsxrDiagramMovie_Configure(const wchar_t* ini) {
+    if (!g_rsxr_diagrams) {
         return;
     }
 
-    g_trace = Rs7Config_ReadInt(L"debug", L"diagrams_trace", 0, ini) != 0;
+    g_trace = RsxrConfig_ReadInt(L"debug", L"diagrams_trace", 0, ini) != 0;
     std::wstring path(ini);
 
     path = path.substr(0, path.find_last_of(L"\\/") + 1) + L"chord-diagrams\\";
@@ -40,7 +40,7 @@ void Rs7DiagramMovie_Configure(const wchar_t* ini) {
         auto size = f ? f.tellg() : std::streampos(-1);
 
         if (size < 84 || size > std::streampos(kLimit)) {
-            Rs7Log("diagrams: missing/invalid recipe %ls", kFiles[i]);
+            RsxrLog("diagrams: missing/invalid recipe %ls", kFiles[i]);
             continue;
         }
 
@@ -50,7 +50,8 @@ void Rs7DiagramMovie_Configure(const wchar_t* ini) {
             g_recipes[i].clear();
         }
         if (g_trace) {
-            Rs7Log("diagrams: trace recipe %ls loaded=%d (%d bytes)", kFiles[i], int(!g_recipes[i].empty()), int(size));
+            RsxrLog("diagrams: trace recipe %ls loaded=%d (%d bytes)", kFiles[i], int(!g_recipes[i].empty()),
+                    int(size));
         }
     }
 
@@ -61,26 +62,26 @@ void Rs7DiagramMovie_Configure(const wchar_t* ini) {
     }
 
     if (!any) {
-        Rs7Log("diagrams: no recipe loaded; FileOpener hook not installed");
+        RsxrLog("diagrams: no recipe loaded; FileOpener hook not installed");
         return;
     }
 
     if (HANDLE t = CreateThread(nullptr, 0, InstallThread, nullptr, 0, nullptr)) {
         CloseHandle(t);
     } else {
-        Rs7Log("diagrams: cannot start FileOpener hook thread");
+        RsxrLog("diagrams: cannot start FileOpener hook thread");
     }
 }
 
 namespace {
 // VFS IFile ABI established by features/headstock/assetload_tex.cpp. Heap ownership allows Scaleform
 // to retain the file past the synchronous handler; the stock adapter remains stock.
-struct File : rs7::MemoryFile {
+struct File : rsxr::MemoryFile {
     std::vector<uint8_t> bytes;
 
-    File() { Rs7Alloc_Inc(kAkDiagFiles); }
+    File() { RsxrAlloc_Inc(kAkDiagFiles); }
 
-    ~File() { Rs7Alloc_Dec(kAkDiagFiles); }
+    ~File() { RsxrAlloc_Dec(kAkDiagFiles); }
 
     File(const File&) = delete;
     File& operator=(const File&) = delete;
@@ -88,7 +89,7 @@ struct File : rs7::MemoryFile {
 
 // Scalar deleting destructor (MSVC slot 0): bit 0 of flags asks for the free. File always comes from new
 // (std::make_unique in SwapWrapperFile), so delete matches the allocation; without the bit only destroy.
-void __fastcall Destroy(rs7::MemoryFile* base, void*, uint32_t flags) {
+void __fastcall Destroy(rsxr::MemoryFile* base, void*, uint32_t flags) {
     auto* f = static_cast<File*>(base);
 
     if (flags & 1) {
@@ -98,9 +99,9 @@ void __fastcall Destroy(rs7::MemoryFile* base, void*, uint32_t flags) {
     }
 }
 
-long __fastcall Release(rs7::MemoryFile* base, void*) {
+long __fastcall Release(rsxr::MemoryFile* base, void*) {
     auto* f = static_cast<File*>(base);
-    const long n = rs7::MemoryFileOps::DropRef(f);
+    const long n = rsxr::MemoryFileOps::DropRef(f);
 
     if (!n) {
         delete f;
@@ -110,7 +111,7 @@ long __fastcall Release(rs7::MemoryFile* base, void*) {
 }
 
 // Owned bytes: null reads fail without advancing; all status slots report true as before.
-const auto kVt = rs7::MemoryFileVtable<false, false>(Destroy, Release);
+const auto kVt = rsxr::MemoryFileVtable<false, false>(Destroy, Release);
 using Get = uint32_t(__thiscall*)(void*);
 using FSeek = bool(__thiscall*)(void*, uint32_t);
 using FRead = uint32_t(__thiscall*)(void*, void*, uint32_t);
@@ -162,7 +163,7 @@ bool ReadWholeFile(void* file, uint32_t n, std::vector<uint8_t>* bytes, const ch
 }
 }  // namespace
 
-namespace rs7diagram {
+namespace rsxrdiagram {
 // Wrapper layout (CONFIRMED, docs/ARCHITECTURE.md): w+8 = NiFile adapter,
 // adapter+0x18 = owned IFile, adapter+4 = cached position, adapter+0x10 = valid byte.
 // On any failure the wrapper is left untouched and *why says what happened.
@@ -244,25 +245,25 @@ bool SwapWrapperFile(void* w, const char* url, const char** why) {
 
     File* owned = replacement.release();
 
-    Rs7Log("diagrams: verified one DoInitAction swapped for %s (%u -> %u)", url, n, unsigned(owned->bytes.size()));
+    RsxrLog("diagrams: verified one DoInitAction swapped for %s (%u -> %u)", url, n, unsigned(owned->bytes.size()));
     *reinterpret_cast<File**>(adapter + 0x18) = owned;
     *reinterpret_cast<uint32_t*>(adapter + 4) = 0;
     reinterpret_cast<FRelease>(vt[2])(file);
 
     return true;
 }
-}  // namespace rs7diagram
+}  // namespace rsxrdiagram
 
 namespace {
 void* __fastcall OpenHook(void* self, void*, const char* url, void* heap, int flags, int mode) {
     void* w = g_open(self, url, heap, flags, mode);
 
     // SwapWrapperFile checks the target again; this one only keeps non-target opens out of the log.
-    if (w && g_rs7_diagrams && rs7diagram::MovieTarget(url) >= 0) {
+    if (w && g_rsxr_diagrams && rsxrdiagram::MovieTarget(url) >= 0) {
         const char* why = "";
 
-        if (!rs7diagram::SwapWrapperFile(w, url, &why)) {
-            Rs7Log("diagrams: refused %s (%s)", url, why);
+        if (!rsxrdiagram::SwapWrapperFile(w, url, &why)) {
+            RsxrLog("diagrams: refused %s (%s)", url, why);
         }
     }
 
@@ -272,20 +273,20 @@ void* __fastcall OpenHook(void* self, void*, const char* url, void* heap, int fl
 DWORD WINAPI InstallThread(void*) {
     // The slot may not hold the stock opener yet (unpack); poll, never write blindly.
     for (int i = 0; i < 60000 / 10; ++i) {
-        if (rs7diagram::InstallOpenHook(g_slot, kOpenFile)) {
+        if (rsxrdiagram::InstallOpenHook(g_slot, kOpenFile)) {
             return 0;
         }
 
         Sleep(10);
     }
 
-    Rs7Log("diagrams: FileOpener slot never reached 0x%X; movie swap disabled", unsigned(kOpenFile));
+    RsxrLog("diagrams: FileOpener slot never reached 0x%X; movie swap disabled", unsigned(kOpenFile));
 
     return 0;
 }
 }  // namespace
 
-namespace rs7diagram {
+namespace rsxrdiagram {
 // Replaces *slot with the hook once it equals expect. False means "not yet" or failure.
 bool InstallOpenHook(uintptr_t* slot, uintptr_t expect) {
     if (g_open) {
@@ -294,14 +295,14 @@ bool InstallOpenHook(uintptr_t* slot, uintptr_t expect) {
 
     uintptr_t cur = 0;
 
-    if (!Rs7_SafeCopy(&cur, slot, sizeof cur) || cur != expect) {
+    if (!Rsxr_SafeCopy(&cur, slot, sizeof cur) || cur != expect) {
         return false;
     }
 
     DWORD old;
 
-    if (!Rs7_Protect(slot, 4, PAGE_READWRITE, &old)) {
-        Rs7Log("diagrams: cannot unprotect FileOpener slot");
+    if (!Rsxr_Protect(slot, 4, PAGE_READWRITE, &old)) {
+        RsxrLog("diagrams: cannot unprotect FileOpener slot");
         return false;
     }
 
@@ -309,9 +310,9 @@ bool InstallOpenHook(uintptr_t* slot, uintptr_t expect) {
     *slot = reinterpret_cast<uintptr_t>(&OpenHook);
     DWORD tmp;
 
-    Rs7_Protect(slot, 4, old, &tmp);
-    Rs7Log("diagrams: FileOpener::OpenFile hooked (slot %p, original 0x%X)", static_cast<void*>(slot),
-           unsigned(expect));
+    Rsxr_Protect(slot, 4, old, &tmp);
+    RsxrLog("diagrams: FileOpener::OpenFile hooked (slot %p, original 0x%X)", static_cast<void*>(slot),
+            unsigned(expect));
 
     return true;
 }
@@ -327,4 +328,4 @@ void SetOpenForTest(void* fn) {
 void SetRecipeForTest(int i, const std::vector<uint8_t>& r) {
     g_recipes[i] = r;
 }
-}  // namespace rs7diagram
+}  // namespace rsxrdiagram

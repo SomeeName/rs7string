@@ -28,7 +28,7 @@ def register(spec: Spec, cases: list[Case]):
 # ---- PubBaseG / PubBaseB (PUBCL 0x8751FC / 0x875205): `sub eax,[table+ecx*4]`, stock six / four, native 8 / 6 -------
 for name, va, strings, stock in (("PubBaseG", 0x8751FC, 8, 6), ("PubBaseB", 0x875205, 6, 4)):
     register(
-        Spec(name, f"Rs7_Call_{name}", va, 7),
+        Spec(name, f"Rsxr_Call_{name}", va, 7),
         [
             Case(f"s{s}-midi{midi:x}", regs={UC_X86_REG_ECX: s, UC_X86_REG_EAX: midi}, stock=s < stock)
             for s in range(strings)
@@ -36,19 +36,22 @@ for name, va, strings, stock in (("PubBaseG", 0x8751FC, 8, 6), ("PubBaseB", 0x87
         ],
     )
 
-# ---- PubClassify (PUBCL 0x87522C, in place of `mov [ebp-3Ch],0`): [ebp-38h] = Rs7Publish_Classify(EDI, ESI, ...) -----
+# ---- PubClassify (PUBCL 0x87522C, in place of `mov [ebp-3Ch],0`): [ebp-38h] = RsxrPublish_Classify(EDI, ESI, ...) -----
 register(
     Spec(
         "PubClassify",
-        "Rs7_Call_PubClassify",
+        "Rsxr_Call_PubClassify",
         0x87522C,
         7,
         flags="dead",
-        helpers={"Rs7Publish_Classify": 4},
+        helpers={"RsxrPublish_Classify": 4},
     ),
     [
         Case(
-            f"r{r:x}", regs={UC_X86_REG_EDI: D, UC_X86_REG_ESI: D + 0x100}, rets={"Rs7Publish_Classify": r}, stock=False
+            f"r{r:x}",
+            regs={UC_X86_REG_EDI: D, UC_X86_REG_ESI: D + 0x100},
+            rets={"RsxrPublish_Classify": r},
+            stock=False,
         )
         for r in (0, 0x305, 0xFFFFFFFF)
     ],
@@ -56,7 +59,7 @@ register(
 
 # ---- PubWireCount (PUBWU 0x58E7A2, `mov [ebp+8],6`): [ebp+8] = the count byte [[[edi]]+24h]+0Bh ---------------------
 register(
-    Spec("PubWireCount", "Rs7_Call_PubWireCount", 0x58E7A2, 7),
+    Spec("PubWireCount", "Rsxr_Call_PubWireCount", 0x58E7A2, 7),
     [
         Case(
             f"n{n}",
@@ -68,14 +71,14 @@ register(
     ],
 )
 
-# ---- PubEdge (TU8A 0x7E72D0, 13 bytes; EAX = InstrumentInfo, CL = first): EAX = Rs7Publish_EdgeCopy(info, first) ---
+# ---- PubEdge (TU8A 0x7E72D0, 13 bytes; EAX = InstrumentInfo, CL = first): EAX = RsxrPublish_EdgeCopy(info, first) ---
 register(
-    Spec("PubEdge", "Rs7_Call_PubEdge", 0x7E72D0, 13, flags="dead", helpers={"Rs7Publish_EdgeCopy": 2}),
+    Spec("PubEdge", "Rsxr_Call_PubEdge", 0x7E72D0, 13, flags="dead", helpers={"RsxrPublish_EdgeCopy": 2}),
     [
         Case(
             f"cl{cl:x}-r{r}",
             regs={UC_X86_REG_EAX: D, UC_X86_REG_ECX: 0x1200 | cl},
-            rets={"Rs7Publish_EdgeCopy": r},
+            rets={"RsxrPublish_EdgeCopy": r},
             stock=False,
         )
         for cl in (0, 1, 0xFF)
@@ -88,15 +91,15 @@ register(
 register(
     Spec(
         "Tu8Advance",
-        "Rs7Tu8_Advance",
+        "RsxrTu8_Advance",
         0,
         5,
         flags="free",
-        helpers={"Rs7Tu8_AdvanceC@8": (2, 8)},
-        local={"Rs7Tu8_AdvanceC@8": "Rs7_CallIn_Tu8Advance"},
+        helpers={"RsxrTu8_AdvanceC@8": (2, 8)},
+        local={"RsxrTu8_AdvanceC@8": "Rsxr_CallIn_Tu8Advance"},
     ),
     [
-        Case(f"dir{d}-r{r}", stack={0: D, 4: d & 0xFFFFFFFF}, rets={"Rs7Tu8_AdvanceC@8": r}, stock=False)
+        Case(f"dir{d}-r{r}", stack={0: D, 4: d & 0xFFFFFFFF}, rets={"RsxrTu8_AdvanceC@8": r}, stock=False)
         for d in (1, -1)
         for r in (0, 1)
     ],
@@ -104,33 +107,33 @@ register(
 register(
     Spec(
         "Tu8First",
-        "Rs7Tu8_First",
+        "RsxrTu8_First",
         0,
         5,
         flags="free",
-        helpers={"Rs7Tu8_FirstC@4": (1, 4)},
-        local={"Rs7Tu8_FirstC@4": "Rs7_CallIn_Tu8First"},
+        helpers={"RsxrTu8_FirstC@4": (1, 4)},
+        local={"RsxrTu8_FirstC@4": "Rsxr_CallIn_Tu8First"},
     ),
-    [Case(f"r{r}", stack={0: D}, rets={"Rs7Tu8_FirstC@4": r}, stock=False) for r in (0, 6)],
+    [Case(f"r{r}", stack={0: D}, rets={"RsxrTu8_FirstC@4": r}, stock=False) for r in (0, 6)],
 )
 
 # ---- the pitch copies' synthetic calls (tools/gen_publish_pitch.py; no stock bytes) ------------------------------------
-# PubChordTail (PUBAC): Rs7PublishPitch_ChordTail(EBP-94h, [EBP-44h], [EBP-3Ch]); registers kept
+# PubChordTail (PUBAC): RsxrPublishPitch_ChordTail(EBP-94h, [EBP-44h], [EBP-3Ch]); registers kept
 register(
     Spec(
         "PubChordTail",
-        "Rs7_Call_PubChordTail",
+        "Rsxr_Call_PubChordTail",
         0,
         5,
         flags="dead",  # test_pitch_callin_flags_are_dead
-        helpers={"Rs7PublishPitch_ChordTail": 3},
+        helpers={"RsxrPublishPitch_ChordTail": 3},
     ),
     [Case("tail", stock=False)],
 )
 # ReverseTail (PUBAN): ECX = MIDI, EDX = string, ESI = tail tuning or 0, [esp] = instrument -> EAX = ECX = the fret
 TAIL = (3, -1, 0, 2, -5, 1, -2, 4)
 register(
-    Spec("ReverseTail", "Rs7_Publish_ReverseTail", 0, 5, flags="dead"),
+    Spec("ReverseTail", "Rsxr_Publish_ReverseTail", 0, 5, flags="dead"),
     [
         Case(
             f"s{s:x}-tail{bool(tail)}",
@@ -197,7 +200,7 @@ def test_pitch_callin_flags_are_dead():
     for ident, sym, after in (("PUBAN", "ReverseTail", ["add"]), ("PUBAC", "PubChordTail", ["mov", "xor"])):
         code = re.search(rf"kPitchCode_{ident}\[\] = \{{(.*?)\}};", text, re.S).group(1)
         code = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", code))
-        off = int(re.search(rf"\{{(\d+), 0, &g_rs7_callin_{sym}\}}", text).group(1))
+        off = int(re.search(rf"\{{(\d+), 0, &g_rsxr_callin_{sym}\}}", text).group(1))
         insns = list(md.disasm(code[off + 4 : off + 4 + 16], 0))
         assert [i.mnemonic for i in insns[: len(after)]] == after, (ident, [i.mnemonic for i in insns[:3]])
 
@@ -237,7 +240,7 @@ def test_tuner_session_calls_flags_are_dead():
     ):
         code = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", body))
         for off, k in re.findall(r"\{(\d+), kTu8Sym \+ (\d+), 0\}", rels):
-            if k in ("0", "2"):  # SYMS: g_rs7_callin_Tu8Advance, g_rs7_callin_Tu8First
+            if k in ("0", "2"):  # SYMS: g_rsxr_callin_Tu8Advance, g_rsxr_callin_Tu8First
                 assert code[int(off) - 1] == 0xE8, (ident, off)
                 assert _flags_dead_after(code, int(off) + 4), (ident, off)
                 sites += 1

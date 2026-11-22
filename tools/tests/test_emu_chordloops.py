@@ -25,13 +25,13 @@ def put(e, p, v):
 
 
 def register_info(e):
-    """GIA1 registers each native InstrumentInfo with Rs7Gs_InfoAllocated; Rs7Gs_InfoNative (used by
-    Rs7Gs_Active and the chord-bend check) requires that registration. Run once per emulator."""
+    """GIA1 registers each native InstrumentInfo with RsxrGs_InfoAllocated; RsxrGs_InfoNative (used by
+    RsxrGs_Active and the chord-bend check) requires that registration. Run once per emulator."""
     if getattr(e, "info_registered", False):
         return
     sp = STACK + 0x80000
     e.uc.mem_write(sp, struct.pack("<II", RET_MAGIC, INFO))
-    e.run(e.exports["Rs7Gs_InfoAllocated"], RET_MAGIC, {UC_X86_REG_ESP: sp})
+    e.run(e.exports["RsxrGs_InfoAllocated"], RET_MAGIC, {UC_X86_REG_ESP: sp})
     e.info_registered = True
 
 
@@ -41,12 +41,12 @@ def setup(e, n=6):
     put(e, GS, GUITAR)
     put(e, GUITAR + 0x24, INFO)
     e.uc.mem_write(INFO + 0xB, bytes([6]))
-    e.uc.mem_write(GS + 0x3A, b"R7")
-    put(e, GS + 0xAC, 0x47375352)
+    e.uc.mem_write(GS + 0x3A, b"RX")
+    put(e, GS + 0xAC, 0x47585352)
     put(e, GS + 0xA8, INFO)
     e.uc.mem_write(INFO + 0x40, bytes([n, n]))
-    put(e, INFO + 0x44, 0x49375352)
-    put(e, e.exports["g_rs7_native_strings"], 1)
+    put(e, INFO + 0x44, 0x49585352)
+    put(e, e.exports["g_rsxr_native_strings"], 1)
     for ghost in (False, True):
         for s in range(8):
             obj = DATA + 0x40000 + (int(ghost) * 8 + s) * 0x200
@@ -355,7 +355,7 @@ def test_single_note_bends_join_the_native_string_6_and_7(pair, sid, join, s):
     """Eight strings (C-lite counts 8): a single-note bend / release on string 6 or 7 joins the stock code with that
     string's native object (string 7 was left without a bend)."""
     if s == 6 and sid == "N18":
-        pytest.skip("string 6 bends go through Rs7_S7BendTarget, which logs through the OS once (test_midhook_cold)")
+        pytest.skip("string 6 bends go through Rsxr_S7BendTarget, which logs through the OS once (test_midhook_cold)")
     e = pair[1]
     setup(e, 8)
     e.uc.mem_write(INFO + 0xB, bytes([8]))

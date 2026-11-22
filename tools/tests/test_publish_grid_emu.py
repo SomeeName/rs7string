@@ -15,8 +15,8 @@ pytestmark = needs_emu
 @pytest.fixture(scope="module")
 def emu():
     e = Emu(False)
-    e.uc.mem_write(e.exports["g_rs7_fg_row"], struct.pack("<I", 0x264))  # the deferred FretGrid layout is written
-    e.uc.mem_write(e.exports["g_rs7_native_fretgrid"], struct.pack("<I", 1))
+    e.uc.mem_write(e.exports["g_rsxr_fg_row"], struct.pack("<I", 0x264))  # the deferred FretGrid layout is written
+    e.uc.mem_write(e.exports["g_rsxr_native_fretgrid"], struct.pack("<I", 1))
     return e
 
 
@@ -35,7 +35,7 @@ def test_native_queries_and_invalid_indices(emu, count):
     put(e, grid, guitar)
     put(e, guitar + 0x24, info)
     e.uc.mem_write(info + 0xB, bytes([count]))
-    put(e, e.exports["g_rs7_native_publish"], 1)
+    put(e, e.exports["g_rsxr_native_publish"], 1)
     for string, k, fret in [(s, k, 26) for s in range(count) for k in range(3)] + [
         (count, 0, 26),
         (0, 3, 26),
@@ -73,8 +73,8 @@ def test_active_guard(emu, sid, reg, info_reg, count):
     e = emu
     info = DATA + 0xC000
     e.uc.mem_write(info + 0xB, bytes([count]))
-    put(e, e.exports["g_rs7_resume_" + sid], RET_MAGIC)
-    put(e, e.exports["g_rs7_target_" + sid], RET_MAGIC + 16)
+    put(e, e.exports["g_rsxr_resume_" + sid], RET_MAGIC)
+    put(e, e.exports["g_rsxr_target_" + sid], RET_MAGIC + 16)
     start = entry(e, sid)  # built before the registers are set (the emitter runs in the same emulator)
     for s in range(10):
         hit = []
@@ -118,9 +118,9 @@ def test_grid_build_stages_the_world_cells_of_strings_6_and_7(emu):
         put(e, child + 0x10C, 1)
         e.uc.mem_write(entity + 0xD8, b"\x01")
         put(e, entity + 0xDC, 1)
-    oldready = bytes(e.uc.mem_read(e.exports["Rs7Gs_ExtraReady"], 6))
+    oldready = bytes(e.uc.mem_read(e.exports["RsxrGs_ExtraReady"], 6))
     oldroot = e.read(0x411130, 1)  # e.read maps the snapshot page
-    e.uc.mem_write(e.exports["Rs7Gs_ExtraReady"], bytes.fromhex("B8 01 00 00 00 C3"))
+    e.uc.mem_write(e.exports["RsxrGs_ExtraReady"], bytes.fromhex("B8 01 00 00 00 C3"))
     e.uc.mem_write(0x411130, b"\xc3")
 
     def call(name, *args):
@@ -129,12 +129,12 @@ def test_grid_build_stages_the_world_cells_of_strings_6_and_7(emu):
         return e.uc.reg_read(UC_X86_REG_EAX)
 
     try:
-        assert call("Rs7Publish_GridBuild", grid, guitar) == 2
+        assert call("RsxrPublish_GridBuild", grid, guitar) == 2
         # Sixth extension local z=-2, world z=28; eighth extension local z=-6, worldz24.
         assert struct.unpack("<fff", e.uc.mem_read(grid + 0x30 + 6 * 0x4C, 12)) == (6.0, 17.0, 28.0)
         assert struct.unpack("<fff", e.uc.mem_read(grid + 0x30 + 7 * 0x4C, 12)) == (2.0, 13.0, 24.0)
     finally:
-        e.uc.mem_write(e.exports["Rs7Gs_ExtraReady"], oldready)
+        e.uc.mem_write(e.exports["RsxrGs_ExtraReady"], oldready)
         e.uc.mem_write(0x411130, oldroot)
 
 
@@ -185,7 +185,7 @@ def _r1_setup(e, count, rowstride=ROW):
     put(e, grid, guitar)
     put(e, guitar + 0x24, info)
     e.uc.mem_write(info + 0xB, bytes([count]))
-    e.uc.mem_write(e.exports["g_rs7_fg_row"], struct.pack("<I", rowstride))
+    e.uc.mem_write(e.exports["g_rsxr_fg_row"], struct.pack("<I", rowstride))
     return grid
 
 
@@ -279,7 +279,7 @@ def test_r1_fret_out_of_range_is_rejected(emu, fret):
 
 
 def test_r1_stock_row_stride_is_rejected(emu):
-    """The lookup serves the native 264h rows only; with the stock 1CCh stride (g_rs7_fg_row) it answers 0."""
+    """The lookup serves the native 264h rows only; with the stock 1CCh stride (g_rsxr_fg_row) it answers 0."""
     e = emu
     grid = _r1_setup(e, 8, 0x1CC)
     _r1_fill(e, grid, 8)
@@ -287,7 +287,7 @@ def test_r1_stock_row_stride_is_rejected(emu):
         _, r = _r1_run(e, grid, 7, 1, 3)
         assert r["eax"] & 255 == 0
     finally:
-        e.uc.mem_write(e.exports["g_rs7_fg_row"], struct.pack("<I", ROW))
+        e.uc.mem_write(e.exports["g_rsxr_fg_row"], struct.pack("<I", ROW))
 
 
 PUBGE2_PUSH, PUBGE2_REJECT = 0x7E368A, 0x7E36E8  # `push ecx` after the optional `neg ecx`; the reject tail
@@ -321,8 +321,8 @@ def test_pubge2_matches_the_stock_bytes(emu, flag):
     stock `cmp byte [esi+8],0; je` decides `neg ecx`; with seven, string 6 joins like a stock string and 7 is rejected."""
     e = emu
     va = site_va("PUBGE2")
-    put(e, e.exports["g_rs7_resume_PUBGE2"], va + 9)
-    put(e, e.exports["g_rs7_target_PUBGE2"], PUBGE2_REJECT)
+    put(e, e.exports["g_rsxr_resume_PUBGE2"], va + 9)
+    put(e, e.exports["g_rsxr_target_PUBGE2"], PUBGE2_REJECT)
     hook = entry(e, "PUBGE2")
     for s in range(8):
         stock = run_pubge2(e, va, s, 6, flag)

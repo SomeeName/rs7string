@@ -18,8 +18,8 @@ FNS = [("PUBNL", 0x4E6E90, 0x4E7B2F, 9), ("PUBAN", 0x875430, 0x8755B6, 6), ("PUB
 # at run time, marked kTailPitchCall) and two call-in entries (hooks_callin.cpp, PitchRel::callin).
 SYMS = [
     "kTailPitchCall",
-    "0, &g_rs7_callin_PubChordTail",
-    "0, &g_rs7_callin_ReverseTail",
+    "0, &g_rsxr_callin_PubChordTail",
+    "0, &g_rsxr_callin_ReverseTail",
 ]
 SYN = 0x70000000
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Extended-range charts: from chart tool to game</title>
-<!-- Editable source of chart-format.png. Capture the full page at a 1280px viewport after changes. -->
+<!-- The detailed pipeline diagram the chart tools guide links to; plain HTML so the text can be selected. -->
 <style>
   :root {
     --bg: #14161b; --panel: #1d2027; --line: #343944; --text: #e6e8ec; --dim: #9aa1ad;
@@ -85,175 +85,117 @@
 <body>
 <div class="page">
   <h1>Extended-range charts: from chart tool to game</h1>
-  <p class="sub">For chart editor and package builder developers: 7/8-string guitar and 5/6-string bass.
-    The stock formats and string indices stay in place.</p>
-
+  <p class="sub">Native format, version 1 · 7/8-string guitar and 5/6-string bass · thickest string first everywhere.</p>
   <div class="legend">
-    <span><i class="sw stock"></i>Stock, unchanged</span>
-    <span><i class="sw used"></i>Stock field used by extended charts</span>
-    <span><i class="sw new"></i>New RS7X data</span>
-    <span><i class="sw mod"></i>Handled in the game by rs7string</span>
+    <span><i class="sw stock"></i>Stock content</span>
+    <span><i class="sw used"></i>Positional string data</span>
+    <span><i class="sw new"></i>Native format marker</span>
+    <span><i class="sw mod"></i>Translated by RS Extended Range</span>
   </div>
 
-  <!-- 1. Tool pipeline -->
   <div class="step"><div class="num">1</div><div class="card">
     <h2>The tool pipeline</h2>
-    <p class="lead">The chart and package identify the instrument. Existing string numbers never shift.</p>
+    <p class="lead">One string order throughout. DotCharter's RS Extended Range export writes this format.</p>
     <div class="flow">
-      <div class="box used"><b>Chart editor</b><small>For example, EOF writes arrangement XML: tuning,
-        notes and guitar chord templates with the instrument's extra string indices and frets.</small></div>
+      <div class="box used"><b>Chart editor</b><small>XML: <span class="mono">extendedRange="1"</span>,
+        <span class="mono">strings="N"</span>, positional tuning, notes and chords.</small></div>
       <div class="arrow" aria-hidden="true">&rarr;</div>
-      <div class="box used"><b>Converter</b><small>For example, DLC Builder writes SNG tuning, note indices and
-        section masks. Guitar chords keep stock columns 0–5 and add the extra columns in RS7X.</small></div>
+      <div class="box new"><b>Chart converter</b><small><span class="mono">SNXR</span> header,
+        N-wide chord arrays, N tuning entries and zero padding.</small></div>
       <div class="arrow" aria-hidden="true">&rarr;</div>
-      <div class="box used"><b>Package builder</b><small>Adds the appropriate <span class="mono">Rs7String</span> tuning keys to
-        manifest JSON and HSAN; puts the SNG, audio and art in a PSARC.</small></div>
+      <div class="box new"><b>Package builder</b><small>Matching manifest/HSAN entries with
+        <span class="mono">ExtendedRange</span>; plain archive with <span class="mono">PSXR</span> magic.</small></div>
       <div class="arrow" aria-hidden="true">&rarr;</div>
-      <div class="box mod"><b>Game + rs7string</b><small>The stock loader reads the SNG; rs7string reads its RS7X data
-        and tuning keys and builds the matching instrument.</small></div>
+      <div class="box mod"><b>Game + RS Extended Range</b><small>Translates native data at load.
+        Without a compatible mod, the package is not listed.</small></div>
     </div>
   </div></div>
 
-  <!-- 2. Instrument-specific data -->
   <div class="step"><div class="num">2</div><div class="card">
     <h2>Choose the instrument</h2>
-    <p class="lead">Indices are storage order, not pitch order. Open notes below assume standard tuning.</p>
+    <p class="lead">Index 0 is the thickest string. Alternate tunings change offsets, never indices.</p>
     <div class="instruments">
-      <div class="instrument"><h3>7-string guitar</h3>
-        <p>Index 6: low B (B1, MIDI 35)</p><p>SNG tuning: 7 entries</p>
-        <p>Manifest / HSAN: <span class="mono">Rs7String6</span></p><p>STRS: guitar (0), 7 strings, 1 extended column</p></div>
-      <div class="instrument"><h3>8-string guitar</h3>
-        <p>Index 6: low B; index 7: low F# (F#1, MIDI 30)</p><p>SNG tuning: 8 entries</p>
-        <p>Manifest / HSAN: <span class="mono">Rs7String6</span>, <span class="mono">Rs7String7</span></p><p>STRS: guitar (0), 8 strings, 2 extended columns</p></div>
-      <div class="instrument"><h3>5-string bass</h3>
-        <p>Index 4: low B (B0, MIDI 23)</p><p>SNG tuning: 6 entries, as stock</p>
-        <p>Manifest / HSAN: <span class="mono">Rs7String4</span></p><p>STRS: bass (1), 5 strings, 0 extended columns</p></div>
-      <div class="instrument"><h3>6-string bass</h3>
-        <p>Index 4: low B; index 5: high C (C3, MIDI 48)</p><p>SNG tuning: 6 entries, as stock</p>
-        <p>Manifest / HSAN: <span class="mono">Rs7String4</span>, <span class="mono">Rs7String5</span></p><p>STRS: bass (1), 6 strings, 0 extended columns</p></div>
+      <div class="instrument"><h3>7-string guitar · N = 7</h3>
+        <p>0 B · 1 E · 2 A · 3 D · 4 G · 5 B · 6 high E</p>
+        <p>Open MIDI: 35 · 40 · 45 · 50 · 55 · 59 · 64</p></div>
+      <div class="instrument"><h3>8-string guitar · N = 8</h3>
+        <p>0 F# · 1 B · 2 E · 3 A · 4 D · 5 G · 6 B · 7 high E</p>
+        <p>Open MIDI: 30 · 35 · 40 · 45 · 50 · 55 · 59 · 64</p></div>
+      <div class="instrument"><h3>5-string bass · N = 5</h3>
+        <p>0 B · 1 E · 2 A · 3 D · 4 G</p>
+        <p>Open MIDI: 23 · 28 · 33 · 38 · 43</p></div>
+      <div class="instrument"><h3>6-string bass · N = 6</h3>
+        <p>0 B · 1 E · 2 A · 3 D · 4 G · 5 high C</p>
+        <p>Open MIDI: 23 · 28 · 33 · 38 · 43 · 48</p></div>
     </div>
-    <p class="note"><b>Manifest and HSAN:</b> use the named keys above after <span class="mono">string5</span>.
-      Never write a key named <span class="mono">string6</span> or higher: it can crash the stock song list.</p>
+    <p class="note"><b>Tuning:</b> whole-number semitone offsets, -24 to 24.
+      Pitch = standard open MIDI note + tuning offset + fret.</p>
   </div></div>
 
-  <!-- 3. PSARC + SNG container -->
   <div class="step"><div class="num">3</div><div class="card">
     <h2>Package and chart container</h2>
-    <p class="lead">PSARC integers are big-endian; everything inside the SNG body is little-endian.</p>
+    <p class="lead">If any arrangement is extended: PSXR magic and &lt;name&gt;_rsxr_p.psarc.</p>
     <div class="row">
-      <div class="box"><b>PSARC header</b><small>"PSAR", v1.4, "zlib", TOC size,<br>entry size 30, count, block 64 KiB, flags</small></div>
-      <div class="arrow">&rarr;</div>
-      <div class="box"><b>Table of contents</b><small>per file: MD5 of the name, first block,<br>u40 length, u40 offset</small></div>
-      <div class="arrow">&rarr;</div>
-      <div class="box"><b>Block sizes</b><small>u16 per block</small></div>
-      <div class="arrow">&rarr;</div>
-      <div class="box grow"><b>Data</b><small>file 0 = the name list; then manifests, <b>.hsan</b>,<br>
-        <b>songs/bin/generic/*.sng</b>, audio, art, xblock</small></div>
+      <div class="box new"><b>PSXR package</b><small>Plain, unencrypted PSARC</small></div>
+      <div class="arrow" aria-hidden="true">&rarr;</div>
+      <div class="box used grow"><b>Manifest JSON + HSAN</b><small>Each extended arrangement:
+        <span class="mono">"ExtendedRange": {"Version": 1}</span> and exactly N positional tuning keys.</small></div>
+      <div class="box"><b>Other content</b><small>Stock audio, art, vocals and showlights</small></div>
     </div>
     <div class="zoom">
-      <p class="note" style="margin-top:0"><b>The .sng file</b> (plain form; an encrypted SNG is decrypted before it is inflated, the body is the same):</p>
+      <p class="note" style="margin-top:0"><b>Each extended SNG:</b> plain wrapper, flags 1 (zlib),
+        zeroed unused IV/signature slots and the complete uncompressed size.</p>
       <div class="row">
-        <div class="box"><b>u32 0x4A</b><small>magic</small></div>
-        <div class="box"><b>u32 flags</b><small>1 = zlib</small></div>
-        <div class="box"><b>16 bytes</b><small>IV slot</small></div>
-        <div class="box used"><b>u32 body size</b><small>counts the RS7X block</small></div>
-        <div class="box grow used"><b>zlib( body )</b><small>stock sections + RS7X in one stream</small></div>
-        <div class="box"><b>56 bytes</b><small>signature slot</small></div>
+        <div class="box new"><b>SNXR header</b><small>Version, instrument, N, reserved zero</small></div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div class="box used grow"><b>Body in stock section order</b><small>N-wide chord templates and ChordNotes;
+          positional note indices, section bits and N tuning entries</small></div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div class="box new"><b>Zero padding</b><small>After MetaData, inside zlib</small></div>
       </div>
-      <div class="sections">
-        <div class="box">Beats</div><div class="box">Phrases</div>
-        <div class="box used"><b>Chords</b><small>0x48 each, 6 columns</small></div>
-        <div class="box used"><b>ChordNotes</b><small>0x948 each, 6 slots</small></div>
-        <div class="box">Vocals</div><div class="box">PhraseIterations</div><div class="box">PhraseExtraInfo</div>
-        <div class="box">NewLinkedDiffs</div><div class="box">Actions</div><div class="box">Events</div>
-        <div class="box">Tones</div><div class="box">DNAs</div>
-        <div class="box used"><b>Sections</b><small>i8 stringMask[36]: bits for used strings (6 / 7 on guitar)</small></div>
-        <div class="box used"><b>Levels</b><small>notes: i8 string index (6 / 7 on guitar, 4 / 5 on bass)</small></div>
-        <div class="box used"><b>MetaData</b><small>tuning: i32 count + i16 entries (7 / 8 guitar; 6 bass)</small></div>
-        <div class="box new"><b>RS7X</b><small>right after MetaData</small></div>
-      </div>
-      <p class="note">The stock loader inflates the whole body, reads the sections up to MetaData and stops. It never
-        checks for leftover bytes, so the block must be <b>inside</b> the zlib stream and the body size must include it.</p>
+      <p class="note">Compress header, body and padding together. Include all three in the uncompressed size.
+        Use the specification's padding formula. No trailing extension block.</p>
     </div>
+    <p class="note"><b>Mixed packages:</b> six-string guitar and four-string bass keep stock manifests and charts.
+      Stock-only packages keep PSAR magic and &lt;name&gt;_p.psarc.</p>
   </div></div>
 
-  <!-- 4. XML to SNG -->
   <div class="step"><div class="num">4</div><div class="card">
-    <h2>Arrangement XML to SNG</h2>
-    <p class="lead">The proposed XML names continue the stock pattern. This table shows a 7-string guitar example.</p>
+    <h2>Arrangement XML to chart and manifest</h2>
+    <p class="lead">Seven-string guitar, Drop A: the low B is string 0 with offset -2.</p>
     <div class="table-scroll"><table>
-      <tr><th style="width:31%">Arrangement XML</th><th style="width:43%">SNG</th><th>Manifest and HSAN</th></tr>
-      <tr><td class="x mono">&lt;tuning string0..5 <b>string6</b>="-2"/&gt;</td>
-          <td class="x">MetaData tuning gets <b>7</b> entries (this switches on 7-string mode)</td>
-          <td class="x"><span class="mono">"Rs7String6": -2</span> after <span class="mono">string5</span>; never <span class="mono">string6</span></td></tr>
-      <tr><td class="x mono">&lt;note string="6" fret="3" .../&gt;</td>
-          <td class="x">stock note record with <span class="mono">string</span> = 6; masks and techniques as usual;
-            Sections stringMask bit 6</td><td>-</td></tr>
-      <tr><td class="x mono">&lt;chordTemplate ... <b>fret6</b> <b>finger6</b>/&gt;</td>
-          <td><span class="tag used">Chords</span> columns 0-5 (MIDI notes only for 0-5)
-            + <span class="tag new">CHDT</span> fret and finger of string 6; dedupe on all 7 columns</td><td>-</td></tr>
-      <tr><td class="x mono">&lt;chord&gt;&lt;chordNote string="6" .../&gt;&lt;/chord&gt;</td>
-          <td><span class="tag used">ChordNotes</span> record when any string has a technique or is open
-            + <span class="tag new">CHNT</span> entry for string 6 (open = mask 0x4)</td><td>-</td></tr>
-      <tr><td class="mono">&lt;handShape&gt;, &lt;anchor&gt;, phrases, beats, tones</td><td>unchanged</td><td>-</td></tr>
+      <tr><th>Arrangement XML</th><th>Native chart</th><th>Manifest JSON and HSAN</th></tr>
+      <tr><td class="x mono">&lt;tuning extendedRange="1" strings="7" string0="-2" ... string6="0" /&gt;</td>
+        <td class="x">SNXR: guitar, N = 7.<br>Tuning: -2, 0, 0, 0, 0, 0, 0</td>
+        <td class="x mono">"ExtendedRange": {"Version": 1}<br>"Tuning": {"string0": -2, ... "string6": 0}</td></tr>
+      <tr><td class="x mono">&lt;note string="0" fret="3" ... /&gt;</td>
+        <td class="x">Note string index 0; section bit 0</td><td>Instrument, count and tuning match the chart.</td></tr>
+      <tr><td class="x mono">&lt;chordTemplate ... fret0..6 finger0..6 /&gt;</td>
+        <td class="x">Seven entries per template array; deduplicate on all strings.</td><td>Other attributes stay stock.</td></tr>
+      <tr><td class="x mono">&lt;chordNote string="0" ... /&gt;</td>
+        <td class="x">Column 0 in N-wide ChordNotes arrays; stock technique flags</td><td></td></tr>
+      <tr><td>Anchors, hand shapes, phrases, beats and tones</td><td>Stock format</td><td></td></tr>
     </table></div>
-    <p class="note"><b>8-string guitar:</b> extend the same pattern with index 7, including
-      <span class="mono">string7</span>, <span class="mono">fret7</span> and <span class="mono">finger7</span>.
-      Use <span class="mono">Rs7String7</span> in the manifest and HSAN.</p>
-    <p class="note"><b>5/6-string bass:</b> use indices 4 and 5 in the stock six slots. Bass XML already has
-      tuning fields for these indices, so their presence cannot mark the instrument; the tool writes the matching
-      manifest keys and RS7X marker from its project settings.</p>
+    <p class="note"><b>XML compatibility:</b> include at least string0 through string5, unused values zero.
+      Five-string bass XML has six tuning attributes; its native chart and manifest have exactly five entries.</p>
   </div></div>
 
-  <!-- 5. RS7X bytes -->
   <div class="step"><div class="num">5</div><div class="card">
-    <h2>The RS7X block</h2>
-    <p class="lead">Little-endian, no padding. Each section has a 12-byte header (id, u16 version 1, u16 flags with bit 0 = critical, u32 payload size), followed by its payload. The table under the four sections shows what each instrument writes.</p>
-    <div class="bytes">
-<pre><b>Header</b> (16 bytes)
-"RS7X"
-u16 version       1
-u16 headerSize    16
-u32 blockSize
-u32 sectionCount  3 guitar, 1 bass</pre>
-<pre><b>STRS</b> (critical, first)
-u8 instrument   0 guitar, 1 bass
-u8 stringCount  5..8
-u8 columnCount  guitar: count - 6
-                bass: 0
-u8 reserved     0
-u8 strings[columnCount]</pre>
-<pre><b>CHDT</b> (critical)
-u32 templateCount
-    = stock Chords count
-per template, per column:
-  i8 fret    -1, 0..24
-  i8 finger  -1, 0..4</pre>
-<pre><b>CHNT</b> (not critical)
-u32 recordCount
-    = stock ChordNotes count
-per record, per column:
-  u32 mask, i8 slideTo,
-  i8 slideUnpitchTo,
-  i16 vibrato, u8 bendCount,
-  bendCount x {f32, f32, u32}</pre>
+    <h2>Validate before sharing</h2>
+    <div class="row">
+      <div class="box used grow"><b>Agreement</b><small>Instrument, count and tuning match XML, chart, manifest and HSAN.</small></div>
+      <div class="box used grow"><b>All N strings</b><small>Notes, chords, techniques, section bits and generated difficulties.</small></div>
+      <div class="box new grow"><b>Complete body</b><small>Header, widths, counts and padding follow the specification.</small></div>
+      <div class="box mod grow"><b>Play test</b><small>Tuner, lanes, chords and scoring, then a stock control.</small></div>
     </div>
-    <div class="table-scroll" style="margin-top:12px"><table>
-      <tr><th style="width:19%"></th><th>7-string guitar</th><th>8-string guitar</th><th>5-string bass</th><th>6-string bass</th></tr>
-      <tr><td>instrument</td><td>0</td><td>0</td><td>1</td><td>1</td></tr>
-      <tr><td>stringCount</td><td>7</td><td>8</td><td>5</td><td>6</td></tr>
-      <tr><td>columnCount</td><td>1</td><td>2</td><td>0</td><td>0</td></tr>
-      <tr><td>strings[]</td><td>6</td><td>6, 7</td><td>none</td><td>none</td></tr>
-      <tr><td>STRS payload</td><td><code>00 07 01 00 06</code></td><td><code>00 08 02 00 06 07</code></td><td><code>01 05 00 00</code></td><td><code>01 06 00 00</code></td></tr>
-      <tr><td>Sections</td><td colspan="2"><span class="tag new">STRS</span> <span class="tag new">CHDT</span> <span class="tag new">CHNT</span> in this order, even with zero counts; one CHDT / CHNT entry per column</td>
-        <td colspan="2"><span class="tag new">STRS</span> only (CHDT / CHNT may be omitted): the extra strings use the stock columns 4 / 5</td></tr>
-      <tr><td>Whole block</td><td>16 + 17 + 20 + 25 = 78 bytes in the spec's example</td><td>16 + 18 + 20 + 34 = 88 bytes in the spec's example</td><td colspan="2">16 + 16 = 32 bytes</td></tr>
-    </table></div>
-    <p class="note"><b>Expected pitch:</b> open MIDI note + tuning offset + fret. For example, guitar string 6 is
-      MIDI 35 + tuning[6] + fret. Extra guitar chord pitches are computed, not stored in RS7X.</p>
+    <p class="note">Without the XML marker, read as stock. Reject unknown versions, unsupported counts and invalid indices.
+      A file name or strings attribute alone does not select extended mode.</p>
   </div></div>
 
-  <footer>rs7string: <a href="https://someename.github.io/rs7string/docs/release/CHART-TOOLS/">chart tools guide</a> and <a href="https://someename.github.io/rs7string/docs/release/RS7X-SPEC/">RS7X specification</a></footer>
+  <footer>RS Extended Range:
+    <a href="https://someename.github.io/rs-extended-range/docs/release/CHART-TOOLS/">chart tools guide</a> ·
+    <a href="https://someename.github.io/rs-extended-range/docs/release/NATIVE-FORMAT/">native format specification and byte layouts</a>
+  </footer>
 </div>
 </body>
 </html>

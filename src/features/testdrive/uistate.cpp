@@ -12,7 +12,7 @@ constexpr size_t kNameCap = 64;
 uint32_t ReadPtr(uintptr_t a) {
     uint32_t v = 0;
 
-    return Rs7_SafeCopyZero(&v, reinterpret_cast<const void*>(a), 4) ? v : 0;
+    return Rsxr_SafeCopyZero(&v, reinterpret_cast<const void*>(a), 4) ? v : 0;
 }
 
 DWORD WINAPI Poller(LPVOID) {
@@ -20,11 +20,11 @@ DWORD WINAPI Poller(LPVOID) {
 
     for (;;) {
         Sleep(kPollMs);
-        Rs7Ui_ReadState(kUiStateGlobal, now, sizeof now);
+        RsxrUi_ReadState(kUiStateGlobal, now, sizeof now);
 
         // Logged once two polls agree: a state object being replaced can be read half-written.
         if (now[0] && !std::strcmp(now, seen) && std::strcmp(now, logged)) {
-            Rs7Log("ui: %s -> %s", logged, now);
+            RsxrLog("ui: %s -> %s", logged, now);
             strcpy_s(logged, now);
         }
 
@@ -33,7 +33,7 @@ DWORD WINAPI Poller(LPVOID) {
 }
 }  // namespace
 
-bool Rs7Ui_ReadState(uintptr_t global, char* out, size_t cap) {
+bool RsxrUi_ReadState(uintptr_t global, char* out, size_t cap) {
     if (!out || !cap) {
         return false;
     }
@@ -49,7 +49,7 @@ bool Rs7Ui_ReadState(uintptr_t global, char* out, size_t cap) {
     char buf[kNameCap];
     size_t n = 0;
     const size_t limit = cap < kNameCap ? cap : kNameCap;
-    if (!rs7::ReadGameString(reinterpret_cast<const void*>(uintptr_t(state + kUiStateName)), buf, limit, false, &n) ||
+    if (!rsxr::ReadGameString(reinterpret_cast<const void*>(uintptr_t(state + kUiStateName)), buf, limit, false, &n) ||
         !n) {
         return false;
     }
@@ -66,10 +66,10 @@ bool Rs7Ui_ReadState(uintptr_t global, char* out, size_t cap) {
     return true;
 }
 
-void Rs7Ui_Start() {
+void RsxrUi_Start() {
     if (HANDLE t = CreateThread(nullptr, 0, Poller, nullptr, 0, nullptr)) {
         CloseHandle(t);
     }
 
-    Rs7Log("ui: state watcher started (state names logged as \"ui: OLD -> NEW\")");
+    RsxrLog("ui: state watcher started (state names logged as \"ui: OLD -> NEW\")");
 }

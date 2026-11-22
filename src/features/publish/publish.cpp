@@ -3,7 +3,7 @@
 #include "features/pitch/pitch.h"
 #include <cstring>
 
-namespace rs7pub {
+namespace rsxrpub {
 unsigned Missing(unsigned mask) {
     return kPrerequisites & ~mask;
 }
@@ -16,8 +16,8 @@ bool PublicationReady() {
     // Every deferred reader of the stage-5 list is ported (docs/ARCHITECTURE.md): pitch 8750C0,
     // 4E58E0, 4E6E90, 875430 (+I1 875504), 8755C0, the 1199D2C callers; FretGrid bounds, GetCellPos,
     // 58E790, 594530, edges, 58CF90; nextgrid NN1/NN3/NN4 (spawn 7A56F0 reads cells through R1 ->
-    // PUBGP). Publication still needs the ports built (Rs7Publish_BuildCopies) and, per song, the
-    // native owners and prepared grid (hooks_song.cpp Rs7Song_WidenDetector).
+    // PUBGP). Publication still needs the ports built (RsxrPublish_BuildCopies) and, per song, the
+    // native owners and prepared grid (hooks_song.cpp RsxrSong_WidenDetector).
     return true;
 }
 
@@ -35,7 +35,7 @@ int Classify(uint8_t* r, const int16_t* t, unsigned n, int midi, int initial) {
         }
 
         // Unsigned arithmetic reproduces the game's 32-bit ADD/SUB, including wrap.
-        const uint32_t expected = uint32_t(g_rs7_pitch_gbase[s]) + uint32_t(int(t[s])) + uint32_t(fret);
+        const uint32_t expected = uint32_t(g_rsxr_pitch_gbase[s]) + uint32_t(int(t[s])) + uint32_t(fret);
         const int32_t delta = int32_t(uint32_t(midi) - expected);
         const int32_t distance = delta < 0 ? int32_t(0u - uint32_t(delta)) : delta;
 
@@ -56,4 +56,4 @@ int Classify(uint8_t* r, const int16_t* t, unsigned n, int midi, int initial) {
 
     return initial;
 }
-}  // namespace rs7pub
+}  // namespace rsxrpub

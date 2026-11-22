@@ -158,7 +158,7 @@ def validate_paths(source: Path, output: Path) -> None:
     source, output = source.resolve(), output.resolve()
     for p in (source, output):
         s = p.as_posix().lower()
-        if "/rocksmith2014" in s or re.search(r"/rs7string(?:-[^/]*)?(?:/|$)", s):
+        if "/rocksmith2014" in s or re.search(r"/rs-extended-range(?:-[^/]*)?(?:/|$)", s):
             raise ValueError(f"Forbidden location: {p}")
     if source == output or source in output.parents or output in source.parents:
         raise ValueError("Input and output roots must be disjoint")

@@ -2,7 +2,7 @@
 #include "test.h"
 #include <string>
 
-using namespace rs7menu;
+using namespace rsxrmenu;
 
 namespace {
 const char kTitle[] = "urn:application:x-shockwave-flash:titlescreen";

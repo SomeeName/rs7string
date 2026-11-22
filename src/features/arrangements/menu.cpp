@@ -5,9 +5,9 @@
 #include "platform/patch.h"
 #include "platform/safecopy.h"
 
-using Rs7Mid::Dword;
+using RsxrMid::Dword;
 
-namespace rs7menu {
+namespace rsxrmenu {
 namespace {
 constexpr uint32_t kRecordDtor = 0x4ED6A0;  // a record's destructor (thiscall, no arguments)
 }  // namespace
@@ -46,7 +46,7 @@ void RefOp(uint32_t node, uint32_t offset) {
 // The game's string (read by 0x87C180): +0 data (the inline buffer itself while +14h == this + 10h), +10h end,
 // +14h capacity end.
 void ReadString(uint32_t address, char* out, uint32_t n) {
-    rs7::ReadGameString(reinterpret_cast<const void*>(uintptr_t(address)), out, n);
+    rsxr::ReadGameString(reinterpret_cast<const void*>(uintptr_t(address)), out, n);
 }
 
 void ReadFocus(uint32_t page, char* out, uint32_t n) {
@@ -65,6 +65,6 @@ void SwapFocusLists(uint32_t page, uint32_t (&spare)[kFocusListDwords]) {
 
 bool HookFocusSteps(uint32_t vtable, uintptr_t up, uintptr_t down) {
     return Dword(vtable + kFocusUp) == kStockFocusUp && Dword(vtable + kFocusDown) == kStockFocusDown &&
-           Rs7_WritePtrPair(vtable + kFocusUp, up, down);
+           Rsxr_WritePtrPair(vtable + kFocusUp, up, down);
 }
-}  // namespace rs7menu
+}  // namespace rsxrmenu

@@ -6,20 +6,20 @@
 
 namespace {
 bool LiveFrets(char* buf, size_t n) {
-    Rs7FretsStats fr{};
+    RsxrFretsStats fr{};
 
-    Rs7Frets_Stats(&fr);
-    std::snprintf(buf, n, "%d guitar(s) applied, L = %.3f", fr.applied, double(g_rs7_fret_halflen));
+    RsxrFrets_Stats(&fr);
+    std::snprintf(buf, n, "%d guitar(s) applied, L = %.3f", fr.applied, double(g_rsxr_fret_halflen));
 
-    return g_rs7_frets_on != 0;
+    return g_rsxr_frets_on != 0;
 }
 
-using U = Rs7UiTab;
-using K = Rs7UiKind;
+using U = RsxrUiTab;
+using K = RsxrUiKind;
 
-const Rs7UiItem kUi[] = {
+const RsxrUiItem kUi[] = {
     {U::Status, K::OnOff, "fret extend", LiveFrets},
 };
 }  // namespace
 
-const Rs7UiTable kRs7FretUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
+const RsxrUiTable kRsxrFretUi = {kUi, int(sizeof kUi / sizeof kUi[0])};

@@ -1,6 +1,6 @@
 # 8. Tuner and tuning names
 
-Part of the [rs7string architecture](../ARCHITECTURE.md).
+Part of the [RS Extended Range architecture](../ARCHITECTURE.md).
 
 ## Native eight-slot tuner
 
@@ -14,56 +14,61 @@ the stock string indices and uses an order table that starts with the lowest str
 | 5/6-string bass | low B (4), then E A D G (0..3), then high C (5) |
 
 - **Storage:** sessions are allocated with `380h` bytes (TU8ALLOC/TU8INIT/TU8FREE). TS `0x5AF200`
-  makes a session native and moves its six per-string arrays to a capacity-8 tail; the extra guitar
+  makes a session native and moves its six per-string arrays to a capacity-8 tail. The extra guitar
   strings use slots 6 and 7.
-- **When native:** a 7/8-string target, a session that is already native, a guitar built with more
-  than six strings (whatever the target), or a 5/6-string bass (`rs7tu::GoesNative`). Other sessions
-  run the stock tuner. The session's own count drives the tuner, not `InstrumentInfo +0Bh`. The
-  target comes from the manifest keys (`Rs7String4`..`Rs7String7`) or the built count.
-- **Code:** 25 tuner functions (the TS8* entries in `tuner8s.generated.h`) run as relocated copies,
-  checked against the stock functions in the emulator; mid-hooks cover single reads.
-- **Labels:** extra-string label text is kept per registered session, so two players can see
-  different labels.
+- **When a session goes native:** for a 7/8-string target, a session that is already native, a guitar
+  built with more than six strings (whatever the target), or a 5/6-string bass (`rsxrtu::GoesNative`).
+  Other sessions run the stock tuner. The session's own string count drives the tuner, not
+  `InstrumentInfo +0Bh`. The target comes from the manifest keys (`RsxrString4`..`RsxrString7`) or from
+  the built count.
+- **Code:** 25 tuner functions (the TS8* entries in `tuner8s.generated.h`) run as relocated copies. They
+  were checked against the stock functions in the emulator. Mid-hooks cover single reads.
+- **Labels:** the label text for the extra strings is kept per registered session, so two players can
+  see different labels.
 
-HYPOTHESIS: Wwise tuned-sound events `Guit_Pur_<note>_Tuned` for strings 6 and 7, and the arrow-key
-direction for left-handed profiles, still need checking.
+HYPOTHESIS: the Wwise tuned-sound events `Guit_Pur_<note>_Tuned` for strings 6 and 7 and the arrow-key
+direction for left-handed profiles still need checking.
 
 ## Manifest tuning keys
 
-The `Tuning` object carries `Rs7String6` / `Rs7String7` for the 7th / 8th guitar string's offset,
-and `Rs7String4` / `Rs7String5` for a bass's low B / high C.
-`tools/manifest_key.py IN.psarc OUT.psarc [--t6 N] [--arr NAME]` adds the 7th-string key only.
+After native manifest conversion (`JM1`), the internal `Tuning` object carries these keys.
 
-Never use `string6` in the manifest: it can crash the song list. See the
-[charting guide](../release/CHARTING.md#format-rules) for all supported instruments.
+- `RsxrString6` / `RsxrString7`: the offset of the 7th / 8th guitar string.
+- `RsxrString4` / `RsxrString5`: the offset of a bass's low B / high C.
+
+The converted manifest must not keep `string6`, because it can crash the stock song list. On disk,
+[native manifests](../NATIVE-FORMAT.md#manifests) use positional `string0`..`stringN-1` with the
+`ExtendedRange` marker.
 
 ## Low-range guitar tuning
 
-With `[tuner] lowrange=1` (the default), a native guitar session lowers its detector's lowest-open
-filter (`+11F8h`) each time a string is selected. The stock wrong-instrument check
+With `[tuner] lowrange=1` (the default), a native guitar session lowers the lowest-open filter of its
+detector (`+11F8h`) each time a string is selected. The stock wrong-instrument check
 (`UI_PlayerTuner_CheckWrongInstrument`, site W `0x5B2DDE`, `fcomp float [34.0]`) uses the session
 threshold `min(34, lowest open MIDI - 1)`.
 
-This threshold is for guitars; there is no wrong-instrument threshold for a bass low B0 (MIDI 23).
-Song detection for both instruments: [Detection and scoring](06-detection-and-scoring.md).
+This threshold applies to guitars only. There is no wrong-instrument threshold for a bass low B0
+(MIDI 23). For song detection on both instruments, see [Detection and scoring](06-detection-and-scoring.md).
 
 ## Tuner controls
 
-Arrow keys switch strings only in the precision view. Play a note or press Space to open it. The
-stock tuner behaves the same way.
+The arrow keys switch strings only in the precision view. To open the precision view, play a note or
+press Space. The stock tuner behaves the same way.
 
 ## Tuning names
 
-With `[tuner] names=1`, an extended arrangement gets its own tuning name in the song list, song and
-arrangement pages, and tuner. The names follow the game's spelling and add `[tuner] name_prefix` and
-`name_suffix` (default `7Str`). The `7` in the suffix becomes the string count (`8Str`, `5Str`,
-`6Str`; `SuffixN`). Unrecognised tunings keep the game's name with the mark.
+With `[tuner] names=1`, an extended arrangement gets its own tuning name in the song list, on the song
+and arrangement pages, and in the tuner. The names follow the game's spelling and add `[tuner] name_prefix`
+and `name_suffix` (default `7Str`). The `7` in the suffix becomes the string count (`8Str`, `5Str`,
+`6Str`; `SuffixN`). A tuning the mod does not recognize keeps the game's name, with the mark added.
 
-- 7-string guitar: the patterns below (`Name7`).
-- 8-string guitar: strings 0-6 at one offset name the family, the 8th string's distance names the
-  drop (`Name8`).
-- 5/6-string bass: every string but the low B at one offset; the low B names the family like the 7th
-  guitar string (`NameBass`: BEADG / BEADGC = "B Standard").
+The mod picks the name like this.
+
+- 7-string guitar: from the patterns below (`Name7`).
+- 8-string guitar: strings 0-6 at one offset name the family, and the distance of the 8th string names
+  the drop (`Name8`).
+- 5/6-string bass: every string except the low B is at one offset, and the low B names the family, like
+  the 7th guitar string does (`NameBass`: BEADG / BEADGC = "B Standard").
 
 | 7-string pattern | Examples |
 |---|---|
@@ -73,10 +78,11 @@ arrangement pages, and tuner. The names follow the game's spelling and add `[tun
 | Double Drop D | `5 5 5 4 3 -2 / 3` |
 | Open G7 | `-2 -2 -3 -5 -6 -9 / -4` |
 
-In the last three rows, the six offsets before the slash are the stock strings; the value after it is
-the seventh string's offset.
+In the last three rows, the six offsets before the slash belong to the stock strings. The value after
+the slash is the offset of the seventh string.
 
-HYPOTHESIS: the registers of Double Drop D and Open G7 (the source gives pitch classes only; `src/features/tuner/tuningname.cpp`).
+HYPOTHESIS: the registers of Double Drop D and Open G7. The source gives pitch classes only
+(`src/features/tuner/tuningname.cpp`).
 
 ### Name resolution and limits
 
@@ -88,11 +94,11 @@ The implementation lives in `src/features/tuner/tuningname.*` and `hooks_names.c
 | TU/TUT `0x56C300` / `0x56C408` | Resolve an arrangement UUID |
 | TN `0x5B7750` | Resolve a tuner offset array |
 
-The hooks read the key and six offsets, call the original function, then assign the display output
-(row `+138h`) and raw token (row `+150h`). Names are English only: they are plain text, without
-`$[id]` tokens. The game localises its own tokens through `0x7BF420` from `maingame.csv`.
+The hooks read the key and the six offsets and call the original function. Then they assign the display
+output (row `+138h`) and the raw token (row `+150h`). The names are English only, because they are plain
+text without `$[id]` tokens. The game localizes its own tokens through `0x7BF420` from `maingame.csv`.
 
-The tuning filter (`0x67A630` / `0x4ED5B0`) and sort (`0x575F60`) remain stock and see only the
-six-string offsets. A seven-string song can therefore pass the E Standard filter and sort among
+The tuning filter (`0x67A630` / `0x4ED5B0`) and the sort (`0x575F60`) stay stock and see only the
+six-string offsets. As a result, a seven-string song can pass the E Standard filter and sort among
 six-string songs. Group headers (`0x6590C0` / `0x680170`) can show a seven-string name above
 six-string songs.

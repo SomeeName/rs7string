@@ -23,8 +23,8 @@ from emu_harness import ALL_REGS, CODE, DATA, Emu, RET_MAGIC, STACK, needs_emu, 
 pytestmark = needs_emu
 
 
-# Rs7_OnDetectorTuned is pure C calling only the DLL's own integer code (no CRT), so it runs in the emulator as built.
-# Rs7_OnDetectorTuned is pure C without calls, so it runs in the emulator as built.
+# Rsxr_OnDetectorTuned is pure C calling only the DLL's own integer code (no CRT), so it runs in the emulator as built.
+# Rsxr_OnDetectorTuned is pure C without calls, so it runs in the emulator as built.
 
 SET_TUNING = 0x4E2590
 DET = DATA + 0x7000
@@ -128,9 +128,9 @@ SEVEN_TUNINGS = {  # name -> (lowest open MIDI of the arrangement, expected thre
 
 def run_wrong(emu: Emu, mean: float, session: int, table: list[tuple[int, int]], lowrange: int = 1, any_: int = 1):
     w = lambda name, fmt, *v: emu.uc.mem_write(emu.exports[name], struct.pack(fmt, *v))
-    w("g_rs7_lowrange", "<I", lowrange)
-    w("g_rs7_tuner_any", "<I", any_)
-    w("g_rs7_wrong_tab", "<8I", *([x for e in table for x in e] + [0] * (8 - 2 * len(table))))
+    w("g_rsxr_lowrange", "<I", lowrange)
+    w("g_rsxr_tuner_any", "<I", any_)
+    w("g_rsxr_wrong_tab", "<8I", *([x for e in table for x in e] + [0] * (8 - 2 * len(table))))
     va = site_va("W")
     emu.uc.mem_write(DATA + 0x40, struct.pack("<f", mean))
     # helper code: fld dword [DATA+0x40]; jmp site
@@ -156,8 +156,8 @@ def run_wrong(emu: Emu, mean: float, session: int, table: list[tuple[int, int]],
         },
     )
     sw = emu.uc.reg_read(UC_X86_REG_FPSW)
-    w("g_rs7_tuner_any", "<I", 0)  # the emulators are shared: no tuner state afterwards
-    w("g_rs7_lowrange", "<I", 1)
+    w("g_rsxr_tuner_any", "<I", 0)  # the emulators are shared: no tuner state afterwards
+    w("g_rsxr_lowrange", "<I", 1)
     warn = bool(sw & ((1 << 8) | (1 << 14)))  # C0 (mean < thr) or C3 (equal): `test ah,41h` != 0
     return warn, emu.fpu_top(), emu.regs(*ALL_REGS)
 
@@ -201,7 +201,7 @@ def test_w_detects_the_correct_open_note_without_warning(emus):
 
 
 # ---- technique fixes for string 6 (docs/ARCHITECTURE.md): I1 inverse pitch ----
-# Rs7_Base6 reads the side store (covered by the C++ unit tests); here
+# Rsxr_Base6 reads the side store (covered by the C++ unit tests); here
 # they are replaced by `mov eax,[cell]; ret` so the stubs' own logic runs against the stock code.
 
 
@@ -247,7 +247,7 @@ def test_i1_site_is_in_play_midi_to_fret():
 @pytest.mark.parametrize("tuning", [None, [0] * 6, [-2, 0, 1, 0, 0, 0]])
 def test_i1_strings_0_to_5_and_bass_are_stock(emus, instrument, string, tuning):
     stock, patched = emus
-    with fake_c(patched, "Rs7_Base6", DATA + 0x300, 35):
+    with fake_c(patched, "Rsxr_Base6", DATA + 0x300, 35):
         assert call_midi_to_fret(patched, 52, string, tuning, instrument) == call_midi_to_fret(
             stock, 52, string, tuning, instrument
         )
@@ -256,14 +256,14 @@ def test_i1_strings_0_to_5_and_bass_are_stock(emus, instrument, string, tuning):
 @pytest.mark.parametrize("tuning", [None, [0] * 7])
 def test_i1_string_6_of_a_bass_is_stock(emus, tuning):
     stock, patched = emus
-    with fake_c(patched, "Rs7_Base6", DATA + 0x300, 35):
+    with fake_c(patched, "Rsxr_Base6", DATA + 0x300, 35):
         assert call_midi_to_fret(patched, 40, 6, tuning, 2) == call_midi_to_fret(stock, 40, 6, tuning, 2)
 
 
 @pytest.mark.parametrize("instrument", [0, 1])
 def test_i1_string_6_not_in_seven_string_mode_is_stock(emus, instrument):
     stock, patched = emus
-    with fake_c(patched, "Rs7_Base6", DATA + 0x300, 0x80000000):
+    with fake_c(patched, "Rsxr_Base6", DATA + 0x300, 0x80000000):
         for tuning in (None, [0] * 7):
             assert call_midi_to_fret(patched, 40, 6, tuning, instrument) == call_midi_to_fret(
                 stock, 40, 6, tuning, instrument
@@ -274,7 +274,7 @@ def test_i1_string_6_not_in_seven_string_mode_is_stock(emus, instrument):
 @pytest.mark.parametrize("fret", [0, 3, 7, 12])
 def test_i1_string_6_is_the_inverse_of_the_forward_pitch(emus, t6, fret):
     _, patched = emus
-    with fake_c(patched, "Rs7_Base6", DATA + 0x300, 35 + t6):
+    with fake_c(patched, "Rsxr_Base6", DATA + 0x300, 35 + t6):
         got, esp = call_midi_to_fret(patched, 35 + t6 + fret, 6, [0] * 6 + [t6], 0)
     assert got == fret
     assert esp == STACK + 0x80000 + 4  # plain ret, the instrument argument stays for the caller
@@ -282,5 +282,5 @@ def test_i1_string_6_is_the_inverse_of_the_forward_pitch(emus, t6, fret):
 
 def test_i1_string_6_without_tuning_pointer_is_stock(emus):
     stock, patched = emus
-    with fake_c(patched, "Rs7_Base6", DATA + 0x300, 35):
+    with fake_c(patched, "Rsxr_Base6", DATA + 0x300, 35):
         assert call_midi_to_fret(patched, 40, 6, None, 0) == call_midi_to_fret(stock, 40, 6, None, 0)

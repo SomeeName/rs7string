@@ -8,6 +8,7 @@
 #include "overlay/capture.h"
 #include "overlay/overlaycmd.h"
 #include "overlay/ui.h"
+#include "platform/config.h"
 #include "platform/log.h"
 #include "platform/settings.h"
 #include <cstring>
@@ -29,7 +30,7 @@ WNDPROC g_prevProc;
 bool g_wndTried;
 bool g_imgui;  // context + both backends initialised
 bool g_imguiFailed;
-Rs7OverlayUi g_ui;
+RsxrOverlayUi g_ui;
 
 // Window messages for ImGui when the window thread is not the render thread (replayed in Present).
 struct Msg {
@@ -63,7 +64,7 @@ void SetVisible(bool on, const char* by) {
     }
 
     if (!on) {
-        Rs7Overlay_SetCapture(false, false);  // hidden: the game gets all input again
+        RsxrOverlay_SetCapture(false, false);  // hidden: the game gets all input again
         // Every caller runs on the render thread (OnPresent and what it calls), so ImGui may be touched here.
         // Drop input queued while shown and release held keys/buttons: their up messages never reach ImGui
         // while hidden, and nothing stale is replayed on the next show.
@@ -78,7 +79,7 @@ void SetVisible(bool on, const char* by) {
         }
     }
 
-    Rs7Log("overlay: %s (%s)", on ? "shown" : "hidden", by);
+    RsxrLog("overlay: %s (%s)", on ? "shown" : "hidden", by);
 }
 
 // Window thread only: the hotkey's WM_KEYDOWN was swallowed, so swallow its WM_CHAR too. TranslateMessage posts that
@@ -88,7 +89,7 @@ bool g_hotkeyChar;
 
 LRESULT PassToGame(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_KEYDOWN && !(l & (1 << 30))) {
-        Rs7Arr_KeyDown(unsigned(w));  // only keys the overlay passed through may page arrangements
+        RsxrArr_KeyDown(unsigned(w));  // only keys the overlay passed through may page arrangements
     }
 
     return CallWindowProcW(g_prevProc, h, m, w, l);
@@ -97,7 +98,7 @@ LRESULT PassToGame(HWND h, UINT m, WPARAM w, LPARAM l) {
 void OnFault() {
     InterlockedExchange(&g_faulted, 1);
     InterlockedExchange(&g_visible, 0);
-    Rs7Overlay_SetCapture(false, false);
+    RsxrOverlay_SetCapture(false, false);
     // No ImGui calls or message-queue lock: the fault may have left that state incomplete.
 }
 
@@ -139,10 +140,10 @@ LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ReleaseSRWLockExclusive(&g_msgLock);
         }
 
-        if (IsMouseMsg(m) && m != WM_MOUSEMOVE && Rs7Overlay_WantsMouse()) {
+        if (IsMouseMsg(m) && m != WM_MOUSEMOVE && RsxrOverlay_WantsMouse()) {
             return 0;
         }
-        if (IsKeyMsg(m) && Rs7Overlay_WantsKeys()) {
+        if (IsKeyMsg(m) && RsxrOverlay_WantsKeys()) {
             return 0;
         }
     }
@@ -156,7 +157,7 @@ void HookWindow(IDirect3DDevice9* dev) {
     HWND h = SUCCEEDED(dev->GetCreationParameters(&cp)) ? cp.hFocusWindow : nullptr;
 
     if (!h || !IsWindow(h)) {
-        Rs7Log("overlay: no focus window in the device's creation parameters - no hotkey, no input");
+        RsxrLog("overlay: no focus window in the device's creation parameters - no hotkey, no input");
         return;
     }
 
@@ -171,12 +172,12 @@ void HookWindow(IDirect3DDevice9* dev) {
     if (prev) {
         g_prevProc = prev;  // someone subclassed in between
     }
-    Rs7Log("overlay: window %p subclassed (previous procedure %p%s); window thread %lu, render thread %lu%s",
-           static_cast<void*>(h), reinterpret_cast<void*>(g_prevProc),
-           GetModuleHandleW(L"xinput1_3.dll") ? ", RSMods present" : "", g_wndTid, g_renderTid,
-           g_wndTid == g_renderTid ? " (same)" : " (different: messages are replayed on the render thread)");
+    RsxrLog("overlay: window %p subclassed (previous procedure %p%s); window thread %lu, render thread %lu%s",
+            static_cast<void*>(h), reinterpret_cast<void*>(g_prevProc),
+            GetModuleHandleW(L"xinput1_3.dll") ? ", RSMods present" : "", g_wndTid, g_renderTid,
+            g_wndTid == g_renderTid ? " (same)" : " (different: messages are replayed on the render thread)");
     if (!prev) {
-        Rs7Log("overlay: SetWindowLongPtrW failed (%lu) - no hotkey, no input", err);
+        RsxrLog("overlay: SetWindowLongPtrW failed (%lu) - no hotkey, no input", err);
     }
 }
 
@@ -199,7 +200,7 @@ bool InitImGui(IDirect3DDevice9* dev) {
 
     if (!ok) {
         g_imguiFailed = true;
-        Rs7Log("overlay: ImGui init failed (window %p) - overlay off", static_cast<void*>(g_hwnd));
+        RsxrLog("overlay: ImGui init failed (window %p) - overlay off", static_cast<void*>(g_hwnd));
         return false;
     }
 
@@ -210,13 +211,13 @@ bool InitImGui(IDirect3DDevice9* dev) {
     g_ui.hwnd = g_hwnd;
     g_ui.renderTid = g_renderTid;
     g_ui.wndTid = g_wndTid;
-    Rs7Log("overlay: Dear ImGui %s ready (own context, no imgui.ini)", IMGUI_VERSION);
+    RsxrLog("overlay: Dear ImGui %s ready (own context, no imgui.ini)", IMGUI_VERSION);
 
     return true;
 }
 
 void ApplyScale() {
-    float s = Rs7Set_Float("overlay.scale");
+    float s = RsxrSet_Float("overlay.scale");
 
     if (s > 0.0f && s < 0.5f) {
         s = 0.5f;  // dragging the slider off "Automatic" must not make the menu unreadable
@@ -245,48 +246,48 @@ void ApplyScale() {
     g_ui.appliedScale = s;
 }
 
-void RunCommand(const Rs7Cmd& c) {
+void RunCommand(const RsxrCmd& c) {
     switch (c.kind) {
-        case Rs7CmdKind::Toggle:
+        case RsxrCmdKind::Toggle:
             SetVisible(!g_visible, "pipe");
-            Rs7Log("overlay: cmd toggle -> ok");
+            RsxrLog("overlay: cmd toggle -> ok");
             break;
-        case Rs7CmdKind::Show:
+        case RsxrCmdKind::Show:
             SetVisible(true, "pipe");
-            Rs7Log("overlay: cmd show -> ok");
+            RsxrLog("overlay: cmd show -> ok");
             break;
-        case Rs7CmdKind::Hide:
+        case RsxrCmdKind::Hide:
             SetVisible(false, "pipe");
-            Rs7Log("overlay: cmd hide -> ok");
+            RsxrLog("overlay: cmd hide -> ok");
             break;
-        case Rs7CmdKind::Tab: {
-            const bool ok = Rs7OverlayUi_RequestTab(g_ui, c.key.c_str());
+        case RsxrCmdKind::Tab: {
+            const bool ok = RsxrOverlayUi_RequestTab(g_ui, c.key.c_str());
 
-            Rs7Log("overlay: cmd tab %s -> %s", c.key.c_str(), ok ? "ok" : "unknown tab");
+            RsxrLog("overlay: cmd tab %s -> %s", c.key.c_str(), ok ? "ok" : "unknown tab");
             break;
         }
-        case Rs7CmdKind::Set: {
-            const Rs7SetResult r = Rs7Set_SetText(c.key.c_str(), c.value.c_str());
-            const int i = Rs7Set_Find(c.key.c_str());
+        case RsxrCmdKind::Set: {
+            const RsxrSetResult r = RsxrSet_SetText(c.key.c_str(), c.value.c_str());
+            const int i = RsxrSet_Find(c.key.c_str());
 
-            Rs7Log("overlay: cmd set %s %s -> %s%s%s", c.key.c_str(), c.value.c_str(), Rs7Set_ResultName(r),
-                   i >= 0 ? ", now " : "", i >= 0 ? Rs7Set_Format(i, Rs7Set_State(i).value).c_str() : "");
+            RsxrLog("overlay: cmd set %s %s -> %s%s%s", c.key.c_str(), c.value.c_str(), RsxrSet_ResultName(r),
+                    i >= 0 ? ", now " : "", i >= 0 ? RsxrSet_Format(i, RsxrSet_State(i).value).c_str() : "");
             break;
         }
-        case Rs7CmdKind::Save: {
-            const int n = Rs7Set_Save(g_ini);
+        case RsxrCmdKind::Save: {
+            const int n = RsxrSet_Save(g_ini);
 
             if (n < 0) {
-                Rs7Log("overlay: cmd save -> write error, %ls not fully saved", g_ini);
+                RsxrLog("overlay: cmd save -> write error, %ls not fully saved", g_ini);
             } else {
-                Rs7Log("overlay: cmd save -> %d keys written to %ls", n, g_ini);
+                RsxrLog("overlay: cmd save -> %d keys written to %ls", n, g_ini);
             }
             break;
         }
-        case Rs7CmdKind::Status:
-            Rs7Log("overlay: cmd status -> visible=%d frames=%lu faults=%lu imgui=%d dirty=%d window=%p",
-                   int(g_visible), Rs7Present_Frames(), Rs7Present_Faults(), int(g_imgui), Rs7Set_DirtyCount(),
-                   static_cast<void*>(g_hwnd));
+        case RsxrCmdKind::Status:
+            RsxrLog("overlay: cmd status -> visible=%d frames=%lu faults=%lu imgui=%d dirty=%d window=%p",
+                    int(g_visible), RsxrPresent_Frames(), RsxrPresent_Faults(), int(g_imgui), RsxrSet_DirtyCount(),
+                    static_cast<void*>(g_hwnd));
             break;
     }
 }
@@ -319,13 +320,13 @@ void Draw(IDirect3DDevice9* dev) {
     ImGui::NewFrame();
     bool open = true;
 
-    Rs7OverlayUi_Draw(g_ui, &open);
+    RsxrOverlayUi_Draw(g_ui, &open);
     if (!open) {
         SetVisible(false, "close button");
     }
     ImGui::EndFrame();
     ImGui::Render();
-    Rs7Overlay_SetCapture(g_visible && io.WantCaptureMouse, g_visible && io.WantCaptureKeyboard);
+    RsxrOverlay_SetCapture(g_visible && io.WantCaptureMouse, g_visible && io.WantCaptureKeyboard);
 
     IDirect3DSurface9* back = nullptr;
     IDirect3DSurface9* rt = nullptr;
@@ -379,12 +380,12 @@ void Draw(IDirect3DDevice9* dev) {
 }
 
 void OnPresent(IDirect3DDevice9* dev) {
-    Rs7Variant_OnFrame();  // [test] force_colourblind: after the frame's draws, before the next update (testdrive.h)
+    RsxrVariant_OnFrame();  // [test] force_colourblind: after the frame's draws, before the next update (testdrive.h)
 
     if (!g_renderTid) {
         g_renderTid = GetCurrentThreadId();
-        Rs7Log("overlay: first Present on thread %lu (hotkey %s = VK %02X)", g_renderTid, Rs7Set_Text("overlay.hotkey"),
-               unsigned(g_hotkey));
+        RsxrLog("overlay: first Present on thread %lu (hotkey %s = VK %02X)", g_renderTid,
+                RsxrSet_Text("overlay.hotkey"), unsigned(g_hotkey));
     }
 
     if (!g_wndTried) {
@@ -395,9 +396,9 @@ void OnPresent(IDirect3DDevice9* dev) {
         SetVisible(!g_visible, "hotkey");
     }
 
-    Rs7Cmd c;
+    RsxrCmd c;
 
-    while (Rs7Cmd_Pop(&c)) {
+    while (RsxrCmd_Pop(&c)) {
         RunCommand(c);
     }
 
@@ -421,37 +422,37 @@ void BeforeReset(IDirect3DDevice9*) {
 }
 
 void AfterReset(IDirect3DDevice9*, HRESULT hr) {
-    Rs7Log("overlay: device Reset -> %08lX (ImGui objects are recreated at the next frame)", hr);
+    RsxrLog("overlay: device Reset -> %08lX (ImGui objects are recreated at the next frame)", hr);
 }
 }  // namespace
 
-void Rs7Overlay_Configure(const wchar_t* iniPath) {
+void RsxrOverlay_Configure(const wchar_t* iniPath) {
     wcsncpy_s(g_ini, iniPath, _TRUNCATE);
-    g_enabled = Rs7Set_Bool("overlay.enabled");
-    const int vk = Rs7_ParseHotkey(Rs7Set_Text("overlay.hotkey"));
+    g_enabled = RsxrSet_Bool("overlay.enabled");
+    const int vk = Rsxr_ParseHotkey(RsxrSet_Text("overlay.hotkey"));
 
     g_hotkey = vk ? vk : VK_F9;
-    if (Rs7Set_Bool("overlay.open")) {
+    if (RsxrSet_Bool("overlay.open")) {
         InterlockedExchange(&g_visible, 1);
     }
-    Rs7Log("config: [overlay] enabled=%d hotkey=%s%s open=%d scale=%.2f -> %s", int(g_enabled),
-           Rs7Set_Text("overlay.hotkey"), vk ? "" : " (INVALID, F9 used)", int(Rs7Set_Bool("overlay.open")),
-           double(Rs7Set_Float("overlay.scale")),
-           g_enabled ? "in-game overlay (Present/Reset hooks once the device is found)" : "off (no hooks)");
+    RsxrLog("config: [overlay] enabled=%d hotkey=%s%s open=%d scale=%.2f -> %s", int(g_enabled),
+            RsxrSet_Text("overlay.hotkey"), vk ? "" : " (INVALID, F9 used)", int(RsxrSet_Bool("overlay.open")),
+            double(RsxrSet_Float("overlay.scale")),
+            g_enabled ? "in-game overlay (Present/Reset hooks once the device is found)" : "off (no hooks)");
 }
 
-bool Rs7Overlay_Enabled() {
+bool RsxrOverlay_Enabled() {
     return g_enabled;
 }
 
-void Rs7Overlay_OnDevice(void* device) {
-    Rs7PresentCallbacks cb{};
+void RsxrOverlay_OnDevice(void* device) {
+    RsxrPresentCallbacks cb{};
 
     cb.onPresent = OnPresent;
     cb.beforeReset = BeforeReset;
     cb.afterReset = AfterReset;
     cb.onFault = OnFault;
-    if (!Rs7Present_InstallOn(device, cb)) {
-        Rs7Log("overlay: not installed");
+    if (!RsxrPresent_InstallOn(device, cb)) {
+        RsxrLog("overlay: not installed");
     }
 }

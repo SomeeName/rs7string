@@ -7,27 +7,7 @@
 #include "model/tuning.h"
 #include <cstring>
 
-namespace rs7ns {
-
-// Same decoding as rs7chord::FromTemplateBytes (features/chords/chords.cpp); kept here so nslot does not depend on
-// the chords feature. Change both together.
-bool DecodeName31(const uint8_t* tpl, Col* out) {
-    const uint8_t* name = tpl + kTplName;
-    if (!std::memchr(name, 0, 31)) {
-        return false;  // a 31-character name: name[31] is text
-    }
-
-    const uint8_t b = name[31];
-    const int fret = (b & 0x1F) - 1, finger = (b >> 5) - 1;
-    if (fret < 0) {
-        return false;
-    }
-
-    out->fret = fret;
-    out->finger = finger;
-
-    return true;
-}
+namespace rsxrns {
 
 void BuildT8(const uint8_t* tpl, const Col ext[2], const int16_t* tuning, int n, uint8_t capo, uint8_t* out) {
     std::memset(out, 0, kT8Size);
@@ -58,7 +38,7 @@ void BuildT8(const uint8_t* tpl, const Col ext[2], const int16_t* tuning, int n,
 
         // MIDI from the authored fret (stock template midi[] keeps it too); the fret then follows
         // PostProcessNotes 0x55B4A2, which turns a fret equal to the capo into 0 (frets only).
-        midi[s] = rs7::kGuitarOpenMidi[s] + (tuning ? tuning[s] : 0) + f;
+        midi[s] = rsxr::kGuitarOpenMidi[s] + (tuning ? tuning[s] : 0) + f;
         if (static_cast<uint8_t>(f) == capo) {
             f = 0;
         }
@@ -205,4 +185,4 @@ void WriteEvalTails(uint8_t* ev, const uint8_t* t8, const uint8_t* c8) {
     }
 }
 
-}  // namespace rs7ns
+}  // namespace rsxrns

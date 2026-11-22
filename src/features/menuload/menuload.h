@@ -2,6 +2,6 @@
 #include "platform/hooktable.h"
 #include "platform/settings.h"
 
-extern const Rs7HookTable kRs7MenuLoadHooks;
-extern const Rs7SetTable kRs7MenuLoadSettings;
-extern uintptr_t g_rs7_menu_retry;
+extern const RsxrHookTable kRsxrMenuLoadHooks;
+extern const RsxrSetTable kRsxrMenuLoadSettings;
+extern uintptr_t g_rsxr_menu_retry;

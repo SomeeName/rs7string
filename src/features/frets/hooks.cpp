@@ -23,27 +23,27 @@
 // lock is held. Logging sits in noinline helpers reached only on 7-string events or once per song.
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_setscale = 0;
-__declspec(dllexport) uintptr_t g_rs7_frets_on = 1;
-__declspec(dllexport) float g_rs7_fret_halflen = rs7frets::kDefaultHalfLen;
+__declspec(dllexport) uintptr_t g_rsxr_fn_setscale = 0;
+__declspec(dllexport) uintptr_t g_rsxr_frets_on = 1;
+__declspec(dllexport) float g_rsxr_fret_halflen = rsxrfrets::kDefaultHalfLen;
 }
 
-namespace rs7fretglue {
+namespace rsxrfretglue {
 State g_state;
 
-using namespace rs7frets;
+using namespace rsxrfrets;
 
 uint8_t* Bar(uint8_t* grid, int f) {
     return grid + kBars + uint32_t(f) * kBarStride;
 }
 
 int BarCount(uint8_t* guitar) {
-    const uint8_t* info = rs7::GuitarInfo(guitar);
+    const uint8_t* info = rsxr::GuitarInfo(guitar);
     if (!info) {
         return 0;
     }
 
-    const int n = info[rs7::kInfoFretBars];
+    const int n = info[rsxr::kInfoFretBars];
 
     return n > kMaxBars ? kMaxBars : n;
 }
@@ -73,35 +73,35 @@ bool Attach(uint8_t* guitar, const float** a0, const float** a1, const float** w
 // bass built with 5 / 6 strings (the low B), else 0. A 6-string bass's high C lies beyond the G at the other end
 // (FarLanes).
 int ExtraLanes(const uint8_t* guitar) {
-    const uint8_t* info = rs7::GuitarInfo(guitar);
+    const uint8_t* info = rsxr::GuitarInfo(guitar);
 
     if (!info) {
         return 0;
     }
 
-    const unsigned count = info[rs7::kInfoStrings];
-    if (rs7::IsBassKind(info[rs7::kInfoKind])) {
-        return rs7::IsExtendedBass(count) ? 1 : 0;
+    const unsigned count = info[rsxr::kInfoStrings];
+    if (rsxr::IsBassKind(info[rsxr::kInfoKind])) {
+        return rsxr::IsExtendedBass(count) ? 1 : 0;
     }
 
-    return rs7::IsExtendedGuitar(count) ? int(count) - 6 : 0;
+    return rsxr::IsExtendedGuitar(count) ? int(count) - 6 : 0;
 }
 
 // A bass's stock far string is the G (3), a guitar's string 5; a 6-string bass has its high C one lane beyond it.
 int StockFar(const uint8_t* guitar) {
-    const uint8_t* info = rs7::GuitarInfo(guitar);
+    const uint8_t* info = rsxr::GuitarInfo(guitar);
 
-    return info && rs7::IsBassKind(info[rs7::kInfoKind]) ? 3 : 5;
+    return info && rsxr::IsBassKind(info[rsxr::kInfoKind]) ? 3 : 5;
 }
 
 int FarLanes(const uint8_t* guitar) {
-    const uint8_t* info = rs7::GuitarInfo(guitar);
+    const uint8_t* info = rsxr::GuitarInfo(guitar);
 
-    return info && rs7::IsBassKind(info[rs7::kInfoKind]) && info[rs7::kInfoStrings] == 6 ? 1 : 0;
+    return info && rsxr::IsBassKind(info[rsxr::kInfoKind]) && info[rsxr::kInfoStrings] == 6 ? 1 : 0;
 }
 
 int FloorOffset(uint8_t* guitar, uint8_t* grid, float out[3]) {
-    if (!g_rs7_frets_on || !guitar) {
+    if (!g_rsxr_frets_on || !guitar) {
         return 0;
     }
 
@@ -119,13 +119,13 @@ int FloorOffset(uint8_t* guitar, uint8_t* grid, float out[3]) {
         uint8_t* bar0 = Bar(grid, 0);
         uint8_t live = 0;
         float p0[3], p1[3], floor[3];
-        if (!Rs7_SafeCopyZero(&live, bar0, sizeof live) || !live || !Rs7_SafeCopyZero(p0, a0, sizeof p0) ||
-            !Rs7_SafeCopyZero(p1, a1, sizeof p1) || !Rs7_SafeCopyZero(floor, bar0 + kBarBLocal, sizeof floor)) {
+        if (!Rsxr_SafeCopyZero(&live, bar0, sizeof live) || !live || !Rsxr_SafeCopyZero(p0, a0, sizeof p0) ||
+            !Rsxr_SafeCopyZero(p1, a1, sizeof p1) || !Rsxr_SafeCopyZero(floor, bar0 + kBarBLocal, sizeof floor)) {
             return -1;
         }
 
         return FloorMove(p0, p1, floor, lanes, StockFar(guitar), FarLanes(guitar), out);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return -1;
     }
 }
@@ -137,25 +137,25 @@ void GameSetScale(uint8_t* entity, float k) {  // Entity_SetScale 0x7AE2C0: EAX 
         push edi
         push k
         mov eax, entity
-        call dword ptr [g_rs7_fn_setscale]
+        call dword ptr [g_rsxr_fn_setscale]
         add esp, 4
         pop edi
         pop esi
         pop ebx                    // ebx / esi / edi are kept across the game's setter
     }
 }
-}  // namespace rs7fretglue
+}  // namespace rsxrfretglue
 
 namespace {
-using namespace rs7frets;
-using namespace rs7fretglue;
+using namespace rsxrfrets;
+using namespace rsxrfretglue;
 
 void Lock() {
-    Rs7Spin_Lock(&g_state.spin);
+    RsxrSpin_Lock(&g_state.spin);
 }
 
 void Unlock() {
-    Rs7Spin_Unlock(&g_state.spin);
+    RsxrSpin_Unlock(&g_state.spin);
 }
 
 GuitarState* FindGuitar(const void* guitar) {  // caller holds the lock
@@ -178,7 +178,7 @@ bool WantsSeven(const uint8_t* guitar) {
 void GameSetPos(uint8_t* entity, const float* v) {  // Entity_SetTranslation 0x7ADF70 cdecl(entity, &vec3)
     using Fn = void(__cdecl*)(uint8_t*, const float*);
 
-    reinterpret_cast<Fn>(g_rs7_fn_setpos)(entity, v);
+    reinterpret_cast<Fn>(g_rsxr_fn_setpos)(entity, v);
 }
 
 void Midpoint(uint8_t* bar, float out[3]) {  // the stock translation of 0x58FB20 (0x58FBE0..0x58FC3F)
@@ -227,7 +227,7 @@ int PlaceBars(uint8_t* grid, int bars, const float shift[3], float scale, float*
 // Re-place and scale every bar of `guitar` (F1 right after the stock body, F2 on a change). Returns
 // the number of bars set; 0 = nothing to do yet (no bars / strings loaded).
 int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
-    if (!g_rs7_fn_setpos || !g_rs7_fn_setscale || !grid) {
+    if (!g_rsxr_fn_setpos || !g_rsxr_fn_setscale || !grid) {
         return 0;
     }
 
@@ -235,7 +235,7 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
     Extend x;
 
     if (!Attach(guitar, &a0, &a1, nullptr, nullptr)) {
-        if (Rs7Log_Once(&g_state.logFail)) {
+        if (RsxrLog_Once(&g_state.logFail)) {
             LogFail("guitar strings not loaded (no attach points)", guitar);
         }
         return 0;
@@ -252,16 +252,16 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
     // [neck] spacing_*: the strings were scaled by k about the string-axis origin (features/spacing); the stock bar
     // mesh was not. Scale its midpoint and half length the same way first, so its margin beyond the outer strings
     // stays the stock one, and fold k into the result.
-    const float k = Rs7Spacing_Factor(rs7::GuitarInfo(guitar));
-    const float halfLen = g_rs7_fret_halflen * k;
+    const float k = RsxrSpacing_Factor(rsxr::GuitarInfo(guitar));
+    const float halfLen = g_rsxr_fret_halflen * k;
     float shift0[3] = {};
 
     if (k != 1.0f) {
-        rs7frets::ScaleBarMid(a0, a1, k, m0, shift0);
+        rsxrfrets::ScaleBarMid(a0, a1, k, m0, shift0);
     }
 
     if (!Compute(a0, a1, m0, halfLen, ExtraLanes(guitar), &x, StockFar(guitar), FarLanes(guitar))) {
-        if (Rs7Log_Once(&g_state.logFail)) {
+        if (RsxrLog_Once(&g_state.logFail)) {
             LogFail("degenerate string spacing", guitar);
         }
         return 0;
@@ -277,7 +277,7 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
     float mid0[3] = {}, new0[3] = {};
     const int set = PlaceBars(grid, bars, x.shift, x.scale, mid0, new0);
 
-    if (set && Rs7Log_Once(f1 ? &g_state.logF1 : &g_state.logApply)) {
+    if (set && RsxrLog_Once(f1 ? &g_state.logF1 : &g_state.logApply)) {
         LogApply(by, guitar, grid, bars, set, x, mid0, new0);
     }
 
@@ -285,7 +285,7 @@ int Apply(uint8_t* guitar, uint8_t* grid, const char* by, bool f1) {
 }
 
 int Restore(uint8_t* guitar, uint8_t* grid) {
-    if (!g_rs7_fn_setpos || !g_rs7_fn_setscale || !grid) {
+    if (!g_rsxr_fn_setpos || !g_rsxr_fn_setscale || !grid) {
         return 0;
     }
 
@@ -299,7 +299,7 @@ int Restore(uint8_t* guitar, uint8_t* grid) {
 int GuardedApply(uint8_t* guitar, uint8_t* grid, const char* by) {
     __try {
         return Apply(guitar, grid, by, false);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -307,7 +307,7 @@ int GuardedApply(uint8_t* guitar, uint8_t* grid, const char* by) {
 int GuardedRestore(uint8_t* guitar, uint8_t* grid) {
     __try {
         return Restore(guitar, grid);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
@@ -339,7 +339,7 @@ int ShiftFloor(uint8_t* guitar, uint8_t* grid) {
         }
     }
 
-    if (Rs7Log_Once(&g_state.logFloor)) {
+    if (RsxrLog_Once(&g_state.logFloor)) {
         LogFloor(guitar, first, shift, n);
     }
 
@@ -351,7 +351,7 @@ void RecoverFloor(uint8_t* guitar, uint8_t* grid) {
 
     __try {
         moved = ShiftFloor(guitar, grid);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 
     Lock();
@@ -362,15 +362,15 @@ void RecoverFloor(uint8_t* guitar, uint8_t* grid) {
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
-    if (!g_rs7_frets_on || !inlays || !WantsSeven(guitar) || !g_rs7_fn_setpos) {
+extern "C" void __cdecl Rsxr_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
+    if (!g_rsxr_frets_on || !inlays || !WantsSeven(guitar) || !g_rsxr_fn_setpos) {
         return;
     }
 
     uint8_t* entity = UncheckedField<uint8_t*>(inlays, 4);
-    uint8_t* head = UncheckedField<uint8_t*>(guitar, rs7::kGuitarHead);
+    uint8_t* head = UncheckedField<uint8_t*>(guitar, rsxr::kGuitarHead);
     uint8_t* frame = head ? UncheckedField<uint8_t*>(head, 4) : nullptr;
-    uint8_t* froot = frame ? rs7s7d::EntityRoot(frame) : nullptr;
+    uint8_t* froot = frame ? rsxrs7d::EntityRoot(frame) : nullptr;
     const float *a0, *a1;
     if (!entity || !froot || !Attach(guitar, &a0, &a1, nullptr, nullptr)) {
         return;
@@ -379,7 +379,7 @@ extern "C" void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
     float p[3];
     // The frame's placement, which 0x59BA80 gives the inlay entity (its root's world translation: (1,1,1) in a song,
     // (0,0,-1000) in the tuner, the frame root has no parent transform).
-    if (!Rs7_SafeCopyZero(p, froot + 0xA4, sizeof p)) {
+    if (!Rsxr_SafeCopyZero(p, froot + 0xA4, sizeof p)) {
         return;
     }
 
@@ -393,7 +393,7 @@ extern "C" void __cdecl Rs7_InlaysAfter(uint8_t* guitar, uint8_t* inlays) {
     }
 
     GameSetPos(entity, p);
-    if (Rs7Log_Once(&g_state.logInlay)) {
+    if (RsxrLog_Once(&g_state.logInlay)) {
         LogInlay(guitar, p, k * (a0[2] - a1[2]), net);
     }
 }
@@ -406,13 +406,13 @@ int GuardedF1(uint8_t* guitar, uint8_t* grid) {
 
         RecoverFloor(guitar, grid);
         return set;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 }  // namespace
 
-extern "C" void __cdecl Rs7_FretsAfterApply(uint8_t* grid) {
+extern "C" void __cdecl Rsxr_FretsAfterApply(uint8_t* grid) {
     if (!grid) {
         return;
     }
@@ -426,12 +426,12 @@ extern "C" void __cdecl Rs7_FretsAfterApply(uint8_t* grid) {
     Lock();
     GuitarState* reset = FindOrAdd(guitar);
 
-    if (g_rs7_frets_on) {
+    if (g_rsxr_frets_on) {
         reset->applied = false;
     }
     reset->floorMoved = -1;
     Unlock();
-    if (!g_rs7_frets_on) {
+    if (!g_rsxr_frets_on) {
         return;
     }
 
@@ -444,21 +444,21 @@ extern "C" void __cdecl Rs7_FretsAfterApply(uint8_t* grid) {
     GuitarState* s = FindOrAdd(guitar);
 
     s->applied = true;
-    s->halfLen = g_rs7_fret_halflen;
+    s->halfLen = g_rsxr_fret_halflen;
     if (!s->verify) {
         s->verify = kVerifyFrames;
     }
     Unlock();
 }
 
-void Rs7Frets_Frame(uint8_t* guitar, bool want) {
+void RsxrFrets_Frame(uint8_t* guitar, bool want) {
     if (!guitar) {
         return;
     }
 
     // fret_extend is live (overlay): switched off, an applied guitar is restored below and nothing
     // else is touched; a guitar without a GuitarState returns here as before.
-    const bool on = g_rs7_frets_on != 0;
+    const bool on = g_rsxr_frets_on != 0;
 
     want = want && on;
     uint8_t* grid = UncheckedField<uint8_t*>(guitar, kGuitarGrid);
@@ -481,7 +481,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
     }
 
     // fret_halflen changed while applied (overlay): apply again (Apply starts from the stock midpoints).
-    const bool reapply = s->applied && want && s->halfLen != g_rs7_fret_halflen;
+    const bool reapply = s->applied && want && s->halfLen != g_rsxr_fret_halflen;
     const bool applied = s->applied && !reapply;
     const bool recoverFloor = want && s->floorMoved < 0;
 
@@ -498,7 +498,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
             GuardedApply(guitar, grid, reapply ? "F2 (fret_halflen changed)" : "F2 (N5: guitar built with 7 strings)");
 
         if (reapply) {
-            Rs7Log("frets: %d bars re-applied with fret_halflen=%.3f (overlay)", set, double(g_rs7_fret_halflen));
+            RsxrLog("frets: %d bars re-applied with fret_halflen=%.3f (overlay)", set, double(g_rsxr_fret_halflen));
         }
 
         if (set) {
@@ -506,7 +506,7 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
 
             if (GuitarState* f = FindGuitar(guitar)) {
                 f->applied = true;
-                f->halfLen = g_rs7_fret_halflen;
+                f->halfLen = g_rsxr_fret_halflen;
                 f->verify = kVerifyFrames;
             }
 
@@ -530,12 +530,12 @@ void Rs7Frets_Frame(uint8_t* guitar, bool want) {
         RecoverFloor(guitar, grid);
     }
 
-    if (verify && Rs7Log_Once(&g_state.logVerify)) {
+    if (verify && RsxrLog_Once(&g_state.logVerify)) {
         LogReadBack("read-back (7-string)", guitar, grid);
     }
 }
 
-void Rs7Frets_Forget(const uint8_t* guitar) {
+void RsxrFrets_Forget(const uint8_t* guitar) {
     if (!guitar) {
         return;
     }
@@ -545,8 +545,8 @@ void Rs7Frets_Forget(const uint8_t* guitar) {
     Unlock();
 }
 
-void Rs7Frets_Stats(Rs7FretsStats* out) {
-    Rs7FretsStats st{};
+void RsxrFrets_Stats(RsxrFretsStats* out) {
+    RsxrFretsStats st{};
 
     Lock();
 
@@ -566,7 +566,7 @@ void Rs7Frets_Stats(Rs7FretsStats* out) {
 }
 
 namespace {
-bool ChordFrameRaw(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
+bool ChordFrameRaw(const uint8_t* guitar, int top, rsxrfrets::FrameFit* out) {
     uint8_t* g = const_cast<uint8_t*>(guitar);
     const float *a0, *a1;
     uint8_t* grid = UncheckedField<uint8_t*>(g, kGuitarGrid);
@@ -575,8 +575,8 @@ bool ChordFrameRaw(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
     }
 
     const float* b = reinterpret_cast<const float*>(Bar(grid, 0) + kBarBLocal);
-    const int moved = rs7fretglue::FloorMoved(guitar);
-    const bool ok = rs7frets::ChordFrame(a0, a1, b, moved, top, out, StockFar(g), FarLanes(g));
+    const int moved = rsxrfretglue::FloorMoved(guitar);
+    const bool ok = rsxrfrets::ChordFrame(a0, a1, b, moved, top, out, StockFar(g), FarLanes(g));
 
     for (int i = 0; i < 3; ++i) {
         out->bLocal[i] = b[i];
@@ -588,7 +588,7 @@ bool ChordFrameRaw(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
 }
 }  // namespace
 
-int rs7fretglue::FloorMoved(const uint8_t* guitar) {
+int rsxrfretglue::FloorMoved(const uint8_t* guitar) {
     Lock();
     const GuitarState* s = FindGuitar(guitar);
     const int moved = s && s->floorMoved > 0 ? s->floorMoved : 0;
@@ -598,21 +598,21 @@ int rs7fretglue::FloorMoved(const uint8_t* guitar) {
     return moved;
 }
 
-bool Rs7Frets_ChordFrame(const uint8_t* guitar, int top, rs7frets::FrameFit* out) {
+bool RsxrFrets_ChordFrame(const uint8_t* guitar, int top, rsxrfrets::FrameFit* out) {
     if (!guitar) {
         return false;
     }
 
     __try {
         return ChordFrameRaw(guitar, top, out);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
 
 // Per song: the logs, and the glow bars FRG2 has not scaled yet (hooks_glow.cpp).
-void Rs7Frets_ResetLog() {
-    rs7fretglue::ResetGlow();
+void RsxrFrets_ResetLog() {
+    rsxrfretglue::ResetGlow();
     _InterlockedExchange(&g_state.logApply, 0);
     _InterlockedExchange(&g_state.logF1, 0);
     _InterlockedExchange(&g_state.logVerify, 0);

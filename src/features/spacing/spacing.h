@@ -8,13 +8,13 @@
 //
 // Every string position comes from Rnd_GetStringAttachPoint 0x594530 (string meshes, FretGrid cells and fret spans;
 // CONFIRMED callers 0x594DC8 / 0x594F36 / 0x59A5E9). Its entry hook PUBGA (features/publish) answers with
-// Rs7Gs_AttachSpaced (features/strings): the stock point scaled about the centre of the stock rows, so the fret bars,
+// RsxrGs_AttachSpaced (features/strings): the stock point scaled about the centre of the stock rows, so the fret bars,
 // floor and chord frames, which derive from the attach points, follow. Read when the instrument is built.
 
-struct Rs7SetTable;
-struct Rs7UiTable;
+struct RsxrSetTable;
+struct RsxrUiTable;
 
-namespace rs7spacing {
+namespace rsxrspacing {
 constexpr float kMin = 0.1f;  // the smallest spacing other than 0 (stock)
 constexpr float kMax = 4.0f;
 
@@ -43,20 +43,20 @@ inline void Scale(const float c[3], float k, float p[3]) {
 // An ini value (the settings rows' range 0 .. kMax): empty or below kMin = stock (0). False for text that is not such a
 // number (*out = 0, stock).
 bool Parse(const wchar_t* text, float* out);
-}  // namespace rs7spacing
+}  // namespace rsxrspacing
 
 extern "C" {
 // bass5, bass6, guitar7, guitar8 (settings.cpp; read on the instrument build).
-__declspec(dllexport) extern float g_rs7_spacing[4];
+__declspec(dllexport) extern float g_rsxr_spacing[4];
 }
 
 // The factor (new / stock spacing) an InstrumentInfo's attach points were scaled by (spacing.cpp): recorded at the
-// build by Rs7Gs_AttachSpaced, read every frame by the headstock (features/headstock Rs7Head_Width), which narrows the
-// frame by it so its string segments meet the neck strings at the nut. 1 = stock.
-void Rs7Spacing_Record(const uint8_t* info, float k);
-float Rs7Spacing_Factor(const uint8_t* info);
+// build by RsxrGs_AttachSpaced, read every frame by the headstock (features/headstock RsxrHead_Width), which narrows
+// the frame by it so its string segments meet the neck strings at the nut. 1 = stock.
+void RsxrSpacing_Record(const uint8_t* info, float k);
+float RsxrSpacing_Factor(const uint8_t* info);
 // Back to 1 for a recorded info (a stock build); writes nothing when there is no such entry (the stock attach path).
-void Rs7Spacing_Forget(const uint8_t* info);
+void RsxrSpacing_Forget(const uint8_t* info);
 
-extern const Rs7SetTable kRs7SpacingSettings;
-extern const Rs7UiTable kRs7SpacingUi;
+extern const RsxrSetTable kRsxrSpacingSettings;
+extern const RsxrUiTable kRsxrSpacingUi;

@@ -13,13 +13,13 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-using Rs7Mid::Dword;
+using RsxrMid::Dword;
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_resume_BD1 = 0, g_rs7_target_BD1 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_BD2 = 0, g_rs7_target_BD2 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_BD3 = 0, g_rs7_target_BD3 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_BD4 = 0, g_rs7_target_BD4 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_BD1 = 0, g_rsxr_target_BD1 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_BD2 = 0, g_rsxr_target_BD2 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_BD3 = 0, g_rsxr_target_BD3 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_BD4 = 0, g_rsxr_target_BD4 = 0;
 }
 
 namespace {
@@ -38,18 +38,18 @@ uint32_t Mode0(uint32_t info) {
 
 // 0x79FE9B, CL = string, EAX = info. Body `movzx edx,cl; cmp dword [eax+edx*4+20h],0; jne target`; mode 0
 // continues at resume + 0Ah (after the body's jne).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_BD1(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_BD1(RsxrMid::Context& c) {
     const uint32_t s = uint8_t(c.ecx);
     if (!Added(s)) {
         return;
     }
 
     c.edx = s;
-    c.jump = Mode0(c.eax) == 0 ? uint32_t(g_rs7_resume_BD1) + 0x0A : uint32_t(g_rs7_target_BD1);
+    c.jump = Mode0(c.eax) == 0 ? uint32_t(g_rsxr_resume_BD1) + 0x0A : uint32_t(g_rsxr_target_BD1);
 }
 
 // 0x7A663B, CL = string, EAX = info. Body `movzx edx,cl; mov ecx,[eax+edx*4+20h]; jmp`, joins at resume + 0Eh.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_BD2(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_BD2(RsxrMid::Context& c) {
     const uint32_t s = uint8_t(c.ecx);
     if (!Added(s)) {
         return;
@@ -57,35 +57,35 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_BD2(Rs7Mid::Context& c) {
 
     c.edx = s;
     c.ecx = Mode0(c.eax);
-    c.jump = uint32_t(g_rs7_resume_BD2) + 0x0E;
+    c.jump = uint32_t(g_rsxr_resume_BD2) + 0x0E;
 }
 
 // 0x7A6D80, BL = string, EDI = session. Body `mov ecx,[edi+37Ch]; mov edx,[ecx+24h]; movzx eax,bl;
 // mov edi,[edx+eax*4+20h]; jmp`, joins at resume + 17h.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_BD3(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_BD3(RsxrMid::Context& c) {
     const uint32_t s = uint8_t(c.ebx);
     if (!Added(s)) {
         return;
     }
 
-    c.ecx = Dword(c.edi + rs7::kSessionGuitar);
-    c.edx = Dword(c.ecx + rs7::kGuitarInfo);
+    c.ecx = Dword(c.edi + rsxr::kSessionGuitar);
+    c.edx = Dword(c.ecx + rsxr::kGuitarInfo);
     c.eax = s;
     c.edi = Mode0(c.edx);
-    c.jump = uint32_t(g_rs7_resume_BD3) + 0x17;
+    c.jump = uint32_t(g_rsxr_resume_BD3) + 0x17;
 }
 
 // 0x7A764D, BL = string, EAX = guitar. Body `mov edx,[eax+24h]; movzx ecx,bl; mov eax,[edx+ecx*4+20h];
 // mov [ebp-18h],eax; jmp`, joins at resume + 20h.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_BD4(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_BD4(RsxrMid::Context& c) {
     const uint32_t s = uint8_t(c.ebx);
     if (!Added(s)) {
         return;
     }
 
-    c.edx = Dword(c.eax + rs7::kGuitarInfo);
+    c.edx = Dword(c.eax + rsxr::kGuitarInfo);
     c.ecx = s;
     c.eax = Mode0(c.edx);
     *reinterpret_cast<uint32_t*>(c.ebp - 0x18) = c.eax;
-    c.jump = uint32_t(g_rs7_resume_BD4) + 0x20;
+    c.jump = uint32_t(g_rsxr_resume_BD4) + 0x20;
 }

@@ -7,7 +7,7 @@
 #include <optional>
 #include <unordered_map>
 
-namespace rs7p {
+namespace rsxrp {
 struct State {
     // Cold writers hold tailedLock for keys, ages, clock and eviction logging; hot readers acquire only the keys.
     std::atomic<uintptr_t> tailed[kTailedMax]{};
@@ -18,18 +18,18 @@ struct State {
 
     // Game-thread tuning/reset callbacks own these tables; no lock.
     // Kept 7/8-entry song tuning counts, detector widths (cleared by PR0/next S4) and recorded reset floors.
-    rs7::ObjTable<const uint8_t*, size_t, rs7::kMaxGuitars> song;
-    rs7::ObjTable<const uint8_t*, unsigned, rs7::kMaxGuitars> songCount;
-    rs7::ObjTable<const uint8_t*, int, rs7::kMaxGuitars> floor;
+    rsxr::ObjTable<const uint8_t*, size_t, rsxr::kMaxGuitars> song;
+    rsxr::ObjTable<const uint8_t*, unsigned, rsxr::kMaxGuitars> songCount;
+    rsxr::ObjTable<const uint8_t*, int, rsxr::kMaxGuitars> floor;
 
     // Game-thread PBH and song setup own channel 0/2 bend holds and the first-40-notes log budget; no lock.
-    rs7bass::BendHold bendHold[2];
+    rsxrbass::BendHold bendHold[2];
     long bendLogged = 0;
 
     // storeLock guards the side store (exclusive writers, shared readers). Map() retains first-use construction.
     SRWLOCK storeLock = SRWLOCK_INIT;
-    std::optional<std::unordered_map<uintptr_t, Rs7Entry>> store;
+    std::optional<std::unordered_map<uintptr_t, RsxrEntry>> store;
 };
 
 extern State g_state;
-}  // namespace rs7p
+}  // namespace rsxrp

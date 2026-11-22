@@ -5,68 +5,68 @@
 // (ARCHITECTURE.md section 14). Converted from naked stubs (frozen at b72bc52, tools/tests/test_midhook_wrap_sites.py).
 #include "features/tuner/hooks.h"
 
-using Rs7Mid::Context;
-using Rs7Mid::Frame;
+using RsxrMid::Context;
+using RsxrMid::Frame;
 
 extern "C" {
 // TJ - entry of the manifest tuning-name resolver 0x56C950 (ECX = raw out, EDX = display out, [esp+4] = owned Tuning
-// JSON, [esp+8] = CentOffset; cdecl, void). Before: Rs7_TnJsonPre reads a 7-string Tuning (the original releases it);
-// after the original: Rs7_TnJsonPost assigns the outputs.
-__declspec(dllexport) void __cdecl Rs7_Mid_TJBefore(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+// JSON, [esp+8] = CentOffset; cdecl, void). Before: Rsxr_TnJsonPre reads a 7-string Tuning (the original releases it);
+// after the original: Rsxr_TnJsonPost assigns the outputs.
+__declspec(dllexport) void __cdecl Rsxr_Mid_TJBefore(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    if (g_rs7_tn_on) {
-        Rs7Mid::WrapFrame& f = Frame(c, kRs7WrapTJ);
+    if (g_rsxr_tn_on) {
+        RsxrMid::WrapFrame& f = Frame(c, kRsxrWrapTJ);
 
-        f.user = Rs7_TnJsonPre(Rs7Mid::Ptr<void>(c.ecx), Rs7Mid::Ptr<void>(c.edx), Rs7Mid::Ptr<void>(f.Arg(0)),
-                               int(f.Arg(1)));
+        f.user = Rsxr_TnJsonPre(RsxrMid::Ptr<void>(c.ecx), RsxrMid::Ptr<void>(c.edx), RsxrMid::Ptr<void>(f.Arg(0)),
+                                int(f.Arg(1)));
     }
 }
 
-__declspec(dllexport) void __cdecl Rs7_Mid_TJ(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+__declspec(dllexport) void __cdecl Rsxr_Mid_TJ(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    if (const uint32_t handle = Frame(c, kRs7WrapTJ).user) {
-        Rs7_TnJsonPost(handle);
+    if (const uint32_t handle = Frame(c, kRsxrWrapTJ).user) {
+        Rsxr_TnJsonPost(handle);
     }
 }
 
 // TU - entry of the arrangement-UUID resolver 0x56C300 (ECX = UUID*, EDX = output; EAX = output; no stack arguments).
-// The original runs between Rs7_TnUuidPre and Rs7_TnUuidPost; TUT tells the open call which Tuning it found.
-__declspec(dllexport) void __cdecl Rs7_Mid_TUBefore(Context& c) {
-    if (g_rs7_tn_on) {
-        Frame(c, kRs7WrapTU).user = Rs7_TnUuidPre(Rs7Mid::Ptr<void>(c.edx));
+// The original runs between Rsxr_TnUuidPre and Rsxr_TnUuidPost; TUT tells the open call which Tuning it found.
+__declspec(dllexport) void __cdecl Rsxr_Mid_TUBefore(Context& c) {
+    if (g_rsxr_tn_on) {
+        Frame(c, kRsxrWrapTU).user = Rsxr_TnUuidPre(RsxrMid::Ptr<void>(c.edx));
     }
 }
 
-__declspec(dllexport) void __cdecl Rs7_Mid_TU(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+__declspec(dllexport) void __cdecl Rsxr_Mid_TU(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    if (const uint32_t handle = Frame(c, kRs7WrapTU).user) {
-        Rs7_TnUuidPost(handle);
+    if (const uint32_t handle = Frame(c, kRsxrWrapTU).user) {
+        Rsxr_TnUuidPost(handle);
     }
 }
 
 // TN - entry of the tuner's array resolver 0x5B7750 (cdecl: [esp+4] = output string, [esp+8] = int[6]; EAX = output).
-// Rs7_TnArrayPre constructs a known 7-string name itself (the original is skipped, EAX = the output); an unknown
-// 7-string tuning runs the original and Rs7_TnArrayPost marks its result.
-__declspec(dllexport) void __cdecl Rs7_Mid_TNBefore(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+// Rsxr_TnArrayPre constructs a known 7-string name itself (the original is skipped, EAX = the output); an unknown
+// 7-string tuning runs the original and Rsxr_TnArrayPost marks its result.
+__declspec(dllexport) void __cdecl Rsxr_Mid_TNBefore(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    Rs7Mid::WrapFrame& f = Frame(c, kRs7WrapTN);
+    RsxrMid::WrapFrame& f = Frame(c, kRsxrWrapTN);
 
-    if (g_rs7_tn_on && Rs7_TnArrayPre(Rs7Mid::Ptr<void>(f.Arg(0)), Rs7Mid::Ptr<const int>(f.Arg(1)), &f.user)) {
-        Rs7Mid::WrapReturn(c, kRs7WrapTN, f.Arg(0));
+    if (g_rsxr_tn_on && Rsxr_TnArrayPre(RsxrMid::Ptr<void>(f.Arg(0)), RsxrMid::Ptr<const int>(f.Arg(1)), &f.user)) {
+        RsxrMid::WrapReturn(c, kRsxrWrapTN, f.Arg(0));
     }
 }
 
-__declspec(dllexport) void __cdecl Rs7_Mid_TN(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+__declspec(dllexport) void __cdecl Rsxr_Mid_TN(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    Rs7Mid::WrapFrame& f = Frame(c, kRs7WrapTN);
+    RsxrMid::WrapFrame& f = Frame(c, kRsxrWrapTN);
 
     if (f.user) {
-        Rs7_TnArrayPost(Rs7Mid::Ptr<void>(f.Arg(0)), f.user);
+        Rsxr_TnArrayPost(RsxrMid::Ptr<void>(f.Arg(0)), f.user);
     }
 }
 }

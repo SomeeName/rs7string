@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace rs7fuzz {
+namespace rsxrfuzz {
 namespace {
 template <size_t N>
 std::vector<uint8_t> Lit(const char (&s)[N]) {  // a literal's bytes, embedded NULs included
@@ -39,9 +39,9 @@ int Pattern(const uint8_t* d, size_t n) {
 
     const std::vector<std::string> f = Fields(d + 2, n - 2, 2);
     const size_t skip = f[0].size() + 1;
-    Rs7Pattern p;
+    RsxrPattern p;
 
-    if (!Rs7_ParsePattern(f[0].c_str(), p) || skip >= n - 2) {
+    if (!Rsxr_ParsePattern(f[0].c_str(), p) || skip >= n - 2) {
         return 0;
     }
 
@@ -49,10 +49,10 @@ int Pattern(const uint8_t* d, size_t n) {
     const size_t size = n - 2 - skip;
     size_t hist[256];
 
-    Rs7_ByteHistogram(hay, size, hist);
+    Rsxr_ByteHistogram(hay, size, hist);
 
-    const std::vector<size_t> a = Rs7_FindAll(hay, size, p, d[1], d[0] & 1 ? hist : nullptr);
-    const std::vector<size_t> b = Rs7_FindAll(hay, size, p, d[1]);
+    const std::vector<size_t> a = Rsxr_FindAll(hay, size, p, d[1], d[0] & 1 ? hist : nullptr);
+    const std::vector<size_t> b = Rsxr_FindAll(hay, size, p, d[1]);
 
     if (a != b) {
         std::abort();  // the histogram only changes the speed
@@ -84,10 +84,10 @@ int TuningName(const uint8_t* d, size_t n) {
             t[i] = int8_t(d[1 + i]);
         }
 
-        rs7tn::Name7(t);
-        rs7tn::Name8(t);
-        rs7tn::ReferenceA(int8_t(d[n - 1]) * 8);
-        rs7tn::Decoration(int8_t(d[n - 1]) * 8);
+        rsxrtn::Name7(t);
+        rsxrtn::Name8(t);
+        rsxrtn::ReferenceA(int8_t(d[n - 1]) * 8);
+        rsxrtn::Decoration(int8_t(d[n - 1]) * 8);
 
         return 0;
     }
@@ -97,10 +97,10 @@ int TuningName(const uint8_t* d, size_t n) {
     f.resize(3);
 
     if (d[0] % 3 == 1) {
-        rs7tn::Compose(f[0].c_str(), f[1].c_str(), f[2].c_str());
-        rs7tn::Display(f[0]);
+        rsxrtn::Compose(f[0].c_str(), f[1].c_str(), f[2].c_str());
+        rsxrtn::Display(f[0]);
     } else {
-        rs7tn::MarkStock(f[0], f[1].c_str(), f[2].c_str());
+        rsxrtn::MarkStock(f[0], f[1].c_str(), f[2].c_str());
     }
 
     return 0;
@@ -120,7 +120,7 @@ int Redact(const uint8_t* d, size_t n) {
 
     f.resize(4);
 
-    Rs7LogRedactor r;
+    RsxrLogRedactor r;
     std::vector<std::string>* dst[3] = {&r.profiles, &r.users, &r.computers};
 
     for (int k = 0; k < 3; ++k) {
@@ -135,7 +135,7 @@ int Redact(const uint8_t* d, size_t n) {
         }
     }
 
-    Rs7Log_Redact(f[3], r);
+    RsxrLog_Redact(f[3], r);
 
     return 0;
 }
@@ -143,4 +143,4 @@ int Redact(const uint8_t* d, size_t n) {
 Seeds RedactSeeds() {
     return {Lit("C:\\Users\\Bob\0Bob\0PC1\0open C:/users/bob/x.ini by Bob on PC1"), Lit("\0\0\0plain")};
 }
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz

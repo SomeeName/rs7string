@@ -17,7 +17,7 @@ bool RelocatesWithLength(std::initializer_list<uint8_t> insn) {
     uint8_t out[64]{};
     int32_t rel = 0;
 
-    if (Rs7Mid_Relocate(out, sizeof out, source.data(), 0x1000, source.size(), 0x2000) != n + 5) {
+    if (RsxrMid_Relocate(out, sizeof out, source.data(), 0x1000, source.size(), 0x2000) != n + 5) {
         return false;
     }
 
@@ -33,7 +33,7 @@ bool Rejected(std::initializer_list<uint8_t> insn) {
     source.resize(source.size() < 5 ? 5 : source.size(), 0x90);
     uint8_t out[64]{};
 
-    return Rs7Mid_Relocate(out, sizeof out, source.data(), 0x1000, source.size(), 0x2000) == 0;
+    return RsxrMid_Relocate(out, sizeof out, source.data(), 0x1000, source.size(), 0x2000) == 0;
 }
 }  // namespace
 

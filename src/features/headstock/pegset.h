@@ -16,9 +16,9 @@
 //   +0Ch slots[8] x 28h (stock: 6; +0 taken, +4 entity, +8 locator NiPointer, +0Ch owning pointer,
 //        +10h rgb, +1Ch named colour index, +20h/+24h message scalars),
 //   +14Ch pegColor[8] x 10h (stock: 6 at +0FCh, written by the stock ctor, moved by PSC1),
-//   +1CCh rs7 tail: u8 capacity (8), u8 loaded count, u8 colour player, u8 reserved;
+//   +1CCh rsxr tail: u8 capacity (8), u8 loaded count, u8 colour player, u8 reserved;
 //        +1D0h magic. Size 1D4h (PSA1 / PSA2).
-// Identification: a PegSet is native only if it is in the ownership table g_rs7_pegsets
+// Identification: a PegSet is native only if it is in the ownership table g_rsxr_pegsets
 // (registered by PSC1 before InitTail, removed by PSA2 right before the sized free). Never by the
 // tail/magic: a PegSet constructed before the patch is a stock 0x15C allocation, and +1CCh/+1D0h lie
 // beyond it. The magic is still written, for diagnostics only.
@@ -42,12 +42,12 @@ extern "C" {
 // callbacks use IsNative / Disown); entries are
 // claimed with a compare-exchange (PSC1, resource-loader jobs) and cleared only by the owner's free (PSA2). No
 // allocation.
-#define RS7_PEG_OWNERS 64
-__declspec(dllexport) extern uintptr_t g_rs7_pegsets[RS7_PEG_OWNERS];
+#define RSXR_PEG_OWNERS 64
+__declspec(dllexport) extern uintptr_t g_rsxr_pegsets[RSXR_PEG_OWNERS];
 }
 
-namespace rs7head {
-using rs7::kGuitarHead;
+namespace rsxrhead {
+using rsxr::kGuitarHead;
 constexpr uint32_t kHeadFrame = 0x04;  // Rnd_Headstock: frame entity (MeshGuitarFrame*)
 constexpr uint32_t kHeadPegs = 0x0C;   // Rnd_Headstock: PegSet*
 constexpr uint32_t kPegCount = 0x04;   // PegSet: u16 active count
@@ -69,7 +69,7 @@ constexpr uint32_t kColourStride = 0x10;
 constexpr uint32_t kTail = 0x1CC;              // u8 capacity, u8 loaded, u8 colour player, u8 reserved
 constexpr uint32_t kColourPlayer = kTail + 2;  // player of the last colour selection
 constexpr uint32_t kMagicOff = 0x1D0;
-constexpr uint32_t kMagic = 0x50375352;  // "RS7P"
+constexpr uint32_t kMagic = 0x50585352;  // "RSXP"
 constexpr uint32_t kSize = 0x1D4;
 
 // Peg load queue (PSL2 producer on a resource-loader job, N5 consumer on the game thread). Entries hold
@@ -106,10 +106,10 @@ private:
     Entry ring_[8] = {};
 };
 
-// Ownership (g_rs7_pegsets). Own: register (already registered = true); false = table full
+// Ownership (g_rsxr_pegsets). Own: register (already registered = true); false = table full
 // (the caller leaves the PegSet stock). Disown: remove; false = was not registered. IsNative: registered.
 // None of them dereferences the PegSet.
-constexpr unsigned kOwners = RS7_PEG_OWNERS;
+constexpr unsigned kOwners = RSXR_PEG_OWNERS;
 bool Own(const uint8_t* pegset) noexcept;
 bool Disown(const uint8_t* pegset) noexcept;
 unsigned OwnedCount() noexcept;
@@ -126,7 +126,7 @@ inline uint8_t* Slot(uint8_t* pegset, int s) {
 // The record's address, 0 = none taken.
 inline uint32_t LetterSeat(const uint8_t* pegset, uint32_t s) {
     const unsigned count = pegset ? *reinterpret_cast<const uint16_t*>(pegset + kPegCount) : 0;
-    const unsigned first = s == 5 ? rs7::kBassNeighbour[5] : 0;
+    const unsigned first = s == 5 ? rsxr::kBassNeighbour[5] : 0;
 
     for (unsigned i = 0; i < count; ++i) {
         const uint8_t* slot = pegset + kSlots + (first + i) % count * kSlotStride;
@@ -143,7 +143,7 @@ inline uint32_t LetterSeat(const uint8_t* pegset, uint32_t s) {
 // slot 0's fresh defaults, pegColor[0..5] move from +0FCh to +14Ch, [6]/[7] = [0], tail + magic.
 void InitTail(uint8_t* pegset);
 // PSL1's load count from the instrument's string count: a 6-string guitar on a native PegSet loads pegLoad
-// (g_rs7_peg_load, 7); more strings load at most modelPegs (the merged model's Locator_Peg_1..n: 7, or 8 with
+// (g_rsxr_peg_load, 7); more strings load at most modelPegs (the merged model's Locator_Peg_1..n: 7, or 8 with
 // eight strings), an 8th peg on a model without Locator_Peg_8 would have nowhere to sit. A stock PegSet: stock.
 uint32_t LoadCount(uint32_t strings, bool native, bool headOn, uint32_t pegLoad, uint32_t modelPegs, int kind);
 // The active count N5 raises a loaded native PegSet to: the stock six plus every consecutive extra slot up to
@@ -170,4 +170,4 @@ constexpr float kPegPeak = 0.5f;
 bool NamedColour(const uint8_t* colorMgr, uint32_t player, const float* fxRgb, float out[3]);
 // Whether a peg node name belongs to the tuner arrow / letter.
 bool IsTunerNode(const char* name);
-}  // namespace rs7head
+}  // namespace rsxrhead

@@ -13,8 +13,8 @@
 // The edited headstock per guitar (game thread, N5): which frame instance, which stock parts are culled, and the
 // hand-over to the segment and peg steps.
 
-using namespace rs7asset;
-using rs7head::g_head;
+using namespace rsxrasset;
+using rsxrhead::g_head;
 
 namespace {
 Head* Slot(uint8_t* guitar) {
@@ -28,7 +28,7 @@ Head* Slot(uint8_t* guitar) {
         if (!h.guitar) {
             h = Head{};
             h.guitar = guitar;
-            Rs7Alloc_Inc(kAkHeadSlots);
+            RsxrAlloc_Inc(kAkHeadSlots);
             return &h;
         }
     }
@@ -39,7 +39,7 @@ Head* Slot(uint8_t* guitar) {
 void FreeSlot(Head& h) {
     ReleaseParams(h);
     h = Head{};
-    Rs7Alloc_Dec(kAkHeadSlots);
+    RsxrAlloc_Dec(kAkHeadSlots);
 }
 
 void Restore(Head& h) {
@@ -68,11 +68,11 @@ void Restore(Head& h) {
 }
 
 void Show(Head& h) {  // every frame while wanted: alt shown, its stock siblings culled
-    EachChild(Rs7_SafeRead<uint8_t*>(h.alt, kParent), [&](uint8_t* c) {
+    EachChild(Rsxr_SafeRead<uint8_t*>(h.alt, kParent), [&](uint8_t* c) {
         if (c == h.alt || !IsNodeOrMesh(c)) {
             return true;  // effects stay
         }
-        if (Rs7_SafeRead<uint16_t>(c, kFlags) & 1) {
+        if (Rsxr_SafeRead<uint16_t>(c, kFlags) & 1) {
             return true;  // already culled (by the game or by us)
         }
 
@@ -116,17 +116,18 @@ void Show(Head& h) {  // every frame while wanted: alt shown, its stock siblings
         PlacePegs(h);
     }
 
-    uint8_t* info = Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarInfo);
+    uint8_t* info = Rsxr_SafeRead<uint8_t*>(h.guitar, kGuitarInfo);
 
     h.onNonInline =
-        info && Rs7_SafeRead<uint8_t>(info, kInfoInline) == 0;  // InstrumentInfo +0Ah in-line (CONFIRMED 0x58ABEC)
+        info && Rsxr_SafeRead<uint8_t>(info, kInfoInline) == 0;  // InstrumentInfo +0Ah in-line (CONFIRMED 0x58ABEC)
     // The in-line peg swap is the 3+3 guitar's (peg_bakelite); a 2+2 bass (+0 = 2) keeps its own pegs on our model.
-    if (h.onNonInline && !rs7::IsBassKind(Rs7_SafeRead<uint8_t>(info, rs7::kInfoKind))) {
+    if (h.onNonInline && !rsxr::IsBassKind(Rsxr_SafeRead<uint8_t>(info, rsxr::kInfoKind))) {
         InlinePegs(h);
     }
     // Native strings: the stock segment colour loop does it for strings 6/7 (GSHC, features/strings/strings.h).
-    const bool nativeColour = g_rs7_native_strings && rs7gs::IsNative(Rs7_SafeRead<uint8_t*>(h.guitar, kGuitarStrings));
-    const unsigned strings = info ? Rs7_SafeRead<uint8_t>(info, kInfoStrings) : 0;
+    const bool nativeColour =
+        g_rsxr_native_strings && rsxrgs::IsNative(Rsxr_SafeRead<uint8_t*>(h.guitar, kGuitarStrings));
+    const unsigned strings = info ? Rsxr_SafeRead<uint8_t>(info, kInfoStrings) : 0;
 
     LayerBass(h);
 
@@ -145,14 +146,14 @@ void Show(Head& h) {  // every frame while wanted: alt shown, its stock siblings
 
     if (!h.texChecked) {
         h.texChecked = true;
-        if (Rs7Log_Upto(&g_head.logFrameCheck, 1)) {
+        if (RsxrLog_Upto(&g_head.logFrameCheck, 1)) {
             LogTextureList("first show");
         }
     }
 }
 }  // namespace
 
-int Rs7Asset_LiveHeads() {
+int RsxrAsset_LiveHeads() {
     int n = 0;
 
     for (const Head& h : g_head.heads) {
@@ -162,11 +163,11 @@ int Rs7Asset_LiveHeads() {
     return n;
 }
 
-// The guitar is being released (Rs7_S7Free from the native Rnd_GuitarStrings_Free copy, called from the guitar's
+// The guitar is being released (Rsxr_S7Free from the native Rnd_GuitarStrings_Free copy, called from the guitar's
 // release 0x592770 with guitar+0Ch still its strings): its state slot goes back to the table. Without
 // this every guitar object the game ever builds keeps a slot (also the stock-headstock ones: Slot() runs
 // before the `!want` early-out), and the 9th distinct address silently ends the edited headstock.
-void Rs7Asset_ForgetStrings(const uint8_t* gs) {
+void RsxrAsset_ForgetStrings(const uint8_t* gs) {
     if (!gs) {
         return;
     }
@@ -177,7 +178,7 @@ void Rs7Asset_ForgetStrings(const uint8_t* gs) {
         }
 
         uint8_t* strings = nullptr;
-        if (!Rs7_SafeCopyZero(&strings, h.guitar + kGuitarStrings, sizeof strings) || strings != gs) {
+        if (!Rsxr_SafeCopyZero(&strings, h.guitar + kGuitarStrings, sizeof strings) || strings != gs) {
             continue;
         }
 
@@ -185,12 +186,12 @@ void Rs7Asset_ForgetStrings(const uint8_t* gs) {
     }
 }
 
-void Rs7Asset_ForgetGuitar(const uint8_t* guitar) {
+void RsxrAsset_ForgetGuitar(const uint8_t* guitar) {
     if (!guitar) {
         return;
     }
 
-    Rs7Head_ForgetWidth(guitar);
+    RsxrHead_ForgetWidth(guitar);
 
     for (Head& h : g_head.heads) {
         if (h.guitar != guitar) {
@@ -201,13 +202,13 @@ void Rs7Asset_ForgetGuitar(const uint8_t* guitar) {
     }
 }
 
-void Rs7Asset_HeadFrame(uint8_t* guitar, bool want) {
-    if (!g_rs7_asset_on || !guitar) {
+void RsxrAsset_HeadFrame(uint8_t* guitar, bool want) {
+    if (!g_rsxr_asset_on || !guitar) {
         return;
     }
 
-    uint8_t* head = Rs7_SafeRead<uint8_t*>(guitar, kGuitarHead);
-    uint8_t* frame = head ? Rs7_SafeRead<uint8_t*>(head, kHeadFrame) : nullptr;
+    uint8_t* head = Rsxr_SafeRead<uint8_t*>(guitar, kGuitarHead);
+    uint8_t* frame = head ? Rsxr_SafeRead<uint8_t*>(head, kHeadFrame) : nullptr;
     Head* h = Slot(guitar);
     if (!h) {
         return;
@@ -220,12 +221,13 @@ void Rs7Asset_HeadFrame(uint8_t* guitar, bool want) {
         return;
     }
 
-    uint8_t* root = frame ? rs7s7d::EntityRoot(frame) : nullptr;
-    const uint8_t* info = Rs7_SafeRead<uint8_t*>(guitar, kGuitarInfo);
+    uint8_t* root = frame ? rsxrs7d::EntityRoot(frame) : nullptr;
+    const uint8_t* info = Rsxr_SafeRead<uint8_t*>(guitar, kGuitarInfo);
     // One string fewer than the frame's first model: a 5-string bass, or a 7-string guitar (its frame may carry the
-    // 8-peg model first); without a rs7_alt5 in the frame the first model stays.
-    const uint8_t count = info ? Rs7_SafeRead<uint8_t>(info, kInfoStrings) : 0;
-    const bool five = info && (rs7::IsBassKind(Rs7_SafeRead<uint8_t>(info, rs7::kInfoKind)) ? count == 5 : count == 7);
+    // 8-peg model first); without a rsxr_alt5 in the frame the first model stays.
+    const uint8_t count = info ? Rsxr_SafeRead<uint8_t>(info, kInfoStrings) : 0;
+    const bool five =
+        info && (rsxr::IsBassKind(Rsxr_SafeRead<uint8_t>(info, rsxr::kInfoKind)) ? count == 5 : count == 7);
 
     if (root != h->root || five != h->alt5) {  // new frame instance (or none) or bass count: forget the old pointers
         if (root == h->root && h->applied) {
@@ -243,9 +245,9 @@ void Rs7Asset_HeadFrame(uint8_t* guitar, bool want) {
         std::memset(h->altLocX, 0, sizeof h->altLocX);
         h->texChecked = false;
         h->frames = 0;
-        if (want && !h->alt && root && Rs7Log_Upto(&g_head.logNoAlt, 4)) {
-            Rs7Log("assetload: guitar %p (frame entity %p, root %p) has no %s node: no edited model merged for it",
-                   guitar, frame, root, kAltName);
+        if (want && !h->alt && root && RsxrLog_Upto(&g_head.logNoAlt, 4)) {
+            RsxrLog("assetload: guitar %p (frame entity %p, root %p) has no %s node: no edited model merged for it",
+                    guitar, frame, root, kAltName);
         }
     }
 
@@ -256,46 +258,46 @@ void Rs7Asset_HeadFrame(uint8_t* guitar, bool want) {
     if (want) {
         Show(*h);
 
-        if (++h->frames == 1 && Rs7Log_Upto(&g_head.logFrame, 8)) {
+        if (++h->frames == 1 && RsxrLog_Upto(&g_head.logFrame, 8)) {
             char sib[48] = {};
 
             if (h->nsibs) {
-                rs7s7d::NameOfNode(h->sibs[0], sib, sizeof sib);
+                rsxrs7d::NameOfNode(h->sibs[0], sib, sizeof sib);
             }
 
-            Rs7Log("assetload: guitar %p shows the edited headstock (%s %p in frame root %p; %d stock part(s) culled, "
-                   "first \"%s\"; InstrumentInfo inverted %u lefty %u in-line %u)",
-                   guitar, h->alt5 ? kAltName5 : kAltName, h->alt, root, h->nsibs, sib,
-                   unsigned(Rs7_SafeRead<uint8_t>(info, kInfoInverted)),
-                   unsigned(Rs7_SafeRead<uint8_t>(info, kInfoLefty)),
-                   unsigned(Rs7_SafeRead<uint8_t>(info, kInfoInline)));
+            RsxrLog("assetload: guitar %p shows the edited headstock (%s %p in frame root %p; %d stock part(s) culled, "
+                    "first \"%s\"; InstrumentInfo inverted %u lefty %u in-line %u)",
+                    guitar, h->alt5 ? kAltName5 : kAltName, h->alt, root, h->nsibs, sib,
+                    unsigned(Rsxr_SafeRead<uint8_t>(info, kInfoInverted)),
+                    unsigned(Rsxr_SafeRead<uint8_t>(info, kInfoLefty)),
+                    unsigned(Rsxr_SafeRead<uint8_t>(info, kInfoInline)));
         }
     } else {
         Restore(*h);
         h->frames = 0;
-        if (Rs7Log_Upto(&g_head.logFrame, 8)) {
-            Rs7Log("assetload: guitar %p back to the stock headstock", guitar);
+        if (RsxrLog_Upto(&g_head.logFrame, 8)) {
+            RsxrLog("assetload: guitar %p back to the stock headstock", guitar);
         }
     }
 }
 
-extern "C" int __cdecl Rs7Asset_LetterInline(const uint8_t* info) {
-    const int own = info ? Rs7_SafeRead<uint8_t>(info, kInfoInline) : 0;
-    if (own || !info || !g_rs7_asset_on) {
+extern "C" int __cdecl RsxrAsset_LetterInline(const uint8_t* info) {
+    const int own = info ? Rsxr_SafeRead<uint8_t>(info, kInfoInline) : 0;
+    if (own || !info || !g_rsxr_asset_on) {
         return own;
     }
 
     int r = 0;
 
     for (const Head& h : g_head.heads) {
-        if (h.guitar && h.applied && h.onNonInline && Rs7_SafeRead<const uint8_t*>(h.guitar, kGuitarInfo) == info) {
+        if (h.guitar && h.applied && h.onNonInline && Rsxr_SafeRead<const uint8_t*>(h.guitar, kGuitarInfo) == info) {
             r = 1;
         }
     }
 
-    if ((info != g_head.lastLetterInfo || r != g_head.lastLetterResult) && Rs7Log_Upto(&g_head.logLetters, 8)) {
-        Rs7Log("assetload: LT1 tuner letters of InstrumentInfo %p (in-line byte 0): %s", info,
-               r ? "the guitar shows the 7-string in-line headstock - in-line letter rule" : "stock 3+3 rule");
+    if ((info != g_head.lastLetterInfo || r != g_head.lastLetterResult) && RsxrLog_Upto(&g_head.logLetters, 8)) {
+        RsxrLog("assetload: LT1 tuner letters of InstrumentInfo %p (in-line byte 0): %s", info,
+                r ? "the guitar shows the 7-string in-line headstock - in-line letter rule" : "stock 3+3 rule");
     }
     g_head.lastLetterInfo = info;
     g_head.lastLetterResult = r;
@@ -303,9 +305,9 @@ extern "C" int __cdecl Rs7Asset_LetterInline(const uint8_t* info) {
     return r;
 }
 
-uint8_t* Rs7Asset_SegColour(uint8_t* guitar, uint32_t string) {
+uint8_t* RsxrAsset_SegColour(uint8_t* guitar, uint32_t string) {
     const uint32_t e = string - uint32_t(kSegs);
-    if (!g_rs7_asset_on || !guitar || string < uint32_t(kSegs) || e >= uint32_t(kExtra)) {
+    if (!g_rsxr_asset_on || !guitar || string < uint32_t(kSegs) || e >= uint32_t(kExtra)) {
         return nullptr;
     }
 

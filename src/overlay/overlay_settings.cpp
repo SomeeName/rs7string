@@ -1,16 +1,16 @@
-// The overlay's own settings: [overlay] (overlay.h), and their section in the Window tab. Rs7Overlay_Configure takes
+// The overlay's own settings: [overlay] (overlay.h), and their section in the Window tab. RsxrOverlay_Configure takes
 // them from the settings store.
 #include "overlay/overlay.h"
 #include "platform/settings.h"
 #include "platform/uilayout.h"
 
 namespace {
-using T = Rs7SetType;
-using W = Rs7SetWhen;
+using T = RsxrSetType;
+using W = RsxrSetWhen;
 
-void ApplyNothing(const Rs7SetValue&) {}  // read by the overlay itself every frame
+void ApplyNothing(const RsxrSetValue&) {}  // read by the overlay itself every frame
 
-const Rs7SetDef kDefs[] = {
+const RsxrSetDef kDefs[] = {
     {"overlay.enabled", L"overlay", L"enabled", T::Bool, W::Restart, "1", 0, 1, "Menu enabled",
      "Hooks Present/Reset of the game's device and the window procedure. 1 (default): hidden until the "
      "hotkey shows it (see Open at start). 0: none of it. Applies after a restart.",
@@ -26,21 +26,21 @@ const Rs7SetDef kDefs[] = {
 };
 }  // namespace
 
-const Rs7SetTable kRs7OverlaySettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), nullptr};
+const RsxrSetTable kRsxrOverlaySettings = {kDefs, int(sizeof kDefs / sizeof kDefs[0]), nullptr};
 
 namespace {
-using U = Rs7UiTab;
-using K = Rs7UiKind;
+using U = RsxrUiTab;
+using K = RsxrUiKind;
 
-const Rs7UiItem kUi[] = {
-    Rs7UiPlayerSection("This menu", "Menu"),
-    Rs7UiPlayerZero("overlay.scale", "Menu size", "Automatic follows the game window's height.", "Automatic"),
-    Rs7UiPlayer("overlay.hotkey", "Menu key",
-                "The key that opens and closes this menu, for example F9. Applies after a restart."),
+const RsxrUiItem kUi[] = {
+    RsxrUiPlayerSection("This menu", "Menu"),
+    RsxrUiPlayerZero("overlay.scale", "Menu size", "Automatic follows the game window's height.", "Automatic"),
+    RsxrUiPlayer("overlay.hotkey", "Menu key",
+                 "The key that opens and closes this menu, for example F9. Applies after a restart."),
     {U::Window, K::Section, "overlay"},
     {U::Window, K::Setting, "overlay.enabled"},
     {U::Window, K::Setting, "overlay.open"},
 };
 }  // namespace
 
-const Rs7UiTable kRs7OverlayUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
+const RsxrUiTable kRsxrOverlayUi = {kUi, int(sizeof kUi / sizeof kUi[0])};

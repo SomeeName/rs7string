@@ -2,24 +2,25 @@
     Fuzz the parsers of untrusted input (fuzz\, docs/DEVELOPMENT.md "Fuzzing"): libFuzzer + AddressSanitizer from the
     MSVC Build Tools (x86), one exe, one target per run. Never part of the default build.
       .\scripts\fuzz.ps1                         every target 30 s (what build.ps1 -Fuzz runs)
-      .\scripts\fuzz.ps1 -Seconds 3600 -Target rs7x,recipe
+      .\scripts\fuzz.ps1 -Seconds 3600 -Target extblock,recipe
       .\scripts\fuzz.ps1 -NoBuild -Target ini -Seconds 600
     Corpus (grows across runs): obj\fuzz\corpus\<target>; seeds: obj\fuzz\seeds\<target> (built-in, from the
     exe, plus repository files); crashes, leaks and timeouts: obj\fuzz\artifacts\<target>\. Replay one input:
-      $env:RS7_FUZZ_TARGET = 'rs7x'; bin\Fuzz\rs7string_fuzz.exe -artifact_prefix=obj\fuzz\artifacts\rs7x\ obj\fuzz\artifacts\rs7x\crash-<sha1>
+      $env:RSXR_FUZZ_TARGET = 'extblock'; bin\Fuzz\rsxr_fuzz.exe -artifact_prefix=obj\fuzz\artifacts\extblock\ obj\fuzz\artifacts\extblock\crash-<sha1>
     Fixed seed (-seed=1) for a reproducible short run; exit code 1 when a target found something.
 #>
 param([int]$Seconds = 30, [string[]]$Target = @(), [switch]$NoBuild, [string]$Toolset = 'v145',
       [string]$MSBuild = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot
-$all = 'rs7x', 'settings', 'ini', 'text', 'package', 'nif', 'dds', 'recipe', 'nslot', 'plain', 'pattern', 'tuningname', 'redact'
+$all = 'extblock', 'settings', 'ini', 'text', 'package', 'nif', 'dds', 'recipe', 'nslot', 'plain', 'pattern', 'tuningname', 'redact',
+    'nativesng', 'nativemanifest'
 $targets = if ($Target.Count) { $Target | ForEach-Object { $_ -split ',' } } else { $all }
-$exe = Join-Path $repo 'bin\Fuzz\rs7string_fuzz.exe'
+$exe = Join-Path $repo 'bin\Fuzz\rsxr_fuzz.exe'
 $work = Join-Path $repo 'obj\fuzz'
 
 if (-not $NoBuild) {
-    & $MSBuild (Join-Path $repo 'fuzz\rs7string_fuzz.vcxproj') /p:Configuration=Release /p:Platform=Win32 `
+    & $MSBuild (Join-Path $repo 'fuzz\rsxr_fuzz.vcxproj') /p:Configuration=Release /p:Platform=Win32 `
         /p:PostBuildEventUseInBuild=false "/p:PlatformToolset=$Toolset" /m /v:minimal /nologo
     if ($LASTEXITCODE) { throw 'fuzz build failed' }
 }
@@ -42,20 +43,20 @@ foreach ($t in $targets) {
     $seeds = Join-Path $work "seeds\$t"
     $artifacts = Join-Path $work "artifacts\$t"
     foreach ($d in $corpus, $seeds, $artifacts) { New-Item -ItemType Directory -Force $d | Out-Null }
-    $env:RS7_FUZZ_TARGET = $t
-    $env:RS7_FUZZ_SEEDS = $seeds
+    $env:RSXR_FUZZ_TARGET = $t
+    $env:RSXR_FUZZ_SEEDS = $seeds
     & $exe | Out-Host
     $seeded = $LASTEXITCODE
-    Remove-Item Env:\RS7_FUZZ_SEEDS
+    Remove-Item Env:\RSXR_FUZZ_SEEDS
     if ($seeded) { throw "writing the built-in seeds of $t failed (exit $seeded)" }
     switch ($t) {
         'package' {  # the start of every headstock package (the manifest is at the front)
             foreach ($kit in '', '_lh', '_bass', '_bass_lh') {
-                Add-Seed $seeds "headstock$kit.bin" @() (Join-Path $repo "data\headstock\rs7string_headstock$kit.bin") 65536
+                Add-Seed $seeds "headstock$kit.bin" @() (Join-Path $repo "data\headstock\rsxr_headstock$kit.bin") 65536
             }
         }
         'recipe' {  # the shipped recipes without their game movie: the header checks
-            foreach ($r in Get-ChildItem (Join-Path $repo 'data\chord-diagrams') -Filter *.rs7da) {
+            foreach ($r in Get-ChildItem (Join-Path $repo 'data\chord-diagrams') -Filter *.rsxrda) {
                 Add-Seed $seeds $r.Name ([byte[]](0, 0, 0, 0, 0, 0)) $r.FullName 0
             }
         }
@@ -72,6 +73,6 @@ foreach ($t in $targets) {
     $ErrorActionPreference = 'Stop'
     if ($code) { $failed += $t }
 }
-Remove-Item Env:\RS7_FUZZ_TARGET -ErrorAction SilentlyContinue
+Remove-Item Env:\RSXR_FUZZ_TARGET -ErrorAction SilentlyContinue
 if ($failed.Count) { Write-Host "fuzz: findings in $($failed -join ', ') (see $work\artifacts)"; exit 1 }
 Write-Host "fuzz: $($targets.Count) target(s), no findings"

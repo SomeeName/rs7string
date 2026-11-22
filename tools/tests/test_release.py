@@ -36,13 +36,13 @@ def repo(tmp_path):
     (root / "scripts/package.ps1").write_text(
         "New-Item -ItemType Directory -Force dist | Out-Null\n"
         "$hash = (git rev-parse --short HEAD).Trim()\n"
-        "Compress-Archive bin/Release/dinput8.dll ('dist/rs7string-' + $hash + '.zip') -Force\n"
+        "Compress-Archive bin/Release/dinput8.dll ('dist/rsxr-' + $hash + '.zip') -Force\n"
         "$global:LASTEXITCODE = 0\n"
     )
     # Substitute the expensive Python gates only; Git, notes, hashes and packaging are real.
     (root / "runner.ps1").write_text(
         "$ErrorActionPreference = 'Stop'\n"
-        "function uv { if ($env:RS7_TEST_GATE_FAIL) { $global:LASTEXITCODE = 9 } "
+        "function uv { if ($env:RSXR_TEST_GATE_FAIL) { $global:LASTEXITCODE = 9 } "
         "else { $global:LASTEXITCODE = 0 } }\n"
         "& ./scripts/release.ps1 @args\n"
     )
@@ -75,6 +75,9 @@ def test_dry_run_prepares_artifacts_without_creating_tag(repo, args):
         digest, name = line.split("  ")
         assert hashlib.sha256((repo / "dist" / name).read_bytes()).hexdigest() == digest.lower()
     assert len((repo / "dist/SHA256SUMS.txt").read_text().splitlines()) == 2
+    # The release asset is named after the version, not after the commit the package script used.
+    assert [p.name for p in repo.glob("dist/*.zip")] == ["rsxr-1.0.0.zip"]
+    assert "rsxr-1.0.0.zip" in result.stdout and "RS Extended Range 1.0.0" in result.stdout
 
 
 @pytest.mark.parametrize("reason", ["dirty", "tag", "notes", "gate"])
@@ -88,7 +91,7 @@ def test_preflight_and_gate_failures_do_not_prepare_release(repo, reason, monkey
         git(repo, "add", ".")
         git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "other notes")
     else:
-        monkeypatch.setenv("RS7_TEST_GATE_FAIL", "1")
+        monkeypatch.setenv("RSXR_TEST_GATE_FAIL", "1")
     result = run(repo, "-DryRun")
     assert result.returncode != 0
     message = {

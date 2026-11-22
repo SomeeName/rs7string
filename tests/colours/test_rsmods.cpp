@@ -25,18 +25,18 @@ std::wstring TempIni(const char* content) {
 
 TEST(rsmods_colour_requires_loaded_mod_enabled_er_and_opt_in) {
     const auto p = TempIni("[Toggle Switches]\r\nExtendedRange=on\r\nCustomStringColors=0\r\n");
-    const auto absent = rs7rsmods::Read(p.c_str(), false);
-    const auto present = rs7rsmods::Read(p.c_str(), true);
+    const auto absent = rsxrrsmods::Read(p.c_str(), false);
+    const auto present = rsxrrsmods::Read(p.c_str(), true);
 
     CHECK(!absent.valid);
     CHECK(present.valid);
     CHECK_EQ(present.rgb, 0x00C68Eu);
     uint32_t rgb[2] = {0x112233u, 0x445566u};
 
-    rs7rsmods::Resolve(present, false, rgb);
+    rsxrrsmods::Resolve(present, false, rgb);
     CHECK_EQ(rgb[0], 0x112233u);
     CHECK_EQ(rgb[1], 0x445566u);
-    rs7rsmods::Resolve(present, true, rgb);
+    rsxrrsmods::Resolve(present, true, rgb);
     CHECK_EQ(rgb[0], 0x00C68Eu);
     CHECK_EQ(rgb[1], 0x00C68Eu);
     DeleteFileW(p.c_str());
@@ -45,12 +45,12 @@ TEST(rsmods_colour_requires_loaded_mod_enabled_er_and_opt_in) {
 TEST(rsmods_colour_reads_custom_low_b_for_both_profile_modes) {
     const auto p = TempIni("[Toggle Switches]\r\nExtendedRange=on\r\nCustomStringColors=2\r\n[String "
                            "Colors]\r\nstring0=ABCDEF\r\nstring0_CB=1234AB\r\n");
-    const auto policy = rs7rsmods::Read(p.c_str(), true);
+    const auto policy = rsxrrsmods::Read(p.c_str(), true);
 
     CHECK(policy.valid);
     uint32_t rgb[2] = {0xC8C8C8u, 0xC8C8C8u};
 
-    rs7rsmods::Resolve(policy, true, rgb);
+    rsxrrsmods::Resolve(policy, true, rgb);
     CHECK_EQ(rgb[0], 0x1234ABu);
     CHECK_EQ(rgb[1], 0x1234ABu);
     DeleteFileW(p.c_str());
@@ -67,24 +67,24 @@ TEST(rsmods_colour_invalid_or_disabled_configuration_preserves_own_palette) {
 
     for (const auto content : cases) {
         const auto p = TempIni(content);
-        const auto policy = rs7rsmods::Read(p.c_str(), true);
+        const auto policy = rsxrrsmods::Read(p.c_str(), true);
 
         CHECK(!policy.valid);
         uint32_t rgb[2] = {0x112233u, 0x445566u};
 
-        rs7rsmods::Resolve(policy, true, rgb);
+        rsxrrsmods::Resolve(policy, true, rgb);
         CHECK_EQ(rgb[0], 0x112233u);
         CHECK_EQ(rgb[1], 0x445566u);
         DeleteFileW(p.c_str());
     }
 
-    CHECK(!rs7rsmods::Read(L"Z:\\missing\\RSMods.ini", true).valid);
+    CHECK(!rsxrrsmods::Read(L"Z:\\missing\\RSMods.ini", true).valid);
 }
 
 TEST(rsmods_colour_standard_alternative_uses_same_low_b) {
     const auto p = TempIni(
         "[Toggle Switches]\r\nExtendedRange=on\r\nCustomStringColors=1\r\n[String Colors]\r\nstring0_CB=123456\r\n");
-    const auto policy = rs7rsmods::Read(p.c_str(), true);
+    const auto policy = rsxrrsmods::Read(p.c_str(), true);
 
     CHECK(policy.valid);
     CHECK_EQ(policy.rgb, 0x00C68Eu);
@@ -97,7 +97,7 @@ TEST(rsmods_colour_truncated_custom_value_is_invalid) {
         std::string(300, ' ') + "junk\r\n";
     const auto p = TempIni(content.c_str());
 
-    CHECK(!rs7rsmods::Read(p.c_str(), true).valid);
+    CHECK(!rsxrrsmods::Read(p.c_str(), true).valid);
     DeleteFileW(p.c_str());
 }
 
@@ -107,7 +107,7 @@ TEST(rsmods_colour_detects_installed_proxy_before_it_is_loaded) {
     wchar_t tmp[MAX_PATH] = {};
 
     GetTempPathW(MAX_PATH, tmp);
-    const auto dir = std::wstring(tmp) + L"rs7string_test_rsmods_" + std::to_wstring(GetCurrentProcessId());
+    const auto dir = std::wstring(tmp) + L"rsxr_test_rsmods_" + std::to_wstring(GetCurrentProcessId());
 
     RemoveDirectoryW(dir.c_str());
     CHECK(CreateDirectoryW(dir.c_str(), nullptr));
@@ -123,25 +123,25 @@ TEST(rsmods_colour_detects_installed_proxy_before_it_is_loaded) {
     CHECK(WritePrivateProfileStringW(L"Toggle Switches", L"CustomStringColors", L"2", ini.c_str()));
     CHECK(WritePrivateProfileStringW(L"String Colors", L"string0_CB", L"00c68e", ini.c_str()));
     CHECK(GetModuleHandleW(proxy.c_str()) == nullptr);
-    const auto colour = rs7rsmods::ReadProxy(proxy.c_str());
+    const auto colour = rsxrrsmods::ReadProxy(proxy.c_str());
 
     CHECK(colour.valid);
     CHECK_EQ(colour.rgb, 0x00C68Eu);
     CHECK(GetModuleHandleW(proxy.c_str()) == nullptr);
     // A second read also works, and no data-file handle pins the proxy on disk.
-    CHECK(rs7rsmods::ReadProxy(proxy.c_str()).valid);
+    CHECK(rsxrrsmods::ReadProxy(proxy.c_str()).valid);
     CHECK(DeleteFileW(proxy.c_str()));
     CHECK(DeleteFileW(ini.c_str()));
     CHECK(RemoveDirectoryW(dir.c_str()));
 }
 
 TEST(rsmods_colour_proxy_rejects_missing_or_unidentified_files) {
-    CHECK(!rs7rsmods::ReadProxy(nullptr).valid);
-    CHECK(!rs7rsmods::ReadProxy(L"").valid);
-    CHECK(!rs7rsmods::ReadProxy(L"Z:\\missing\\xinput1_3.dll").valid);
+    CHECK(!rsxrrsmods::ReadProxy(nullptr).valid);
+    CHECK(!rsxrrsmods::ReadProxy(L"").valid);
+    CHECK(!rsxrrsmods::ReadProxy(L"Z:\\missing\\xinput1_3.dll").valid);
     const auto file = TempIni("RSMods");  // Text with the marker is not an identified PE proxy.
 
-    CHECK(!rs7rsmods::ReadProxy(file.c_str()).valid);
+    CHECK(!rsxrrsmods::ReadProxy(file.c_str()).valid);
     CHECK(DeleteFileW(file.c_str()));
 }
 
@@ -149,11 +149,11 @@ TEST(rsmods_colour_proxy_exports_are_read_without_loading_code) {
     wchar_t kernel[MAX_PATH] = {};
 
     CHECK(GetModuleFileNameW(GetModuleHandleW(L"kernel32.dll"), kernel, MAX_PATH) != 0);
-    CHECK(rs7rsmods::ProxyExports(kernel, "GetProcAddress"));
-    CHECK(!rs7rsmods::ProxyExports(kernel, "RSMods_BridgeDriverLog"));
-    CHECK(!rs7rsmods::ProxyExports(nullptr, "GetProcAddress"));
-    CHECK(!rs7rsmods::ProxyExports(L"Z:\\missing\\xinput1_3.dll", "GetProcAddress"));
+    CHECK(rsxrrsmods::ProxyExports(kernel, "GetProcAddress"));
+    CHECK(!rsxrrsmods::ProxyExports(kernel, "RSMods_BridgeDriverLog"));
+    CHECK(!rsxrrsmods::ProxyExports(nullptr, "GetProcAddress"));
+    CHECK(!rsxrrsmods::ProxyExports(L"Z:\\missing\\xinput1_3.dll", "GetProcAddress"));
     // A system DLL with neither RSMods' version resource nor Audio Bridge's export is not RSMods.
-    CHECK(!rs7rsmods::IsAudioBridge(kernel));
-    CHECK(!rs7rsmods::Identify(kernel));
+    CHECK(!rsxrrsmods::IsAudioBridge(kernel));
+    CHECK(!rsxrrsmods::Identify(kernel));
 }

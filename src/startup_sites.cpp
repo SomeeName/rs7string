@@ -1,4 +1,4 @@
-// The main batch of Rs7_Startup (startup_sites.h): the site writers, the isolated patch rounds, the deferred FretGrid
+// The main batch of Rsxr_Startup (startup_sites.h): the site writers, the isolated patch rounds, the deferred FretGrid
 // sites and the per-site log.
 #include "startup_sites.h"
 #include "features/colours/colours.h"
@@ -26,40 +26,40 @@ namespace {
 
 // Runs inside a thread freeze (platform/freeze.h): no allocation, no logging. A Bytes site's replacement is
 // parsed beforehand (WriteBytesFor, outside the freeze).
-Rs7WriteResult Apply(const Rs7Resolved& r, const Rs7Hook& h, uintptr_t midEntry, const std::vector<uint8_t>& bytes) {
+RsxrWriteResult Apply(const RsxrResolved& r, const RsxrHook& h, uintptr_t midEntry, const std::vector<uint8_t>& bytes) {
     const uintptr_t stub = h.IsMid() ? midEntry : reinterpret_cast<uintptr_t>(h.stub);
 
     switch (r.site->kind) {
-        case Rs7Kind::Jmp:
-            return Rs7_WriteJmp(r.addr, static_cast<size_t>(r.site->length), stub);
-        case Rs7Kind::JmpAtomic8:
-            return Rs7_WriteJmpAtomic8(r.addr, stub);
-        case Rs7Kind::Rel32:
-            return Rs7_WriteRel32(r.addr, r.addr + 4, stub, true);
-        case Rs7Kind::Call:
-            return Rs7_WriteRel32(r.addr + 1, r.addr + 5, stub, false);
-        case Rs7Kind::Bytes:
+        case RsxrKind::Jmp:
+            return Rsxr_WriteJmp(r.addr, static_cast<size_t>(r.site->length), stub);
+        case RsxrKind::JmpAtomic8:
+            return Rsxr_WriteJmpAtomic8(r.addr, stub);
+        case RsxrKind::Rel32:
+            return Rsxr_WriteRel32(r.addr, r.addr + 4, stub, true);
+        case RsxrKind::Call:
+            return Rsxr_WriteRel32(r.addr + 1, r.addr + 5, stub, false);
+        case RsxrKind::Bytes:
             if (bytes.empty() || bytes.size() != r.original.size()) {
                 return false;
             }
 
-            return Rs7_WriteBytes(r.addr, bytes.data(), bytes.size());
-        case Rs7Kind::Ref:
-        case Rs7Kind::CallRef:
-            return true;  // never written (Rs7_ShouldPatch excludes them anyway)
+            return Rsxr_WriteBytes(r.addr, bytes.data(), bytes.size());
+        case RsxrKind::Ref:
+        case RsxrKind::CallRef:
+            return true;  // never written (Rsxr_ShouldPatch excludes them anyway)
     }
 
     return false;
 }
 
 // Outside the freeze: a Bytes site's replacement bytes (empty: not a Bytes site or unparsable).
-std::vector<uint8_t> WriteBytesFor(const Rs7Resolved& r) {
-    if (r.site->kind != Rs7Kind::Bytes) {
+std::vector<uint8_t> WriteBytesFor(const RsxrResolved& r) {
+    if (r.site->kind != RsxrKind::Bytes) {
         return {};
     }
 
-    Rs7Pattern w;
-    if (!Rs7_ParsePattern(r.site->write, w) || w.bytes.size() != r.original.size()) {
+    RsxrPattern w;
+    if (!Rsxr_ParsePattern(r.site->write, w) || w.bytes.size() != r.original.size()) {
         return {};
     }
 
@@ -67,21 +67,21 @@ std::vector<uint8_t> WriteBytesFor(const Rs7Resolved& r) {
 }
 
 // The bytes a site's apply / restore touch: the original bytes cover every kind's write.
-Rs7Range RangeOf(const Rs7Resolved& r) {
+RsxrRange RangeOf(const RsxrResolved& r) {
     return {r.addr, r.addr + r.original.size()};
 }
 
 // [neck] native_fretgrid=1: the FGR layout sites are written later, by the first call of the FGHK mid-hook (FGHK and
 // FGCT, the mid-hooks, are written with the main batch) on the game's own thread (features/fretgrid/fretgrid.h,
-// rs7fg::OnGuitarUpdate); the resolved sites wait here.
+// rsxrfg::OnGuitarUpdate); the resolved sites wait here.
 struct DeferredSite {
-    Rs7Resolved r;
-    const Rs7Hook* h;
+    RsxrResolved r;
+    const RsxrHook* h;
     std::vector<uint8_t> bytes;  // parsed at startup (Bytes sites)
 };
 
 std::vector<DeferredSite> g_deferredFg;
-std::vector<Rs7Range> g_deferredRanges;  // built at startup with g_deferredFg
+std::vector<RsxrRange> g_deferredRanges;  // built at startup with g_deferredFg
 
 struct DeferredRound {
     size_t n;           // sites written before the failure (== size: all)
@@ -95,7 +95,7 @@ void WriteDeferred(void* p) {  // inside the freeze
     bool failedWritten = false, cleanupFailed = false;
 
     for (; n < g_deferredFg.size(); ++n) {
-        const Rs7WriteResult result = Apply(g_deferredFg[n].r, *g_deferredFg[n].h, 0, g_deferredFg[n].bytes);
+        const RsxrWriteResult result = Apply(g_deferredFg[n].r, *g_deferredFg[n].h, 0, g_deferredFg[n].bytes);
 
         if (!result) {
             failedWritten = result.written;
@@ -110,8 +110,8 @@ void WriteDeferred(void* p) {  // inside the freeze
     }
 
     for (size_t j = 0; j < n + (failedWritten ? 1u : 0u); ++j) {
-        const bool restored = Rs7_RestoreBytes(g_deferredFg[j].r.addr, g_deferredFg[j].r.original.data(),
-                                               g_deferredFg[j].r.original.size());
+        const bool restored = Rsxr_RestoreBytes(g_deferredFg[j].r.addr, g_deferredFg[j].r.original.data(),
+                                                g_deferredFg[j].r.original.size());
 
         if ((!restored || (j == n && cleanupFailed)) && d.unrestored++ == 0) {
             d.firstBad = j;
@@ -125,49 +125,49 @@ void WriteDeferred(void* p) {  // inside the freeze
 
 // The game (main) thread, first guitar update. The other threads (loaders, audio, our workers) are frozen
 // while the FGR sites change.
-rs7fg::ApplyResult ApplyDeferredFg(bool lastAttempt) {
+rsxrfg::ApplyResult ApplyDeferredFg(bool lastAttempt) {
     DeferredRound d{0, 0, 0};
-    Rs7FreezeStats st;
-    const bool ran = Rs7_RunFrozen(g_deferredRanges.data(), g_deferredRanges.size(), &WriteDeferred, &d, &st);
+    RsxrFreezeStats st;
+    const bool ran = Rsxr_RunFrozen(g_deferredRanges.data(), g_deferredRanges.size(), &WriteDeferred, &d, &st);
     char line[512];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
-    Rs7Log("fretgrid: %s (%u deferred sites, game thread %lu)", line, unsigned(g_deferredFg.size()),
-           GetCurrentThreadId());
+    Rsxr_FreezeDescribe(st, line, sizeof line);
+    RsxrLog("fretgrid: %s (%u deferred sites, game thread %lu)", line, unsigned(g_deferredFg.size()),
+            GetCurrentThreadId());
 
     if (!ran) {
         if (!lastAttempt && !st.tooMany) {
-            return rs7fg::ApplyResult::Retry;  // nothing written; the game thread tries again later
+            return rsxrfg::ApplyResult::Retry;  // nothing written; the game thread tries again later
         }
 
-        Rs7_DisableFeature(Rs7Feature::Fretgrid);
-        return rs7fg::ApplyResult::Failed;
+        Rsxr_DisableFeature(RsxrFeature::Fretgrid);
+        return rsxrfg::ApplyResult::Failed;
     }
 
     if (d.n == g_deferredFg.size()) {
-        return rs7fg::ApplyResult::Applied;
+        return rsxrfg::ApplyResult::Applied;
     }
 
     if (d.unrestored) {  // never retried (FGHK writes once); the group stays off
-        Rs7Log("fretgrid: UNRECOVERABLE %s (+%u more): restoring bytes or page protection failed after %s could not "
-               "be written - feature fretgrid DISABLED",
-               g_deferredFg[d.firstBad].r.site->id, unsigned(d.unrestored - 1), g_deferredFg[d.n].r.site->id);
+        RsxrLog("fretgrid: UNRECOVERABLE %s (+%u more): restoring bytes or page protection failed after %s could not "
+                "be written - feature fretgrid DISABLED",
+                g_deferredFg[d.firstBad].r.site->id, unsigned(d.unrestored - 1), g_deferredFg[d.n].r.site->id);
     } else {
-        Rs7Log("fretgrid: writing %s failed - the %u sites already written were restored", g_deferredFg[d.n].r.site->id,
-               unsigned(d.n));
+        RsxrLog("fretgrid: writing %s failed - the %u sites already written were restored",
+                g_deferredFg[d.n].r.site->id, unsigned(d.n));
     }
 
     // Only the Fretgrid group fails (and what depends on its layout: native_publish, native_tuner).
-    Rs7_DisableFeature(Rs7Feature::Fretgrid);
+    Rsxr_DisableFeature(RsxrFeature::Fretgrid);
 
-    return rs7fg::ApplyResult::Failed;
+    return rsxrfg::ApplyResult::Failed;
 }
 
 // Whether the site of `h` is written, given the features' switches now. A build without the private extras
 // (src/features/extras/extras.h) has no privateOnly sites.
-bool Writes(const Rs7Hook& h) {
-    return Rs7_ShouldPatch(h, g_rs7_diag != 0, Rs7Private_SitesOn(), g_rs7_native_pegset != 0,
-                           g_rs7_native_strings != 0);
+bool Writes(const RsxrHook& h) {
+    return Rsxr_ShouldPatch(h, g_rsxr_diag != 0, RsxrPrivate_SitesOn(), g_rsxr_native_pegset != 0,
+                            g_rsxr_native_strings != 0);
 }
 
 // [debug] skip_sites lists `id`.
@@ -176,9 +176,10 @@ bool Skipped(const std::string& skip, const char* id) {
 }
 
 // [neck] native_fretgrid: the FGR layout sites (not the FGHK / FGCT mid-hooks) are written later on the game
-// thread (rs7fg::OnGuitarUpdate); they are not part of the main batch.
-bool DeferredFg(const Rs7Resolved& r, const Rs7Hook& h) {
-    return (h.gates & kRs7GateFretgrid) && std::strcmp(r.site->id, "FGHK") != 0 && std::strcmp(r.site->id, "FGCT") != 0;
+// thread (rsxrfg::OnGuitarUpdate); they are not part of the main batch.
+bool DeferredFg(const RsxrResolved& r, const RsxrHook& h) {
+    return (h.gates & kRsxrGateFretgrid) && std::strcmp(r.site->id, "FGHK") != 0 &&
+           std::strcmp(r.site->id, "FGCT") != 0;
 }
 }  // namespace
 
@@ -186,14 +187,14 @@ bool DeferredFg(const Rs7Resolved& r, const Rs7Hook& h) {
 // restores the sites but never frees code a thread could still be running. Startup runs once.
 // A failing site disables only its own feature group (platform/isolate.h); the round then restarts with that group
 // gone. Only a core failure aborts everything.
-Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks,
-                                     const std::string& skip, std::vector<size_t>& written) {
-    static Rs7Mid::Hook midHooks[kRs7SiteCount];
-    Rs7PatchOps ops;
+RsxrPatchResult RsxrStartup_WriteSites(const RsxrResolveResult& res, const std::vector<const RsxrHook*>& hooks,
+                                       const std::string& skip, std::vector<size_t>& written) {
+    static RsxrMid::Hook midHooks[kRsxrSiteCount];
+    RsxrPatchOps ops;
     std::vector<std::vector<uint8_t>> writeBytes(res.sites.size());
     uintptr_t colourCtor = 0, colourAlloc = 0;
 
-    for (const Rs7Resolved& r : res.sites) {
+    for (const RsxrResolved& r : res.sites) {
         if (!std::strcmp(r.site->id, "CM5184F6")) {
             colourCtor = r.addr;
         } else if (!std::strcmp(r.site->id, "CM518AC4")) {
@@ -203,13 +204,13 @@ Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vec
 
     ops.count = res.sites.size();
     ops.group = [&](size_t i) {
-        return Rs7_Group(Rs7_FeatureOf(*hooks[i]));
+        return Rsxr_Group(Rsxr_FeatureOf(*hooks[i]));
     };
     ops.name = [&](size_t i) {
         return res.sites[i].site->id;
     };
     ops.log = [](const std::string& m) {
-        Rs7Log("%s", m.c_str());
+        RsxrLog("%s", m.c_str());
     };
     ops.should = [&](size_t i) {
         if (!Writes(*hooks[i])) {
@@ -217,14 +218,14 @@ Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vec
         }
 
         if (Skipped(skip, res.sites[i].site->id)) {
-            Rs7Log("site %s skipped ([debug] skip_sites)", res.sites[i].site->id);
+            RsxrLog("site %s skipped ([debug] skip_sites)", res.sites[i].site->id);
             return false;
         }
 
         return !DeferredFg(res.sites[i], *hooks[i]);
     };
     ops.prepare = [&](size_t i) {
-        if (res.sites[i].site->kind == Rs7Kind::Bytes) {  // parsed here: apply runs inside the freeze
+        if (res.sites[i].site->kind == RsxrKind::Bytes) {  // parsed here: apply runs inside the freeze
             if (writeBytes[i].empty()) {
                 writeBytes[i] = WriteBytesFor(res.sites[i]);
             }
@@ -237,7 +238,7 @@ Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vec
             return true;
         }
 
-        return Rs7_PrepareMid(midHooks[i], res.sites[i], *hooks[i]);
+        return Rsxr_PrepareMid(midHooks[i], res.sites[i], *hooks[i]);
     };
     ops.apply = [&](size_t i) {
         return Apply(res.sites[i], *hooks[i], midHooks[i].Entry(), writeBytes[i]);
@@ -246,30 +247,30 @@ Rs7PatchResult Rs7Startup_WriteSites(const Rs7ResolveResult& res, const std::vec
         return RangeOf(res.sites[i]);
     };
     ops.beforeWrite = [&] {
-        return !g_rs7_native_colours || Rs7Colour_CanPatchFrozen(colourCtor, colourAlloc);
+        return !g_rsxr_native_colours || RsxrColour_CanPatchFrozen(colourCtor, colourAlloc);
     };
     // Every round runs under a thread freeze; a restore is verified by a read-back.
     ops.restore = [&](size_t i) {
-        const Rs7Resolved& r = res.sites[i];
+        const RsxrResolved& r = res.sites[i];
 
-        return Rs7_RestoreBytes(r.addr, r.original.data(), r.original.size());
+        return Rsxr_RestoreBytes(r.addr, r.original.data(), r.original.size());
     };
 
-    const Rs7PatchResult result = Rs7_PatchIsolated(kRs7Groups, ops, written);
+    const RsxrPatchResult result = Rsxr_PatchIsolated(kRsxrGroups, ops, written);
 
-    if (result == Rs7PatchResult::PreconditionFailed) {
-        g_rs7_native_colours = 0;
-        Rs7Colour_LogPatchRefusal();
-        Rs7Log("colour: stock ColourManager exists, is being built or could not be checked under the patch freeze "
-               "- native_colours OFF; native 7-string unit has no fallback, main batch not written");
+    if (result == RsxrPatchResult::PreconditionFailed) {
+        g_rsxr_native_colours = 0;
+        RsxrColour_LogPatchRefusal();
+        RsxrLog("colour: stock ColourManager exists, is being built or could not be checked under the patch freeze "
+                "- native_colours OFF; native 7-string unit has no fallback, main batch not written");
     }
 
     return result;
 }
 
 // The deferred FretGrid sites: the final round's feature state decides (a disabled Fretgrid group has none).
-size_t Rs7Startup_DeferFretGrid(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks,
-                                const std::string& skip) {
+size_t RsxrStartup_DeferFretGrid(const RsxrResolveResult& res, const std::vector<const RsxrHook*>& hooks,
+                                 const std::string& skip) {
     g_deferredFg.clear();
 
     for (size_t i = 0; i < res.sites.size(); ++i) {
@@ -284,39 +285,39 @@ size_t Rs7Startup_DeferFretGrid(const Rs7ResolveResult& res, const std::vector<c
         g_deferredRanges.push_back(RangeOf(d.r));
     }
 
-    rs7fg::SetDeferredApply(g_deferredFg.empty() ? nullptr : &ApplyDeferredFg);
+    rsxrfg::SetDeferredApply(g_deferredFg.empty() ? nullptr : &ApplyDeferredFg);
 
     return g_deferredFg.size();
 }
 
-void Rs7Startup_LogSites(const Rs7ResolveResult& res, const std::vector<const Rs7Hook*>& hooks,
-                         const std::string& skip) {
+void RsxrStartup_LogSites(const RsxrResolveResult& res, const std::vector<const RsxrHook*>& hooks,
+                          const std::string& skip) {
     for (size_t i = 0; i < res.sites.size(); ++i) {
-        const Rs7Resolved& r = res.sites[i];
-        const Rs7Hook& h = *hooks[i];
+        const RsxrResolved& r = res.sites[i];
+        const RsxrHook& h = *hooks[i];
 
         if (h.ref) {
-            Rs7Log("resolved %-7s at %08X -> %08X", r.site->id, unsigned(r.addr), unsigned(r.target));
+            RsxrLog("resolved %-7s at %08X -> %08X", r.site->id, unsigned(r.addr), unsigned(r.target));
         } else if (Writes(h) && Skipped(skip, r.site->id)) {
-            Rs7Log("resolved %-4s at %08X ([debug] skip_sites: not patched)", r.site->id, unsigned(r.addr));
+            RsxrLog("resolved %-4s at %08X ([debug] skip_sites: not patched)", r.site->id, unsigned(r.addr));
         } else if (DeferredFg(r, h) && Writes(h)) {
-            Rs7Log("deferred %-4s at %08X (written on the game thread by the first guitar update)", r.site->id,
-                   unsigned(r.addr));
+            RsxrLog("deferred %-4s at %08X (written on the game thread by the first guitar update)", r.site->id,
+                    unsigned(r.addr));
         } else if (Writes(h)) {
-            Rs7Log("patched %-4s at %08X (original target %08X)", r.site->id, unsigned(r.addr), unsigned(r.target));
-        } else if (Rs7_FeatureDisabled(Rs7_FeatureOf(h))) {
-            Rs7Log("resolved %-4s at %08X (group %s disabled: not patched)", r.site->id, unsigned(r.addr),
-                   Rs7_FeatureName(Rs7_FeatureOf(h)));
+            RsxrLog("patched %-4s at %08X (original target %08X)", r.site->id, unsigned(r.addr), unsigned(r.target));
+        } else if (Rsxr_FeatureDisabled(Rsxr_FeatureOf(h))) {
+            RsxrLog("resolved %-4s at %08X (group %s disabled: not patched)", r.site->id, unsigned(r.addr),
+                    Rsxr_FeatureName(Rsxr_FeatureOf(h)));
         } else {
-            Rs7Log("resolved %-4s at %08X (%s off: not patched)", r.site->id, unsigned(r.addr),
-                   h.privateOnly                  ? "the private extras"
-                   : !std::strncmp(h.id, "TV", 2) ? "[test] force_*"
-                   : (h.gates & kRs7GatePegs)     ? "the native PegSet"
-                   : (h.gates & kRs7GateStrings)  ? "the native GuitarStrings"
-                   : (h.gates & kRs7GateFretgrid) ? "the native FretGrid"
-                   : (h.gates & kRs7GatePitch)    ? "the native pitch storage"
-                   : (h.gates & kRs7GateNextgrid) ? "the native next-note grid"
-                                                  : "diagnostics");
+            RsxrLog("resolved %-4s at %08X (%s off: not patched)", r.site->id, unsigned(r.addr),
+                    h.privateOnly                   ? "the private extras"
+                    : !std::strncmp(h.id, "TV", 2)  ? "[test] force_*"
+                    : (h.gates & kRsxrGatePegs)     ? "the native PegSet"
+                    : (h.gates & kRsxrGateStrings)  ? "the native GuitarStrings"
+                    : (h.gates & kRsxrGateFretgrid) ? "the native FretGrid"
+                    : (h.gates & kRsxrGatePitch)    ? "the native pitch storage"
+                    : (h.gates & kRsxrGateNextgrid) ? "the native next-note grid"
+                                                    : "diagnostics");
         }
     }
 }

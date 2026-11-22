@@ -1,9 +1,9 @@
 #pragma once
 #include <windows.h>
 
-// In-game debug/test overlay (Dear ImGui, win32 + dx9 backends): every rs7string feature's state,
+// In-game debug/test overlay (Dear ImGui, win32 + dx9 backends): every RSXR feature's state,
 // live toggles where safe, "restart required" for startup-only keys, a status panel and the log tail,
-// "save to rs7string.ini". On by default ([overlay] enabled=1) but hidden ([overlay] open=0) until the
+// "save to rsxr.ini". On by default ([overlay] enabled=1) but hidden ([overlay] open=0) until the
 // hotkey [overlay] hotkey (default F9) shows it; enabled=0 installs no overlay hooks at all.
 //
 // - Device: the ramp worker's device finder (d3d/worker.h) hands over the game's device; the overlay
@@ -20,14 +20,14 @@
 //   overlay renders in an unfocused window too (WGC shots show it).
 
 // [overlay] enabled, hotkey, open, scale: the overlay's own settings table (overlay_settings.cpp).
-struct Rs7SetTable;
-extern const Rs7SetTable kRs7OverlaySettings;
+struct RsxrSetTable;
+extern const RsxrSetTable kRsxrOverlaySettings;
 // Their section in the Window tab (platform/uilayout.h).
-struct Rs7UiTable;
-extern const Rs7UiTable kRs7OverlayUi;
+struct RsxrUiTable;
+extern const RsxrUiTable kRsxrOverlayUi;
 
-// Startup worker, after Rs7Set_InitFromIni: reads [overlay] (enabled, hotkey, open), logs it.
-void Rs7Overlay_Configure(const wchar_t* iniPath);
-bool Rs7Overlay_Enabled();
-// Worker: the game's device (d3d/worker.h Rs7WorkerOpts::onDevice).
-void Rs7Overlay_OnDevice(void* device);
+// Startup worker, after RsxrSet_InitFromIni: reads [overlay] (enabled, hotkey, open), logs it.
+void RsxrOverlay_Configure(const wchar_t* iniPath);
+bool RsxrOverlay_Enabled();
+// Worker: the game's device (d3d/worker.h RsxrWorkerOpts::onDevice).
+void RsxrOverlay_OnDevice(void* device);

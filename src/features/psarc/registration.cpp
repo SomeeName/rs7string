@@ -1,22 +1,22 @@
-// The plain-PSARC unit's hooks (sites.json group "psarc"): looked up by src/registry.cpp (Rs7_FindHook) and
-// written by Rs7Plain_Start (hooks.cpp), not by the main batch.
+// The plain-PSARC unit's hooks (sites.json group "psarc"): looked up by src/registry.cpp (Rsxr_FindHook) and
+// written by RsxrPlain_Start (hooks.cpp), not by the main batch.
 #include "features/psarc/psarc.h"
 #include "model/groups.h"
 #include <cstdint>
 
 extern "C" {
-void Rs7_Mid_PP_TOC(Rs7Mid::Context&);  // hooks_mid.cpp
-void Rs7_Mid_PP_SNGF(Rs7Mid::Context&);
-bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t*, uint32_t, const char*, uint32_t, uint8_t*, uint32_t);
-extern uintptr_t g_rs7_resume_PP_SNGF, g_rs7_target_PP_SNGD;
+void Rsxr_Mid_PP_TOC(RsxrMid::Context&);  // hooks_mid.cpp
+void Rsxr_Mid_PP_SNGF(RsxrMid::Context&);
+bool __cdecl Rsxr_Stub_PP_SNGD(const uint8_t*, uint32_t, const char*, uint32_t, uint8_t*, uint32_t);
+extern uintptr_t g_rsxr_resume_PP_SNGF, g_rsxr_target_PP_SNGD;
 }
 
 namespace {
-const Rs7Hook kHooks[] = {
-    Rs7_Stub("PP_SNGD", reinterpret_cast<void*>(&Rs7_Stub_PP_SNGD), nullptr, &g_rs7_target_PP_SNGD),
-    Rs7_Mid("PP_SNGF", &Rs7_Mid_PP_SNGF, &g_rs7_resume_PP_SNGF),
-    Rs7_Mid("PP_TOC", &Rs7_Mid_PP_TOC),
+const RsxrHook kHooks[] = {
+    Rsxr_Stub("PP_SNGD", reinterpret_cast<void*>(&Rsxr_Stub_PP_SNGD), nullptr, &g_rsxr_target_PP_SNGD),
+    Rsxr_Mid("PP_SNGF", &Rsxr_Mid_PP_SNGF, &g_rsxr_resume_PP_SNGF),
+    Rsxr_Mid("PP_TOC", &Rsxr_Mid_PP_TOC),
 };
 }  // namespace
 
-extern const Rs7HookTable kRs7PsarcHooks = {Rs7_Group(Rs7Feature::Psarc), kHooks, sizeof kHooks / sizeof kHooks[0]};
+extern const RsxrHookTable kRsxrPsarcHooks = {Rsxr_Group(RsxrFeature::Psarc), kHooks, sizeof kHooks / sizeof kHooks[0]};

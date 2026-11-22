@@ -9,19 +9,19 @@
 #include <windows.h>
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_native_fretgrid = 0;
-__declspec(dllexport) uintptr_t g_rs7_fg_row = 0x1CC;
+__declspec(dllexport) uintptr_t g_rsxr_native_fretgrid = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fg_row = 0x1CC;
 }
 
-namespace rs7fg {
+namespace rsxrfg {
 void Configure(bool native) {
-    g_rs7_native_fretgrid = native ? 1 : 0;
-    g_rs7_fg_row = native ? kRowNative : kRowStock;
+    g_rsxr_native_fretgrid = native ? 1 : 0;
+    g_rsxr_fg_row = native ? kRowNative : kRowStock;
 }
 
 void ConfigureDeferred(bool native) {
-    g_rs7_native_fretgrid = native ? 1 : 0;
-    g_rs7_fg_row = kRowStock;
+    g_rsxr_native_fretgrid = native ? 1 : 0;
+    g_rsxr_fg_row = kRowStock;
 }
 
 namespace {
@@ -105,7 +105,7 @@ void OnGridCreated(uint8_t* grid) noexcept {
     if (!MarkNative(grid)) {
         // Safe policy: an unregistered native grid would be migrated as if stock-size. Never migrate again.
         DisableMigration();
-        Rs7Log("fretgrid: registering native grid %p failed - migration disabled", grid);
+        RsxrLog("fretgrid: registering native grid %p failed - migration disabled", grid);
     }
 }
 
@@ -119,7 +119,7 @@ void SetDeferredApply(ApplyFn apply) {
 }
 
 bool LayoutPending() {
-    return g_rs7_native_fretgrid && !g_failed && g_rs7_fg_row != kRowNative;
+    return g_rsxr_native_fretgrid && !g_failed && g_rsxr_fg_row != kRowNative;
 }
 
 bool OnGuitarUpdate(uint8_t* guitar) {
@@ -131,8 +131,8 @@ bool OnGuitarUpdate(uint8_t* guitar) {
         if (!g_applied) {
             if (!g_apply) {  // nothing deferred: the Fretgrid group was disabled at startup (cascade done there)
                 g_failed = true;
-                g_rs7_native_fretgrid = 0;
-                Rs7Log("fretgrid: no deferred sites - native layout off");
+                g_rsxr_native_fretgrid = 0;
+                RsxrLog("fretgrid: no deferred sites - native layout off");
                 return true;
             }
 
@@ -146,25 +146,25 @@ bool OnGuitarUpdate(uint8_t* guitar) {
 
             if (a == ApplyResult::Retry && g_attempts < kApplyAttempts) {
                 g_retryAt = GetTickCount() + kApplyRetryMs;
-                Rs7Log("fretgrid: native layout not written yet (thread freeze timed out) - attempt %u of %u, next "
-                       "in %u ms",
-                       g_attempts, kApplyAttempts, kApplyRetryMs);
+                RsxrLog("fretgrid: native layout not written yet (thread freeze timed out) - attempt %u of %u, next "
+                        "in %u ms",
+                        g_attempts, kApplyAttempts, kApplyRetryMs);
                 return true;
             }
 
             if (a != ApplyResult::Applied) {
                 g_failed = true;
-                g_rs7_native_fretgrid = 0;
-                Rs7Log("fretgrid: native layout NOT applied (a site could not be written; restored)");
+                g_rsxr_native_fretgrid = 0;
+                RsxrLog("fretgrid: native layout NOT applied (a site could not be written; restored)");
                 return true;
             }
 
             g_applied = true;
-            g_rs7_fg_row = kRowNative;
-            Rs7Log("fretgrid: native layout written on the game thread (guitar %p, first update)", guitar);
+            g_rsxr_fg_row = kRowNative;
+            RsxrLog("fretgrid: native layout written on the game thread (guitar %p, first update)", guitar);
         }
 
-        uint8_t** slot = reinterpret_cast<uint8_t**>(guitar + rs7::kGuitarGrid);
+        uint8_t** slot = reinterpret_cast<uint8_t**>(guitar + rsxr::kGuitarGrid);
         uint8_t* old = *slot;
         if (RegistryFailed() && !IsNative(old)) {
             return false;  // an unregistered grid may still be stock-size; no native access or sized migration
@@ -182,19 +182,19 @@ bool OnGuitarUpdate(uint8_t* guitar) {
             MarkNative(fresh);
             g_free(old, kSizeStock);
             ++g_migrated;
-            Rs7Log("fretgrid: guitar %p: stock-size FretGrid %p replaced by native %p (%d so far)", guitar, old, fresh,
-                   g_migrated);
+            RsxrLog("fretgrid: guitar %p: stock-size FretGrid %p replaced by native %p (%d so far)", guitar, old, fresh,
+                    g_migrated);
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         if (!g_applied) {
-            Rs7Log("fretgrid: OnGuitarUpdate faulted before the layout switch (guitar %p)", guitar);
+            RsxrLog("fretgrid: OnGuitarUpdate faulted before the layout switch (guitar %p)", guitar);
             g_failed = true;
         } else if (++g_migrateFaults < kMigrateFaults) {
-            Rs7Log("fretgrid: OnGuitarUpdate faulted (guitar %p, %d of %d) - tried again on the next update", guitar,
-                   g_migrateFaults, kMigrateFaults);
+            RsxrLog("fretgrid: OnGuitarUpdate faulted (guitar %p, %d of %d) - tried again on the next update", guitar,
+                    g_migrateFaults, kMigrateFaults);
         } else {
-            Rs7Log("fretgrid: OnGuitarUpdate faulted %d times (guitar %p) - grid migration stopped", kMigrateFaults,
-                   guitar);
+            RsxrLog("fretgrid: OnGuitarUpdate faulted %d times (guitar %p) - grid migration stopped", kMigrateFaults,
+                    guitar);
             g_failed = true;
         }
 
@@ -203,48 +203,48 @@ bool OnGuitarUpdate(uint8_t* guitar) {
 
     return true;
 }
-}  // namespace rs7fg
+}  // namespace rsxrfg
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FGHK(Rs7Mid::Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FGHK(RsxrMid::Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    rs7colour::DrainPending();  // a colour publish requested by another thread, on the game thread
-    if (!rs7fg::OnGuitarUpdate(*reinterpret_cast<uint8_t**>(c.esp + 4))) {
-        Rs7Mid::Ret(c, 4);  // stdcall(guitar): skip all native grid access, including after migration gives up
+    rsxrcolour::DrainPending();  // a colour publish requested by another thread, on the game thread
+    if (!rsxrfg::OnGuitarUpdate(*reinterpret_cast<uint8_t**>(c.esp + 4))) {
+        RsxrMid::Ret(c, 4);  // stdcall(guitar): skip all native grid access, including after migration gives up
     }
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FGCT(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FGCT(RsxrMid::Context& c) {
     // No C++ exception may reach the game's constructor frame; OnGridCreated is noexcept and applies the
     // fail-safe policy itself, this is the last line of defence.
     try {
-        rs7fg::OnGridCreated(reinterpret_cast<uint8_t*>(c.eax));
+        rsxrfg::OnGridCreated(reinterpret_cast<uint8_t*>(c.eax));
     } catch (...) {
-        rs7fg::DisableMigration();
+        rsxrfg::DisableMigration();
     }
 }
 
-extern "C" void __cdecl Rs7Fg_BuildExtra(uint8_t* grid, uint8_t* guitar) {
+extern "C" void __cdecl RsxrFg_BuildExtra(uint8_t* grid, uint8_t* guitar) {
     // Cell() is native-stride: only once the layout is written (the switch is set while the stride is still stock)
     // and only for a grid built native (a stock-size grid built before the first FGHK is migrated later).
-    if (!g_rs7_native_fretgrid || !grid || !guitar || rs7fg::RowStride() != rs7fg::kRowNative ||
-        !rs7fg::IsNative(grid)) {
+    if (!g_rsxr_native_fretgrid || !grid || !guitar || rsxrfg::RowStride() != rsxrfg::kRowNative ||
+        !rsxrfg::IsNative(grid)) {
         return;
     }
 
     __try {
-        const uint8_t* info = rs7::GuitarInfo(guitar);
-        if (!info || info[rs7::kInfoStrings] != rs7fg::kStock) {
+        const uint8_t* info = rsxr::GuitarInfo(guitar);
+        if (!info || info[rsxr::kInfoStrings] != rsxrfg::kStock) {
             return;  // a 6-string guitar only (bass: 4 strings)
         }
 
         static int logged = 0;
-        const int n = rs7fg::FillExtraCells(grid, info[rs7::kInfoFrets]);
+        const int n = rsxrfg::FillExtraCells(grid, info[rsxr::kInfoFrets]);
 
         if (logged < 3) {
             ++logged;
-            Rs7Log("fretgrid: grid %p, local points of cells 6/7 built for %d fret rows", grid, n);
+            RsxrLog("fretgrid: grid %p, local points of cells 6/7 built for %d fret rows", grid, n);
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 }

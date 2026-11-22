@@ -7,8 +7,8 @@
 
 // Headstock runtime state: one instance (g_head, hooks.cpp). Asset settings retain their startup construction
 // order in ConfigState (assetload_config.h / assetload_config.cpp).
-namespace rs7head {
-// [debug] head_cull as the overlay hands it over (Rs7Head_SetLive, any thread).
+namespace rsxrhead {
+// [debug] head_cull as the overlay hands it over (RsxrHead_SetLive, any thread).
 struct Live {
     char cull[48];
 };
@@ -29,7 +29,7 @@ struct Culled {
 struct State {
     // Counters since startup (PSC1 / PSL2 run on resource-loader jobs: interlocked).
     volatile long ctors, loads7, active7, foreign, ownFull;
-    // Game / loader thread log limits: interlocked by Rs7Log_Upto, reset at song setup.
+    // Game / loader thread log limits: interlocked by RsxrLog_Upto, reset at song setup.
     volatile long logOwnFull, logCtor, logLoad, logRaise, logNoSlot, logForeign;
     // Loader threads publish; game thread consumes. LoadRing guards records with its per-entry spin locks.
     LoadRing loads;
@@ -45,8 +45,8 @@ struct State {
     long liveTaken;
 
     // Game thread: per-guitar model, width and diagnostic culling caches (no lock).
-    rs7asset::Head heads[8];
-    Width width[rs7::kMaxGuitars];
+    rsxrasset::Head heads[8];
+    Width width[rsxr::kMaxGuitars];
     Culled culled[4];
     unsigned culledNext;
     const uint8_t* lastLetterInfo;
@@ -54,16 +54,16 @@ struct State {
     unsigned colourLogs;
     // Game thread; the peg-swap flag retains its interlocked write and volatile reads.
     volatile long pegSwapEver;
-    // Game thread log limits, retaining interlocked Rs7Log_Upto updates.
+    // Game thread log limits, retaining interlocked RsxrLog_Upto updates.
     volatile long logFrameCheck, logNoAlt, logFrame, logLetters;
     volatile long logPegs, logPegAlt, logBind, logSeg7, logLayer, logWidth;
 
     // Startup writes before hooks; loader threads then read without a lock.
     // selfbuild=1 and no usable model: build from the stock assets on the first frame load, once per hand.
     bool sbWanted, sbWantedLh;
-    bool sbBass;                          // selfbuild=1 and headstock7 on: a bass frame without models builds them
-    bool sbBassStale, sbBassStaleLh;      // bass models built from an older package
-    float wood = rs7asset::kDefaultWood;  // model wood colour texture brightness
+    bool sbBass;                           // selfbuild=1 and headstock7 on: a bass frame without models builds them
+    bool sbBassStale, sbBassStaleLh;       // bass models built from an older package
+    float wood = rsxrasset::kDefaultWood;  // model wood colour texture brightness
     // Startup initializes; loader fallback writes interlocked, PSL1 reads the volatile per-hand entry.
     // Locator_Peg_1..n capacity: [0] right, [1] left, 7 when the 8-peg model falls back to the 7-peg one.
     volatile long modelPegs[2] = {7, 7};
@@ -86,4 +86,4 @@ struct State {
 };
 
 extern State g_head;
-}  // namespace rs7head
+}  // namespace rsxrhead

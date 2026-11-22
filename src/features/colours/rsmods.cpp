@@ -6,9 +6,9 @@
 #include <cwchar>
 #include <string>
 
-namespace rs7rsmods {
+namespace rsxrrsmods {
 namespace {
-using rs7colour::g_colour;
+using rsxrcolour::g_colour;
 
 std::wstring ReadValue(const wchar_t* section, const wchar_t* key, const wchar_t* path) {
     wchar_t value[256] = {};
@@ -116,7 +116,7 @@ Colour Read(const wchar_t* iniPath, bool loaded) {
     const auto text = ReadValue(L"String Colors", L"string0_CB", iniPath);
     uint32_t rgb = 0;
 
-    return Rs7_ParseRgb(text.c_str(), &rgb) ? Colour{true, rgb} : Colour{};
+    return Rsxr_ParseRgb(text.c_str(), &rgb) ? Colour{true, rgb} : Colour{};
 }
 
 void Resolve(const Colour& colour, bool enabled, uint32_t (&rgb)[2]) {
@@ -233,4 +233,4 @@ bool CustomGlow() {
 const Colour& Cached() {
     return g_colour.rsmods;
 }
-}  // namespace rs7rsmods
+}  // namespace rsxrrsmods

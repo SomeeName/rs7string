@@ -4,17 +4,17 @@
 #include <string>
 #include <vector>
 
-struct Rs7HookTable;
+struct RsxrHookTable;
 // The chord-diagram data hooks ([chords] diagrams7, group Diagrams): DGB DGM DGS TP13 and the X_D* refs.
-extern const Rs7HookTable kRs7DiagramHooks;
+extern const RsxrHookTable kRsxrDiagramHooks;
 
 // Seven/eight-row chord diagrams ([chords] diagrams7, docs/ARCHITECTURE.md section 9): the stock diagram
 // serializers run, then the LowB / LowFs data keys are added; the three owner movies are swapped for recipes from
 // chord-diagrams\ that draw the extra rows.
 // Logic: diagrams.cpp (the keys of a shape), movie.cpp (the recipe movie swap). Glue: hooks.cpp (the data
 // callbacks, song bindings), hooks_movie.cpp (the FileOpener hook), hooks_mid.cpp (the mid-hooks),
-// registration.cpp (kRs7DiagramHooks).
-namespace rs7diagram {
+// registration.cpp (kRsxrDiagramHooks).
+namespace rsxrdiagram {
 struct Shape {
     int count = 6;
     int frets[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
@@ -43,17 +43,17 @@ bool InstallOpenHook(uintptr_t* slot, uintptr_t expect);
 void* OpenHookForTest();
 void SetOpenForTest(void* fn);
 void SetRecipeForTest(int index, const std::vector<uint8_t>& recipe);
-}  // namespace rs7diagram
+}  // namespace rsxrdiagram
 
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_diagrams;
-__declspec(dllexport) void __cdecl Rs7Diagram_Manifest(void* object, void* frets, void* fingers, void* attributes,
-                                                       void* chord, int capo);
-__declspec(dllexport) void __cdecl Rs7Diagram_Loaded(void** holder, const uint8_t* tpl);
-__declspec(dllexport) void __cdecl Rs7Diagram_Bind(void* song, void* attributes);
+__declspec(dllexport) extern uintptr_t g_rsxr_diagrams;
+__declspec(dllexport) void __cdecl RsxrDiagram_Manifest(void* object, void* frets, void* fingers, void* attributes,
+                                                        void* chord, int capo);
+__declspec(dllexport) void __cdecl RsxrDiagram_Loaded(void** holder, const uint8_t* tpl);
+__declspec(dllexport) void __cdecl RsxrDiagram_Bind(void* song, void* attributes);
 }
-void Rs7Diagram_Drop(void* song);
-int Rs7Diagram_Bindings();  // leak audit: songs with a bound dictionary (reference held until the song is freed)
+void RsxrDiagram_Drop(void* song);
+int RsxrDiagram_Bindings();  // leak audit: songs with a bound dictionary (reference held until the song is freed)
 // [chords] diagrams7 and, with it on, the movie recipes ([debug] diagrams_trace). Read at startup.
-void Rs7Diagram_Configure(const wchar_t* ini);
-void Rs7DiagramMovie_Configure(const wchar_t* ini);
+void RsxrDiagram_Configure(const wchar_t* ini);
+void RsxrDiagramMovie_Configure(const wchar_t* ini);

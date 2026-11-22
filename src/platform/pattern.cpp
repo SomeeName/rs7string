@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 
-bool Rs7_ParsePattern(const char* text, Rs7Pattern& out) {
+bool Rsxr_ParsePattern(const char* text, RsxrPattern& out) {
     out.bytes.clear();
     out.wild.clear();
     const char* p = text;
@@ -38,7 +38,7 @@ bool Rs7_ParsePattern(const char* text, Rs7Pattern& out) {
     return !out.bytes.empty();
 }
 
-void Rs7_ByteHistogram(const uint8_t* data, size_t size, size_t hist[256]) {
+void Rsxr_ByteHistogram(const uint8_t* data, size_t size, size_t hist[256]) {
     for (int b = 0; b < 256; ++b) {
         hist[b] = 0;
     }
@@ -52,8 +52,8 @@ void Rs7_ByteHistogram(const uint8_t* data, size_t size, size_t hist[256]) {
 // startup, so the sites were written ~22 s after launch - after the game had already built objects
 // whose layout the sites change (the ColourManager at ~12 s, fix/colours2). memchr on the pattern's
 // rarest fixed byte visits only the anchor's occurrences.
-std::vector<size_t> Rs7_FindAll(const uint8_t* data, size_t size, const Rs7Pattern& p, size_t maxHits,
-                                const size_t* hist) {
+std::vector<size_t> Rsxr_FindAll(const uint8_t* data, size_t size, const RsxrPattern& p, size_t maxHits,
+                                 const size_t* hist) {
     std::vector<size_t> hits;
     const size_t n = p.bytes.size();
     if (n == 0 || size < n || maxHits == 0) {

@@ -4,7 +4,7 @@
 #include "model/instrument.h"
 #include <cstring>
 
-namespace rs7fg {
+namespace rsxrfg {
 namespace {
 // Native-layout grids (game thread only). Registration cannot allocate or throw into FGCT. Creation age cannot
 // prove a grid dead: never evict an entry. Exhaustion disables migration, just like any other failed registration,
@@ -113,7 +113,7 @@ void MigrateGrid(const uint8_t* old, uint8_t* fresh) {
     }
 
     // the tail (fret bars, spans, flags) sits at the same offsets in both layouts
-    constexpr uint32_t tail = rs7::kGridTail;
+    constexpr uint32_t tail = rsxr::kGridTail;
     static_assert(tail == kWireBaseStock + kFrets * kWireRowStock, "the tail follows the stock wire rows");
 
     std::memcpy(fresh + tail, old + tail, kSizeStock - tail);
@@ -155,4 +155,4 @@ int FillExtraCells(uint8_t* grid, uint32_t frets) {
 
     return done;
 }
-}  // namespace rs7fg
+}  // namespace rsxrfg

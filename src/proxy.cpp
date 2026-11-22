@@ -36,7 +36,7 @@ extern "C" HRESULT WINAPI Proxy_DirectInput8Create(HINSTANCE inst, DWORD ver, RE
     const HRESULT hr = f ? f(inst, ver, riid, out, outer) : E_FAIL;
 
     if (SUCCEEDED(hr) && out && !outer) {
-        Rs7Dinput_Wrap(*out);
+        RsxrDinput_Wrap(*out);
     }
 
     return hr;

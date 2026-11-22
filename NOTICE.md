@@ -5,7 +5,7 @@ for those parts:
 
   - data/chord-diagrams/LICENSE   (chord-diagram recipes)
   - data/headstock/LICENSE.md     (headstock build data; shipped in releases as
-                                   rs7string_headstock.LICENSE.md)
+                                   rsxr_headstock.LICENSE.md)
   - third_party/imgui/LICENSE.txt (Dear ImGui)
 
 This project ships no Ubisoft assets. The seven-peg headstock model and the

@@ -43,7 +43,7 @@ def dwords(*values: int) -> bytes:
     return struct.pack(f"<{len(values)}I", *(v & 0xFFFFFFFF for v in values))
 
 
-# ---- TP* / CP* / DS1: the registry g_rs7_ns (64 entries of 32 bytes) -------------------------------------------
+# ---- TP* / CP* / DS1: the registry g_rsxr_ns (64 entries of 32 bytes) -------------------------------------------
 TPL, CN, T8, C8 = 0x11110000, 0x22220000, 0x33330000, 0x44440000
 
 
@@ -64,7 +64,7 @@ def lookup_cases(begin_reg, id_reg, base):
         Case(
             f"{name}-begin{b - base:x}-id{i:x}",
             regs={begin_reg: b, id_reg: i},
-            mem={Sym("g_rs7_ns"): registry(*REGISTRIES[name])},
+            mem={Sym("g_rsxr_ns"): registry(*REGISTRIES[name])},
             # Failed lookups now return empty widened records; the stock reference and native failure tests cover them.
             frozen=name != "empty" and b != 0 and i < (10 if b == base else 50),
         )
@@ -165,7 +165,7 @@ register(
     ],
 )
 
-# ---- PL1: chord string 6 plucked through Rs7_S7Pluck; replays `mov al,[ebp-10h]; cmp al,0FFh` (full mode) ------
+# ---- PL1: chord string 6 plucked through Rsxr_S7Pluck; replays `mov al,[ebp-10h]; cmp al,0FFh` (full mode) ------
 T8REC, SESSION, GUITAR = D + 0x5000, D + 0x5400, D + 0x5800
 
 
@@ -184,7 +184,7 @@ def pluck_objects(fret: int) -> dict:
 # the old stub zero-extended the fret into EAX first (the stock-reference finding of test_midhook_stock_features.py,
 # which covers incoming upper bytes). The frozen stub stays the reference with EAX's upper bytes 0, where both agree.
 register(
-    Spec("PL1", 5, helpers={"Rs7_S7Pluck": Helper(3)}),
+    Spec("PL1", 5, helpers={"Rsxr_S7Pluck": Helper(3)}),
     [
         Case(
             f"fret{f:x}-al{a:x}",
@@ -275,9 +275,9 @@ register(
 )
 
 # ---- SF1: the SNG_Song destructor's call of its body (call site, Before placement; stub frozen at 44135a2) ---------
-# The run starts at the callee's entry: [esp] = the return address, ESI = the song. Rs7Ns_OnSongFree(song) always runs.
+# The run starts at the callee's entry: [esp] = the return address, ESI = the song. RsxrNs_OnSongFree(song) always runs.
 register(
-    Spec("SF1", 5, helpers={"Rs7Ns_OnSongFree": Helper(1)}, exits=("target",), call=True),
+    Spec("SF1", 5, helpers={"RsxrNs_OnSongFree": Helper(1)}, exits=("target",), call=True),
     [
         Case(f"song{song:x}", regs={UC_X86_REG_ESI: song}, stack={0: site_va("SF1") + 5, 4: 1})
         for song in (0, D + 0x100, 0xFFFFFFFF)

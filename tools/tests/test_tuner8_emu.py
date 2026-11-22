@@ -47,7 +47,7 @@ def copy_bytes(fid):
     patched.extend(bytes.fromhex("84C9 7506 8A4040 FEC8 C3 32C0 C3".replace(" ", "")))
     for e in edits:
         if e.sym:
-            assert e.sym == "g_rs7_callin_PubEdge", e.sym
+            assert e.sym == "g_rsxr_callin_PubEdge", e.sym
             patched[e.off : e.off + len(e.expect)] = bytes([0x90]) * len(e.expect)
             patched[e.off] = 0xE8
             patched[e.off + 1 : e.off + 5] = struct.pack("<i", (COPY + 0x900) - (COPY + e.off + 5))

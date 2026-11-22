@@ -7,21 +7,21 @@
 #include <cstring>
 #include <initializer_list>
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_SC1(Rs7Mid::Context& c) {
-    if (!g_rs7_frets_on) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_SC1(RsxrMid::Context& c) {
+    if (!g_rsxr_frets_on) {
         return;
     }
 
-    uint8_t* guitar = Rs7Mid::Ptr(c.esi);
+    uint8_t* guitar = RsxrMid::Ptr(c.esi);
     uint8_t* grid = nullptr;
     float shift[3];
-    if (!guitar || !Rs7_SafeCopyZero(&grid, guitar + rs7::kGuitarGrid, sizeof grid) ||
-        rs7fretglue::FloorOffset(guitar, grid, shift) <= 0 || shift[2] == 0.0f) {
+    if (!guitar || !Rsxr_SafeCopyZero(&grid, guitar + rsxr::kGuitarGrid, sizeof grid) ||
+        rsxrfretglue::FloorOffset(guitar, grid, shift) <= 0 || shift[2] == 0.0f) {
         return;
     }
 
     for (const uint32_t offset : {0x18u, 0x24u, 0x30u}) {
-        *Rs7Mid::Ptr<float>(c.esp + offset) += shift[2];
+        *RsxrMid::Ptr<float>(c.esp + offset) += shift[2];
     }
 
     float z;

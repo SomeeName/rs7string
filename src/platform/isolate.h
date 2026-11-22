@@ -7,32 +7,32 @@
 #include <string>
 #include <vector>
 
-struct Rs7ResolveResult;
+struct RsxrResolveResult;
 
 // A failing site disables only its own feature group, never the whole DLL. Which groups exist, which site
-// belongs to which and what disabling one does is the app's (kRs7Groups, src/hook_rules.h); a group that cannot be
+// belongs to which and what disabling one does is the app's (kRsxrGroups, src/hook_rules.h); a group that cannot be
 // isolated (the core, or a member of a unit without fallback) still aborts patching.
-struct Rs7GroupPolicy {
-    size_t count;                        // number of groups: bounds the patch rounds (one group off per round)
-    Rs7Group (*ofSite)(const char* id);  // a site's group; the core group for an id without a hook
-    bool (*isUnit)(Rs7Group);            // a member of a unit without fallback: its failure aborts like the core's
-    bool (*disable)(Rs7Group);           // marks the group failed; false (nothing changed) for the core group
-    bool (*disabled)(Rs7Group);          // whether the group has failed
-    const char* (*name)(Rs7Group);
+struct RsxrGroupPolicy {
+    size_t count;                         // number of groups: bounds the patch rounds (one group off per round)
+    RsxrGroup (*ofSite)(const char* id);  // a site's group; the core group for an id without a hook
+    bool (*isUnit)(RsxrGroup);            // a member of a unit without fallback: its failure aborts like the core's
+    bool (*disable)(RsxrGroup);           // marks the group failed; false (nothing changed) for the core group
+    bool (*disabled)(RsxrGroup);          // whether the group has failed
+    const char* (*name)(RsxrGroup);
 };
 
 // Resolve stage: sites that did not resolve are attributed to their group and the group is disabled.
 // Returns false if one of them cannot be isolated; res.sites then holds the resolved sites.
-bool Rs7_IsolateResolveFailures(Rs7ResolveResult& res, const Rs7GroupPolicy& groups,
-                                const std::function<void(const std::string&)>& log);
+bool Rsxr_IsolateResolveFailures(RsxrResolveResult& res, const RsxrGroupPolicy& groups,
+                                 const std::function<void(const std::string&)>& log);
 
-struct Rs7PatchOps {
+struct RsxrPatchOps {
     size_t count = 0;
-    std::function<Rs7Group(size_t)> group;
+    std::function<RsxrGroup(size_t)> group;
     std::function<const char*(size_t)> name;
     std::function<bool(size_t)> should;   // re-evaluated every round (disabled groups drop out)
     std::function<bool(size_t)> prepare;  // must be idempotent: rounds repeat it
-    std::function<Rs7WriteResult(size_t)> apply;
+    std::function<RsxrWriteResult(size_t)> apply;
     // Undo apply: true only if the original bytes are back (read-back compare). A false result is
     // UNRECOVERABLE: no more rounds, the site stays in `written`, its feature group is disabled.
     // An apply protection-cleanup failure is also UNRECOVERABLE even when its bytes can be put back.
@@ -41,7 +41,7 @@ struct Rs7PatchOps {
     // Optional: the bytes apply/restore write for site i. When set, each round's writes and
     // its rollback run inside ONE thread freeze (platform/freeze.h): apply and restore must then not allocate,
     // log or take locks (prepare does that work). Unset (unit tests of the policy): no freeze.
-    std::function<Rs7Range(size_t)> range;
+    std::function<RsxrRange(size_t)> range;
     // Optional precondition, after a successful freeze and before ANY write in each round. Same no-lock,
     // no-allocation rules as apply. False aborts the whole batch without writing or retrying the round.
     std::function<bool()> beforeWrite;
@@ -51,7 +51,7 @@ struct Rs7PatchOps {
     unsigned freezeAttempts = 3;
     unsigned freezeRetryMs = 1000;
 };
-enum class Rs7PatchResult {
+enum class RsxrPatchResult {
     Ok,                  // `written` lists the written indices
     CoreFailed,          // a Core site failed; everything restored
     PreconditionFailed,  // beforeWrite refused the batch; nothing written in that round
@@ -60,4 +60,5 @@ enum class Rs7PatchResult {
 };
 // Prepare all, then write all; on a failure everything written in that round is restored, the failing
 // site's group is disabled and the round restarts.
-Rs7PatchResult Rs7_PatchIsolated(const Rs7GroupPolicy& groups, const Rs7PatchOps& ops, std::vector<size_t>& written);
+RsxrPatchResult Rsxr_PatchIsolated(const RsxrGroupPolicy& groups, const RsxrPatchOps& ops,
+                                   std::vector<size_t>& written);

@@ -4,7 +4,7 @@
 #include <sal.h>
 #include <vector>
 
-namespace rs7test {
+namespace rsxrtest {
 struct Case {
     const char* name;
     void (*fn)();
@@ -81,42 +81,42 @@ _Ret_notnull_ T* Must(T* p, const char* what) {
 
     return p;
 }
-}  // namespace rs7test
+}  // namespace rsxrtest
 
 #define TEST(name)                                                                                                     \
     static void name();                                                                                                \
-    static rs7test::Reg reg_##name(#name, name);                                                                       \
+    static rsxrtest::Reg reg_##name(#name, name);                                                                      \
     static void name()
 // A test whose inline asm uses EBX, which AddressSanitizer needs as its frame pointer (C5073): not instrumented
 // in the -Asan build (build.ps1); a plain TEST everywhere else.
 #ifdef __SANITIZE_ADDRESS__
-#define RS7_NO_ASAN __declspec(no_sanitize_address)
+#define RSXR_NO_ASAN __declspec(no_sanitize_address)
 #else
-#define RS7_NO_ASAN
+#define RSXR_NO_ASAN
 #endif
 #define TEST_NO_ASAN(name)                                                                                             \
     static void name();                                                                                                \
-    static rs7test::Reg reg_##name(#name, name);                                                                       \
-    RS7_NO_ASAN static void name()
+    static rsxrtest::Reg reg_##name(#name, name);                                                                      \
+    RSXR_NO_ASAN static void name()
 // Up to three attempts when Ready refuses setup before the operation under test. CHECKs and exceptions never retry.
 #define TIMING_TEST(name)                                                                                              \
     static void name();                                                                                                \
-    static rs7test::Reg reg_##name(#name, name, nullptr, 3);                                                           \
+    static rsxrtest::Reg reg_##name(#name, name, nullptr, 3);                                                          \
     static void name()
 // Strict expected failure: an unexpected pass fails the run so the marker cannot silently go stale.
 #define XFAIL_TEST(name, why)                                                                                          \
     static void name();                                                                                                \
-    static rs7test::Reg reg_##name(#name, name, why);                                                                  \
+    static rsxrtest::Reg reg_##name(#name, name, why);                                                                 \
     static void name()
 #define CHECK(x)                                                                                                       \
     do {                                                                                                               \
-        ++rs7test::Checks();                                                                                           \
+        ++rsxrtest::Checks();                                                                                          \
         if (!(x))                                                                                                      \
-            rs7test::Fail(__FILE__, __LINE__, #x);                                                                     \
+            rsxrtest::Fail(__FILE__, __LINE__, #x);                                                                    \
     } while (0)
 #define CHECK_EQ(a, b)                                                                                                 \
     do {                                                                                                               \
-        ++rs7test::Checks();                                                                                           \
+        ++rsxrtest::Checks();                                                                                          \
         if (!((a) == (b)))                                                                                             \
-            rs7test::Fail(__FILE__, __LINE__, #a " == " #b);                                                           \
+            rsxrtest::Fail(__FILE__, __LINE__, #a " == " #b);                                                          \
     } while (0)

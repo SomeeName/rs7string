@@ -1,5 +1,5 @@
 #pragma once
-// Dear ImGui build options for rs7string's overlay (IMGUI_USER_CONFIG, rs7string.vcxproj). The vendored
+// Dear ImGui build options for RSXR's overlay (IMGUI_USER_CONFIG, rsxr.vcxproj). The vendored
 // third_party/imgui files are upstream v1.92.9b, unmodified.
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS

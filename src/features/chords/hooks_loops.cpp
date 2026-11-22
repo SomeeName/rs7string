@@ -3,10 +3,10 @@
 #include "features/strings/strings.h"
 #include "platform/safecopy.h"
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_native_chordloops = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_native_chordloops = 0;
 
-extern "C" uint8_t* __cdecl Rs7ChordLoops_Target(uint8_t* owner, uint32_t s, uint32_t ghost) {
-    if (s < 6 || s >= 8 || !g_rs7_native_strings || !rs7gs::IsNative(owner)) {
+extern "C" uint8_t* __cdecl RsxrChordLoops_Target(uint8_t* owner, uint32_t s, uint32_t ghost) {
+    if (s < 6 || s >= 8 || !g_rsxr_native_strings || !rsxrgs::IsNative(owner)) {
         return nullptr;
     }
 
@@ -15,12 +15,12 @@ extern "C" uint8_t* __cdecl Rs7ChordLoops_Target(uint8_t* owner, uint32_t s, uin
     uint32_t magic = 0;
     uint8_t loaded = 0, active = 0;
 
-    if (!Rs7_SafeCopy(&info, owner + rs7gs::kInfo, sizeof info) || !info ||
-        !Rs7_SafeCopy(&magic, info + rs7gs::kInfoMagicOff, sizeof magic) || magic != rs7gs::kInfoMagic ||
-        !Rs7_SafeCopy(&loaded, info + rs7gs::kInfoLoaded, 1) || !Rs7_SafeCopy(&active, info + rs7gs::kInfoActive, 1) ||
-        loaded > 8 || active > loaded || s >= loaded) {
+    if (!Rsxr_SafeCopy(&info, owner + rsxrgs::kInfo, sizeof info) || !info ||
+        !Rsxr_SafeCopy(&magic, info + rsxrgs::kInfoMagicOff, sizeof magic) || magic != rsxrgs::kInfoMagic ||
+        !Rsxr_SafeCopy(&loaded, info + rsxrgs::kInfoLoaded, 1) ||
+        !Rsxr_SafeCopy(&active, info + rsxrgs::kInfoActive, 1) || loaded > 8 || active > loaded || s >= loaded) {
         return nullptr;
     }
 
-    return Rs7Gs_Active(owner, static_cast<int>(s), ghost != 0);
+    return RsxrGs_Active(owner, static_cast<int>(s), ghost != 0);
 }

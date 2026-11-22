@@ -3,8 +3,8 @@
 #include "features/scene/scene.h"
 #include "features/string7/string7.h"
 
-void rs7s7d::ShowEntity(uint8_t* entity, uint32_t show) {
-    if (!g_rs7_fn_show) {
+void rsxrs7d::ShowEntity(uint8_t* entity, uint32_t show) {
+    if (!g_rsxr_fn_show) {
         return;
     }
 
@@ -14,7 +14,7 @@ void rs7s7d::ShowEntity(uint8_t* entity, uint32_t show) {
         push edi
         push show
         mov eax, entity
-        call dword ptr [g_rs7_fn_show]
+        call dword ptr [g_rsxr_fn_show]
         add esp, 4
         pop edi
         pop esi
@@ -22,8 +22,8 @@ void rs7s7d::ShowEntity(uint8_t* entity, uint32_t show) {
     }
 }
 
-void rs7s7d::FadeEntity(uintptr_t fn, uint8_t* entity, float seconds) {
-    const uint32_t mgr = g_rs7_fade_mgr ? *reinterpret_cast<const uint32_t*>(g_rs7_fade_mgr) : 0;
+void rsxrs7d::FadeEntity(uintptr_t fn, uint8_t* entity, float seconds) {
+    const uint32_t mgr = g_rsxr_fade_mgr ? *reinterpret_cast<const uint32_t*>(g_rsxr_fade_mgr) : 0;
     if (!fn || !mgr || !entity) {
         return;
     }

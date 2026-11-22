@@ -2,19 +2,19 @@
 #include <cstddef>
 #include <cstdint>
 
-struct Rs7HookTable;
+struct RsxrHookTable;
 // X_WORLD, X_ROOT and the ClipFade references (data references, group Core): registration.cpp.
-extern const Rs7HookTable kRs7SceneHooks;
+extern const RsxrHookTable kRsxrSceneHooks;
 
 // The scene-graph reads: SEH-guarded game-memory helpers (read-only, never throw), shared by the
 // native strings, frets, pegs, headstock model, tuner and tuning names.
 
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_fn_world;  // X_WORLD 0x411130 cdecl() -> world (render service)
-__declspec(dllexport) extern uintptr_t g_rs7_fn_root;   // X_ROOT  0x9BD3F0 ECX = entity, (world) ret 4 -> root node
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_world;  // X_WORLD 0x411130 cdecl() -> world (render service)
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_root;   // X_ROOT  0x9BD3F0 ECX = entity, (world) ret 4 -> root node
 }
 
-namespace rs7s7d {
+namespace rsxrs7d {
 // Entity_Show: EAX entity, cdecl(show). Requires a valid entity; does nothing without the resolved callee.
 void ShowEntity(uint8_t* entity, uint32_t show);
 // ClipFade: EAX entity, (manager, seconds, 0, 1), ret 10h. Does nothing without entity, callee or manager.
@@ -27,13 +27,13 @@ uint8_t* EntityRoot(uint8_t* entity);
 bool IsKindOf(const void* obj, const char* kind);
 void KindOf(const void* obj, char* out, size_t cap);
 void NameOfNode(const void* obj, char* out, size_t cap);
-}  // namespace rs7s7d
+}  // namespace rsxrs7d
 
 // The game's ClipFade (refs, never written), used by the native strings and pegs (features/strings,
 // features/headstock).
 extern "C" {
-__declspec(dllexport) extern uintptr_t g_rs7_fade_mgr;  // X_FADEMGR &ClipFade manager (0x1360480)
+__declspec(dllexport) extern uintptr_t g_rsxr_fade_mgr;  // X_FADEMGR &ClipFade manager (0x1360480)
 __declspec(dllexport) extern uintptr_t
-    g_rs7_fn_fadein;  // X_FADEIN  ClipFade_FadeInEntity 0x824E70 (EAX entity; mgr, s, 0, 1) ret 10h
-__declspec(dllexport) extern uintptr_t g_rs7_fn_fadeout;  // X_FADEOUT ClipFade_FadeOutEntity 0x825000 (same)
+    g_rsxr_fn_fadein;  // X_FADEIN  ClipFade_FadeInEntity 0x824E70 (EAX entity; mgr, s, 0, 1) ret 10h
+__declspec(dllexport) extern uintptr_t g_rsxr_fn_fadeout;  // X_FADEOUT ClipFade_FadeOutEntity 0x825000 (same)
 }

@@ -20,7 +20,8 @@ std::filesystem::path InputIni(const std::string& text) {
     wchar_t temp[MAX_PATH]{};
 
     GetTempPathW(MAX_PATH, temp);
-    const auto p = std::filesystem::path(temp) / ("rs7_asset_inputs_" + std::to_string(GetCurrentProcessId()) + ".ini");
+    const auto p =
+        std::filesystem::path(temp) / ("rsxr_asset_inputs_" + std::to_string(GetCurrentProcessId()) + ".ini");
     std::ofstream out(p, std::ios::binary);
 
     out << text;
@@ -42,9 +43,9 @@ void InputConfigure(const std::string& text) {
     const auto p = InputIni(text);
 
     inputLogs.clear();
-    Rs7Log_SetSink(InputLog);
-    Rs7Asset_Configure(p.c_str());
-    Rs7Log_SetSink(nullptr);
+    RsxrLog_SetSink(InputLog);
+    RsxrAsset_Configure(p.c_str());
+    RsxrLog_SetSink(nullptr);
     std::filesystem::remove(p);
 }
 }  // namespace
@@ -52,7 +53,7 @@ void InputConfigure(const std::string& text) {
 TEST(asset_inputs_truncated_ini_strings_disable_headstock) {
     for (const char* key : {"dir", "headstock7_file", "headstock7_file_lh", "suffix"}) {
         InputConfigure(std::string("[assets]\r\n") + key + "=" + std::string(400, 'a') + "\r\n");
-        CHECK_EQ(g_rs7_asset_on, uintptr_t(0));
+        CHECK_EQ(g_rsxr_asset_on, uintptr_t(0));
         CHECK(InputLogged("truncated"));
     }
 
@@ -72,28 +73,28 @@ TEST(asset_inputs_wood_rejects_trailing_numeric_junk) {
 TEST(asset_inputs_explicit_model_paths_are_protected_even_when_missing) {
     InputConfigure("[assets]\r\nheadstock8_file=custom.nif\r\nheadstock7_file=seven.nif\r\n"
                    "headstock8_file_lh=left.nif\r\n");
-    CHECK(!rs7head::g_head.sbWanted && !rs7head::g_head.sbWantedLh);
-    CHECK_EQ(rs7asset::g_config.sbProtected.size(), 3u);
+    CHECK(!rsxrhead::g_head.sbWanted && !rsxrhead::g_head.sbWantedLh);
+    CHECK_EQ(rsxrasset::g_config.sbProtected.size(), 3u);
     InputConfigure("[assets]\r\nheadstock7=0\r\n");
-    CHECK(rs7asset::g_config.sbProtected.empty());
+    CHECK(rsxrasset::g_config.sbProtected.empty());
 }
 
 TEST(asset_inputs_default_filenames_remain_managed_and_opt_out_still_disables_builds) {
-    InputConfigure("[assets]\r\nheadstock8_file=.\\RS7_INLINE8.NIF\r\n"
-                   "headstock8_file_lh=.\\rs7_inline8_lh.nif\r\n"
-                   "headstock7_file=.\\rs7_inline7.nif\r\nheadstock7_file_lh=.\\rs7_inline7_lh.nif\r\n");
-    CHECK(rs7head::g_head.sbWanted && rs7head::g_head.sbWantedLh);
-    CHECK(rs7asset::g_config.sbProtected.empty());
+    InputConfigure("[assets]\r\nheadstock8_file=.\\RSXR_INLINE8.NIF\r\n"
+                   "headstock8_file_lh=.\\rsxr_inline8_lh.nif\r\n"
+                   "headstock7_file=.\\rsxr_inline7.nif\r\nheadstock7_file_lh=.\\rsxr_inline7_lh.nif\r\n");
+    CHECK(rsxrhead::g_head.sbWanted && rsxrhead::g_head.sbWantedLh);
+    CHECK(rsxrasset::g_config.sbProtected.empty());
 
-    InputConfigure("[assets]\r\nheadstock8_file=custom\\rs7_inline8.nif\r\n");
-    CHECK(!rs7head::g_head.sbWanted && rs7head::g_head.sbWantedLh);
-    CHECK_EQ(rs7asset::g_config.sbProtected.size(), 1u);
+    InputConfigure("[assets]\r\nheadstock8_file=custom\\rsxr_inline8.nif\r\n");
+    CHECK(!rsxrhead::g_head.sbWanted && rsxrhead::g_head.sbWantedLh);
+    CHECK_EQ(rsxrasset::g_config.sbProtected.size(), 1u);
 
     for (const char* value : {"", "none", "off", "0"}) {
         InputConfigure(std::string("[assets]\r\nheadstock8_file=") + value + "\r\nheadstock8_file_lh=" + value +
                        "\r\n");
-        CHECK(!rs7head::g_head.sbWanted && !rs7head::g_head.sbWantedLh);
-        CHECK(rs7asset::g_config.sbProtected.empty());
+        CHECK(!rsxrhead::g_head.sbWanted && !rsxrhead::g_head.sbWantedLh);
+        CHECK(rsxrasset::g_config.sbProtected.empty());
     }
 
     InputConfigure("[assets]\r\nheadstock7=0\r\n");

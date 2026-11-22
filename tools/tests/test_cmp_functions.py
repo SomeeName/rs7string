@@ -195,11 +195,11 @@ def test_the_line_number_argument_of_the_test_fail_call_is_masked():
         code = b"\x68" + struct.pack("<I", BASE + 0x9000)  # push <expr string>
         code += push_line  # push <__LINE__>
         code += b"\x68" + struct.pack("<I", BASE + 0x9010)  # push <__FILE__>
-        code += b"\xe8" + struct.pack("<i", fail - (at + len(code) + 5))  # call rs7test::Fail
+        code += b"\xe8" + struct.pack("<i", fail - (at + len(code) + 5))  # call rsxrtest::Fail
         code += b"\xc3"
         names = {
             at: "?T@@YAXXZ",
-            fail: c.Names().canon("?Fail@rs7test@@YAXPBDH0@Z"),
+            fail: c.Names().canon("?Fail@rsxrtest@@YAXPBDH0@Z"),
             BASE + 0x9000: "$SG1",
             BASE + 0x9010: "$SG2",
         }

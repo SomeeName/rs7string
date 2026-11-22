@@ -6,7 +6,7 @@
 //   PUBGS PUBGE1 PUBGE2  string-bound guards `cmp reg,6; jae` -> `cmp reg,[info+0Bh]` (light)
 //   PUBGC PUBGO          Rnd_FretGrid_Build: stock prefix traversal capped at 6; world columns count 8 (light)
 //   PUBGB                Rnd_FretGrid_Build exit: build the extra cells 6/7 once
-//   PUBGA                Rnd_GetStringAttachPoint entry: strings 6/7 via Rs7Gs_AttachExt; [neck] spacing_* scaled
+//   PUBGA                Rnd_GetStringAttachPoint entry: strings 6/7 via RsxrGs_AttachExt; [neck] spacing_* scaled
 //   PUBGF                finger span over the template's physical ranks
 //   PUBEDGE              the edge string of a string action over N strings (light)
 //   PUBGP (site R1)      Rnd_FretGrid_GetCellPos: every cell position query from the native cells (sse)
@@ -21,17 +21,17 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-using Rs7Mid::Byte;
-using Rs7Mid::Context;
-using Rs7Mid::Dword;
-using Rs7Mid::Ptr;
+using RsxrMid::Byte;
+using RsxrMid::Context;
+using RsxrMid::Dword;
+using RsxrMid::Ptr;
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_resume_PUBGS = 0, g_rs7_target_PUBGS = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PUBGE1 = 0, g_rs7_target_PUBGE1 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PUBGE2 = 0, g_rs7_target_PUBGE2 = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PUBGC = 0, g_rs7_resume_PUBGO = 0, g_rs7_resume_PUBGB = 0;
-__declspec(dllexport) uintptr_t g_rs7_resume_PUBEDGE = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PUBGS = 0, g_rsxr_target_PUBGS = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PUBGE1 = 0, g_rsxr_target_PUBGE1 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PUBGE2 = 0, g_rsxr_target_PUBGE2 = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PUBGC = 0, g_rsxr_resume_PUBGO = 0, g_rsxr_resume_PUBGB = 0;
+__declspec(dllexport) uintptr_t g_rsxr_resume_PUBEDGE = 0;
 }
 
 namespace {
@@ -41,7 +41,7 @@ uint32_t WithLow8(uint32_t reg, uint32_t low) {
 
 // `cmp string, byte [info+0Bh]; jae target`, falling through to the resume (flags: the compare's, as stock).
 void BoundGuard(Context& c, uint32_t string, uint32_t info, uintptr_t resume, uintptr_t target) {
-    const uint32_t count = Byte(info + rs7::kInfoStrings);
+    const uint32_t count = Byte(info + rsxr::kInfoStrings);
 
     c.Compare(string, count, 8);
     c.jump = static_cast<uint32_t>((string & 0xFF) >= count ? target : resume);
@@ -50,12 +50,12 @@ void BoundGuard(Context& c, uint32_t string, uint32_t info, uintptr_t resume, ui
 
 // PUBGS 0x5903BD (AL = string, EDI = info), PUBGE1 0x7E3488 (DL, ESI), PUBGE2 0x7E367D (BL, ESI): the stock bound
 // `cmp reg,6; jae <reject>` against the info's published count. PUBGS / PUBGE1 displace `cmp; jae rel32` exactly.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGS(Context& c) {
-    BoundGuard(c, c.eax, c.edi, g_rs7_resume_PUBGS, g_rs7_target_PUBGS);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGS(Context& c) {
+    BoundGuard(c, c.eax, c.edi, g_rsxr_resume_PUBGS, g_rsxr_target_PUBGS);
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGE1(Context& c) {
-    BoundGuard(c, c.edx, c.esi, g_rs7_resume_PUBGE1, g_rs7_target_PUBGE1);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGE1(Context& c) {
+    BoundGuard(c, c.edx, c.esi, g_rsxr_resume_PUBGE1, g_rsxr_target_PUBGE1);
 }
 
 // PUBGE2 displaces `cmp bl,6; jae 0x7E36E8` (a rel8) and the following `cmp byte [esi+8],0`, whose flags the `je
@@ -64,9 +64,9 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGE1(Context& c) {
 // (ZF = 0, `neg ecx` always ran) and the site's target was decoded as a rel32 (a branch into 0x86B506 on reject).
 // CONFIRMED by a run of the stock bytes (tools/tests/test_publish_grid_emu.py, test_pubge2_matches_the_stock_bytes).
 // HYPOTHESIS: InstrumentInfo +8 is a direction flag of the fret offset (ECX) passed to 0x58E6E0.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGE2(Context& c) {
-    BoundGuard(c, c.ebx, c.esi, g_rs7_resume_PUBGE2, g_rs7_target_PUBGE2);
-    if (c.jump == static_cast<uint32_t>(g_rs7_resume_PUBGE2)) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGE2(Context& c) {
+    BoundGuard(c, c.ebx, c.esi, g_rsxr_resume_PUBGE2, g_rsxr_target_PUBGE2);
+    if (c.jump == static_cast<uint32_t>(g_rsxr_resume_PUBGE2)) {
         c.Compare(Byte(c.esi + 8), 0, 8);
     }
 }
@@ -75,97 +75,97 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGE2(Context& c) {
 // count for the stock prefix traversal, capped at 6 before either 7/8 publication: the stock loops keep their
 // six-string shape, the extra cells are built once at the exit (PUBGB). The flags of the stock `cmp cl,6` are dead (the
 // next flag reader follows a flag-writing instruction; contract "free").
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGC(Context& c) {
-    const uint32_t count = Byte(c.eax + rs7::kInfoStrings);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGC(Context& c) {
+    const uint32_t count = Byte(c.eax + rsxr::kInfoStrings);
 
     c.ecx = WithLow8(c.ecx, count > 6 ? 6 : count);
     c.edx = WithLow8(c.edx, Byte(c.eax + 0x0C));
-    c.jump = static_cast<uint32_t>(g_rs7_resume_PUBGC);
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_PUBGC);
 }
 
 // PUBGO - 0x58FCF6 `mov dl,[eax+0Bh]; sub esp,24h` (EAX = info): populate all eight world columns before publishing the
 // active count N; a guitar (count >= 6) reads 8, bass stays 4. Flags: the `sub esp,24h`'s, as stock.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGO(Context& c) {
-    const uint32_t count = Byte(c.eax + rs7::kInfoStrings);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGO(Context& c) {
+    const uint32_t count = Byte(c.eax + rsxr::kInfoStrings);
 
     c.edx = WithLow8(c.edx, count < 6 ? count : 8);
     c.Compare32(c.esp, 0x24);
     c.esp -= 0x24;
-    c.jump = static_cast<uint32_t>(g_rs7_resume_PUBGO);
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_PUBGO);
 }
 
 // PUBGB - 0x58FA25 `mov eax,2` (the "complete" exit of Rnd_FretGrid_Build; [ebp+8] = grid, [ebp+0Ch] = guitar):
-// Rs7Publish_GridBuild builds the cells of strings 6/7 and returns the status (EAX; stock 2, or "not ready" while the
+// RsxrPublish_GridBuild builds the cells of strings 6/7 and returns the status (EAX; stock 2, or "not ready" while the
 // guitar's strings are still loading). The flags at the exit are dead (contract "dead").
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGB(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGB(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
-    c.eax = static_cast<uint32_t>(Rs7Publish_GridBuild(Ptr(Dword(c.ebp + 8)), Ptr(Dword(c.ebp + 0x0C))));
-    c.jump = static_cast<uint32_t>(g_rs7_resume_PUBGB);
+    c.eax = static_cast<uint32_t>(RsxrPublish_GridBuild(Ptr(Dword(c.ebp + 8)), Ptr(Dword(c.ebp + 0x0C))));
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_PUBGB);
 }
 
 // PUBGA - Rnd_GetStringAttachPoint 0x594530 (ECX = info, BYTE string, float* out; caller-cleaned). With a [neck]
-// spacing_* setting every string is answered scaled (Rs7Gs_AttachSpaced). Else the stock strings (0..5 of a guitar,
+// spacing_* setting every string is answered scaled (RsxrGs_AttachSpaced). Else the stock strings (0..5 of a guitar,
 // 0..3 of a bass) keep the exact stock entry (the replayed `push ebp; mov ebp,esp; sub esp,4Ch`), the added ones
-// (guitar 6/7, bass 4/5) go to Rs7Gs_AttachExt, anything from 8 returns 0. Only the low byte of the string argument may
-// be compared: Rnd_GuitarStrings_Load pushes a whole stack dword (0x59A5DD `mov edx,[esp+14h]`) whose upper three bytes
-// are stale (a dword compare sent string 0 to `invalid`, the load stayed pending forever and no song could start:
+// (guitar 6/7, bass 4/5) go to RsxrGs_AttachExt, anything from 8 returns 0. Only the low byte of the string argument
+// may be compared: Rnd_GuitarStrings_Load pushes a whole stack dword (0x59A5DD `mov edx,[esp+14h]`) whose upper three
+// bytes are stale (a dword compare sent string 0 to `invalid`, the load stayed pending forever and no song could start:
 // CONFIRMED, tests/pubfix run5). Flags after a skipped entry are dead (a return; contract "free").
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGA(Context& c) {
-    const Rs7Mid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGA(Context& c) {
+    const RsxrMid::GameFcw fcw(c);  // game code runs below: the game's x87 control word
 
     const uint32_t s = Byte(c.esp + 4);
-    // A [neck] spacing_* setting for this instrument: every string, scaled (Rs7Gs_AttachSpaced; -1 = none, or its own
+    // A [neck] spacing_* setting for this instrument: every string, scaled (RsxrGs_AttachSpaced; -1 = none, or its own
     // nested stock queries).
-    const int spaced = Rs7Gs_AttachSpaced(Ptr(c.ecx), s, Ptr<float>(Dword(c.esp + 8)));
+    const int spaced = RsxrGs_AttachSpaced(Ptr(c.ecx), s, Ptr<float>(Dword(c.esp + 8)));
 
     if (spaced >= 0) {
-        Rs7Mid::Return(c, static_cast<uint32_t>(spaced));
+        RsxrMid::Return(c, static_cast<uint32_t>(spaced));
         return;
     }
 
-    // Strings 0-3 always and 4/5 of a guitar are stock; Rs7Gs_AttachExt answers the added strings (guitar 6/7,
+    // Strings 0-3 always and 4/5 of a guitar are stock; RsxrGs_AttachExt answers the added strings (guitar 6/7,
     // bass 4/5); 8 and above: 0.
-    if (s < 4 || (s < 8 && s < rs7gs::StockAttachCount(Ptr<const uint8_t>(c.ecx)))) {
+    if (s < 4 || (s < 8 && s < rsxrgs::StockAttachCount(Ptr<const uint8_t>(c.ecx)))) {
         return;
     }
 
     const uint32_t point =
-        s < 8 ? static_cast<uint32_t>(Rs7Gs_AttachExt(Ptr(c.ecx), Dword(c.esp + 4), Ptr<float>(Dword(c.esp + 8)))) : 0;
+        s < 8 ? static_cast<uint32_t>(RsxrGs_AttachExt(Ptr(c.ecx), Dword(c.esp + 4), Ptr<float>(Dword(c.esp + 8)))) : 0;
 
-    Rs7Mid::Return(c, point);
+    RsxrMid::Return(c, point);
 }
 
 // PUBGF - 0x58CF90, entry of the finger-span function (stdcall, `ret 8`: argument 1 = the template, 2 = the span out
-// pointer, EDI = the finger): with the publication ports on Rs7Publish_FingerSpan computes the span over the template's
-// physical ranks (native T8 records) or with the exact stock scan (stock templates). Off: the replayed `push ebp; mov
-// ebp,esp; push ebx; push esi` and the stock body. The flags at the exit are not read before they are rewritten
-// (contract "free").
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGF(Context& c) {
-    if (!g_rs7_native_publish) {
+// pointer, EDI = the finger): with the publication ports on RsxrPublish_FingerSpan computes the span over the
+// template's physical ranks (native T8 records) or with the exact stock scan (stock templates). Off: the replayed `push
+// ebp; mov ebp,esp; push ebx; push esi` and the stock body. The flags at the exit are not read before they are
+// rewritten (contract "free").
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGF(Context& c) {
+    if (!g_rsxr_native_publish) {
         return;
     }
 
-    const int span = Rs7Publish_FingerSpan(Ptr<const uint8_t>(Dword(c.esp + 4)), c.edi, Ptr<int>(Dword(c.esp + 8)));
+    const int span = RsxrPublish_FingerSpan(Ptr<const uint8_t>(Dword(c.esp + 4)), c.edi, Ptr<int>(Dword(c.esp + 8)));
 
-    Rs7Mid::Return(c, static_cast<uint32_t>(span), 8);
+    RsxrMid::Return(c, static_cast<uint32_t>(span), 8);
 }
 
 // PUBEDGE - 0x7E72D0 in the string-action function 0x7E7140 (EAX = info, CL = first): the stock edge string `first ? 0
-// : count-1` (13 bytes: test cl,cl / xor al,al / mov al,[eax+0Bh] / dec al) becomes Rs7Publish_Edge (physical rank of
+// : count-1` (13 bytes: test cl,cl / xor al,al / mov al,[eax+0Bh] / dec al) becomes RsxrPublish_Edge (physical rank of
 // the first / last string of the published count). EAX = the edge string. The flags at the exit are dead
 // (contract "dead").
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBEDGE(Context& c) {
-    c.eax = Rs7Publish_Edge(Ptr(c.eax), c.ecx & 0xFF);
-    c.jump = static_cast<uint32_t>(g_rs7_resume_PUBEDGE);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBEDGE(Context& c) {
+    c.eax = RsxrPublish_Edge(Ptr(c.eax), c.ecx & 0xFF);
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_PUBEDGE);
 }
 
 // PUBGP - the entry of Rnd_FretGrid_GetCellPos 0x58FE00 (site R1; AL = fret, ECX = out, stack: grid, k, string; `ret
 // 0Ch`), replaced whole: every query is answered from the native cells, strings 0-7, no extrapolation
-// (Rs7Publish_GridPos, SSE float math). EAX = its result, the other registers as at the call.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PUBGP(Context& c) {
+// (RsxrPublish_GridPos, SSE float math). EAX = its result, the other registers as at the call.
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGP(Context& c) {
     const uint32_t grid = Dword(c.esp + 4), k = Dword(c.esp + 8), string = Dword(c.esp + 12);
 
-    c.eax = uint32_t(Rs7Publish_GridPos(Ptr(grid), c.eax, k, string, Ptr<float>(c.ecx)));
-    Rs7Mid::Ret(c, 12);
+    c.eax = uint32_t(RsxrPublish_GridPos(Ptr(grid), c.eax, k, string, Ptr<float>(c.ecx)));
+    RsxrMid::Ret(c, 12);
 }

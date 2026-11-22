@@ -5,19 +5,19 @@
 #include "platform/safecopy.h"
 #include <cstring>
 
-using namespace rs7gs;
+using namespace rsxrgs;
 
 // Called from mid-hooks (no SEH frame) with the game's pointers: both reads are guarded, a fault means "not native".
-bool rs7gs::IsNative(const uint8_t* gs) {
+bool rsxrgs::IsNative(const uint8_t* gs) {
     uint16_t marker = 0;
     uint32_t magic = 0;
 
-    return gs && Rs7_SafeCopy(&marker, gs + kMarkerOff, sizeof marker) && marker == kMarker &&
-           Rs7_SafeCopy(&magic, gs + kMagicOff, sizeof magic) && magic == kMagic;
+    return gs && Rsxr_SafeCopy(&marker, gs + kMarkerOff, sizeof marker) && marker == kMarker &&
+           Rsxr_SafeCopy(&magic, gs + kMagicOff, sizeof magic) && magic == kMagic;
 }
 
-void rs7gs::InitTail(uint8_t* gs, uint8_t* guitar, uint8_t* info, uint8_t* const extraMain[2],
-                     uint8_t* const extraGhost[2]) {
+void rsxrgs::InitTail(uint8_t* gs, uint8_t* guitar, uint8_t* info, uint8_t* const extraMain[2],
+                      uint8_t* const extraGhost[2]) {
     for (int s = 0; s < kStock; ++s) {
         UncheckedField<uint8_t*>(gs, kMain + 4 * s) = UncheckedRead<uint8_t*>(gs, 0x04 + 4 * s);
         UncheckedField<uint8_t*>(gs, kGhost + 4 * s) = UncheckedRead<uint8_t*>(gs, 0x1C + 4 * s);
@@ -45,24 +45,24 @@ void rs7gs::InitTail(uint8_t* gs, uint8_t* guitar, uint8_t* info, uint8_t* const
     UncheckedField<uint32_t>(gs, kMagicOff) = kMagic;
 }
 
-void rs7gs::RefreshCounts(uint8_t* info, bool seventh) {
-    const uint8_t stock = UncheckedRead<uint8_t>(info, rs7::kInfoStrings);
+void rsxrgs::RefreshCounts(uint8_t* info, bool seventh) {
+    const uint8_t stock = UncheckedRead<uint8_t>(info, rsxr::kInfoStrings);
 
-    if (g_rs7_publish_ports) {
+    if (g_rsxr_publish_ports) {
         // C-lite: +B is the count the guitar was BUILT with (4 bass, 6, 7 or 8) and stays so; the
         // capacity of 8 string objects is preloaded for every guitar, the active count is the build count.
         // A bass (+0 = 2; 4, or 5 / 6 extended) loads and shows exactly its build count: its attach points end there.
-        if (rs7::IsBassKind(UncheckedRead<uint8_t>(info, rs7::kInfoKind))) {
+        if (rsxr::IsBassKind(UncheckedRead<uint8_t>(info, rsxr::kInfoKind))) {
             const uint8_t n = stock < 4 ? 4 : stock > 6 ? 6 : stock;
 
             UncheckedField<uint8_t>(info, kInfoLoaded) = UncheckedField<uint8_t>(info, kInfoActive) = n;
 
             // perStringMode (+20h + 4 * string, the bend direction) of the added strings: a stock bass never sets
             // entries 4 / 5, so the low B bent the wrong way. The low B bends like the E next to it, the high C like
-            // the G (rs7::kBassNeighbour).
+            // the G (rsxr::kBassNeighbour).
             for (int s = 4; s < n; ++s) {
                 UncheckedField<uint32_t>(info, 0x20 + 4 * s) =
-                    UncheckedRead<uint32_t>(info, 0x20 + 4 * rs7::kBassNeighbour[s]);
+                    UncheckedRead<uint32_t>(info, 0x20 + 4 * rsxr::kBassNeighbour[s]);
             }
 
             return;

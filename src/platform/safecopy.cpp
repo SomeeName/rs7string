@@ -22,11 +22,11 @@ bool GuardedCopy(void* dst, const void* src, size_t n) {
 }
 }  // namespace
 
-bool Rs7_SafeCopy(void* dst, const void* src, size_t n) {
+bool Rsxr_SafeCopy(void* dst, const void* src, size_t n) {
     return src && GuardedCopy(dst, src, n);
 }
 
-bool Rs7_SafeCopyZero(void* dst, const void* src, size_t n) {
+bool Rsxr_SafeCopyZero(void* dst, const void* src, size_t n) {
     if (GuardedCopy(dst, src, n)) {
         return true;
     }
@@ -36,6 +36,6 @@ bool Rs7_SafeCopyZero(void* dst, const void* src, size_t n) {
     return false;
 }
 
-bool Rs7_SafeStore(void* dst, const void* src, size_t n) {
+bool Rsxr_SafeStore(void* dst, const void* src, size_t n) {
     return GuardedCopy(dst, src, n);
 }

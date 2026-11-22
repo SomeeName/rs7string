@@ -48,9 +48,9 @@ MARKER = CODE + 0x3000  # the "game decrypt": mov al,5Ah; ret
 @pytest.fixture(scope="module")
 def emus():
     stock, patched = Emu(patched=False), Emu(patched=True)
-    patched.uc.mem_write(patched.exports["g_rs7_skip_PP_TOC"], struct.pack("<I", TOC_AFTER))
+    patched.uc.mem_write(patched.exports["g_rsxr_skip_PP_TOC"], struct.pack("<I", TOC_AFTER))
     patched.uc.mem_write(MARKER, bytes.fromhex("B0 5A C3"))
-    patched.uc.mem_write(patched.exports["g_rs7_target_PP_SNGD"], struct.pack("<I", MARKER))
+    patched.uc.mem_write(patched.exports["g_rsxr_target_PP_SNGD"], struct.pack("<I", MARKER))
     return stock, patched
 
 

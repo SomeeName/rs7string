@@ -22,7 +22,7 @@ void Attempt() {
     if (std::strcmp(g_mode, "mixed") == 0) {
         CHECK(g_attempt > 1);
     }
-    if (!rs7test::Ready(g_attempt > 1 && std::strcmp(g_mode, "exhausted") != 0, "worker not ready")) {
+    if (!rsxrtest::Ready(g_attempt > 1 && std::strcmp(g_mode, "exhausted") != 0, "worker not ready")) {
         return;
     }
 
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     }
 
     g_mode = argv[1];
-    rs7test::Reg reg("timing_case", &Attempt, nullptr, 3);
+    rsxrtest::Reg reg("timing_case", &Attempt, nullptr, 3);
     const int result = RunTests();
 
     std::printf("attempts=%d\n", g_attempt);

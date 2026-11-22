@@ -2,7 +2,7 @@
 #include "platform/seh.h"
 #include <cstring>
 
-bool Rs7SehReader::Read(uintptr_t a, void* out, size_t n) const {
+bool RsxrSehReader::Read(uintptr_t a, void* out, size_t n) const {
     if (a < 0x10000 || a + n < a) {
         return false;
     }
@@ -10,18 +10,18 @@ bool Rs7SehReader::Read(uintptr_t a, void* out, size_t n) const {
     __try {
         std::memcpy(out, reinterpret_cast<const void*>(a), n);
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }
 
-bool Rs7_ImageRange(HMODULE mod, uintptr_t* lo, uintptr_t* hi) {
+bool Rsxr_ImageRange(HMODULE mod, uintptr_t* lo, uintptr_t* hi) {
     if (!mod) {
         return false;
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(mod);
-    const Rs7SehReader mem{};
+    const RsxrSehReader mem{};
     IMAGE_DOS_HEADER dos{};
     IMAGE_NT_HEADERS32 nt{};
     if (!mem.Read(base, &dos, sizeof dos) || dos.e_magic != IMAGE_DOS_SIGNATURE) {

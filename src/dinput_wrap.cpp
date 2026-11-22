@@ -14,7 +14,7 @@
 #include "platform/protect.h"
 #include <dinput.h>
 
-DWORD Rs7Dinput_CoopFlags(DWORD devType, DWORD flags, bool background) {
+DWORD RsxrDinput_CoopFlags(DWORD devType, DWORD flags, bool background) {
     const DWORD type = GET_DIDEVICE_TYPE(devType);
     if (!background || (type != DI8DEVTYPE_KEYBOARD && type != DI8DEVTYPE_MOUSE)) {
         return flags;
@@ -23,7 +23,7 @@ DWORD Rs7Dinput_CoopFlags(DWORD devType, DWORD flags, bool background) {
     return (flags & ~DWORD(DISCL_BACKGROUND)) | DISCL_FOREGROUND;
 }
 
-bool Rs7Dinput_ParseKeyLine(const char* line, uint8_t* dik, bool* down) {
+bool RsxrDinput_ParseKeyLine(const char* line, uint8_t* dik, bool* down) {
     if (!line || *line != 'k') {
         return false;
     }
@@ -70,14 +70,14 @@ bool Rs7Dinput_ParseKeyLine(const char* line, uint8_t* dik, bool* down) {
     return true;
 }
 
-void Rs7Dinput_MaskMouseState(void* state, DWORD cb) {
+void RsxrDinput_MaskMouseState(void* state, DWORD cb) {
     // DIMOUSESTATE / DIMOUSESTATE2: lX, lY, lZ, then the buttons. Movement stays, wheel and buttons go.
     if (state && cb > DIMOFS_Z) {
         std::memset(static_cast<uint8_t*>(state) + DIMOFS_Z, 0, cb - DIMOFS_Z);
     }
 }
 
-bool Rs7Dinput_IsMouseClickOrWheel(DWORD ofs) {
+bool RsxrDinput_IsMouseClickOrWheel(DWORD ofs) {
     return ofs >= DIMOFS_Z;
 }
 
@@ -141,14 +141,14 @@ bool PatchSlotLocked(Slot* slots, void** vt, int index, void* hook) {
 
         if (!slots[i].vt) {
             DWORD old = 0;
-            if (!Rs7_Protect(&vt[index], sizeof(void*), PAGE_READWRITE, &old)) {
+            if (!Rsxr_Protect(&vt[index], sizeof(void*), PAGE_READWRITE, &old)) {
                 return false;
             }
 
             slots[i].orig = vt[index];
             slots[i].vt = vt;
             InterlockedExchangePointer(&vt[index], hook);
-            Rs7_Protect(&vt[index], sizeof(void*), old, &old);
+            Rsxr_Protect(&vt[index], sizeof(void*), old, &old);
             return true;
         }
     }
@@ -170,7 +170,7 @@ void** Vt(void* obj) {
 }
 
 bool Injecting(void* dev) {
-    return dev && dev == g_kbd && Rs7Window_Background();
+    return dev && dev == g_kbd && RsxrWindow_Background();
 }
 
 // The overlay uses the mouse / the keyboard right now, so the game must not see `dev`'s input.
@@ -178,10 +178,10 @@ bool OverlayOwns(void* dev, bool* mouse) {
     *mouse = dev == g_mouse;
 
     if (*mouse) {
-        return Rs7Overlay_WantsMouse();
+        return RsxrOverlay_WantsMouse();
     }
 
-    return dev == g_keyboard && Rs7Overlay_WantsKeys();
+    return dev == g_keyboard && RsxrOverlay_WantsKeys();
 }
 
 void MaskState(void* dev, DWORD cb, void* data) {
@@ -191,7 +191,7 @@ void MaskState(void* dev, DWORD cb, void* data) {
     }
 
     if (mouse) {
-        Rs7Dinput_MaskMouseState(data, cb);
+        RsxrDinput_MaskMouseState(data, cb);
     } else {
         std::memset(data, 0, cb);
     }
@@ -207,7 +207,7 @@ DWORD MaskEvents(void* dev, DIDEVICEOBJECTDATA* out, DWORD n) {
     DWORD kept = 0;
 
     for (DWORD i = 0; i < n; ++i) {
-        if (mouse && !Rs7Dinput_IsMouseClickOrWheel(out[i].dwOfs)) {
+        if (mouse && !RsxrDinput_IsMouseClickOrWheel(out[i].dwOfs)) {
             out[kept++] = out[i];
         }
     }
@@ -230,17 +230,17 @@ void Push(uint8_t dik, bool down) {
     LeaveCriticalSection(&g_lock);
 }
 
-// \\.\pipe\rs7string: lines "k <DIK hex> <1 down|0 up>" (scripts/rsdrive.py) and overlay
+// \\.\pipe\rsxr: lines "k <DIK hex> <1 down|0 up>" (scripts/rsdrive.py) and overlay
 // commands "o ..." (overlay/overlaycmd.h, tools/rsoverlay.py). Same-user only
 // (default pipe security). Only started in background mode.
 DWORD WINAPI PipeThread(LPVOID) {
     for (;;) {
-        const HANDLE p = CreateNamedPipeW(
-            L"\\\\.\\pipe\\rs7string", PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 0, 4096, 0, nullptr);
+        const HANDLE p = CreateNamedPipeW(L"\\\\.\\pipe\\rsxr", PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
+                                          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                                          1, 0, 4096, 0, nullptr);
 
         if (p == INVALID_HANDLE_VALUE) {
-            Rs7Log("dinput: cannot create the key pipe (%lu) - no injected keys", GetLastError());
+            RsxrLog("dinput: cannot create the key pipe (%lu) - no injected keys", GetLastError());
             return 0;
         }
 
@@ -257,10 +257,10 @@ DWORD WINAPI PipeThread(LPVOID) {
                         uint8_t dik;
                         bool down;
 
-                        if (Rs7Dinput_ParseKeyLine(line, &dik, &down)) {
+                        if (RsxrDinput_ParseKeyLine(line, &dik, &down)) {
                             Push(dik, down);
                         } else if (line[0] == 'o' && line[1] == ' ') {
-                            Rs7Cmd_Post(line);  // overlay (overlaycmd.h)
+                            RsxrCmd_Post(line);  // overlay (overlaycmd.h)
                         }
                     } else if (buf[i] != '\r') {
                         line[n++] = buf[i];
@@ -302,7 +302,7 @@ HRESULT WINAPI GetStateHook(void* dev, DWORD cb, void* data) {
     }
 
     if (InterlockedExchange(&g_injectLogged, 1) == 0) {
-        Rs7Log("dinput: the game reads the keyboard with GetDeviceState");
+        RsxrLog("dinput: the game reads the keyboard with GetDeviceState");
     }
 
     if (FAILED(hr)) {
@@ -341,7 +341,7 @@ HRESULT WINAPI GetDataHook(void* dev, DWORD cbObj, DIDEVICEOBJECTDATA* out, DWOR
     }
 
     if (InterlockedExchange(&g_injectLogged, 2) == 0) {
-        Rs7Log("dinput: the game reads the keyboard with GetDeviceData");
+        RsxrLog("dinput: the game reads the keyboard with GetDeviceData");
     }
     const DWORD cap = *inOut;
     HRESULT hr = orig(dev, cbObj, out, inOut, flags);
@@ -378,13 +378,13 @@ HRESULT WINAPI SetCoopHook(void* dev, HWND hwnd, DWORD flags) {
 
     caps.dwSize = sizeof(caps);
     const bool known = SUCCEEDED(reinterpret_cast<GetCaps_t>(vt[kGetCaps])(dev, &caps));
-    const DWORD out = known ? Rs7Dinput_CoopFlags(caps.dwDevType, flags, Rs7Window_Background()) : flags;
+    const DWORD out = known ? RsxrDinput_CoopFlags(caps.dwDevType, flags, RsxrWindow_Background()) : flags;
     const HRESULT hr = orig(dev, hwnd, out);
 
     if (InterlockedDecrement(&g_logBudget) >= 0) {
-        Rs7Log("dinput: device type %02X SetCooperativeLevel(%p, %02X%s) -> %08X",
-               unsigned(GET_DIDEVICE_TYPE(caps.dwDevType)), static_cast<void*>(hwnd), unsigned(out),
-               out != flags ? " (background test driving: foreground only)" : "", unsigned(hr));
+        RsxrLog("dinput: device type %02X SetCooperativeLevel(%p, %02X%s) -> %08X",
+                unsigned(GET_DIDEVICE_TYPE(caps.dwDevType)), static_cast<void*>(hwnd), unsigned(out),
+                out != flags ? " (background test driving: foreground only)" : "", unsigned(hr));
     }
 
     const DWORD type = known ? GET_DIDEVICE_TYPE(caps.dwDevType) : 0;
@@ -395,11 +395,11 @@ HRESULT WINAPI SetCoopHook(void* dev, HWND hwnd, DWORD flags) {
                         PatchSlot(g_data, vt, kGetData, reinterpret_cast<void*>(&GetDataHook));
 
         (type == DI8DEVTYPE_MOUSE ? g_mouse : g_keyboard) = ok ? dev : nullptr;
-        Rs7Log("dinput: %s %p: hidden from the game while the overlay uses it %s",
-               type == DI8DEVTYPE_MOUSE ? "mouse" : "keyboard", dev, ok ? "ON" : "OFF (hook failed)");
+        RsxrLog("dinput: %s %p: hidden from the game while the overlay uses it %s",
+                type == DI8DEVTYPE_MOUSE ? "mouse" : "keyboard", dev, ok ? "ON" : "OFF (hook failed)");
     }
 
-    if (type == DI8DEVTYPE_KEYBOARD && Rs7Window_Background()) {
+    if (type == DI8DEVTYPE_KEYBOARD && RsxrWindow_Background()) {
         const bool ok = g_keyboard && PatchSlot(g_acquire, vt, kAcquire, reinterpret_cast<void*>(&AcquireHook));
 
         if (ok) {
@@ -421,8 +421,7 @@ HRESULT WINAPI SetCoopHook(void* dev, HWND hwnd, DWORD flags) {
             g_kbd = dev;
         }
 
-        Rs7Log("dinput: keyboard %p: injected keys via \\\\.\\pipe\\rs7string %s", dev,
-               ok ? "ON" : "OFF (hook failed)");
+        RsxrLog("dinput: keyboard %p: injected keys via \\\\.\\pipe\\rsxr %s", dev, ok ? "ON" : "OFF (hook failed)");
     }
 
     return hr;
@@ -437,19 +436,19 @@ HRESULT WINAPI CreateDeviceHook(void* di, REFGUID guid, void** out, LPUNKNOWN ou
     const HRESULT hr = orig(di, guid, out, outer);
 
     if (SUCCEEDED(hr) && out && *out && !PatchSlot(g_coop, Vt(*out), kSetCoop, reinterpret_cast<void*>(&SetCoopHook))) {
-        Rs7Log("dinput: cannot hook SetCooperativeLevel - cooperative levels left stock");
+        RsxrLog("dinput: cannot hook SetCooperativeLevel - cooperative levels left stock");
     }
 
     return hr;
 }
 }  // namespace
 
-void Rs7Dinput_Wrap(void* directInput8) {
+void RsxrDinput_Wrap(void* directInput8) {
     if (!directInput8) {
         return;
     }
 
     if (!PatchSlot(g_create, Vt(directInput8), kCreateDevice, reinterpret_cast<void*>(&CreateDeviceHook))) {
-        Rs7Log("dinput: cannot hook CreateDevice - cooperative levels left stock");
+        RsxrLog("dinput: cannot hook CreateDevice - cooperative levels left stock");
     }
 }

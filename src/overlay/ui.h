@@ -3,7 +3,7 @@
 #include <string>
 
 // The overlay's window (overlay.cpp calls it between ImGui::NewFrame and ImGui::Render).
-struct Rs7OverlayUi {
+struct RsxrOverlayUi {
     // Set by overlay.cpp every frame.
     const wchar_t* iniPath = L"";
     int hotkey = 0;
@@ -21,6 +21,6 @@ struct Rs7OverlayUi {
 // "o tab <name>": status, colour, neck, tuner, debug, window, log (these open Advanced), advanced, or the label of a
 // player tab (lower case, spaces as '-': seventh-string, guitar, menu). "player-<name>" always means the player tab
 // (player-tuner; plain "tuner" is the technical tab). Sets the requests; false if the name is unknown.
-bool Rs7OverlayUi_RequestTab(Rs7OverlayUi& ui, const char* name);
+bool RsxrOverlayUi_RequestTab(RsxrOverlayUi& ui, const char* name);
 // *open = false when the window's close button was clicked.
-void Rs7OverlayUi_Draw(Rs7OverlayUi& ui, bool* open);
+void RsxrOverlayUi_Draw(RsxrOverlayUi& ui, bool* open);

@@ -64,7 +64,7 @@ def lane_cases(pop: bool) -> list[Case]:
     ]
 
 
-QUIET = ("Rs7_S7LaneStackFull",)  # the hook's log-once of a full x87 stack
+QUIET = ("Rsxr_S7LaneStackFull",)  # the hook's log-once of a full x87 stack
 for sid in ("R3a", "R3b", "R3c"):
     SPECS[sid] = (Spec(sid, 6, fsw="sticky", quiet=QUIET), lane_cases(False))
 # R4 pops a dword (pushed = -4): the popped slot is below the live stack, scratch for the hook as for any `pop`.
@@ -90,9 +90,9 @@ def exit_cases(ret: int) -> list[Case]:
     ]
 
 
-for sid, helper, ret in (("S3", "Rs7_OnDetectorTuned", S3_RET), ("PT1", "Rs7Pitch_DetTuned", PT1_RET)):
+for sid, helper, ret in (("S3", "Rsxr_OnDetectorTuned", S3_RET), ("PT1", "RsxrPitch_DetTuned", PT1_RET)):
     SPECS[sid] = (
-        # Rs7Pitch_DetFloor (the floor follows the lowest open string) came after the frozen stubs; its behaviour is
+        # RsxrPitch_DetFloor (the floor follows the lowest open string) came after the frozen stubs; its behaviour is
         # tested in tests/pitch/test_floor.cpp and test_emu_pitch.py.
         Spec(
             sid,
@@ -100,7 +100,7 @@ for sid, helper, ret in (("S3", "Rs7_OnDetectorTuned", S3_RET), ("PT1", "Rs7Pitc
             flags="dead",
             helpers={helper: Helper(2, deref=((0, 0x1358), (1, 12)))},
             exits=(("resume", -1),),
-            quiet=("Rs7Pitch_DetFloor",),
+            quiet=("RsxrPitch_DetFloor",),
         ),
         exit_cases(ret),
     )

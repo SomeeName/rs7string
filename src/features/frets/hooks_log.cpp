@@ -12,15 +12,15 @@ namespace {
 // bound of the real wire length).
 __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const float* u, const float* w0,
                                  const float* w1) {
-    uint8_t* root = rs7s7d::EntityRoot(entity);
+    uint8_t* root = rsxrs7d::EntityRoot(entity);
     float lt[3] = {}, ls = 0, wt[3] = {}, ws = 0, rb[4] = {};
 
     if (root) {
-        Rs7_SafeCopyZero(lt, root + 0x70, 12);
-        Rs7_SafeCopyZero(&ls, root + 0x7C, 4);
-        Rs7_SafeCopyZero(wt, root + 0xA4, 12);
-        Rs7_SafeCopyZero(&ws, root + 0xB0, 4);
-        Rs7_SafeCopyZero(rb, root + 0x2C, 16);
+        Rsxr_SafeCopyZero(lt, root + 0x70, 12);
+        Rsxr_SafeCopyZero(&ls, root + 0x7C, 4);
+        Rsxr_SafeCopyZero(wt, root + 0xA4, 12);
+        Rsxr_SafeCopyZero(&ws, root + 0xB0, 4);
+        Rsxr_SafeCopyZero(rb, root + 0x2C, 16);
     }
 
     // Depth-first search for the first NiMesh (fretShape).
@@ -37,25 +37,25 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
 
         ++visited;
 
-        if (rs7s7d::IsKindOf(n, "NiMesh")) {
+        if (rsxrs7d::IsKindOf(n, "NiMesh")) {
             mesh = n;
             break;
         }
 
-        if (!rs7s7d::IsKindOf(n, "NiNode")) {
+        if (!rsxrs7d::IsKindOf(n, "NiNode")) {
             continue;
         }
 
         uint8_t* arr = nullptr;
         uint16_t slots = 0;
 
-        Rs7_SafeCopyZero(&arr, n + 0xD8, 4);
-        Rs7_SafeCopyZero(&slots, n + 0xDC, 2);
+        Rsxr_SafeCopyZero(&arr, n + 0xD8, 4);
+        Rsxr_SafeCopyZero(&slots, n + 0xDC, 2);
 
         for (int i = int(slots) - 1; arr && i >= 0 && sp < 64; --i) {
             uint8_t* c = nullptr;
 
-            Rs7_SafeCopyZero(&c, arr + i * 4, 4);
+            Rsxr_SafeCopyZero(&c, arr + i * 4, 4);
             if (c) {
                 stack[sp++] = c;
             }
@@ -66,10 +66,10 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
     char name[48] = {};
 
     if (mesh) {
-        Rs7_SafeCopyZero(mw, mesh + 0x2C, 16);
-        Rs7_SafeCopyZero(mb, mesh + 0xF0, 16);
-        Rs7_SafeCopyZero(&ms, mesh + 0xB0, 4);
-        rs7s7d::NameOfNode(mesh, name, sizeof name);
+        Rsxr_SafeCopyZero(mw, mesh + 0x2C, 16);
+        Rsxr_SafeCopyZero(mb, mesh + 0xF0, 16);
+        Rsxr_SafeCopyZero(&ms, mesh + 0xB0, 4);
+        rsxrs7d::NameOfNode(mesh, name, sizeof name);
     }
 
     auto dot = [&](const float* p) {
@@ -85,48 +85,48 @@ __declspec(noinline) void LogBar(const char* tag, int f, uint8_t* entity, const 
     const float c = dot(mw);
 
     try {
-        Rs7Log("frets %s: bar %d entity %p root %p: local t=(%.3f, %.3f, %.3f) s=%.4f, world t=(%.3f, %.3f, %.3f) "
-               "s=%.4f, root bound c=(%.3f, %.3f, %.3f) r=%.3f; mesh %p \"%s\" world bound c=(%.3f, %.3f, %.3f) "
-               "r=%.3f world s=%.4f, model bound c=(%.3f, %.3f, %.3f) r=%.3f; along the strings: mesh bound "
-               "%.3f .. %.3f, string 5 %.3f, string 0 %.3f, string 6 %.3f",
-               tag, f, entity, root, double(lt[0]), double(lt[1]), double(lt[2]), double(ls), double(wt[0]),
-               double(wt[1]), double(wt[2]), double(ws), double(rb[0]), double(rb[1]), double(rb[2]), double(rb[3]),
-               mesh, name, double(mw[0]), double(mw[1]), double(mw[2]), double(mw[3]), double(ms), double(mb[0]),
-               double(mb[1]), double(mb[2]), double(mb[3]), double(c - mw[3]), double(c + mw[3]), double(dot(s5)),
-               double(dot(w0)), double(dot(s6)));
+        RsxrLog("frets %s: bar %d entity %p root %p: local t=(%.3f, %.3f, %.3f) s=%.4f, world t=(%.3f, %.3f, %.3f) "
+                "s=%.4f, root bound c=(%.3f, %.3f, %.3f) r=%.3f; mesh %p \"%s\" world bound c=(%.3f, %.3f, %.3f) "
+                "r=%.3f world s=%.4f, model bound c=(%.3f, %.3f, %.3f) r=%.3f; along the strings: mesh bound "
+                "%.3f .. %.3f, string 5 %.3f, string 0 %.3f, string 6 %.3f",
+                tag, f, entity, root, double(lt[0]), double(lt[1]), double(lt[2]), double(ls), double(wt[0]),
+                double(wt[1]), double(wt[2]), double(ws), double(rb[0]), double(rb[1]), double(rb[2]), double(rb[3]),
+                mesh, name, double(mw[0]), double(mw[1]), double(mw[2]), double(mw[3]), double(ms), double(mb[0]),
+                double(mb[1]), double(mb[2]), double(mb[3]), double(c - mw[3]), double(c + mw[3]), double(dot(s5)),
+                double(dot(w0)), double(dot(s6)));
     } catch (...) {
     }
 }
 }  // namespace
 
-namespace rs7fretglue {
-using namespace rs7frets;
+namespace rsxrfretglue {
+using namespace rsxrfrets;
 
 __declspec(noinline) void LogApply(const char* by, const uint8_t* guitar, const uint8_t* grid, int bars, int set,
                                    const Extend& x, const float* mid0, const float* new0) {
     try {
-        Rs7Log("frets: %s applied (guitar %p, FretGrid %p): %d of %d bars re-placed and scaled; string spacing "
-               "d=%.4f, shift=(%.4f, %.4f, %.4f) = d/2 towards string 6, scale k=%.4f (L=%.3f); bar 0 midpoint "
-               "(%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
-               by, guitar, grid, set, bars, double(x.spacing), double(x.shift[0]), double(x.shift[1]),
-               double(x.shift[2]), double(x.scale), double(g_rs7_fret_halflen), double(mid0[0]), double(mid0[1]),
-               double(mid0[2]), double(new0[0]), double(new0[1]), double(new0[2]));
+        RsxrLog("frets: %s applied (guitar %p, FretGrid %p): %d of %d bars re-placed and scaled; string spacing "
+                "d=%.4f, shift=(%.4f, %.4f, %.4f) = d/2 towards string 6, scale k=%.4f (L=%.3f); bar 0 midpoint "
+                "(%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
+                by, guitar, grid, set, bars, double(x.spacing), double(x.shift[0]), double(x.shift[1]),
+                double(x.shift[2]), double(x.scale), double(g_rsxr_fret_halflen), double(mid0[0]), double(mid0[1]),
+                double(mid0[2]), double(new0[0]), double(new0[1]), double(new0[2]));
     } catch (...) {
     }
 }
 
 __declspec(noinline) void LogRestore(const uint8_t* guitar, int set) {
     try {
-        Rs7Log("frets: restored (guitar %p): %d bars back on the stock midpoint, scale 1 (fret_extend switched off "
-               "(overlay))",
-               guitar, set);
+        RsxrLog("frets: restored (guitar %p): %d bars back on the stock midpoint, scale 1 (fret_extend switched off "
+                "(overlay))",
+                guitar, set);
     } catch (...) {
     }
 }
 
 __declspec(noinline) void LogFail(const char* why, const uint8_t* guitar) {
     try {
-        Rs7Log("frets: NOT applied (guitar %p): %s", guitar, why);
+        RsxrLog("frets: NOT applied (guitar %p): %s", guitar, why);
     } catch (...) {
     }
 }
@@ -167,22 +167,22 @@ __declspec(noinline) void LogReadBack(const char* tag, uint8_t* guitar, uint8_t*
 
 __declspec(noinline) void LogInlay(const uint8_t* guitar, const float* p, float dz, int net) {
     try {
-        Rs7Log("frets: IN1 inlays of guitar %p centred (%+d net lane(s)): entity at (%.3f, %.3f, %.3f) (string axis "
-               "%+.4f)",
-               guitar, net, double(p[0]), double(p[1]), double(p[2]), double(dz));
+        RsxrLog("frets: IN1 inlays of guitar %p centred (%+d net lane(s)): entity at (%.3f, %.3f, %.3f) (string axis "
+                "%+.4f)",
+                guitar, net, double(p[0]), double(p[1]), double(p[2]), double(dz));
     } catch (...) {
     }
 }
 
 __declspec(noinline) void LogFloor(const uint8_t* guitar, const float* before, const float* shift, int n) {
     try {
-        Rs7Log("frets: highway floor of guitar %p moved past the extra lane on its side (low strings of an inverted "
-               "7/8-string guitar or bass, or a 6-string bass's high C): "
-               "%d ends moved by (%.4f, %.4f, %.4f); bar 0 end (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
-               guitar, n, double(shift[0]), double(shift[1]), double(shift[2]), double(before[0]), double(before[1]),
-               double(before[2]), double(before[0] + shift[0]), double(before[1] + shift[1]),
-               double(before[2] + shift[2]));
+        RsxrLog("frets: highway floor of guitar %p moved past the extra lane on its side (low strings of an inverted "
+                "7/8-string guitar or bass, or a 6-string bass's high C): "
+                "%d ends moved by (%.4f, %.4f, %.4f); bar 0 end (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)",
+                guitar, n, double(shift[0]), double(shift[1]), double(shift[2]), double(before[0]), double(before[1]),
+                double(before[2]), double(before[0] + shift[0]), double(before[1] + shift[1]),
+                double(before[2] + shift[2]));
     } catch (...) {
     }
 }
-}  // namespace rs7fretglue
+}  // namespace rsxrfretglue

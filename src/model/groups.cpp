@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-const char* Rs7_FeatureName(Rs7Feature f) {
+const char* Rsxr_FeatureName(RsxrFeature f) {
     static const char* const n[] = {"core",
                                     "native colours",
                                     "native PegSet",
@@ -20,22 +20,22 @@ const char* Rs7_FeatureName(Rs7Feature f) {
                                     "C-lite",
                                     "RSMods glow correction",
                                     "menu loading retry"};
-    static_assert(sizeof n / sizeof n[0] == size_t(Rs7Feature::Count), "one name per Rs7Feature");
+    static_assert(sizeof n / sizeof n[0] == size_t(RsxrFeature::Count), "one name per RsxrFeature");
 
-    return size_t(f) < size_t(Rs7Feature::Count) ? n[size_t(f)] : "?";
+    return size_t(f) < size_t(RsxrFeature::Count) ? n[size_t(f)] : "?";
 }
 
-bool Rs7_IsSevenUnit(Rs7Feature f) {
+bool Rsxr_IsSevenUnit(RsxrFeature f) {
     switch (f) {
-        case Rs7Feature::Colours:
-        case Rs7Feature::Pegs:
-        case Rs7Feature::Strings:
-        case Rs7Feature::Fretgrid:
-        case Rs7Feature::Pitch:
-        case Rs7Feature::Nextgrid:
-        case Rs7Feature::Publish:
-        case Rs7Feature::Tuner:
-        case Rs7Feature::Clite:
+        case RsxrFeature::Colours:
+        case RsxrFeature::Pegs:
+        case RsxrFeature::Strings:
+        case RsxrFeature::Fretgrid:
+        case RsxrFeature::Pitch:
+        case RsxrFeature::Nextgrid:
+        case RsxrFeature::Publish:
+        case RsxrFeature::Tuner:
+        case RsxrFeature::Clite:
             return true;
         default:
             return false;

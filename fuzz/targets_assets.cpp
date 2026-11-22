@@ -1,4 +1,4 @@
-// Fuzz targets: files rs7string reads from disk besides the ini: the headstock build package (features/headstock
+// Fuzz targets: files RSXR reads from disk besides the ini: the headstock build package (features/headstock
 // hsbuild.h), texture names in a NIF and the DXT1 darkening of a .dds (assetload.h), and a chord-diagram recipe
 // against a movie (features/diagrams/diagrams.h; the fuzz build skips the recipe's SHA-256 checks, see movie.cpp).
 #include "features/diagrams/diagrams.h"
@@ -8,20 +8,20 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace rs7fuzz {
+namespace rsxrfuzz {
 int Package(const uint8_t* d, size_t n) {
-    const rs7hs::Bytes package(d, d + n);
-    std::vector<rs7hs::Expected> outputs;
+    const rsxrhs::Bytes package(d, d + n);
+    std::vector<rsxrhs::Expected> outputs;
     std::string error;
 
-    rs7hs::Manifest(package, outputs, error);
+    rsxrhs::Manifest(package, outputs, error);
 
     return 0;
 }
 
 int Nif(const uint8_t* d, size_t n) {
     try {
-        Rs7Asset_DdsNames(n ? d : nullptr, n);
+        RsxrAsset_DdsNames(n ? d : nullptr, n);
     } catch (const std::length_error&) {
         // An excessive texture count is a normal model refusal.
     }
@@ -37,7 +37,7 @@ int Dds(const uint8_t* d, size_t n) {
 
     std::vector<uint8_t> dds(d + 1, d + n);
 
-    Rs7Asset_ScaleDxt1(dds.empty() ? nullptr : dds.data(), dds.size(), (d[0] + 1) / 257.0f);
+    RsxrAsset_ScaleDxt1(dds.empty() ? nullptr : dds.data(), dds.size(), (d[0] + 1) / 257.0f);
 
     return 0;
 }
@@ -81,14 +81,14 @@ int Recipe(const uint8_t* d, size_t n) {
     const std::vector<uint8_t> movie(d + 6, d + 6 + movieSize), recipe(d + 6 + movieSize, d + n);
     std::vector<uint8_t> out;
 
-    rs7diagram::SwapMovie(movie.empty() ? nullptr : movie.data(), movie.size(),
-                          recipe.empty() ? nullptr : recipe.data(), recipe.size(), uint16_t(d[0] | d[1] << 8), &out);
+    rsxrdiagram::SwapMovie(movie.empty() ? nullptr : movie.data(), movie.size(),
+                           recipe.empty() ? nullptr : recipe.data(), recipe.size(), uint16_t(d[0] | d[1] << 8), &out);
 
     return 0;
 }
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz
 
-namespace rs7fuzz {
+namespace rsxrfuzz {
 namespace {
 void Put32(std::vector<uint8_t>& v, uint32_t x) {
     for (int i = 0; i < 4; ++i) {
@@ -104,7 +104,7 @@ Seeds RecipeSeeds() {
     movie.push_back(uint8_t((59 << 6 | 4) & 0xFF));
     movie.push_back(uint8_t((59 << 6 | 4) >> 8));
     movie.insert(movie.end(), {1, 0, 0, 0, 0, 0});
-    std::vector<uint8_t> recipe = {'R', '7', 'D', 'A', 1, 0, 0, 0};
+    std::vector<uint8_t> recipe = {'R', 'X', 'D', 'A', 1, 0, 0, 0};
 
     Put32(recipe, 6);
     Put32(recipe, 6);
@@ -121,4 +121,4 @@ Seeds RecipeSeeds() {
 
     return {in};
 }
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz

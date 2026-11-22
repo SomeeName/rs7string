@@ -43,7 +43,7 @@ def classify(path, line):
     if path.name == "tuningname.cpp":
         if "t[7]" in code or "ReadSeven" in code or "Name7" in code or "SevenFor" in code:
             return "NEEDS CHANGE", "seven-only API intentionally retained; TN awaits native eight-array provenance"
-        return "OK for 8", "Name8 / manifest hook reads Rs7String7 behind [tuner] names"
+        return "OK for 8", "Name8 / manifest hook reads RsxrString7 behind [tuner] names"
     private = private_features.get("audit_eight", None)  # the private extras' own rule (tools/private_features.py)
     if private and (verdict := private(path, code)):
         return verdict

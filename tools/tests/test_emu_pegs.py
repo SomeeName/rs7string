@@ -40,19 +40,19 @@ pytestmark = needs_emu
 
 
 HEAD_MEM = DATA + 0x30000  # guitar / headstock / PegSet for the native PegSet tests
-PEG_MAGIC = 0x50375352  # "RS7P" at PegSet +1D0h (features/headstock/pegset.h; diagnostic only)
-PEG_OWNERS = 64  # RS7_PEG_OWNERS: the native PegSet ownership table g_rs7_pegsets
-PEG_MODES = ["native", "stock", "stale-tail"]  # registered / boot PegSet / rs7 tail bytes but not registered
+PEG_MAGIC = 0x50585352  # "RSXP" at PegSet +1D0h (features/headstock/pegset.h; diagnostic only)
+PEG_OWNERS = 64  # RSXR_PEG_OWNERS: the native PegSet ownership table g_rsxr_pegsets
+PEG_MODES = ["native", "stock", "stale-tail"]  # registered / boot PegSet / rsxr tail bytes but not registered
 
 
 def set_owners(emu: Emu, *pegsets: int):
-    """g_rs7_pegsets = pegsets (the rest free). Native identification is this table only."""
+    """g_rsxr_pegsets = pegsets (the rest free). Native identification is this table only."""
     tbl = list(pegsets) + [0] * (PEG_OWNERS - len(pegsets))
-    emu.uc.mem_write(emu.exports["g_rs7_pegsets"], struct.pack(f"<{PEG_OWNERS}I", *tbl))
+    emu.uc.mem_write(emu.exports["g_rsxr_pegsets"], struct.pack(f"<{PEG_OWNERS}I", *tbl))
 
 
 def owners(emu: Emu) -> list[int]:
-    return [x for x in struct.unpack(f"<{PEG_OWNERS}I", emu.read(emu.exports["g_rs7_pegsets"], PEG_OWNERS * 4)) if x]
+    return [x for x in struct.unpack(f"<{PEG_OWNERS}I", emu.read(emu.exports["g_rsxr_pegsets"], PEG_OWNERS * 4)) if x]
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def own_for(emus, ps: int, mode: str):
 
 
 def set_head(emu: Emu, on: int):
-    emu.uc.mem_write(emu.exports["g_rs7_head_on"], struct.pack("<I", on))
+    emu.uc.mem_write(emu.exports["g_rsxr_head_on"], struct.pack("<I", on))
 
 
 @pytest.fixture(params=[1, 0], ids=["headstock_peg", "switch-off"])
@@ -101,7 +101,7 @@ def run_ctor(emu: Emu, ps: int) -> bytes:
 
 def test_psc1_ctor_is_stock_for_the_six_and_extends_to_eight(emus, pegs):
     """Rnd_PegSet_Ctor with PSC1: header and slots 0-5 exactly as stock, slots 6/7 = slot 0's fresh
-    defaults, pegColor[0..5] moved from +0FCh to +14Ch ([6]/[7] = [0]), the rs7 tail and magic."""
+    defaults, pegColor[0..5] moved from +0FCh to +14Ch ([6]/[7] = [0]), the rsxr tail and magic."""
     stock, patched = (run_ctor(e, HEAD_MEM) for e in emus)
     assert patched[:0xFC] == stock[:0xFC]
 
@@ -120,7 +120,7 @@ def test_psc1_ctor_is_stock_for_the_six_and_extends_to_eight(emus, pegs):
 
 
 def test_psc1_full_ownership_table_leaves_the_pegset_stock(emus, pegs):
-    """No free entry: Rs7_PegSetCtor leaves the stock ctor's image (6 slots, pegColor at +0FCh)."""
+    """No free entry: Rsxr_PegSetCtor leaves the stock ctor's image (6 slots, pegColor at +0FCh)."""
     full = [DATA + 0x80000 + i * 0x10 for i in range(PEG_OWNERS)]
     set_owners(emus[1], *full)
     stock, patched = (run_ctor(e, HEAD_MEM) for e in emus)
@@ -135,7 +135,7 @@ FAKE_OBJ = DATA + 0x90000
 
 def fake_pegset(emu: Emu, ps: int, slots: int, native: bool = True):
     """slots x (entity +4, locator +8, owning +0Ch) fake objects with their own vtables; refcount 1.
-    native: the rs7 tail (capacity 8 at +1CCh, magic at +1D0h) as Rs7_PegSetCtor writes it."""
+    native: the rsxr tail (capacity 8 at +1CCh, magic at +1D0h) as Rsxr_PegSetCtor writes it."""
     emu.uc.mem_write(DEC_FN, bytes.fromhex("8B 44 24 04 F0 FF 08 8B 00 C2 04 00"))
     emu.uc.mem_write(FAKE_FN, b"\xc3" * 0x20 * 0x20)
     img = bytearray(0x1D4)
@@ -171,7 +171,7 @@ def run_dtor(emu: Emu, ps: int) -> list[int]:
 def test_psd_dtor_releases_eight_slots_in_the_stock_order(emus, pegs, mode):
     """Slot s: the owning +0Ch pointer deleted, the locator deleted, the entity released, s = 7..0
     for a native (registered) PegSet; the stock dtor - and the patched one on a PegSet constructed
-    before the patch, even with rs7 tail bytes - does the same for 5..0."""
+    before the patch, even with rsxr tail bytes - does the same for 5..0."""
     stock, patched = emus
     native = mode == "native"
     fake_pegset(stock, HEAD_MEM, 8, mode != "stock")
@@ -186,7 +186,7 @@ def test_psd_dtor_releases_eight_slots_in_the_stock_order(emus, pegs, mode):
 
 
 def peg_img(count: int, tail: bool) -> bytes:
-    """tail: the rs7 tail bytes (capacity 8, magic) - which do not make a PegSet native."""
+    """tail: the rsxr tail bytes (capacity 8, magic) - which do not make a PegSet native."""
     img = bytearray(0x1D4)
     struct.pack_into("<H", img, 4, count)
     if tail:
@@ -359,7 +359,7 @@ def test_peg_bounds_stock_pegset_at_a_page_end(emus, edge_pegset, sid):
 )
 def test_psl1_load_count(emus, pegs, head_on, count, mode, kind, want):
     """A 6-string guitar's native PegSet loads 7 (switch on); bass, a PegSet constructed before the
-    patch (with or without rs7 tail bytes) and the switch off load the instrument's count. An 8-string
+    patch (with or without rsxr tail bytes) and the switch off load the instrument's count. An 8-string
     guitar's native PegSet loads 7 with the switch on or off (no model seats an 8th peg). ECX = 0."""
     info, ps = HEAD_MEM + 0x400, HEAD_MEM
     own_for(emus, ps, mode)
@@ -495,7 +495,7 @@ def test_psl2_is_a_call_site_not_a_jmp_over_0x59c611():
 
 
 def test_psl2_completes_the_load_like_stock(emus, pegs):
-    """A stock-layout PegSet (no magic): Rs7_PegSetLoaded leaves it alone; the call returns with its
+    """A stock-layout PegSet (no magic): Rsxr_PegSetLoaded leaves it alone; the call returns with its
     argument popped, +8 = 1, EAX = [ebp+8]."""
     img = bytearray(0x1D4)
     struct.pack_into("<H", img, 4, 6)

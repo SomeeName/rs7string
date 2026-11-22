@@ -183,7 +183,7 @@ def test_stock_pick_setup_on_a_seven_built_guitar_overruns_the_six_slots():
 
 
 def test_native_pick_setup_six_target_on_a_seven_built_guitar_stays_in_the_tail():
-    # The same guitar with the session made native for a 6-string target (Rs7Tuner8_EnsureNative / TS): six picks in
+    # The same guitar with the session made native for a 6-string target (RsxrTuner8_EnsureNative / TS): six picks in
     # the 8-slot tail, the fret field untouched.
     m = machine(True, 6, {0x15C: 0xFE}, stock_count=7)
     before = [tail(m, 0x328, s) for s in (6, 7)]
@@ -290,7 +290,7 @@ def test_peg_widget_borrows_a_seated_peg_for_an_empty_slot(s, seat):
 
 def labels(m):
     stock = struct.unpack("<6I", m.read(0x12E8644, 24))
-    base = m.exports["g_rs7_tu8_labels"]
+    base = m.exports["g_rsxr_tu8_labels"]
     for k, v in enumerate(stock + (0x20600000, 0x20600010)):
         m.put(base + 4 * k, v)
 

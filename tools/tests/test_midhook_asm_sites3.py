@@ -34,7 +34,7 @@ register(
     Spec(
         "PP_TOC",
         5,
-        words={"g_rs7_skip_PP_TOC": site_va("PP_TOC") + TOC_SKIP},
+        words={"g_rsxr_skip_PP_TOC": site_va("PP_TOC") + TOC_SKIP},
         exits=("resume", ("resume", TOC_SKIP - 5)),
     ),
     [

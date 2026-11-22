@@ -1,6 +1,6 @@
-// Fuzz targets: the native N-slot chord records built from a song's stock template / ChordNotes record and its RS7X
-// block (features/nslot/nslot.h, records.cpp; the chord diagram's view of a T8, features/diagrams/diagrams.h), and the
-// plain SNG copy (features/psarc/psarc.h: Rs7_Stub_PP_SNGD for SNG flags 1).
+// Fuzz targets: the native N-slot chord records built from a song's stock template / ChordNotes record and its
+// extension block (features/nslot/nslot.h, records.cpp; the chord diagram's view of a T8,
+// features/diagrams/diagrams.h), and the plain SNG copy (features/psarc/psarc.h: Rsxr_Stub_PP_SNGD for SNG flags 1).
 #include "features/diagrams/diagrams.h"
 #include "features/nslot/nslot.h"
 #include "features/psarc/psarc.h"
@@ -11,10 +11,10 @@
 
 // The game's SNG decrypt replacement (features/psarc/hooks.cpp; not in a header: only the hook table calls it).
 extern "C" {
-bool __cdecl Rs7_Stub_PP_SNGD(const uint8_t*, uint32_t, const char*, uint32_t, uint8_t*, uint32_t);
+bool __cdecl Rsxr_Stub_PP_SNGD(const uint8_t*, uint32_t, const char*, uint32_t, uint8_t*, uint32_t);
 }
 
-namespace rs7fuzz {
+namespace rsxrfuzz {
 namespace {
 constexpr uint32_t kEvalSize = 0xC28;  // Play_NoteEval (nslot.h)
 
@@ -22,9 +22,9 @@ void Sink(void* ctx, const char* key, int value) {
     *static_cast<size_t*>(ctx) += std::strlen(key) + size_t(value);
 }
 
-// A seven-string C chord template (frets x 3 2 0 1 0, low B fret 2 by name[31]: finger 2, fret 2).
+// The stock six-column projection of a C chord template (frets x 3 2 0 1 0).
 std::vector<uint8_t> Template() {
-    std::vector<uint8_t> t(rs7ns::kTplSize, 0);
+    std::vector<uint8_t> t(rsxrns::kTplSize, 0);
     const int8_t frets[6] = {-1, 3, 2, 0, 1, 0}, fingers[6] = {-1, 3, 2, -1, 1, -1};
 
     for (int s = 0; s < 6; ++s) {
@@ -33,14 +33,13 @@ std::vector<uint8_t> Template() {
     }
 
     std::memcpy(t.data() + 0x28, "C", 2);
-    t[0x28 + 31] = uint8_t((2 + 1) << 5 | (2 + 1));
 
     return t;
 }
 
 // The chord diagram of one T8 record, built from it and merged with the template's manifest shape.
 void Diagrams(const uint8_t* tpl, const uint8_t* t8, uint8_t capo, size_t* sink) {
-    rs7diagram::Shape shape, manifest;
+    rsxrdiagram::Shape shape, manifest;
 
     manifest.capo = capo;
 
@@ -49,18 +48,18 @@ void Diagrams(const uint8_t* tpl, const uint8_t* t8, uint8_t capo, size_t* sink)
         manifest.fingers[s] = int8_t(tpl[0xA + s]);
     }
 
-    if (rs7diagram::FromT8(t8, &shape)) {
-        rs7diagram::Emit(shape, Sink, sink);
+    if (rsxrdiagram::FromT8(t8, &shape)) {
+        rsxrdiagram::Emit(shape, Sink, sink);
     }
-    if (rs7diagram::MergeManifestT8(t8, &manifest)) {
-        rs7diagram::Emit(manifest, Sink, sink);
+    if (rsxrdiagram::MergeManifestT8(t8, &manifest)) {
+        rsxrdiagram::Emit(manifest, Sink, sink);
     }
 }
 }  // namespace
 
-// [tuning count % 10][capo][templates % 5][chordNotes % 5][probe][strings % 17][template, 0x48 bytes][RS7X block...]
-// Every template id gets the same stock template; the ChordNotes records are zero. Without a valid block the
-// old name[31] column is used (7 strings), as the song load does.
+// [tuning count % 10][capo][templates % 5][chordNotes % 5][probe][strings % 17][template, 0x48 bytes][extension
+// block...] Every template id gets the same stock template; the ChordNotes records are zero. Without a valid block,
+// extra chord columns are empty, as at song load.
 int Nslot(const uint8_t* d, size_t n) {
     if (n < 6) {
         return 0;
@@ -72,7 +71,7 @@ int Nslot(const uint8_t* d, size_t n) {
 
     d += 6;
     n -= 6;
-    uint8_t tpl[rs7ns::kTplSize] = {};
+    uint8_t tpl[rsxrns::kTplSize] = {};
     const size_t tn = n < sizeof tpl ? n : sizeof tpl;
 
     std::memcpy(tpl, d, tn);
@@ -84,35 +83,33 @@ int Nslot(const uint8_t* d, size_t n) {
         tun[i] = int16_t(int8_t(tpl[0x10 + i]) % 25);
     }
 
-    rs7ext::Block block;
+    rsxrext::Block block;
     char why[160];
     const bool hasBlock =
-        n && rs7ext::Parse(d, n, templates, chordNotes, tuning, &block, why, sizeof why) == rs7ext::Status::Ok;
-    std::vector<uint8_t> t8(rs7ns::kT8Size), c8(rs7ns::kC8Size), cn(rs7ns::kCnSize, 0), eval(kEvalSize, 0);
+        n && rsxrext::Parse(d, n, templates, chordNotes, tuning, &block, why, sizeof why) == rsxrext::Status::Ok;
+    std::vector<uint8_t> t8(rsxrns::kT8Size), c8(rsxrns::kC8Size), cn(rsxrns::kCnSize, 0), eval(kEvalSize, 0);
     size_t sink = 0;
 
     for (uint32_t t = 0; t < (templates ? templates : 1); ++t) {
-        rs7ns::Col c[2];
+        rsxrns::Col c[2];
 
         if (hasBlock) {
             for (int i = 0; i < 2; ++i) {
                 int f = 0, g = 0;
 
                 if (block.TemplateColumn(t, 6 + i, &f, &g)) {
-                    c[i] = rs7ns::Col{f, g};
+                    c[i] = rsxrns::Col{f, g};
                 }
             }
-        } else if (strings == 7) {
-            rs7ns::DecodeName31(tpl, &c[0]);
         }
 
-        rs7ns::BuildT8(tpl, c, tun, strings, capo, t8.data());
+        rsxrns::BuildT8(tpl, c, tun, strings, capo, t8.data());
         Diagrams(tpl, t8.data(), capo, &sink);
     }
 
     for (uint32_t r = 0; r < (chordNotes ? chordNotes : 1); ++r) {
-        rs7ns::Tech tech[2];
-        const rs7ns::Tech* tp[2] = {nullptr, nullptr};
+        rsxrns::Tech tech[2];
+        const rsxrns::Tech* tp[2] = {nullptr, nullptr};
 
         for (int i = 0; hasBlock && block.hasChordNotes && i < 2; ++i) {
             const int col = block.Column(6 + i);
@@ -122,7 +119,7 @@ int Nslot(const uint8_t* d, size_t n) {
                 continue;
             }
 
-            const rs7ext::Tech& x = block.tech[at];
+            const rsxrext::Tech& x = block.tech[at];
 
             tech[i].mask = x.mask;
             tech[i].slideTo = x.slideTo;
@@ -133,17 +130,12 @@ int Nslot(const uint8_t* d, size_t n) {
             tp[i] = &tech[i];
         }
 
-        if (!tp[0] && !hasBlock) {  // a synthesized record (Fixup): the mask rule over the template's string 6
-            tech[0].mask = rs7ns::SynthMask(probe, int8_t(t8[rs7ns::kT8Frets + 6]), capo);
-            tp[0] = &tech[0];
-        }
-
-        rs7ns::BuildC8(cn.data(), tp[0], tp[1], c8.data());
+        rsxrns::BuildC8(cn.data(), tp[0], tp[1], c8.data());
         uint32_t bits = 0;
 
-        rs7ns::StringMask8(c8.data(), probe % 10, 0xFFFFFFFFu, &bits);
+        rsxrns::StringMask8(c8.data(), probe % 10, 0xFFFFFFFFu, &bits);
         sink += bits;
-        rs7ns::WriteEvalTails(eval.data(), t8.data(), c8.data());
+        rsxrns::WriteEvalTails(eval.data(), t8.data(), c8.data());
     }
 
     volatile size_t keep = sink;
@@ -155,12 +147,13 @@ int Nslot(const uint8_t* d, size_t n) {
 
 Seeds NslotSeeds() {
     const std::vector<uint8_t> tpl = Template();
-    std::vector<uint8_t> name31 = {6, 0xFF, 1, 1, 0x40, 7};
+    std::vector<uint8_t> withoutBlock = {7, 0xFF, 1, 1, 0x40, 7};
 
-    name31.insert(name31.end(), tpl.begin(), tpl.end());
-    // docs/release/RS7X-SPEC.md "Example" (as in the rs7x seeds): 7 strings, two templates, one ChordNotes record.
+    withoutBlock.insert(withoutBlock.end(), tpl.begin(), tpl.end());
+    // docs/architecture/extension-block.md "Example" (as in the extblock seeds): 7 strings, two templates, one
+    // ChordNotes record.
     const uint8_t block[] = {
-        'R', 'S', '7', 'X', 1, 0, 16, 0, 0x4E, 0,    0,    0,    3,    0,    0,    0,   'S', 'T', 'R', 'S',
+        'R', 'S', 'X', 'R', 1, 0, 16, 0, 0x4E, 0,    0,    0,    3,    0,    0,    0,   'S', 'T', 'R', 'S',
         1,   0,   1,   0,   5, 0, 0,  0, 0,    7,    1,    0,    6,    'C',  'H',  'D', 'T', 1,   0,   1,
         0,   8,   0,   0,   0, 2, 0,  0, 0,    2,    1,    0xFF, 0xFF, 'C',  'H',  'N', 'T', 1,   0,   0,
         0,   13,  0,   0,   0, 1, 0,  0, 0,    0x00, 0x20, 0,    0,    0xFF, 0xFF, 0,   0,   0,
@@ -170,7 +163,7 @@ Seeds NslotSeeds() {
     withBlock.insert(withBlock.end(), tpl.begin(), tpl.end());
     withBlock.insert(withBlock.end(), block, block + sizeof block);
 
-    return {name31, withBlock, {6, 0, 0, 0, 0, 8}};
+    return {withoutBlock, withBlock, {6, 0, 0, 0, 0, 8}};
 }
 
 // [outLen lo][outLen hi][SNG header: u32 magic, u32 flags][IV slot, 16 bytes][payload...]: the plain SNG copy. The
@@ -189,13 +182,13 @@ int Plain(const uint8_t* d, size_t n) {
     std::memcpy(&magic, sng.data(), 4);
     std::memcpy(&flags, sng.data() + 4, 4);
 
-    if (Rs7Plain_SngAction(magic, flags, len, outLen) == Rs7SngAction::Decrypt) {
+    if (RsxrPlain_SngAction(magic, flags, len, outLen) == RsxrSngAction::Decrypt) {
         return 0;
     }
 
     std::vector<uint8_t> out(outLen ? outLen : 1);
 
-    Rs7_Stub_PP_SNGD(sng.data() + 8, len, nullptr, 0, out.data(), outLen);
+    Rsxr_Stub_PP_SNGD(sng.data() + 8, len, nullptr, 0, out.data(), outLen);
 
     return 0;
 }
@@ -215,4 +208,4 @@ Seeds PlainSeeds() {
 
     return {s, small, {0, 0, 0x4A, 0, 0, 0, 1, 0, 0, 0}};
 }
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz

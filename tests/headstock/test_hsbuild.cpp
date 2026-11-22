@@ -11,13 +11,13 @@
 #include <iterator>
 
 namespace {
-rs7hs::Bytes Read(const std::filesystem::path& path) {
+rsxrhs::Bytes Read(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
 
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
-rs7hs::Bytes Package(const char* name = "rs7string_headstock.bin") {
+rsxrhs::Bytes Package(const char* name = "rsxr_headstock.bin") {
     wchar_t exe[MAX_PATH] = {};
 
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -39,22 +39,22 @@ const auto kTemplates = kBase / "base/dependency_guitarstandardinlinedrh.psarc/a
 const auto kTemplatesLh =
     kBase / "base/dependency_guitarstandardinlinedlh.psarc/assets/gameplay/guitar_standard_inline";
 
-void U32(rs7hs::Bytes& b, uint32_t n) {
+void U32(rsxrhs::Bytes& b, uint32_t n) {
     for (unsigned i = 0; i < 4; ++i) {
         b.push_back(uint8_t(n >> (i * 8)));
     }
 }
 
-void Digest(rs7hs::Bytes& b, const rs7hs::Bytes& source) {
-    const auto hex = rs7hs::Hash(source);
+void Digest(rsxrhs::Bytes& b, const rsxrhs::Bytes& source) {
+    const auto hex = rsxrhs::Hash(source);
 
     for (size_t i = 0; i < hex.size(); i += 2) {
         b.push_back(uint8_t(std::stoul(hex.substr(i, 2), nullptr, 16)));
     }
 }
 
-rs7hs::Bytes Encode(const rs7hs::Bytes& b) {
-    rs7hs::Bytes result{'R', 'S', '7', 'H', '1', '\n'};
+rsxrhs::Bytes Encode(const rsxrhs::Bytes& b) {
+    rsxrhs::Bytes result{'R', 'S', 'X', 'R', 'H', '1', '\n'};
 
     for (auto v : b) {
         result.push_back("0123456789abcdef"[v >> 4]);
@@ -65,23 +65,24 @@ rs7hs::Bytes Encode(const rs7hs::Bytes& b) {
 }
 
 struct Tiny {
-    rs7hs::Bytes raw;
+    rsxrhs::Bytes raw;
     size_t firstSize = 0, firstHash = 0, firstOp = 0;
 
     explicit Tiny(bool lh = false) {
         U32(raw, 1);
         Digest(raw, {'x'});
         Digest(raw, {'y'});
-        const std::vector<std::string> names = lh ? std::vector<std::string>{"rs7_inline7_lh.nif", "rs7_inline8_lh.nif"}
-                                                  : std::vector<std::string>{"rs7_inline7.nif",
-                                                                             "rs7_inline8.nif",
-                                                                             "rs7_peg.nif",
-                                                                             "rs7hs_env.dds",
-                                                                             "rs7hs_flat_n.dds",
-                                                                             "rs7hs_hardware.dds",
-                                                                             "rs7hs_hardware_gloss.dds",
-                                                                             "rs7hs_wood.dds",
-                                                                             "rs7hs_wood_gloss.dds"};
+        const std::vector<std::string> names =
+            lh ? std::vector<std::string>{"rsxr_inline7_lh.nif", "rsxr_inline8_lh.nif"}
+               : std::vector<std::string>{"rsxr_inline7.nif",
+                                          "rsxr_inline8.nif",
+                                          "rsxr_peg.nif",
+                                          "rsxrhs_env.dds",
+                                          "rsxrhs_flat_n.dds",
+                                          "rsxrhs_hardware.dds",
+                                          "rsxrhs_hardware_gloss.dds",
+                                          "rsxrhs_wood.dds",
+                                          "rsxrhs_wood_gloss.dds"};
 
         U32(raw, uint32_t(names.size()));
 
@@ -117,9 +118,9 @@ struct Tiny {
 }  // namespace
 
 TEST(hsbuild_sha256_standard_vectors) {
-    CHECK_EQ(rs7hs::Hash({}), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-    CHECK_EQ(rs7hs::Hash({'a', 'b', 'c'}), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-    CHECK_EQ(rs7hs::Hash(rs7hs::Bytes(1000000, 'a')),
+    CHECK_EQ(rsxrhs::Hash({}), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    CHECK_EQ(rsxrhs::Hash({'a', 'b', 'c'}), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK_EQ(rsxrhs::Hash(rsxrhs::Bytes(1000000, 'a')),
              "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
 }
 
@@ -128,7 +129,7 @@ TEST(hsbuild_owner_byte_identity_and_hash_refusal) {
     const auto peg = Read(kTemplates / "epi_whilshire_peg.nif");
 
     if (guitar.empty() || peg.empty()) {
-        rs7test::Skip("hsbuild owner identity: templates absent");
+        rsxrtest::Skip("hsbuild owner identity: templates absent");
         return;
     }
 
@@ -139,10 +140,10 @@ TEST(hsbuild_owner_byte_identity_and_hash_refusal) {
         return;
     }
 
-    std::vector<rs7hs::File> outputs;
+    std::vector<rsxrhs::File> outputs;
     std::string error;
 
-    CHECK(rs7hs::Build(guitar, peg, package, outputs, error));
+    CHECK(rsxrhs::Build(guitar, peg, package, outputs, error));
     CHECK_EQ(outputs.size(), 9u);
 
     for (const auto& f : outputs) {
@@ -156,17 +157,17 @@ TEST(hsbuild_owner_byte_identity_and_hash_refusal) {
     auto wrong = guitar;
 
     wrong[0] ^= 1;
-    CHECK(!rs7hs::Build(wrong, peg, package, outputs, error));
+    CHECK(!rsxrhs::Build(wrong, peg, package, outputs, error));
     CHECK(outputs.empty());
     CHECK_EQ(error, "template hash mismatch");
     wrong = peg;
     wrong.back() ^= 1;
-    CHECK(!rs7hs::Build(guitar, wrong, package, outputs, error));
+    CHECK(!rsxrhs::Build(guitar, wrong, package, outputs, error));
     CHECK_EQ(error, "template hash mismatch");
     auto corrupt = package;
 
     corrupt.back() = corrupt.back() == '0' ? '1' : '0';
-    CHECK(!rs7hs::Build(guitar, peg, corrupt, outputs, error));
+    CHECK(!rsxrhs::Build(guitar, peg, corrupt, outputs, error));
     CHECK(outputs.empty());
 }
 
@@ -178,10 +179,10 @@ TEST(hsbuild_package_manifest_and_malformed_refusal) {
         return;
     }
 
-    std::vector<rs7hs::Expected> manifest;
+    std::vector<rsxrhs::Expected> manifest;
     std::string error;
 
-    CHECK(rs7hs::Manifest(package, manifest, error));
+    CHECK(rsxrhs::Manifest(package, manifest, error));
     CHECK_EQ(manifest.size(), 9u);
 
     for (const auto& f : manifest) {
@@ -189,86 +190,86 @@ TEST(hsbuild_package_manifest_and_malformed_refusal) {
     }
 
     for (size_t n : {size_t(0), size_t(5), size_t(10), size_t(200)}) {
-        CHECK(!rs7hs::Manifest(rs7hs::Bytes(package.begin(), package.begin() + n), manifest, error));
+        CHECK(!rsxrhs::Manifest(rsxrhs::Bytes(package.begin(), package.begin() + n), manifest, error));
         CHECK(manifest.empty());
     }
 
     package.push_back('0');
-    CHECK(!rs7hs::Manifest(package, manifest, error));
+    CHECK(!rsxrhs::Manifest(package, manifest, error));
 }
 
 TEST(hsbuild_synthetic_copy_insert_and_parser_bounds) {
     Tiny tiny;
-    std::vector<rs7hs::File> outputs;
-    std::vector<rs7hs::Expected> manifest;
+    std::vector<rsxrhs::File> outputs;
+    std::vector<rsxrhs::Expected> manifest;
     std::string error;
 
-    CHECK(rs7hs::Build({'x'}, {'y'}, Encode(tiny.raw), outputs, error));
+    CHECK(rsxrhs::Build({'x'}, {'y'}, Encode(tiny.raw), outputs, error));
     CHECK_EQ(outputs.size(), 9u);
 
     for (const auto& f : outputs) {
-        CHECK_EQ(f.bytes, rs7hs::Bytes{'x'});
+        CHECK_EQ(f.bytes, rsxrhs::Bytes{'x'});
     }
 
-    CHECK(rs7hs::CheckTemplates({'x'}, {'y'}, Encode(tiny.raw), error));
-    CHECK(!rs7hs::CheckTemplates({'z'}, {'y'}, Encode(tiny.raw), error));
+    CHECK(rsxrhs::CheckTemplates({'x'}, {'y'}, Encode(tiny.raw), error));
+    CHECK(!rsxrhs::CheckTemplates({'z'}, {'y'}, Encode(tiny.raw), error));
     CHECK_EQ(error, "template hash mismatch");
 
     for (const auto position : {tiny.firstOp, tiny.firstOp + 1, tiny.firstOp + 5, tiny.firstOp + 9, tiny.firstSize}) {
         auto corrupt = tiny.raw;
 
         corrupt[position] = 255;
-        CHECK(!rs7hs::Build({'x'}, {'y'}, Encode(corrupt), outputs, error));
+        CHECK(!rsxrhs::Build({'x'}, {'y'}, Encode(corrupt), outputs, error));
         CHECK(outputs.empty());
     }
 
     auto corrupt = tiny.raw;
 
     corrupt[tiny.firstHash] ^= 1;
-    CHECK(!rs7hs::Build({'x'}, {'y'}, Encode(corrupt), outputs, error));
+    CHECK(!rsxrhs::Build({'x'}, {'y'}, Encode(corrupt), outputs, error));
     CHECK_EQ(error, "output hash mismatch");
     corrupt = tiny.raw;
     corrupt.push_back(0);
-    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    CHECK(!rsxrhs::Manifest(Encode(corrupt), manifest, error));
     CHECK_EQ(error, "trailing package bytes");
     corrupt = tiny.raw;
     corrupt[0] = 2;
-    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    CHECK(!rsxrhs::Manifest(Encode(corrupt), manifest, error));
     corrupt = tiny.raw;
-    corrupt[76] = '/';  // Names are plain rs7_*.nif / rs7hs_*.dds basenames.
-    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    corrupt[76] = '/';  // Names are plain rsxr_*.nif / rsxrhs_*.dds basenames.
+    CHECK(!rsxrhs::Manifest(Encode(corrupt), manifest, error));
     CHECK_EQ(error, "artifact name");
     corrupt = tiny.raw;
-    corrupt[80] = 'X';  // rs7_Xnline7.nif: upper case
-    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    corrupt[81] = 'X';  // rsxr_Xnline7.nif: upper case
+    CHECK(!rsxrhs::Manifest(Encode(corrupt), manifest, error));
     CHECK_EQ(error, "artifact name");
     corrupt = tiny.raw;
-    std::memcpy(&corrupt[86], "8.nif", 5);  // rs7_inline7.nif -> rs7_inline8.nif: the second name repeated
-    CHECK(!rs7hs::Manifest(Encode(corrupt), manifest, error));
+    std::memcpy(&corrupt[87], "8.nif", 5);  // rsxr_inline7.nif -> rsxr_inline8.nif: the second name repeated
+    CHECK(!rsxrhs::Manifest(Encode(corrupt), manifest, error));
     CHECK_EQ(error, "artifact name repeated");
     auto encoded = Encode(tiny.raw);
 
     encoded[7] = 'z';
-    CHECK(!rs7hs::Manifest(encoded, manifest, error));
+    CHECK(!rsxrhs::Manifest(encoded, manifest, error));
     CHECK_EQ(error, "package hex digit");
 }
 
 namespace {
-bool ReadXY(rs7hs::Bytes& g, rs7hs::Bytes& p) {
+bool ReadXY(rsxrhs::Bytes& g, rsxrhs::Bytes& p) {
     g = {'x'};
     p = {'y'};
 
     return true;
 }
 
-bool ReadBad(rs7hs::Bytes& g, rs7hs::Bytes& p) {
+bool ReadBad(rsxrhs::Bytes& g, rsxrhs::Bytes& p) {
     g = {'z'};
     p = {'y'};
 
     return true;
 }
 
-bool ReadNone(rs7hs::Bytes& g, rs7hs::Bytes& p) {
+bool ReadNone(rsxrhs::Bytes& g, rsxrhs::Bytes& p) {
     g.clear();
     p.clear();
 
@@ -283,7 +284,7 @@ std::filesystem::path BuildTestDir(const char* tag) {
     return std::filesystem::path(tmp) / (std::string(tag) + std::to_string(GetCurrentProcessId()));
 }
 
-void Put(const std::filesystem::path& path, const rs7hs::Bytes& bytes) {
+void Put(const std::filesystem::path& path, const rsxrhs::Bytes& bytes) {
     std::ofstream out(path, std::ios::binary);
 
     out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
@@ -317,9 +318,9 @@ bool MakeJunction(const std::filesystem::path& alias, const std::filesystem::pat
 }  // namespace
 
 TEST(hsbuild_release_template_defaults_build_and_repair_complete_sets) {
-    const auto root = BuildTestDir("rs7_release_defaults_");
-    const auto dir = root / "rs7string/headstock";
-    const auto ini = root / "rs7string.ini";
+    const auto root = BuildTestDir("rsxr_release_defaults_");
+    const auto dir = root / "rsxr/headstock";
+    const auto ini = root / "rsxr.ini";
     const auto rh = Encode(Tiny().raw), lh = Encode(Tiny(true).raw);
 
     std::filesystem::remove_all(root);
@@ -329,46 +330,46 @@ TEST(hsbuild_release_template_defaults_build_and_repair_complete_sets) {
         std::ofstream out(ini, std::ios::binary);
 
         // The release template writes all four defaults explicitly, including on existing installations.
-        out << "[assets]\r\nheadstock7=1\r\nselfbuild=1\r\ndir=rs7string\\headstock\\\r\n"
-               "headstock7_file=rs7_inline7.nif\r\nheadstock8_file=rs7_inline8.nif\r\n"
-               "headstock7_file_lh=rs7_inline7_lh.nif\r\nheadstock8_file_lh=rs7_inline8_lh.nif\r\n";
+        out << "[assets]\r\nheadstock7=1\r\nselfbuild=1\r\ndir=rsxr\\headstock\\\r\n"
+               "headstock7_file=rsxr_inline7.nif\r\nheadstock8_file=rsxr_inline8.nif\r\n"
+               "headstock7_file_lh=rsxr_inline7_lh.nif\r\nheadstock8_file_lh=rsxr_inline8_lh.nif\r\n";
     }
 
-    Put(root / "rs7string_headstock.bin", rh);
-    Put(root / "rs7string_headstock_lh.bin", lh);
-    Rs7Asset_Configure(ini.c_str());
-    CHECK(rs7head::g_head.sbWanted && rs7head::g_head.sbWantedLh);
-    CHECK(rs7asset::g_config.sbProtected.empty());
+    Put(root / "rsxr_headstock.bin", rh);
+    Put(root / "rsxr_headstock_lh.bin", lh);
+    RsxrAsset_Configure(ini.c_str());
+    CHECK(rsxrhead::g_head.sbWanted && rsxrhead::g_head.sbWantedLh);
+    CHECK(rsxrasset::g_config.sbProtected.empty());
 
-    if (!rs7head::g_head.sbWanted || !rs7head::g_head.sbWantedLh) {
-        Rs7Asset_Configure(nullptr);
+    if (!rsxrhead::g_head.sbWanted || !rsxrhead::g_head.sbWantedLh) {
+        RsxrAsset_Configure(nullptr);
         std::filesystem::remove_all(root);
         return;
     }
 
     std::string note;
 
-    if (rs7head::g_head.sbWanted) {
-        CHECK(Rs7Hs_Ensure(rh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
+    if (rsxrhead::g_head.sbWanted) {
+        CHECK(RsxrHs_Ensure(rh, dir, ReadXY, true, note, rsxrasset::g_config.sbProtected) == RsxrHsResult::Built);
     }
-    if (rs7head::g_head.sbWantedLh) {
-        CHECK(Rs7Hs_Ensure(lh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
+    if (rsxrhead::g_head.sbWantedLh) {
+        CHECK(RsxrHs_Ensure(lh, dir, ReadXY, true, note, rsxrasset::g_config.sbProtected) == RsxrHsResult::Built);
     }
 
-    for (const auto* name : {"rs7_inline7.nif", "rs7_inline8.nif", "rs7_inline7_lh.nif", "rs7_inline8_lh.nif"}) {
-        CHECK_EQ(Read(dir / name), rs7hs::Bytes{'x'});
+    for (const auto* name : {"rsxr_inline7.nif", "rsxr_inline8.nif", "rsxr_inline7_lh.nif", "rsxr_inline8_lh.nif"}) {
+        CHECK_EQ(Read(dir / name), rsxrhs::Bytes{'x'});
     }
 
     // Matching stamps must not hide a missing/empty output, including secondary models and textures (#206).
-    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar));
-    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::GuitarLh));
-    Rs7Asset_Configure(ini.c_str());
-    CHECK(!rs7head::g_head.sbWanted && !rs7head::g_head.sbWantedLh);
-    std::vector<rs7hs::Expected> outputs;
+    CHECK(RsxrAsset_SelfBuild(root.c_str(), dir.c_str(), RsxrHsKit::Guitar));
+    CHECK(RsxrAsset_SelfBuild(root.c_str(), dir.c_str(), RsxrHsKit::GuitarLh));
+    RsxrAsset_Configure(ini.c_str());
+    CHECK(!rsxrhead::g_head.sbWanted && !rsxrhead::g_head.sbWantedLh);
+    std::vector<rsxrhs::Expected> outputs;
     std::string error;
 
     for (const auto& package : {rh, lh}) {
-        CHECK(rs7hs::Manifest(package, outputs, error));
+        CHECK(rsxrhs::Manifest(package, outputs, error));
 
         for (const auto& output : outputs) {
             for (bool empty : {false, true}) {
@@ -378,31 +379,31 @@ TEST(hsbuild_release_template_defaults_build_and_repair_complete_sets) {
                 if (empty) {
                     Put(path, {});
                 }
-                Rs7Asset_Configure(ini.c_str());
-                CHECK(rs7head::g_head.sbWantedLh);
-                CHECK(rs7head::g_head.sbWanted == (package == rh));
-                CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) ==
-                      Rs7HsResult::Built);
-                CHECK_EQ(Read(path), rs7hs::Bytes{'x'});
+                RsxrAsset_Configure(ini.c_str());
+                CHECK(rsxrhead::g_head.sbWantedLh);
+                CHECK(rsxrhead::g_head.sbWanted == (package == rh));
+                CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note, rsxrasset::g_config.sbProtected) ==
+                      RsxrHsResult::Built);
+                CHECK_EQ(Read(path), rsxrhs::Bytes{'x'});
             }
         }
     }
 
     // A stale generated model is replaced when the package needs verification, despite explicit INI defaults.
-    Put(dir / "rs7_inline8.nif", {'o', 'l', 'd'});
-    std::filesystem::remove(dir / "rs7string_headstock.bin.stamp");
-    Rs7Asset_Configure(ini.c_str());
-    CHECK(rs7head::g_head.sbWanted);
-    CHECK(Rs7Hs_Ensure(rh, dir, ReadXY, true, note, rs7asset::g_config.sbProtected) == Rs7HsResult::Built);
-    CHECK_EQ(Read(dir / "rs7_inline8.nif"), rs7hs::Bytes{'x'});
-    Rs7Asset_Configure(nullptr);
+    Put(dir / "rsxr_inline8.nif", {'o', 'l', 'd'});
+    std::filesystem::remove(dir / "rsxr_headstock.bin.stamp");
+    RsxrAsset_Configure(ini.c_str());
+    CHECK(rsxrhead::g_head.sbWanted);
+    CHECK(RsxrHs_Ensure(rh, dir, ReadXY, true, note, rsxrasset::g_config.sbProtected) == RsxrHsResult::Built);
+    CHECK_EQ(Read(dir / "rsxr_inline8.nif"), rsxrhs::Bytes{'x'});
+    RsxrAsset_Configure(nullptr);
     std::filesystem::remove_all(root);
 }
 
 TEST(hsbuild_dependency_build_protects_junction_aliases_and_missing_children) {
-    const auto root = BuildTestDir("rs7_junction_");
+    const auto root = BuildTestDir("rsxr_junction_");
     const auto dir = root / "generated", alias = root / "alias";
-    const rs7hs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
+    const rsxrhs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
 
     std::filesystem::create_directories(dir);
     const bool junction = MakeJunction(alias, dir);
@@ -412,56 +413,56 @@ TEST(hsbuild_dependency_build_protects_junction_aliases_and_missing_children) {
         std::printf("junction creation unavailable: checking resolver with direct paths\n");
     }
 
-    Put(dir / "rs7_inline8.nif", custom);
-    const auto ini = root / "rs7string.ini";
+    Put(dir / "rsxr_inline8.nif", custom);
+    const auto ini = root / "rsxr.ini";
 
     CHECK(WritePrivateProfileStringW(L"assets", L"dir", dir.c_str(), ini.c_str()));
-    CHECK(WritePrivateProfileStringW(L"assets", L"headstock7_file", (via / "rs7_inline8.nif").c_str(), ini.c_str()));
-    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file", (via / "rs7_inline7.nif").c_str(), ini.c_str()));
-    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file_lh", (via / "nested/rs7_inline7.nif").c_str(),
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock7_file", (via / "rsxr_inline8.nif").c_str(), ini.c_str()));
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file", (via / "rsxr_inline7.nif").c_str(), ini.c_str()));
+    CHECK(WritePrivateProfileStringW(L"assets", L"headstock8_file_lh", (via / "nested/rsxr_inline7.nif").c_str(),
                                      ini.c_str()));
-    Rs7Asset_Configure(ini.c_str());
-    const auto protectedFiles = rs7asset::g_config.sbProtected;
+    RsxrAsset_Configure(ini.c_str());
+    const auto protectedFiles = rsxrasset::g_config.sbProtected;
     const auto package = Encode(Tiny().raw);
     std::string note;
 
     CHECK_EQ(protectedFiles.size(), 3u);
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
-    CHECK_EQ(Read(dir / "rs7_inline8.nif"), custom);
-    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
-    CHECK(Rs7Hs_OutputsPresent(package, dir, protectedFiles));
-    CHECK(Rs7Hs_Ensure(package, dir / "nested", ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
-    CHECK(!std::filesystem::exists(dir / "nested/rs7_inline7.nif"));
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == RsxrHsResult::Built);
+    CHECK_EQ(Read(dir / "rsxr_inline8.nif"), custom);
+    CHECK(!std::filesystem::exists(dir / "rsxr_inline7.nif"));
+    CHECK(RsxrHs_OutputsPresent(package, dir, protectedFiles));
+    CHECK(RsxrHs_Ensure(package, dir / "nested", ReadXY, true, note, protectedFiles) == RsxrHsResult::Built);
+    CHECK(!std::filesystem::exists(dir / "nested/rsxr_inline7.nif"));
     if (junction) {
         std::filesystem::remove(alias);
     }
-    Rs7Asset_Configure(nullptr);
+    RsxrAsset_Configure(nullptr);
     std::filesystem::remove_all(root);
 }
 
 TEST(hsbuild_temporary_files_and_stamps_preserve_custom_models) {
-    const auto root = BuildTestDir("rs7_write_protection_");
+    const auto root = BuildTestDir("rsxr_write_protection_");
     const auto dir = root / "generated";
-    const auto temp = dir / "rs7_inline7.nif.building";
-    const auto stamp = dir / "rs7string_headstock.bin.stamp";
-    const rs7hs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
+    const auto temp = dir / "rsxr_inline7.nif.building";
+    const auto stamp = dir / "rsxr_headstock.bin.stamp";
+    const rsxrhs::Bytes custom{'c', 'u', 's', 't', 'o', 'm'};
     const auto package = Encode(Tiny().raw);
 
     std::filesystem::create_directories(dir);
     Put(temp, custom);
     Put(stamp, custom);
-    Put(root / "rs7string_headstock.bin", package);
+    Put(root / "rsxr_headstock.bin", package);
     const std::vector<std::wstring> protectedFiles = {temp.wstring(), stamp.wstring()};
     std::string note;
 
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note, protectedFiles) == RsxrHsResult::Built);
     CHECK_EQ(Read(temp), custom);
-    CHECK_EQ(Read(dir / "rs7_inline7.nif"), rs7hs::Bytes{'x'});
+    CHECK_EQ(Read(dir / "rsxr_inline7.nif"), rsxrhs::Bytes{'x'});
     // The verified cache avoids the game reader while exercising the real stamp writer.
-    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar, protectedFiles));
+    CHECK(RsxrAsset_SelfBuild(root.c_str(), dir.c_str(), RsxrHsKit::Guitar, protectedFiles));
     CHECK_EQ(Read(stamp), custom);
     std::filesystem::remove(stamp);
-    CHECK(Rs7Asset_SelfBuild(root.c_str(), dir.c_str(), Rs7HsKit::Guitar, protectedFiles));
+    CHECK(RsxrAsset_SelfBuild(root.c_str(), dir.c_str(), RsxrHsKit::Guitar, protectedFiles));
     CHECK(!std::filesystem::exists(stamp));
     CHECK_EQ(Read(temp), custom);
     CHECK_EQ(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator()), 10);
@@ -474,41 +475,41 @@ TEST(hsbuild_ensure_builds_caches_and_falls_back) {
     wchar_t tmp[MAX_PATH] = {};
 
     GetTempPathW(MAX_PATH, tmp);
-    const auto dir = std::filesystem::path(tmp) / ("rs7_selfbuild_test_" + std::to_string(GetCurrentProcessId()));
+    const auto dir = std::filesystem::path(tmp) / ("rsxr_selfbuild_test_" + std::to_string(GetCurrentProcessId()));
 
     std::filesystem::remove_all(dir);
     std::string note;
 
     // game reader fails / unknown templates: stock stays, nothing written
-    CHECK(Rs7Hs_Ensure(package, dir, ReadNone, false, note) == Rs7HsResult::Failed);
-    CHECK(Rs7Hs_Ensure(package, dir, ReadBad, false, note) == Rs7HsResult::Failed);
+    CHECK(RsxrHs_Ensure(package, dir, ReadNone, false, note) == RsxrHsResult::Failed);
+    CHECK(RsxrHs_Ensure(package, dir, ReadBad, false, note) == RsxrHsResult::Failed);
     CHECK_EQ(note, "template hash mismatch; no output touched");
-    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
+    CHECK(!std::filesystem::exists(dir / "rsxr_inline7.nif"));
     // first run builds all nine; the second needs no reader at all
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, false, note) == Rs7HsResult::Built);
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, false, note) == RsxrHsResult::Built);
     CHECK_EQ(note, "verified build, wrote 9 files");
-    CHECK_EQ(Read(dir / "rs7hs_wood.dds"), rs7hs::Bytes{'x'});
-    CHECK(Rs7Hs_Ensure(package, dir, ReadNone, false, note) == Rs7HsResult::Cached);
-    CHECK(Rs7Hs_Ensure(package, dir, ReadNone, true, note) == Rs7HsResult::Cached);
+    CHECK_EQ(Read(dir / "rsxrhs_wood.dds"), rsxrhs::Bytes{'x'});
+    CHECK(RsxrHs_Ensure(package, dir, ReadNone, false, note) == RsxrHsResult::Cached);
+    CHECK(RsxrHs_Ensure(package, dir, ReadNone, true, note) == RsxrHsResult::Cached);
     // a missing file is rebuilt; an edited one is kept unless replacing is requested
-    std::filesystem::remove(dir / "rs7hs_env.dds");
+    std::filesystem::remove(dir / "rsxrhs_env.dds");
 
     {
-        std::ofstream o(dir / "rs7_peg.nif", std::ios::binary);
+        std::ofstream o(dir / "rsxr_peg.nif", std::ios::binary);
 
         o << "edited";
     }
 
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, false, note) == Rs7HsResult::Built);
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, false, note) == RsxrHsResult::Built);
     CHECK_EQ(note, "verified build, wrote 1 files");
-    CHECK_EQ(Read(dir / "rs7_peg.nif"), (rs7hs::Bytes{'e', 'd', 'i', 't', 'e', 'd'}));
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
-    CHECK_EQ(Read(dir / "rs7_peg.nif"), rs7hs::Bytes{'x'});
+    CHECK_EQ(Read(dir / "rsxr_peg.nif"), (rsxrhs::Bytes{'e', 'd', 'i', 't', 'e', 'd'}));
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note) == RsxrHsResult::Built);
+    CHECK_EQ(Read(dir / "rsxr_peg.nif"), rsxrhs::Bytes{'x'});
     // a damaged package never touches the folder
     auto bad = tiny.raw;
 
     bad[0] = 2;
-    CHECK(Rs7Hs_Ensure(Encode(bad), dir / "other", ReadXY, false, note) == Rs7HsResult::Failed);
+    CHECK(RsxrHs_Ensure(Encode(bad), dir / "other", ReadXY, false, note) == RsxrHsResult::Failed);
     CHECK(!std::filesystem::exists(dir / "other"));
     std::filesystem::remove_all(dir);
 }
@@ -518,26 +519,26 @@ TEST(hsbuild_dependency_build_preserves_explicit_models) {
     wchar_t tmp[MAX_PATH] = {};
 
     GetTempPathW(MAX_PATH, tmp);
-    const auto dir = std::filesystem::path(tmp) / ("rs7_protected_" + std::to_string(GetCurrentProcessId()));
+    const auto dir = std::filesystem::path(tmp) / ("rsxr_protected_" + std::to_string(GetCurrentProcessId()));
 
     std::filesystem::create_directories(dir);
 
     {
-        std::ofstream model(dir / "rs7_inline8.nif", std::ios::binary);
+        std::ofstream model(dir / "rsxr_inline8.nif", std::ios::binary);
 
         model << "custom";
     }
 
-    const std::vector<std::wstring> protectedFiles = {(dir / "." / "RS7_INLINE8.NIF").wstring(),
-                                                      (dir / "rs7_inline7.nif").wstring()};
+    const std::vector<std::wstring> protectedFiles = {(dir / "." / "RSXR_INLINE8.NIF").wstring(),
+                                                      (dir / "rsxr_inline7.nif").wstring()};
     std::string note;
 
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, true, note, protectedFiles) == Rs7HsResult::Built);
-    CHECK_EQ(Read(dir / "rs7_inline8.nif"), (rs7hs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
-    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
-    CHECK_EQ(Read(dir / "rs7hs_env.dds"), rs7hs::Bytes{'x'});
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadNone, true, note, protectedFiles) == Rs7HsResult::Cached);
-    CHECK(Rs7Hs_OutputsPresent(Encode(tiny.raw), dir, protectedFiles));
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, true, note, protectedFiles) == RsxrHsResult::Built);
+    CHECK_EQ(Read(dir / "rsxr_inline8.nif"), (rsxrhs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
+    CHECK(!std::filesystem::exists(dir / "rsxr_inline7.nif"));
+    CHECK_EQ(Read(dir / "rsxrhs_env.dds"), rsxrhs::Bytes{'x'});
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadNone, true, note, protectedFiles) == RsxrHsResult::Cached);
+    CHECK(RsxrHs_OutputsPresent(Encode(tiny.raw), dir, protectedFiles));
     std::filesystem::remove_all(dir);
 }
 
@@ -547,29 +548,29 @@ TEST(hsbuild_cache_requires_every_model_and_texture_to_be_nonempty) {
     wchar_t tmp[MAX_PATH] = {};
 
     GetTempPathW(MAX_PATH, tmp);
-    const auto dir = std::filesystem::path(tmp) / ("rs7_complete_" + std::to_string(GetCurrentProcessId()));
+    const auto dir = std::filesystem::path(tmp) / ("rsxr_complete_" + std::to_string(GetCurrentProcessId()));
     std::string note;
-    std::vector<rs7hs::Expected> outputs;
+    std::vector<rsxrhs::Expected> outputs;
     std::string error;
 
-    CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
-    CHECK(Rs7Hs_OutputsPresent(package, dir));
-    CHECK(rs7hs::Manifest(package, outputs, error));
+    CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note) == RsxrHsResult::Built);
+    CHECK(RsxrHs_OutputsPresent(package, dir));
+    CHECK(rsxrhs::Manifest(package, outputs, error));
 
     for (const auto& output : outputs) {
         const auto path = dir / output.name;
 
         std::filesystem::remove(path);
-        CHECK(!Rs7Hs_OutputsPresent(package, dir));
-        CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
+        CHECK(!RsxrHs_OutputsPresent(package, dir));
+        CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note) == RsxrHsResult::Built);
 
         {
             std::ofstream empty(path, std::ios::binary);
         }
 
-        CHECK(!Rs7Hs_OutputsPresent(package, dir));
-        CHECK(Rs7Hs_Ensure(package, dir, ReadXY, true, note) == Rs7HsResult::Built);
-        CHECK(Rs7Hs_OutputsPresent(package, dir));
+        CHECK(!RsxrHs_OutputsPresent(package, dir));
+        CHECK(RsxrHs_Ensure(package, dir, ReadXY, true, note) == RsxrHsResult::Built);
+        CHECK(RsxrHs_OutputsPresent(package, dir));
     }
 
     std::filesystem::remove_all(dir);
@@ -579,31 +580,31 @@ TEST(hsbuild_cache_requires_every_model_and_texture_to_be_nonempty) {
 // byte-identical to the offline build; the right-handed templates are refused, and the 9-file package is not accepted
 // in its place.
 TEST(hsbuild_lefty_owner_byte_identity_and_refusal) {
-    const auto package = Package("rs7string_headstock_lh.bin");
+    const auto package = Package("rsxr_headstock_lh.bin");
 
     CHECK(!package.empty());
-    std::vector<rs7hs::Expected> manifest;
+    std::vector<rsxrhs::Expected> manifest;
     std::string error;
 
-    CHECK(rs7hs::Manifest(package, manifest, error));
+    CHECK(rsxrhs::Manifest(package, manifest, error));
     CHECK_EQ(manifest.size(), 2u);
 
     if (manifest.size() == 2) {
-        CHECK_EQ(manifest[0].name, std::string("rs7_inline7_lh.nif"));
-        CHECK_EQ(manifest[1].name, std::string("rs7_inline8_lh.nif"));
+        CHECK_EQ(manifest[0].name, std::string("rsxr_inline7_lh.nif"));
+        CHECK_EQ(manifest[1].name, std::string("rsxr_inline8_lh.nif"));
     }
 
     const auto guitar = Read(kTemplatesLh / "epi_whilshire_cherry_lh.nif");
     const auto peg = Read(kTemplatesLh / "epi_whilshire_peg.nif");
 
     if (guitar.empty() || peg.empty()) {
-        rs7test::Skip("hsbuild lefty owner identity: templates absent");
+        rsxrtest::Skip("hsbuild lefty owner identity: templates absent");
         return;
     }
 
-    std::vector<rs7hs::File> outputs;
+    std::vector<rsxrhs::File> outputs;
 
-    CHECK(rs7hs::Build(guitar, peg, package, outputs, error));
+    CHECK(rsxrhs::Build(guitar, peg, package, outputs, error));
     CHECK_EQ(outputs.size(), 2u);
 
     for (const auto& f : outputs) {
@@ -613,9 +614,9 @@ TEST(hsbuild_lefty_owner_byte_identity_and_refusal) {
 
     const auto rhGuitar = Read(kTemplates / "epi_wilshire_cherry.nif");
 
-    CHECK(!rs7hs::Build(rhGuitar, peg, package, outputs, error));
+    CHECK(!rsxrhs::Build(rhGuitar, peg, package, outputs, error));
     CHECK_EQ(error, "template hash mismatch");
-    CHECK(!rs7hs::Build(guitar, peg, Package(), outputs, error));
+    CHECK(!rsxrhs::Build(guitar, peg, Package(), outputs, error));
     CHECK_EQ(error, "template hash mismatch");
 }
 
@@ -624,10 +625,10 @@ TEST(hsbuild_preserves_unreadable_existing_outputs) {
     wchar_t tmp[MAX_PATH] = {};
 
     GetTempPathW(MAX_PATH, tmp);
-    const auto dir = std::filesystem::path(tmp) / ("rs7_inputs_preserve_" + std::to_string(GetCurrentProcessId()));
+    const auto dir = std::filesystem::path(tmp) / ("rsxr_inputs_preserve_" + std::to_string(GetCurrentProcessId()));
 
     std::filesystem::create_directories(dir);
-    const auto model = dir / "rs7_inline7.nif";
+    const auto model = dir / "rsxr_inline7.nif";
 
     {
         std::ofstream out(model, std::ios::binary);
@@ -636,39 +637,39 @@ TEST(hsbuild_preserves_unreadable_existing_outputs) {
     std::string note;
 
     // A 0-byte output (interrupted copy) counts as missing: rebuilt, not refused forever.
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Built);
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == RsxrHsResult::Built);
     CHECK(std::filesystem::file_size(model) > 0u);
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     std::filesystem::create_directory(model);
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == RsxrHsResult::Failed);
     CHECK(std::filesystem::is_directory(model));
-    CHECK(!std::filesystem::exists(dir / "rs7_inline8.nif"));
+    CHECK(!std::filesystem::exists(dir / "rsxr_inline8.nif"));
     std::filesystem::remove_all(dir);
     // A missing early artifact must not hide an unreadable later artifact during preflight.
     std::filesystem::create_directories(dir);
-    std::filesystem::create_directory(dir / "rs7hs_wood_gloss.dds");
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
-    CHECK(!std::filesystem::exists(dir / "rs7_inline7.nif"));
+    std::filesystem::create_directory(dir / "rsxrhs_wood_gloss.dds");
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == RsxrHsResult::Failed);
+    CHECK(!std::filesystem::exists(dir / "rsxr_inline7.nif"));
     std::filesystem::remove_all(dir);
 }
 
 TEST(hsbuild_input_truncation_and_mutation_sweep) {
     Tiny tiny;
     const auto good = Encode(tiny.raw);
-    std::vector<rs7hs::Expected> manifest;
-    std::vector<rs7hs::File> outputs;
+    std::vector<rsxrhs::Expected> manifest;
+    std::vector<rsxrhs::File> outputs;
     std::string error;
 
     for (size_t n = 0; n < good.size(); ++n) {
-        const rs7hs::Bytes prefix(good.begin(), good.begin() + n);
+        const rsxrhs::Bytes prefix(good.begin(), good.begin() + n);
 
         manifest = {{"stale", 1, "stale"}};
         outputs = {{"stale", {'x'}}};
-        CHECK(!rs7hs::Manifest(prefix, manifest, error));
+        CHECK(!rsxrhs::Manifest(prefix, manifest, error));
         CHECK(manifest.empty());
         CHECK(!error.empty());
-        CHECK(!rs7hs::Build({'x'}, {'y'}, prefix, outputs, error));
+        CHECK(!rsxrhs::Build({'x'}, {'y'}, prefix, outputs, error));
         CHECK(outputs.empty());
         CHECK(!error.empty());
     }
@@ -681,10 +682,10 @@ TEST(hsbuild_input_truncation_and_mutation_sweep) {
         seed = seed * 1664525u + 1013904223u;
         raw[seed % raw.size()] ^= uint8_t(1u << ((seed >> 16) & 7));
         const auto encoded = Encode(raw);
-        const bool parsed = rs7hs::Manifest(encoded, manifest, error);
+        const bool parsed = rsxrhs::Manifest(encoded, manifest, error);
 
         CHECK(parsed ? manifest.size() == 9u : manifest.empty());
-        const bool built = rs7hs::Build({'x'}, {'y'}, encoded, outputs, error);
+        const bool built = rsxrhs::Build({'x'}, {'y'}, encoded, outputs, error);
 
         CHECK(built ? outputs.size() == 9u : outputs.empty());
 
@@ -692,7 +693,7 @@ TEST(hsbuild_input_truncation_and_mutation_sweep) {
             CHECK(parsed);
 
             for (const auto& f : outputs) {
-                CHECK_EQ(f.bytes, rs7hs::Bytes{'x'});
+                CHECK_EQ(f.bytes, rsxrhs::Bytes{'x'});
             }
         }
     }
@@ -704,16 +705,16 @@ TEST(hsbuild_unicode_cache_and_failed_write_preserve_outputs) {
 
     GetTempPathW(MAX_PATH, tmp);
     const auto dir =
-        std::filesystem::path(tmp) / (L"rs7_inputs_\u6f22\u00e4_" + std::to_wstring(GetCurrentProcessId()));
+        std::filesystem::path(tmp) / (L"rsxr_inputs_\u6f22\u00e4_" + std::to_wstring(GetCurrentProcessId()));
 
     std::filesystem::create_directories(dir);
     std::string note;
 
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Built);
-    const auto model = dir / "rs7_inline7.nif";
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == RsxrHsResult::Built);
+    const auto model = dir / "rsxr_inline7.nif";
 
     CHECK(SetFileAttributesW(model.c_str(), FILE_ATTRIBUTE_READONLY));
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadNone, false, note) == Rs7HsResult::Cached);
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadNone, false, note) == RsxrHsResult::Cached);
     CHECK(SetFileAttributesW(model.c_str(), FILE_ATTRIBUTE_NORMAL));
 
     {
@@ -723,8 +724,8 @@ TEST(hsbuild_unicode_cache_and_failed_write_preserve_outputs) {
     }
 
     CHECK(SetFileAttributesW(model.c_str(), FILE_ATTRIBUTE_READONLY));
-    CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, true, note) == Rs7HsResult::Failed);
-    CHECK_EQ(Read(model), (rs7hs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
+    CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, true, note) == RsxrHsResult::Failed);
+    CHECK_EQ(Read(model), (rsxrhs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
     CHECK(!std::filesystem::exists(std::filesystem::path(model.wstring() + L".building")));
     CHECK(SetFileAttributesW(model.c_str(), FILE_ATTRIBUTE_NORMAL));
     // A sharing violation must not be treated as an absent file either.
@@ -734,10 +735,10 @@ TEST(hsbuild_unicode_cache_and_failed_write_preserve_outputs) {
     CHECK(lock != INVALID_HANDLE_VALUE);
 
     if (lock != INVALID_HANDLE_VALUE) {
-        CHECK(Rs7Hs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == Rs7HsResult::Failed);
+        CHECK(RsxrHs_Ensure(Encode(tiny.raw), dir, ReadXY, false, note) == RsxrHsResult::Failed);
         CloseHandle(lock);
     }
 
-    CHECK_EQ(Read(model), (rs7hs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
+    CHECK_EQ(Read(model), (rsxrhs::Bytes{'c', 'u', 's', 't', 'o', 'm'}));
     std::filesystem::remove_all(dir);
 }

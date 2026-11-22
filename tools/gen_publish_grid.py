@@ -69,9 +69,9 @@ def manifest():
             site["target"] = guard_target(md, raw, va, target)
         sites.append(site)
         registry.append(
-            f'{{ "{name}", Rs7_Stub_{name}, &g_rs7_resume_{name}, '
-            + (f"&g_rs7_target_{name}" if target else "nullptr")
-            + ", kRs7Publish },"
+            f'{{ "{name}", Rsxr_Stub_{name}, &g_rsxr_resume_{name}, '
+            + (f"&g_rsxr_target_{name}" if target else "nullptr")
+            + ", kRsxrPublish },"
         )
     return {
         "sites": sites,

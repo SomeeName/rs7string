@@ -16,8 +16,8 @@
 #include <intrin.h>
 
 namespace {
-using namespace rs7head;
-using rs7asset::kGuitarInfo;
+using namespace rsxrhead;
+using rsxrasset::kGuitarInfo;
 
 constexpr uint32_t kRot = 0x4C;
 
@@ -40,12 +40,12 @@ Width* Find(const uint8_t* guitar) {
 
 void Pegs(uint8_t* pegset) {
     if (IsNative(pegset)) {
-        GamePlacePegs(pegset, Rs7_SafeRead<uint16_t>(pegset, kPegCount));
+        GamePlacePegs(pegset, Rsxr_SafeRead<uint16_t>(pegset, kPegCount));
     }
 }
 }  // namespace
 
-void Rs7Head_ForgetWidth(const uint8_t* guitar) {
+void RsxrHead_ForgetWidth(const uint8_t* guitar) {
     if (!guitar) {
         return;
     }
@@ -57,11 +57,11 @@ void Rs7Head_ForgetWidth(const uint8_t* guitar) {
     }
 }
 
-void Rs7Head_Width(uint8_t* guitar, bool extended) {
-    uint8_t* head = Rs7_SafeRead<uint8_t*>(guitar, kGuitarHead);
-    uint8_t* frame = Rs7_SafeRead<uint8_t*>(head, kHeadFrame);
-    uint8_t* root = frame ? rs7s7d::EntityRoot(frame) : nullptr;
-    const float k = extended ? Rs7Spacing_Factor(Rs7_SafeRead<uint8_t*>(guitar, kGuitarInfo)) : 1.0f;
+void RsxrHead_Width(uint8_t* guitar, bool extended) {
+    uint8_t* head = Rsxr_SafeRead<uint8_t*>(guitar, kGuitarHead);
+    uint8_t* frame = Rsxr_SafeRead<uint8_t*>(head, kHeadFrame);
+    uint8_t* root = frame ? rsxrs7d::EntityRoot(frame) : nullptr;
+    const float k = extended ? RsxrSpacing_Factor(Rsxr_SafeRead<uint8_t*>(guitar, kGuitarInfo)) : 1.0f;
     Width* w = guitar ? Find(guitar) : nullptr;
 
     if (!w) {
@@ -74,12 +74,12 @@ void Rs7Head_Width(uint8_t* guitar, bool extended) {
     if (k == 1.0f && w->guitar != guitar) {
         return;  // stock and nothing to restore: the common case
     }
-    if (!root || !g_rs7_fn_setpos || !g_rs7_fn_setrot || !g_rs7_fn_euler) {
+    if (!root || !g_rsxr_fn_setpos || !g_rsxr_fn_setrot || !g_rsxr_fn_euler) {
         return;
     }
 
     if (w->guitar != guitar || w->root != root) {
-        if (!Rs7_SafeCopyZero(w->stock, root + kRot, sizeof w->stock)) {
+        if (!Rsxr_SafeCopyZero(w->stock, root + kRot, sizeof w->stock)) {
             return;
         }
 
@@ -94,11 +94,11 @@ void Rs7Head_Width(uint8_t* guitar, bool extended) {
     m[2] *= k;
     m[5] *= k;
     m[8] *= k;
-    Rs7_SafeStore(root + kRot, m, sizeof m);
-    Pegs(Rs7_SafeRead<uint8_t*>(head, kHeadPegs));
-    if (k != w->applied && Rs7Log_Upto(&g_head.logWidth, 8)) {
-        Rs7Log("spacing: guitar %p headstock frame root %p narrowed across the strings by k %.3f (was %.3f)", guitar,
-               root, double(k), double(w->applied));
+    Rsxr_SafeStore(root + kRot, m, sizeof m);
+    Pegs(Rsxr_SafeRead<uint8_t*>(head, kHeadPegs));
+    if (k != w->applied && RsxrLog_Upto(&g_head.logWidth, 8)) {
+        RsxrLog("spacing: guitar %p headstock frame root %p narrowed across the strings by k %.3f (was %.3f)", guitar,
+                root, double(k), double(w->applied));
     }
     w->applied = k;
     if (k == 1.0f) {

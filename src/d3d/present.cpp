@@ -5,34 +5,34 @@
 #include "platform/seh.h"
 #include <cstdint>
 
-extern "C" HRESULT __stdcall Rs7_PresentHook(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd,
-                                             const RGNDATA* dirty);
-extern "C" HRESULT __stdcall Rs7_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp);
+extern "C" HRESULT __stdcall Rsxr_PresentHook(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd,
+                                              const RGNDATA* dirty);
+extern "C" HRESULT __stdcall Rsxr_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp);
 
 // Hot-patchable thunks, as in d3d/swap_hook.cpp: a trampoline hooker reading these slots can hook them after us.
-extern "C" __declspec(naked) void Rs7_Thunk_Present() {
+extern "C" __declspec(naked) void Rsxr_Thunk_Present() {
     __asm {
         mov edi, edi
         push ebp
         mov ebp, esp
         pop ebp
-        jmp Rs7_PresentHook
+        jmp Rsxr_PresentHook
     }
 }
 
-extern "C" __declspec(naked) void Rs7_Thunk_Reset() {
+extern "C" __declspec(naked) void Rsxr_Thunk_Reset() {
     __asm {
         mov edi, edi
         push ebp
         mov ebp, esp
         pop ebp
-        jmp Rs7_ResetHook
+        jmp Rsxr_ResetHook
     }
 }
 
 namespace {
-using rs7d3d::LogQuiet;
-using rs7d3d::ModuleName;
+using rsxrd3d::LogQuiet;
+using rsxrd3d::ModuleName;
 constexpr unsigned kSlotReset = 16, kSlotPresent = 17;
 using Present_t = HRESULT(__stdcall*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
 using Reset_t = HRESULT(__stdcall*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
@@ -43,17 +43,17 @@ IDirect3DDevice9* g_dev;
 void** g_vt;
 volatile bool g_installed;
 volatile bool g_dead;  // a callback faulted: no callback any more
-Rs7PresentCallbacks g_cb;
+RsxrPresentCallbacks g_cb;
 volatile LONG g_frames, g_faults;
-const Rs7SehReader g_mem{};
-const rs7d3d::VtSlotPair kSlots{
+const RsxrSehReader g_mem{};
+const rsxrd3d::VtSlotPair kSlots{
     "overlay",
     kSlotReset,
-    {reinterpret_cast<uintptr_t>(&Rs7_Thunk_Reset), reinterpret_cast<uintptr_t>(&Rs7_Thunk_Present)}};
+    {reinterpret_cast<uintptr_t>(&Rsxr_Thunk_Reset), reinterpret_cast<uintptr_t>(&Rsxr_Thunk_Present)}};
 static_assert(kSlotPresent == kSlotReset + 1, "VtSlotPair hooks two neighbouring slots");
 
 // d3d9's entry points of slots 16/17.
-rs7d3d::SlotValues Orig() {
+rsxrd3d::SlotValues Orig() {
     return {reinterpret_cast<uintptr_t>(g_origReset), reinterpret_cast<uintptr_t>(g_origPresent)};
 }
 
@@ -66,7 +66,7 @@ void Fault(const char* where) {
     if (first && g_cb.onFault) {
         __try {
             g_cb.onFault();
-        } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        } __except (Rsxr_FaultFilter(GetExceptionCode())) {
             LogQuiet("overlay: fault while disabling input capture");
         }
     }
@@ -77,12 +77,12 @@ void Fault(const char* where) {
 void CallPresent(IDirect3DDevice9* dev) {
     __try {
         __try {
-            Rs7Swap_SetOverlayDrawing(dev, true);
+            RsxrSwap_SetOverlayDrawing(dev, true);
             g_cb.onPresent(dev);
         } __finally {
-            Rs7Swap_SetOverlayDrawing(dev, false);
+            RsxrSwap_SetOverlayDrawing(dev, false);
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         Fault("Present");
     }
 }
@@ -90,7 +90,7 @@ void CallPresent(IDirect3DDevice9* dev) {
 void CallBeforeReset(IDirect3DDevice9* dev) {
     __try {
         g_cb.beforeReset(dev);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         Fault("before-Reset");
     }
 }
@@ -98,14 +98,14 @@ void CallBeforeReset(IDirect3DDevice9* dev) {
 void CallAfterReset(IDirect3DDevice9* dev, HRESULT hr) {
     __try {
         g_cb.afterReset(dev, hr);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         Fault("after-Reset");
     }
 }
 }  // namespace
 
-extern "C" HRESULT __stdcall Rs7_PresentHook(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd,
-                                             const RGNDATA* dirty) {
+extern "C" HRESULT __stdcall Rsxr_PresentHook(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd,
+                                              const RGNDATA* dirty) {
     InterlockedIncrement(&g_frames);
     if (dev == g_dev && !g_dead && g_cb.onPresent) {
         CallPresent(dev);
@@ -114,7 +114,7 @@ extern "C" HRESULT __stdcall Rs7_PresentHook(IDirect3DDevice9* dev, const RECT* 
     return g_origPresent(dev, src, dst, wnd, dirty);
 }
 
-extern "C" HRESULT __stdcall Rs7_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
+extern "C" HRESULT __stdcall Rsxr_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
     // beforeReset must run even after a fault elsewhere: our DEFAULT-pool objects would make the game's
     // Reset fail. Its own fault only stops the callbacks.
     const bool ours = dev == g_dev;
@@ -131,7 +131,7 @@ extern "C" HRESULT __stdcall Rs7_ResetHook(IDirect3DDevice9* dev, D3DPRESENT_PAR
     return hr;
 }
 
-bool Rs7Present_InstallOn(void* device, const Rs7PresentCallbacks& cb) {
+bool RsxrPresent_InstallOn(void* device, const RsxrPresentCallbacks& cb) {
     if (!device) {
         return false;
     }
@@ -172,7 +172,7 @@ bool Rs7Present_InstallOn(void* device, const Rs7PresentCallbacks& cb) {
     return true;
 }
 
-void Rs7Present_Recheck() {
+void RsxrPresent_Recheck() {
     static bool foreignLogged = false;
     if (!g_installed || !g_vt) {
         return;
@@ -181,19 +181,19 @@ void Rs7Present_Recheck() {
     kSlots.Recheck(g_dev, g_vt, Orig(), g_mem, &foreignLogged);
 }
 
-bool Rs7Present_Installed() {
+bool RsxrPresent_Installed() {
     return g_installed;
 }
 
-unsigned long Rs7Present_Frames() {
+unsigned long RsxrPresent_Frames() {
     return static_cast<unsigned long>(g_frames);
 }
 
-unsigned long Rs7Present_Faults() {
+unsigned long RsxrPresent_Faults() {
     return static_cast<unsigned long>(g_faults);
 }
 
-void Rs7Present_UninstallForTests() {
+void RsxrPresent_UninstallForTests() {
     if (g_vt) {
         kSlots.Restore(g_vt, Orig());
     }

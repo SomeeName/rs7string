@@ -1,10 +1,10 @@
-// rs7match::OctaveDyad, LowChord, Compact6 (the target-set predicates of the note matcher).
+// rsxrmatch::OctaveDyad, LowChord, Compact6 (the target-set predicates of the note matcher).
 #include "features/nslot/match.h"
 #include "test.h"
 
-using rs7match::Compact6;
-using rs7match::LowChord;
-using rs7match::OctaveDyad;
+using rsxrmatch::Compact6;
+using rsxrmatch::LowChord;
+using rsxrmatch::OctaveDyad;
 
 TEST(match_octavedyad_lower_note_first) {
     const int32_t a[2] = {40, 52};

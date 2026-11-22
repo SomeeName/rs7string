@@ -5,7 +5,7 @@ Every pattern must match exactly once inside .text and the bytes at the site mus
 `expect`. A jmp-kind site (a jmp over several instructions) must cover whole instructions and no direct
 branch anywhere in .text may target a byte inside it other than its start (PSL2 once
 covered `mov byte [ebx+8],1; mov eax,[ebp+8]` and 0x59C587 jumps to the second instruction - into
-the middle of the patched jmp). Run before every in-game test:  uv run python rs7string/tools/sitecheck.py
+the middle of the patched jmp). Run before every in-game test:  uv run python tools/sitecheck.py
 """
 
 from __future__ import annotations

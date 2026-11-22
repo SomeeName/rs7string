@@ -1,7 +1,7 @@
 """Song-setup detector width without a running game (uses the analysis snapshot and built DLL).
 
 [neck] clite: the guitar's string count is its build count (InstrumentInfo +0Bh); S4 only widens the
-song's detector (Rs7Song_WidenDetector). Game _msize/show/detach calls are tiny deterministic stubs.
+song's detector (RsxrSong_WidenDetector). Game _msize/show/detach calls are tiny deterministic stubs.
 Every fake owner uses the confirmed September 2022 offsets; this checks the compiled helper rather
 than a Python model.
 """
@@ -32,20 +32,20 @@ def call(e, name, *args):
 
 def setup(tuning, built=None, bass=False, enabled=True):
     e = Emu(patched=False)
-    required = ("Rs7Song_WidenDetector", "Rs7Pitch_SetSongCount", "Rs7Pitch_SongCount")
+    required = ("RsxrSong_WidenDetector", "RsxrPitch_SetSongCount", "RsxrPitch_SongCount")
     assert all(n in e.exports for n in required), "Rebuild DLL with publish/hooks_song.cpp before the song-setup tests"
     for name, value in [
-        ("g_rs7_native_publish", enabled),
-        ("g_rs7_publish_ports", 1),
-        ("g_rs7_native_strings", 1),
-        ("g_rs7_native_pitch", 1),
-        ("g_rs7_endlog", 0),
+        ("g_rsxr_native_publish", enabled),
+        ("g_rsxr_publish_ports", 1),
+        ("g_rsxr_native_strings", 1),
+        ("g_rsxr_native_pitch", 1),
+        ("g_rsxr_endlog", 0),
     ]:
         put(e, e.exports[name], "I", int(value))
     # _msize reports capacity (the detector tail needs it).
     e.uc.mem_write(CODE + 0x1000, b"\xb8\xe0\x13\x00\x00\xc3")
-    put(e, e.exports["g_rs7_fn_msize"], "I", CODE + 0x1000)
-    call(e, "Rs7Gs_InfoAllocated", INFO)
+    put(e, e.exports["g_rsxr_fn_msize"], "I", CODE + 0x1000)
+    call(e, "RsxrGs_InfoAllocated", INFO)
     put(e, SESSION + 0x37C, "I", GUITAR)
     put(e, GUITAR + 0x24, "I", INFO)
     if built is None:
@@ -56,19 +56,19 @@ def setup(tuning, built=None, bass=False, enabled=True):
     put(e, DET + 0x1238, "I", INPUT)
     put(e, INPUT + 8, "I", MAT)
     put(e, MAT + 4, "I", DET)
-    put(e, MAT + 0x68, "I", 0x38503752)
-    put(e, DET + 0x13D8, "II", 4 if bass else 6, 0x38503752)
+    put(e, MAT + 0x68, "I", 0x38505852)
+    put(e, DET + 0x13D8, "II", 4 if bass else 6, 0x38505852)
     put(e, VEC, "II", VEC + 0x100, VEC + 0x100 + 2 * len(tuning))
     put(e, VEC + 0x100, "h" * len(tuning), *tuning)
-    # The DLL's tail writers (PM0, PR0) record MAT / DET in the registry of tailed allocations Rs7Pitch_Tailed reads;
+    # The DLL's tail writers (PM0, PR0) record MAT / DET in the registry of tailed allocations RsxrPitch_Tailed reads;
     # they leave the magic and the stock count written above.
-    call(e, "Rs7Pitch_MatNew", MAT)
-    call(e, "Rs7Pitch_DetReset", DET)
+    call(e, "RsxrPitch_MatNew", MAT)
+    call(e, "RsxrPitch_DetReset", DET)
     return e
 
 
 def widen(e):
-    call(e, "Rs7Song_WidenDetector", SESSION, DET, VEC)
+    call(e, "RsxrSong_WidenDetector", SESSION, DET, VEC)
 
 
 def det(e):
@@ -95,20 +95,20 @@ def test_a_guitar_built_with_another_count_is_not_widened(built):
     e = setup([0] * 7, built=built)
     widen(e)
     assert det(e) == (6, 40)
-    assert call(e, "Rs7Pitch_SongCount", DET) == 0
+    assert call(e, "RsxrPitch_SongCount", DET) == 0
 
 
 def test_a_failed_neck_is_not_widened():
     # Review F3: GridBuild gave up on this guitar (5 s timeout without cells 6/7) -> its wait entry is marked failed
     # (WaitEntry: grid +0, owner +32, failed +36, 40 bytes; static_assert in features/publish/hooks_grid.cpp).
     e = setup([0] * 7)
-    entry = e.exports["g_rs7_publish_wait"]
+    entry = e.exports["g_rsxr_publish_wait"]
     put(e, entry, "I", DATA + 0x30000)
     put(e, entry + 32, "I", GUITAR)
     put(e, entry + 36, "B", 1)
     widen(e)
     assert det(e) == (6, 40)
-    assert call(e, "Rs7Pitch_SongCount", DET) == 0
+    assert call(e, "RsxrPitch_SongCount", DET) == 0
     put(e, entry + 36, "B", 0)  # the wait ended without a failure: the song widens as before
     widen(e)
     assert det(e) == (7, 35)
@@ -133,7 +133,7 @@ def test_missing_owner_never_widens(bad):
     if bad == "det_tail":
         put(e, DET + 0x13DC, "I", 0)
     elif bad == "info":
-        call(e, "Rs7Gs_InfoFreeSize", INFO)
+        call(e, "RsxrGs_InfoFreeSize", INFO)
     widen(e)
     assert det(e) == (6, 40)
 
@@ -144,27 +144,27 @@ def test_settuning_after_s4_keeps_the_width(n):
     # tail: the width must survive that, and the next S4 of a six-string song puts the stock width back.
     e = setup([0] * n)
     widen(e)
-    call(e, "Rs7Pitch_DetTuned", DET, VEC)
+    call(e, "RsxrPitch_DetTuned", DET, VEC)
     assert det(e)[0] == n
     six = [0] * 6
     put(e, VEC, "II", VEC + 0x100, VEC + 0x100 + 12)
     widen(e)  # a six-string song on the same detector
-    call(e, "Rs7Pitch_DetTuned", DET, VEC)
+    call(e, "RsxrPitch_DetTuned", DET, VEC)
     assert det(e)[0] == 6
 
 
 def test_detector_reset_ends_the_song_width():
     e = setup([0] * 8)
     widen(e)
-    assert call(e, "Rs7Pitch_SongCount", DET) == 8
-    call(e, "Rs7Pitch_DetReset", DET)
-    assert call(e, "Rs7Pitch_SongCount", DET) == 0
+    assert call(e, "RsxrPitch_SongCount", DET) == 8
+    call(e, "RsxrPitch_DetReset", DET)
+    assert call(e, "RsxrPitch_SongCount", DET) == 0
     assert det(e)[0] == 6
 
 
 def test_settuning_on_an_unwidened_detector_stays_stock():
     e = setup([0] * 8, enabled=False)
-    call(e, "Rs7Pitch_DetTuned", DET, VEC)
+    call(e, "RsxrPitch_DetTuned", DET, VEC)
     assert u32(e, DET + 0x13D8) == 6
 
 

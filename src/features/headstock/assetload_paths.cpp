@@ -5,7 +5,7 @@
 
 // The pure name and path rules of the 7-string headstock model: which game resources are candidates, where the
 // edited file lives, how [assets] values resolve.
-using namespace rs7asset;
+using namespace rsxrasset;
 
 namespace {
 // A game resource name that is a .nif path, split up: lower case with '/' separators, the last '/' and the file
@@ -71,7 +71,7 @@ std::wstring Trimmed(std::wstring v) {
 }
 }  // namespace
 
-std::wstring Rs7Asset_EditedPath(const char* name, const std::wstring& dir, const std::wstring& suffix) {
+std::wstring RsxrAsset_EditedPath(const char* name, const std::wstring& dir, const std::wstring& suffix) {
     if (!name || dir.empty()) {
         return {};
     }
@@ -104,11 +104,11 @@ std::wstring Rs7Asset_EditedPath(const char* name, const std::wstring& dir, cons
 }
 
 // Extended bass: the bass headstock frames (base name bass_*, not the pegs) of the in-line and the 2x2 folder get our
-// own in-line model, rs7_bass<n>[_lh].nif in dir, n = 6 for a bass built with six strings, else 5 (tools:
-// rs7headstock). A 2x2 frame gets the in-line one too (there is no 2+2 model), like a 3+3 guitar gets the 7-string
+// own in-line model, rsxr_bass<n>[_lh].nif in dir, n = 6 for a bass built with six strings, else 5 (tools:
+// rsxr-headstock). A 2x2 frame gets the in-line one too (there is no 2+2 model), like a 3+3 guitar gets the 7-string
 // in-line model. Every bass peg sits on a frame locator (no PegSet), so the model must carry Locator_Peg_k and
 // string_size_<k+6> for each string the bass is built with. "" for anything else.
-std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsigned strings, bool* leftHanded) {
+std::wstring RsxrAsset_BassPath(const char* name, const std::wstring& dir, unsigned strings, bool* leftHanded) {
     NifName n;
 
     if (dir.empty() || !ParseNifName(name, n) || n.base.compare(0, 5, "bass_") != 0) {
@@ -129,7 +129,7 @@ std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsign
         *leftHanded = lh;
     }
 
-    return WithSeparator(dir) + (strings == 6 ? L"rs7_bass6" : L"rs7_bass5") + (lh ? L"_lh" : L"") + L".nif";
+    return WithSeparator(dir) + (strings == 6 ? L"rsxr_bass6" : L"rsxr_bass5") + (lh ? L"_lh" : L"") + L".nif";
 }
 
 // The layouts the 7-string in-line model (headstock7_file / headstock7_file_lh) replaces. One row per
@@ -144,7 +144,7 @@ std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsign
 // geometry in that space; the nut (strings start at x = 0, z = 53.6..53.7 in glTF axes) and the string
 // spans (+-5.5) coincide between Wilshire_RH and LP_RH (and the LH twins, mirrored in y), so the
 // in-line model sits on a 3+3 neck exactly where it sits on an in-line one. The stock parts are
-// culled by Show() as "every stock NiNode/NiMesh sibling of rs7_alt", not by name; stockRh/stockLh
+// culled by Show() as "every stock NiNode/NiMesh sibling of rsxr_alt", not by name; stockRh/stockLh
 // only document what that is (and are logged with the layout).
 // 3+3 pegs and letters (fix/headstock2): the first 3+3 attempt (tests/shots/hs33/t4_33_closeup.png) showed
 // bakelite pegs and the letters G B e B turned round. The letters are the stock rule of
@@ -153,7 +153,7 @@ std::wstring Rs7Asset_BassPath(const char* name, const std::wstring& dir, unsign
 // the shot): LT1 reports such a guitar as in-line. The pegs: the game picks the peg pool model by the profile
 // option (Rnd_Guitar_LoadDependencies 0x5965A0), so peg_bakelite.nif gets the in-line peg
 // (epi_whilshire_peg.nif + wilshire_hardware.dds from the in-line package, the game's own reader) merged in as
-// rs7_alt, culled; Show() swaps it in per peg of a guitar that shows the 7-string headstock, and the bakelite
+// rsxr_alt, culled; Show() swaps it in per peg of a guitar that shows the 7-string headstock, and the bakelite
 // locator_letter / Locator_Arrow of those pegs are renamed so the game's name lookups find the in-line ones.
 const HeadLayout kLayouts[] = {
     {"6 in Reihe", "/gameplay/guitar_standard_inline/", "Wilshire_RH", "Wilshire_LH", nullptr},
@@ -162,7 +162,7 @@ const HeadLayout kLayouts[] = {
 
 static_assert(sizeof kLayouts / sizeof kLayouts[0] == kLayoutCount, "kLayoutCount");
 
-const HeadLayout* Rs7Asset_LayoutOf(const char* name, bool* leftHanded) {
+const HeadLayout* RsxrAsset_LayoutOf(const char* name, bool* leftHanded) {
     NifName n;
 
     if (!ParseNifName(name, n)) {
@@ -187,15 +187,15 @@ const HeadLayout* Rs7Asset_LayoutOf(const char* name, bool* leftHanded) {
     return nullptr;
 }
 
-bool Rs7Asset_IsRhCandidate(const char* name) {
+bool RsxrAsset_IsRhCandidate(const char* name) {
     bool lh = false;
 
-    return Rs7Asset_LayoutOf(name, &lh) && !lh;
+    return RsxrAsset_LayoutOf(name, &lh) && !lh;
 }
 
-bool Rs7Asset_IsLayoutPeg(const char* name) {
+bool RsxrAsset_IsLayoutPeg(const char* name) {
     bool lh = false;
-    const HeadLayout* l = Rs7Asset_LayoutOf(name, &lh);
+    const HeadLayout* l = RsxrAsset_LayoutOf(name, &lh);
     if (!l || !l->peg) {
         return false;
     }
@@ -207,13 +207,13 @@ bool Rs7Asset_IsLayoutPeg(const char* name) {
 
 // The left-handed twin: the same folders, base name ending in "_lh" (epi_whilshire_cherry_lh.nif,
 // gib_lespaul_lh.nif: the frames the game loads for a left-handed profile).
-bool Rs7Asset_IsLhCandidate(const char* name) {
+bool RsxrAsset_IsLhCandidate(const char* name) {
     bool lh = false;
 
-    return Rs7Asset_LayoutOf(name, &lh) && lh;
+    return RsxrAsset_LayoutOf(name, &lh) && lh;
 }
 
-std::wstring Rs7Asset_ResolveFile(const std::wstring& value, const std::wstring& dir) {
+std::wstring RsxrAsset_ResolveFile(const std::wstring& value, const std::wstring& dir) {
     const std::wstring v = Trimmed(value);
 
     if (v.empty() || _wcsicmp(v.c_str(), L"none") == 0 || _wcsicmp(v.c_str(), L"off") == 0 || v == L"0") {
@@ -226,7 +226,7 @@ std::wstring Rs7Asset_ResolveFile(const std::wstring& value, const std::wstring&
     return WithSeparator(dir) + v;
 }
 
-std::wstring Rs7Asset_ResolveDir(const std::wstring& value, const std::wstring& dllDir) {
+std::wstring RsxrAsset_ResolveDir(const std::wstring& value, const std::wstring& dllDir) {
     std::wstring v = Trimmed(value);
 
     if (v.empty()) {
@@ -239,7 +239,7 @@ std::wstring Rs7Asset_ResolveDir(const std::wstring& value, const std::wstring& 
     return WithSeparator(dllDir) + v;
 }
 
-std::string Rs7Asset_FolderOf(const char* name) {
+std::string RsxrAsset_FolderOf(const char* name) {
     if (!name) {
         return {};
     }

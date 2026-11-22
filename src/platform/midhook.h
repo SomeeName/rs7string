@@ -3,10 +3,10 @@
 #include <cstdint>
 
 extern "C" {
-void __cdecl Rs7Mid_Fldcw(uint32_t fcw);  // midhook_thunks.asm: fldcw (Rs7Mid::GameFcw)
+void __cdecl RsxrMid_Fldcw(uint32_t fcw);  // midhook_thunks.asm: fldcw (RsxrMid::GameFcw)
 }
 
-namespace Rs7Mid {
+namespace RsxrMid {
 // PUSHAD order. ESP is the site's original ESP (not PUSHAD's saved ESP).
 // jump defaults to the relocated replay (a call site: Call); assigning another address skips replay.
 // fpu is thunk-owned (read-only for callbacks): in full mode the 512-byte FXSAVE image of the game's floating-point
@@ -219,13 +219,13 @@ class GameFcw {
 public:
     explicit GameFcw(const Context& c) : saved_(c.fpu && !(c.fpu & 1)) {
         if (saved_) {
-            Rs7Mid_Fldcw(*reinterpret_cast<const uint16_t*>(uintptr_t(c.fpu)));
+            RsxrMid_Fldcw(*reinterpret_cast<const uint16_t*>(uintptr_t(c.fpu)));
         }
     }
 
     ~GameFcw() {
         if (saved_) {
-            Rs7Mid_Fldcw(kThunkFcw);
+            RsxrMid_Fldcw(kThunkFcw);
         }
     }
 
@@ -284,57 +284,57 @@ private:
     uint16_t argBytes_;
     Hook hook_;
 };
-}  // namespace Rs7Mid
+}  // namespace RsxrMid
 
 // Pure bounded emitters, also executed directly by the emulator tests. Return
 // bytes emitted or 0 on rejection. Source span must be whole instructions, 5..16
 // bytes. Relocate output may be partially written on failure; never execute it.
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_Relocate(uint8_t* out, size_t capacity, const uint8_t* source,
-                                                                uintptr_t sourceVa, size_t length, uintptr_t destVa);
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_Build(uint8_t* out, size_t capacity, const uint8_t* source,
-                                                             uintptr_t sourceVa, size_t length, uintptr_t destVa,
-                                                             uintptr_t callback);
-// Same contract as Rs7Mid_Build, entry jumps to the light thunk (Mode::Light).
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildLight(uint8_t* out, size_t capacity, const uint8_t* source,
-                                                                  uintptr_t sourceVa, size_t length, uintptr_t destVa,
-                                                                  uintptr_t callback);
-// Same contract as Rs7Mid_Build, entry jumps to the SSE thunk (Mode::Sse).
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildSse(uint8_t* out, size_t capacity, const uint8_t* source,
-                                                                uintptr_t sourceVa, size_t length, uintptr_t destVa,
-                                                                uintptr_t callback);
-// The entry of a call site (no relocation): mode is the thunk (0 full, 1 light, 2 sse: Rs7Mid::Mode), after != 0 the
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_Relocate(uint8_t* out, size_t capacity, const uint8_t* source,
+                                                                 uintptr_t sourceVa, size_t length, uintptr_t destVa);
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_Build(uint8_t* out, size_t capacity, const uint8_t* source,
+                                                              uintptr_t sourceVa, size_t length, uintptr_t destVa,
+                                                              uintptr_t callback);
+// Same contract as RsxrMid_Build, entry jumps to the light thunk (Mode::Light).
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_BuildLight(uint8_t* out, size_t capacity, const uint8_t* source,
+                                                                   uintptr_t sourceVa, size_t length, uintptr_t destVa,
+                                                                   uintptr_t callback);
+// Same contract as RsxrMid_Build, entry jumps to the SSE thunk (Mode::Sse).
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_BuildSse(uint8_t* out, size_t capacity, const uint8_t* source,
+                                                                 uintptr_t sourceVa, size_t length, uintptr_t destVa,
+                                                                 uintptr_t callback);
+// The entry of a call site (no relocation): mode is the thunk (0 full, 1 light, 2 sse: RsxrMid::Mode), after != 0 the
 // After placement.
 // sourceVa is the call instruction, callee its original target. Returns bytes emitted (15 / 24) or 0.
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildCall(uint8_t* out, size_t capacity, uintptr_t sourceVa,
-                                                                 uintptr_t callee, uintptr_t destVa, uintptr_t callback,
-                                                                 int mode, int after);
-// A call-in entry (Rs7Mid::CallIn; mode: an Rs7Mid::Mode): the 15-byte entry with a `ret` (argBytes 0) or `ret
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_BuildCall(uint8_t* out, size_t capacity, uintptr_t sourceVa,
+                                                                  uintptr_t callee, uintptr_t destVa,
+                                                                  uintptr_t callback, int mode, int after);
+// A call-in entry (RsxrMid::CallIn; mode: an RsxrMid::Mode): the 15-byte entry with a `ret` (argBytes 0) or `ret
 // argBytes` continuation after it. Returns bytes emitted (16 / 18) or 0 (no callback, capacity, argBytes not a multiple
 // of 4 below 10000h).
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildCallIn(uint8_t* out, size_t capacity, uintptr_t destVa,
-                                                                   uintptr_t callback, int mode, uint32_t argBytes);
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_BuildCallIn(uint8_t* out, size_t capacity, uintptr_t destVa,
+                                                                    uintptr_t callback, int mode, uint32_t argBytes);
 // The entry of a Wrap site: callee != 0 is a call site's callee; callee == 0 relocates `length` bytes at `source`
-// (sourceVa, a function entry) as the callee. popBytes is 0 or 4 * args; mode as in Rs7Mid_BuildCall. Returns
+// (sourceVa, a function entry) as the callee. popBytes is 0 or 4 * args; mode as in RsxrMid_BuildCall. Returns
 // bytes emitted or 0 (bad layout, no callback, rejected prologue, capacity).
-extern "C" __declspec(dllexport) size_t __cdecl Rs7Mid_BuildWrap(uint8_t* out, size_t capacity, uintptr_t destVa,
-                                                                 uintptr_t callee, const uint8_t* source,
-                                                                 uintptr_t sourceVa, size_t length, uintptr_t before,
-                                                                 uintptr_t after, uint32_t args, uint32_t popBytes,
-                                                                 uint32_t locals, int mode);
+extern "C" __declspec(dllexport) size_t __cdecl RsxrMid_BuildWrap(uint8_t* out, size_t capacity, uintptr_t destVa,
+                                                                  uintptr_t callee, const uint8_t* source,
+                                                                  uintptr_t sourceVa, size_t length, uintptr_t before,
+                                                                  uintptr_t after, uint32_t args, uint32_t popBytes,
+                                                                  uint32_t locals, int mode);
 // The shared thunks (midhook_thunks.asm, exported there): never called from C++, only jumped to by an entry.
-extern "C" void Rs7Mid_Thunk();
-extern "C" void Rs7Mid_ThunkLight();
-extern "C" void Rs7Mid_ThunkSse();
+extern "C" void RsxrMid_Thunk();
+extern "C" void RsxrMid_ThunkLight();
+extern "C" void RsxrMid_ThunkSse();
 
 // Every thunk calls the callback through this guard. A fault in the callback (access violation, divide by zero,
 // illegal instruction, a C++ exception that escaped) restores the Context as it was before the call, so the site
 // resumes with its own registers and default continuation, as if the callback had not run; memory the callback wrote
-// before the fault stays written. The fault is counted and reported to the fault logger (Rs7Mid_SetFaultLog).
-extern "C" void __cdecl Rs7Mid_Guard(Rs7Mid::Callback callback, Rs7Mid::Context* c);
+// before the fault stays written. The fault is counted and reported to the fault logger (RsxrMid_SetFaultLog).
+extern "C" void __cdecl RsxrMid_Guard(RsxrMid::Callback callback, RsxrMid::Context* c);
 
 // Called on the fault path only, outside the exception filter, with the callback, the exception code and the running
 // fault count. Set once at startup; null = faults are only counted. The guard reaches it through a pointer, so the
 // light and SSE thunks' no-FPU paths stay free of the logger's code.
-using Rs7MidFaultLog = void(__cdecl*)(uintptr_t callback, unsigned long code, long count);
-void Rs7Mid_SetFaultLog(Rs7MidFaultLog log);
-long Rs7Mid_FaultCount();
+using RsxrMidFaultLog = void(__cdecl*)(uintptr_t callback, unsigned long code, long count);
+void RsxrMid_SetFaultLog(RsxrMidFaultLog log);
+long RsxrMid_FaultCount();

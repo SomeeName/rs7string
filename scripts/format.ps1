@@ -38,7 +38,7 @@ Push-Location (Join-Path $PSScriptRoot '..')
 try {
     $files = @(git ls-files)
     if ($LASTEXITCODE) { throw 'git ls-files failed' }
-    $tracked = $files | ForEach-Object { $_.Replace('\', '/') }
+    $tracked = $files | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { $_.Replace('\', '/') }
     $keep = { param($p) -not (Test-Excluded $p $PermanentExclude) }
     $cpp = @($tracked | Where-Object { $_ -match '^(src|tests|fuzz)/.*\.(cpp|h)$' -and (& $keep $_) })
     $py = @($tracked | Where-Object { $_ -match '^(tools|scripts)/.*\.py$' -and (& $keep $_) })

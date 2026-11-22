@@ -5,7 +5,7 @@
 
 // Textures of the 7-string model, registered on the loader thread through the game's own dds handler
 // (assetload_tex.cpp).
-namespace rs7asset {
+namespace rsxrasset {
 // A non-empty regular file (directories and interrupted, empty outputs are not usable models).
 bool FilePresent(const std::wstring& path);
 // The whole file (1 byte .. under 64 MiB); false (out empty) when it cannot be read.
@@ -23,4 +23,4 @@ int RegisterTextures(const char* name, const std::wstring& path, const std::vect
                      const void* stockBuf, uint32_t stockSize, std::vector<std::string>* done = nullptr);
 // Diagnostic: the engine's NiTexture list entries of our textures, logged.
 void LogTextureList(const char* when);
-}  // namespace rs7asset
+}  // namespace rsxrasset

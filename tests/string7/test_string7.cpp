@@ -56,7 +56,7 @@ TEST(s7_dim_colour_matches_the_stock_palette_relation) {
 
         Rgb(p[0], lit);
         Rgb(p[1], want);
-        Rs7S7_DimColour(lit, rs7s7::kDefaultDim, got);
+        RsxrS7_DimColour(lit, rsxrs7::kDefaultDim, got);
 
         for (int i = 0; i < 3; ++i) {
             CHECK(Near(got[i], want[i]));
@@ -67,7 +67,7 @@ TEST(s7_dim_colour_matches_the_stock_palette_relation) {
 TEST(s7_dim_colour_of_the_default_grey_and_black) {
     float grey[3] = {B(0xC8), B(0xC8), B(0xC8)}, out[3];
 
-    Rs7S7_DimColour(grey, rs7s7::kDefaultDim, out);
+    RsxrS7_DimColour(grey, rsxrs7::kDefaultDim, out);
 
     for (float v : out) {
         CHECK(Near(v, B(0x4C)));
@@ -75,7 +75,7 @@ TEST(s7_dim_colour_of_the_default_grey_and_black) {
 
     float black[3] = {0.0f, 0.0f, 0.0f};
 
-    Rs7S7_DimColour(black, rs7s7::kDefaultDim, out);
+    RsxrS7_DimColour(black, rsxrs7::kDefaultDim, out);
 
     for (float v : out) {
         CHECK_EQ(v, 0.0f);
@@ -99,7 +99,7 @@ TEST(s7_backfill_equals_the_stock_loop) {
                 b = a;
                 StockBackfill(a, n, level, bit);
                 int added = -1;
-                const int used = Rs7S7_BackfillBit(b.data(), n, level, bit, &added);
+                const int used = RsxrS7_BackfillBit(b.data(), n, level, bit, &added);
 
                 CHECK(a == b);
                 int lit = 0, before = 0;
@@ -120,10 +120,10 @@ TEST(s7_backfill_rejects_bad_input) {
     std::vector<uint8_t> a(0x58 * 2, 0xFF);
     int added = -1;
 
-    CHECK_EQ(Rs7S7_BackfillBit(nullptr, 2, 0, 0x40, &added), 0);
+    CHECK_EQ(RsxrS7_BackfillBit(nullptr, 2, 0, 0x40, &added), 0);
     CHECK_EQ(added, 0);
-    CHECK_EQ(Rs7S7_BackfillBit(a.data(), 2, 32, 0x40, &added), 0);  // stock: level < 32 only
-    CHECK_EQ(Rs7S7_BackfillBit(a.data(), 0, 0, 0x40, nullptr), 0);
+    CHECK_EQ(RsxrS7_BackfillBit(a.data(), 2, 32, 0x40, &added), 0);  // stock: level < 32 only
+    CHECK_EQ(RsxrS7_BackfillBit(a.data(), 0, 0, 0x40, nullptr), 0);
 }
 
 TEST(s7_mask_backfill_reads_the_song_sections) {
@@ -137,15 +137,15 @@ TEST(s7_mask_backfill_reads_the_song_sections) {
 
     std::memcpy(song + 0xF4, &b, 4);
     std::memcpy(song + 0xF8, &e, 4);
-    rs7test::Restore restore_g_rs7_s7_on(g_rs7_s7_on);
+    rsxrtest::Restore restore_g_rsxr_s7_on(g_rsxr_s7_on);
 
-    g_rs7_s7_on = 0;
-    Rs7_S7MaskBackfill(song, 5);
+    g_rsxr_s7_on = 0;
+    Rsxr_S7MaskBackfill(song, 5);
     CHECK_EQ(sec[1 * 0x58 + 0x34 + 5], 0);  // switch off: untouched
-    g_rs7_s7_on = 1;
-    Rs7_S7MaskBackfill(song, 4);
+    g_rsxr_s7_on = 1;
+    Rsxr_S7MaskBackfill(song, 4);
     CHECK_EQ(sec[1 * 0x58 + 0x34 + 4], 0);  // other level: nothing to fill
-    Rs7_S7MaskBackfill(song, 5);
+    Rsxr_S7MaskBackfill(song, 5);
     CHECK_EQ(sec[1 * 0x58 + 0x34 + 5], 0x40);
     CHECK_EQ(sec[0 * 0x58 + 0x34 + 5], 0);
 }
@@ -156,34 +156,34 @@ TEST(s7_glow_colour_is_the_string6_colour_at_full_value) {
     const float grey[3] = {200.0f / 255.0f, 200.0f / 255.0f, 200.0f / 255.0f};
     float out[3];
 
-    Rs7S7_GlowColour(grey, out);
+    RsxrS7_GlowColour(grey, out);
     CHECK(out[0] == 1.0f && out[1] == 1.0f && out[2] == 1.0f);
     const float c[3] = {0.5f, 0.25f, 0.0f};
 
-    Rs7S7_GlowColour(c, out);
+    RsxrS7_GlowColour(c, out);
     CHECK(out[0] == 1.0f && out[1] == 0.5f && out[2] == 0.0f);
     const float black[3] = {0.0f, 0.0f, 0.0f};
 
-    Rs7S7_GlowColour(black, out);
+    RsxrS7_GlowColour(black, out);
     CHECK(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f);
 }
 
 TEST(s7_targets_need_a_native_guitarstrings) {
     int gs = 0;
 
-    CHECK(Rs7_S7DimTarget(nullptr) == nullptr);
-    CHECK(Rs7_S7DimTarget(&gs) == nullptr);  // not a native GuitarStrings (1.0: no S7 object exists)
-    CHECK(Rs7_S7BendTarget(&gs, 0, 3, 0) == nullptr);
-    CHECK(Rs7_S7Pluck(&gs, 3, 3) == 0);
+    CHECK(Rsxr_S7DimTarget(nullptr) == nullptr);
+    CHECK(Rsxr_S7DimTarget(&gs) == nullptr);  // not a native GuitarStrings (1.0: no S7 object exists)
+    CHECK(Rsxr_S7BendTarget(&gs, 0, 3, 0) == nullptr);
+    CHECK(Rsxr_S7Pluck(&gs, 3, 3) == 0);
 }
 
 // ---- issue #6 / #27: the 7-string look is on from the S4 arm (song load) until the guitar scene is gone ----
 TEST(s7_visibility_rule) {
-    using rs7s7::Disarm;
+    using rsxrs7::Disarm;
 
-    rs7s7::g_fadeHoldMs = 0;  // the fade-out counts as finished at once
+    rsxrs7::g_fadeHoldMs = 0;  // the fade-out counts as finished at once
     auto vis = [](bool seven, bool& armed, bool song, bool ended, bool out, bool outDone, bool unseen) {
-        return rs7s7::Rs7S7_Visibility(seven, armed, song, ended, out, outDone, unseen);
+        return rsxrs7::RsxrS7_Visibility(seven, armed, song, ended, out, outDone, unseen);
     };
     bool armed = true;
     // Armed before the song: shown (the intro fade-in comes before string 0's +70h).
@@ -266,7 +266,7 @@ void Put(uint8_t* base, uint32_t off, T v) {
 
 // N5 on a guitar outside the native publication path: the S4 arm and the song / fade edges are followed and logged.
 TEST(s7_n5_follows_the_arm_from_song_setup_to_the_fade_out) {
-    rs7s7::g_fadeHoldMs = 0;  // no clock in the tests: a fade-out counts as finished at once
+    rsxrs7::g_fadeHoldMs = 0;  // no clock in the tests: a fade-out counts as finished at once
     alignas(16) static uint8_t guitar[0x40], gs[0x40], obj0[0x110], info[0x40];
 
     std::memset(guitar, 0, sizeof guitar);
@@ -278,37 +278,37 @@ TEST(s7_n5_follows_the_arm_from_song_setup_to_the_fade_out) {
     Put(guitar, 0x24, static_cast<uint8_t*>(info));
     info[0xB] = 6;
     g_lines.clear();
-    Rs7Log_SetSink(Sink);
-    Rs7S7_ResetLog();
-    Rs7_S7Record(gs);
-    Rs7S7Stats st{};
+    RsxrLog_SetSink(Sink);
+    RsxrS7_ResetLog();
+    Rsxr_S7Record(gs);
+    RsxrS7Stats st{};
 
-    Rs7S7_Stats(&st);
+    RsxrS7_Stats(&st);
     CHECK(st.guitars >= 1);
-    Rs7S7_SetGuitarMode(guitar, true);  // S4 (song load)
-    Rs7S7_Stats(&st);
+    RsxrS7_SetGuitarMode(guitar, true);  // S4 (song load)
+    RsxrS7_Stats(&st);
     CHECK(st.sevenGuitars >= 1);
-    Rs7_S7Update(guitar);
+    Rsxr_S7Update(guitar);
     obj0[0x70] = 1;  // song start
-    Rs7_S7Update(guitar);
+    Rsxr_S7Update(guitar);
     obj0[0x70] = 0;  // song end: the outro keeps the arm (issue #27)
-    Rs7_S7Update(guitar);
+    Rsxr_S7Update(guitar);
     CHECK(Logged("string7: edge guitar"));
     gs[0x38] = 1;  // the strings fade out after the outro: the arm ends
-    Rs7_S7Update(guitar);
+    Rsxr_S7Update(guitar);
     CHECK(Logged("the stock strings faded out while no song runs"));
-    Rs7S7_SetGuitarMode(guitar, false);
-    Rs7_S7Free(gs);
-    Rs7S7_Stats(&st);
-    Rs7Log_SetSink(nullptr);
+    RsxrS7_SetGuitarMode(guitar, false);
+    Rsxr_S7Free(gs);
+    RsxrS7_Stats(&st);
+    RsxrLog_SetSink(nullptr);
 }
 
 TEST(s7_extrapolate_lane_is_a_correctly_rounded_float) {
-    CHECK_EQ(Rs7S7_ExtrapolateLane(1.5f, 0.75f), 2.25f);
-    CHECK_EQ(Rs7S7_ExtrapolateLane(-2.25f, 0.5f), -5.0f);
+    CHECK_EQ(RsxrS7_ExtrapolateLane(1.5f, 0.75f), 2.25f);
+    CHECK_EQ(RsxrS7_ExtrapolateLane(-2.25f, 0.5f), -5.0f);
     // 2 * 0.1f - 0.7f is not a float: one rounding of the exact value (double holds it exactly here).
-    CHECK_EQ(Rs7S7_ExtrapolateLane(0.1f, 0.7f), float(2.0 * double(0.1f) - double(0.7f)));
-    CHECK(std::isinf(Rs7S7_ExtrapolateLane(3e38f, -3e38f)));  // past FLT_MAX: infinity, as the x87 store
-    CHECK(std::signbit(Rs7S7_ExtrapolateLane(-0.0f, 0.0f)));  // -0 - 0 = -0
-    CHECK(std::isnan(Rs7S7_ExtrapolateLane(std::nanf(""), 1.0f)));
+    CHECK_EQ(RsxrS7_ExtrapolateLane(0.1f, 0.7f), float(2.0 * double(0.1f) - double(0.7f)));
+    CHECK(std::isinf(RsxrS7_ExtrapolateLane(3e38f, -3e38f)));  // past FLT_MAX: infinity, as the x87 store
+    CHECK(std::signbit(RsxrS7_ExtrapolateLane(-0.0f, 0.0f)));  // -0 - 0 = -0
+    CHECK(std::isnan(RsxrS7_ExtrapolateLane(std::nanf(""), 1.0f)));
 }

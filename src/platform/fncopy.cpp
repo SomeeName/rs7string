@@ -34,8 +34,8 @@ uint8_t* Take(uint32_t n) {
 
 // Exactly `len` fixed hex bytes ("8B 74 BB 04", no wildcards) into out.
 bool HexBytes(const char* s, int len, uint8_t* out) {
-    Rs7Pattern p;
-    if (!Rs7_ParsePattern(s, p) || p.bytes.size() != static_cast<size_t>(len)) {
+    RsxrPattern p;
+    if (!Rsxr_ParsePattern(s, p) || p.bytes.size() != static_cast<size_t>(len)) {
         return false;
     }
 
@@ -57,7 +57,7 @@ void Rel32(uint8_t* at, uintptr_t insnEnd, uintptr_t target) {
 }
 }  // namespace
 
-uint32_t Rs7Fn_Fnv(const uint8_t* p, uint32_t n) {
+uint32_t RsxrFn_Fnv(const uint8_t* p, uint32_t n) {
     uint32_t h = 0x811C9DC5u;
 
     for (uint32_t i = 0; i < n; ++i) {
@@ -67,7 +67,7 @@ uint32_t Rs7Fn_Fnv(const uint8_t* p, uint32_t n) {
     return h;
 }
 
-bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr_t* tramp, char* why, int whyLen) {
+bool RsxrFn_Build(const RsxrFnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr_t* tramp, char* why, int whyLen) {
     auto fail = [&](const char* m) {
         std::snprintf(why, size_t(whyLen), "%s %s", spec.id, m);
 
@@ -78,7 +78,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
     }
 
     const uint8_t* src = reinterpret_cast<const uint8_t*>(live);
-    if (Rs7Fn_Fnv(src, spec.len) != spec.fnv) {
+    if (RsxrFn_Fnv(src, spec.len) != spec.fnv) {
         return fail("live bytes differ from the unpacked exe");
     }
 
@@ -90,7 +90,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
     std::memcpy(buf, src, spec.len);
 
     for (int i = 0; i < spec.nEdits; ++i) {
-        const Rs7FnEdit& e = spec.edits[i];
+        const RsxrFnEdit& e = spec.edits[i];
         uint8_t exp[16], wr[16];
         if (uint32_t(e.off) + e.len > spec.len || e.len > 16 || !HexBytes(e.expect, e.len, exp) ||
             std::memcmp(buf + e.off, exp, e.len) != 0) {
@@ -127,7 +127,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
     const uintptr_t cb = reinterpret_cast<uintptr_t>(c);
 
     for (int i = 0; i < spec.nEdits; ++i) {
-        const Rs7FnEdit& e = spec.edits[i];
+        const RsxrFnEdit& e = spec.edits[i];
 
         if (e.sym || e.callin) {
             Rel32(c + e.off + 1, cb + e.off + 5, e.callin ? e.callin->Entry() : reinterpret_cast<uintptr_t>(e.sym));
@@ -135,7 +135,7 @@ bool Rs7Fn_Build(const Rs7FnSpec& spec, uintptr_t live, uintptr_t* copy, uintptr
     }
 
     for (int i = 0; i < spec.nRels; ++i) {
-        const Rs7FnRel& r = spec.rels[i];
+        const RsxrFnRel& r = spec.rels[i];
 
         Rel32(c + r.off, cb + r.off + 4, r.target - spec.va + live);
     }

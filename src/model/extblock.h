@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-// RS7X SNG extension block (docs/release/RS7X-SPEC.md, issue #18 stage 1): extra-string data
+// Internal SNG extension block (docs/architecture/extension-block.md, issue #18 stage 1): extra-string data
 // appended to the SNG body right after the stock MetaData, inside the zlib stream. The stock loader
 // SNG_Song_Load 0x558BD0 inflates the whole body (only check: inflated size == header size, 0x558DC9),
 // reads the stock sections from a memory stream and returns after MetaData.maxDifficulty (0x55922A)
@@ -13,8 +13,8 @@
 //
 // This header is the format and its parser (pure: bytes in, Block out). The block of each loaded song is kept by
 // the XB1 store (features/nslot/hooks_extblock.cpp, nslot.h); the native N-slot chord data builds its T8/C8 records
-// from it (packages without a block: the old name[31] byte, see features/chords/chords.h).
-namespace rs7ext {
+// from it. Without a block, extra chord columns are empty.
+namespace rsxrext {
 
 // The stock SNG chord template record (mask, frets[6], fingers[6], notes[6], name[32] = 0x48 bytes); Parse's
 // `templates` counts these.
@@ -67,7 +67,7 @@ struct Block {
 enum class Status {
     None,  // no bytes after MetaData
     Ok,
-    NotBlock,     // trailing bytes without the RS7X magic
+    NotBlock,     // trailing bytes without the extension block magic
     Unsupported,  // other version, unknown critical section, another instrument
     Invalid,      // breaks a rule of the spec
 };
@@ -79,4 +79,4 @@ const char* StatusName(Status s);
 Status Parse(const uint8_t* p, size_t n, uint32_t templates, uint32_t chordNotes, uint32_t tuning, Block* out,
              char* why, size_t whyLen);
 
-}  // namespace rs7ext
+}  // namespace rsxrext

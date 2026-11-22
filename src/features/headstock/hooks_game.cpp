@@ -27,7 +27,7 @@ void GameEuler(const uint8_t* rot, float* e) {  // 0x8FCAA0 (radians, then scale
         mov edi, e2
         push e1
         push e0
-        call dword ptr [g_rs7_fn_euler]
+        call dword ptr [g_rsxr_fn_euler]
         pop edi
         pop esi
         pop ebx
@@ -37,13 +37,13 @@ void GameEuler(const uint8_t* rot, float* e) {  // 0x8FCAA0 (radians, then scale
 }
 }  // namespace
 
-void rs7head::GameShowEntity(uint8_t* entity, uint32_t show) {
+void rsxrhead::GameShowEntity(uint8_t* entity, uint32_t show) {
     if (entity) {
-        rs7s7d::ShowEntity(entity, show);
+        rsxrs7d::ShowEntity(entity, show);
     }
 }
 
-void rs7head::GamePegSetCall(uintptr_t fn, uint8_t* pegset) {
+void rsxrhead::GamePegSetCall(uintptr_t fn, uint8_t* pegset) {
     if (!fn || !pegset) {
         return;
     }
@@ -61,12 +61,12 @@ void rs7head::GamePegSetCall(uintptr_t fn, uint8_t* pegset) {
 }
 
 // As the PegSet fade loops 0x59C95C / 0x59C89C call them: EAX = entity, (ClipFade manager, seconds, 0, 1.0) ret 10h.
-void rs7head::GameFade(uintptr_t fn, uint8_t* entity, float seconds) {
-    rs7s7d::FadeEntity(fn, entity, seconds);
+void rsxrhead::GameFade(uintptr_t fn, uint8_t* entity, float seconds) {
+    rsxrs7d::FadeEntity(fn, entity, seconds);
 }
 
-bool rs7head::GamePlacePegs(uint8_t* pegset, unsigned count) {
-    if (!pegset || !g_rs7_fn_setpos || !g_rs7_fn_setrot || !g_rs7_fn_euler) {
+bool rsxrhead::GamePlacePegs(uint8_t* pegset, unsigned count) {
+    if (!pegset || !g_rsxr_fn_setpos || !g_rsxr_fn_setrot || !g_rsxr_fn_euler) {
         return false;
     }
 
@@ -84,12 +84,12 @@ bool rs7head::GamePlacePegs(uint8_t* pegset, unsigned count) {
             float e[3] = {};
 
             GameEuler(loc + kWorldRot, e);
-            reinterpret_cast<SetVec>(g_rs7_fn_setpos)(peg, reinterpret_cast<const float*>(loc + kWorldPos));
-            reinterpret_cast<SetVec>(g_rs7_fn_setrot)(peg, e);
+            reinterpret_cast<SetVec>(g_rsxr_fn_setpos)(peg, reinterpret_cast<const float*>(loc + kWorldPos));
+            reinterpret_cast<SetVec>(g_rsxr_fn_setrot)(peg, e);
         }
 
         return true;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return false;
     }
 }

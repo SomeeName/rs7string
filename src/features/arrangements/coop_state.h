@@ -1,12 +1,12 @@
 #pragma once
 #include "features/arrangements/menu.h"
 
-namespace rs7arr {
+namespace rsxrarr {
 // One window per co-op list page; each slot owns the builder's spare focus lists across page changes.
 struct PageState {
     uint32_t page = 0;
     uint32_t offset = 0;  // records above the first shown entry
-    uint32_t spareFocus[rs7menu::kFocusListDwords] = {};
+    uint32_t spareFocus[rsxrmenu::kFocusListDwords] = {};
 
     void Reset(uint32_t nextPage) {
         // Keep both spare vectors: the next page's builder clears and refills them with the game's allocator.
@@ -52,4 +52,4 @@ struct PageStates {
         }
     }
 };
-}  // namespace rs7arr
+}  // namespace rsxrarr

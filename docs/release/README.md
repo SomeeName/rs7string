@@ -1,48 +1,54 @@
-# rs7string documentation
+# RS Extended Range documentation
 
 **Start here if you downloaded the release zip.**
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · [Changelog](CHANGELOG.md)
 
-rs7string adds seven- and eight-string guitars and five- and six-string basses to Rocksmith 2014 Remastered
-(Steam, September 2022 build, Windows). It plays charts made for those instruments; it does not convert six-string
-guitar or four-string bass charts. Everything else in the game stays as it was.
+RS Extended Range (RSXR for short) adds seven- and eight-string guitars and five- and six-string
+basses to Rocksmith 2014 Remastered. It runs on the Steam version, September 2022 build, on Windows. You need charts
+made for the extra strings, because the mod doesn't convert six-string guitar or four-string bass charts. The rest
+of the game is unchanged.
 
 ## Play in five minutes
 
-1. **Close Rocksmith** and back up any `dinput8.dll`, `rs7string.ini` and `chord-diagrams` folder in the game
-   folder (the folder with `Rocksmith2014.exe`). If `dinput8.dll` belongs to another mod, check
-   [compatibility](INSTALL.md#compatibility) before replacing it.
-2. **Install a CDLC enabler** for the September 2022 build, if you do not have one yet. It is a separate mod that
+1. Close Rocksmith. The game folder is the folder with `Rocksmith2014.exe`. Back up any `dinput8.dll`, `rsxr.ini`
+   and `chord-diagrams` folder that is already there. If `dinput8.dll` belongs to another mod, check
+   [compatibility](INSTALL.md#compatibility) before you replace it.
+2. Install a CDLC enabler for the September 2022 build if you don't have one yet. That's a separate mod that
    lets the game load custom songs, for example
    [RSCDLCEnabler-TooManyCoresFix](https://github.com/Lovrom8/RSCDLCEnabler-TooManyCoresFix).
-3. **Copy the mod files** from the zip's `bin\Release` folder into the game folder: `dinput8.dll`, `rs7string.ini`, the four
-   `rs7string_headstock*.bin` files, `rs7string_headstock.LICENSE.md` and the `chord-diagrams` folder.
-4. **Add a chart** made for your instrument (`*_p.psarc`) to the game's `dlc` folder.
-5. **Start the game** and press **F9** to open the rs7string overlay. **Advanced > Status** shows that the mod is
-   running. No overlay? See [troubleshooting](INSTALL.md#troubleshooting).
+3. From the zip's `bin\Release` folder, copy `dinput8.dll`, `rsxr.ini`, the four `rsxr_headstock*.bin` files,
+   `rsxr_headstock.LICENSE.md` and the `chord-diagrams` folder into the game folder.
+4. Put a chart made for your instrument (`*_rsxr_p.psarc`) in the game's `dlc` folder.
+5. Start the game and press **F9** to open the RS Extended Range overlay. **Advanced > Status** shows that the mod is
+   running. If the overlay doesn't open, see [troubleshooting](INSTALL.md#troubleshooting).
 
-The first time the game loads a guitar (and later an extended bass), the mod builds the headstocks from your own
-game files. That takes a moment, once. Every step in detail, with checks: [Install guide](INSTALL.md).
+The first time the game loads a guitar or an extended bass, the mod builds the headstocks from your own
+game files. This takes a moment and happens only once. The [Install guide](INSTALL.md) goes through every step in more detail
+and shows how to check each one.
 
 ## What do you want to do?
 
 | I want to... | Read |
 |---|---|
-| Install, update or remove the mod, or fix a problem | [Install guide](INSTALL.md): requirements, checks, troubleshooting, known limits |
-| Change colours, tuning names, the overlay key or the neck width | [Settings](SETTINGS.md): every key, with the few most people change at the top |
+| Install, update or remove the mod, or fix a problem | [Install guide](INSTALL.md), with requirements, checks, troubleshooting and known limits |
+| Change colors, tuning names, the overlay key or the neck width | [Settings](SETTINGS.md), which lists every key and puts the common ones at the top |
 | See what is new | [Changelog](CHANGELOG.md) |
-| Make a chart for seven or eight strings or an extended bass | [Charting guide](CHARTING.md): an overview, format rules, chords and testing |
-| Add extended-range export to a chart editor or package builder | [Chart tools](CHART-TOOLS.md), then the [RS7X specification](RS7X-SPEC.md) for the byte layout |
+| Make a chart for seven or eight strings or an extended bass | [Charting guide](CHARTING.md), with an overview, format rules, chords and testing |
+| Convert charts made for earlier versions | [Chart converter](CHARTING.md#charts-made-for-earlier-versions) |
+| Add extended-range export to a chart editor or package builder | [Native format](NATIVE-FORMAT.md) for package, manifest and chart layouts |
 | Prepare a release (maintainers) | [Releasing](../RELEASING.md) |
 
-## Licence and game assets
+## License and game assets
 
-- rs7string is MIT licensed. The chord-diagram recipes and the headstock data carry their own MIT
-  licences (`chord-diagrams/LICENSE`, `rs7string_headstock.LICENSE.md`).
+- RS Extended Range is MIT licensed. The chord-diagram recipes and the headstock data carry their own MIT
+  licenses, in `chord-diagrams/LICENSE` and `rsxr_headstock.LICENSE.md`.
+- `tools\rsxr-convert.exe` is this project's chart converter, `tools/rsxr_convert.py`, packed into one file
+  with [PyInstaller](https://pyinstaller.org). It contains the Python runtime, which is under the
+  [PSF license](https://docs.python.org/3/license.html).
 - The release ships no Ubisoft assets and uses no Ubisoft encryption keys.
 - The headstock model and the chord diagrams are built from your own game install. Never share the
-  generated files; each player builds their own.
+  generated files. Each player builds their own.
 
 > [!NOTE]
 > The project overview and FAQ are in the [main README](../../README.md) on the project's GitHub page.

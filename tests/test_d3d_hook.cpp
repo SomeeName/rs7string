@@ -12,48 +12,48 @@
 #include "test.h"
 #include <cstring>
 
-using namespace rs7swapfix;
+using namespace rsxrswapfix;
 
 TEST(d3d_device_discovery_accepts_our_installed_texture_hooks) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
     uintptr_t lo = 0, hi = 0;
 
-    CHECK(Rs7_ImageRange(GetModuleHandleW(L"d3d9.dll"), &lo, &hi));
-    CHECK(Rs7Ramp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
-    CHECK(Rs7Swap_InstallOn(d.dev));
-    CHECK(Rs7Ramp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
+    CHECK(Rsxr_ImageRange(GetModuleHandleW(L"d3d9.dll"), &lo, &hi));
+    CHECK(RsxrRamp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
+    CHECK(RsxrSwap_InstallOn(d.dev));
+    CHECK(RsxrRamp_DeviceOfForTests(reinterpret_cast<uintptr_t>(stock), lo, hi) == d.dev);
     End(d.dev);
     CHECK_EQ(stock->Release(), 0ul);
 }
 
 TEST(d3d_overlay_state_block_preserves_the_hidden_stock_texture) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
-    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* other = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    CHECK(Rs7Swap_InstallOn(d.dev));
+    CHECK(RsxrSwap_InstallOn(d.dev));
     CHECK(SUCCEEDED(d.dev->SetTexture(0, stock)));
     IDirect3DStateBlock9* state = nullptr;
 
     CHECK(SUCCEEDED(d.dev->CreateStateBlock(D3DSBT_ALL, &state)));
 
     if (state) {
-        Rs7Swap_SetOverlayDrawing(d.dev, true);
+        RsxrSwap_SetOverlayDrawing(d.dev, true);
         CHECK(SUCCEEDED(d.dev->SetTexture(0, other)));
         CHECK(SUCCEEDED(state->Apply()));
-        Rs7Swap_SetOverlayDrawing(d.dev, false);
+        RsxrSwap_SetOverlayDrawing(d.dev, false);
         IDirect3DBaseTexture9* got = nullptr;
 
         CHECK(SUCCEEDED(d.dev->GetTexture(0, &got)));
@@ -70,19 +70,19 @@ TEST(d3d_overlay_state_block_preserves_the_hidden_stock_texture) {
 }
 
 TEST(iid_texture9_matches_the_sdk) {
-    CHECK(IsEqualGUID(kRs7IID_Texture9, IID_IDirect3DTexture9));
+    CHECK(IsEqualGUID(kRsxrIID_Texture9, IID_IDirect3DTexture9));
 }
 
 TEST(thunk_prologue_is_hotpatchable) {
     const uint8_t want[5] = {0x8B, 0xFF, 0x55, 0x8B, 0xEC};
 
-    CHECK(std::memcmp(reinterpret_cast<const void*>(&Rs7_Thunk_SetTexture), want, 5) == 0);
-    CHECK(std::memcmp(reinterpret_cast<const void*>(&Rs7_Thunk_GetTexture), want, 5) == 0);
+    CHECK(std::memcmp(reinterpret_cast<const void*>(&Rsxr_Thunk_SetTexture), want, 5) == 0);
+    CHECK(std::memcmp(reinterpret_cast<const void*>(&Rsxr_Thunk_GetTexture), want, 5) == 0);
 }
 
 TEST(d3d_install_patches_slots_64_and_65_and_is_idempotent) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
@@ -97,12 +97,12 @@ TEST(d3d_install_patches_slots_64_and_65_and_is_idempotent) {
     CHECK(m == GetModuleHandleW(L"d3d9.dll"));  // the slot is d3d9's SetTexture before we touch it
     Capturing cap;
 
-    CHECK(Rs7Swap_InstallOn(d.dev));
-    CHECK(vt[64] == reinterpret_cast<void*>(&Rs7_Thunk_GetTexture));
-    CHECK(vt[65] == reinterpret_cast<void*>(&Rs7_Thunk_SetTexture));
+    CHECK(RsxrSwap_InstallOn(d.dev));
+    CHECK(vt[64] == reinterpret_cast<void*>(&Rsxr_Thunk_GetTexture));
+    CHECK(vt[65] == reinterpret_cast<void*>(&Rsxr_Thunk_SetTexture));
     CHECK(Logged("-> hooked; RSMods (xinput1_3.dll) absent", "(body d3d9.dll)"));
-    CHECK(Rs7Swap_InstallOn(d.dev));
-    CHECK(vt[64] == reinterpret_cast<void*>(&Rs7_Thunk_GetTexture));
+    CHECK(RsxrSwap_InstallOn(d.dev));
+    CHECK(vt[64] == reinterpret_cast<void*>(&Rsxr_Thunk_GetTexture));
     CHECK_EQ(Lines().size(), size_t(1));  // the second install changes and logs nothing
     End(d.dev);
     CHECK(vt[64] == o64 && vt[65] == o65);
@@ -110,16 +110,16 @@ TEST(d3d_install_patches_slots_64_and_65_and_is_idempotent) {
 
 TEST(d3d_gettexture_hides_the_swap) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
-    IDirect3DTexture9* other = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* other = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     d.dev->SetTexture(1, stock);
     IDirect3DBaseTexture9* t = nullptr;
 
@@ -147,7 +147,7 @@ TEST(d3d_gettexture_hides_the_swap) {
 // hook as well: that path is driven here by calling the thunk directly.
 TEST(d3d_install_reaches_only_the_hooked_device) {
     Device d1, d2;
-    if (!rs7d3d::Have(d1) || !rs7d3d::Have(d2)) {
+    if (!rsxrd3d::Have(d1) || !rsxrd3d::Have(d2)) {
         return;
     }
 
@@ -155,7 +155,7 @@ TEST(d3d_install_reaches_only_the_hooked_device) {
     void* const o65 = vt2[65];
 
     Begin();
-    CHECK(Rs7Swap_InstallOn(d1.dev));
+    CHECK(RsxrSwap_InstallOn(d1.dev));
 
     if (*reinterpret_cast<void**>(d1.dev) != *reinterpret_cast<void**>(d2.dev)) {
         std::printf("  d3d9: per-device vtables (the hook reaches only the hooked device)\n");
@@ -169,26 +169,26 @@ TEST(d3d_install_reaches_only_the_hooked_device) {
 
 TEST(d3d_other_device_passes_through) {
     using SetTex = HRESULT(__stdcall*)(IDirect3DDevice9*, DWORD, IDirect3DBaseTexture9*);
-    const auto hook = reinterpret_cast<SetTex>(&Rs7_Thunk_SetTexture);
+    const auto hook = reinterpret_cast<SetTex>(&Rsxr_Thunk_SetTexture);
     Device d1, d2;
-    if (!rs7d3d::Have(d1) || !rs7d3d::Have(d2)) {
+    if (!rsxrd3d::Have(d1) || !rsxrd3d::Have(d2)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* s1 = rs7d3d::MakeTex(d1.dev, Stock(1));
-    IDirect3DTexture9* s2 = rs7d3d::MakeTex(d2.dev, Stock(1));
+    IDirect3DTexture9* s1 = rsxrd3d::MakeTex(d1.dev, Stock(1));
+    IDirect3DTexture9* s2 = rsxrd3d::MakeTex(d2.dev, Stock(1));
 
     Add(s1);
-    Add(s2, Rs7Family::Note, "dev2/note_gradient_map.dds");
-    Rs7Swap_InstallOn(d1.dev);
+    Add(s2, RsxrFamily::Note, "dev2/note_gradient_map.dds");
+    RsxrSwap_InstallOn(d1.dev);
     d1.dev->SetTexture(1, s1);
     CHECK(V6On());
     Capturing cap;
 
     CHECK(SUCCEEDED(hook(d2.dev, 1, s2)));  // as if d2 shared the hooked vtable
     CHECK(RawBound(d2.dev, 1) == static_cast<IDirect3DBaseTexture9*>(s2));
-    CHECK(Rs7Cand_Find(s2)->state == Rs7CandState::Pending);
+    CHECK(RsxrCand_Find(s2)->state == RsxrCandState::Pending);
     CHECK(V6Off());
     CHECK(Logged("ramp: candidate", "pass-through, swapping off"));
     d1.dev->SetTexture(1, s1);  // the hooked device still binds its copy, V6 stays off (sticky)
@@ -202,7 +202,7 @@ TEST(d3d_other_device_passes_through) {
 
 TEST(d3d_recheck_rehooks_only_when_d3d9_restored_the_slots) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
@@ -211,48 +211,48 @@ TEST(d3d_recheck_rehooks_only_when_d3d9_restored_the_slots) {
     void* const o64 = vt[64];
     void* const o65 = vt[65];
 
-    Rs7Swap_InstallOn(d.dev);
+    RsxrSwap_InstallOn(d.dev);
     Capturing cap;
 
-    Rs7Swap_Recheck();  // ours: nothing to do
+    RsxrSwap_Recheck();  // ours: nothing to do
     CHECK(Lines().empty());
     vt[64] = o64;  // the runtime rewrote its copy
     vt[65] = o65;
-    Rs7Swap_Recheck();
-    CHECK(vt[65] == reinterpret_cast<void*>(&Rs7_Thunk_SetTexture) &&
-          vt[64] == reinterpret_cast<void*>(&Rs7_Thunk_GetTexture));
+    RsxrSwap_Recheck();
+    CHECK(vt[65] == reinterpret_cast<void*>(&Rsxr_Thunk_SetTexture) &&
+          vt[64] == reinterpret_cast<void*>(&Rsxr_Thunk_GetTexture));
     CHECK(Logged("slots 64/65 were reset", "hooked again"));
-    void* const foreign = reinterpret_cast<void*>(&Rs7_Thunk_GetTexture);
+    void* const foreign = reinterpret_cast<void*>(&Rsxr_Thunk_GetTexture);
 
     vt[65] = foreign;  // someone else's hook: left alone
-    Rs7Swap_Recheck();
+    RsxrSwap_Recheck();
     CHECK(vt[65] == foreign);
     CHECK(Logged("not ours, not d3d9's"));
-    vt[65] = reinterpret_cast<void*>(&Rs7_Thunk_SetTexture);
+    vt[65] = reinterpret_cast<void*>(&Rsxr_Thunk_SetTexture);
     End(d.dev);
     CHECK(vt[64] == o64 && vt[65] == o65);
 }
 
 TEST(d3d_hook_survives_a_fault) {
     Device d;
-    if (!rs7d3d::Have(d)) {
+    if (!rsxrd3d::Have(d)) {
         return;
     }
 
     Begin();
-    IDirect3DTexture9* stock = rs7d3d::MakeTex(d.dev, Stock(1));
+    IDirect3DTexture9* stock = rsxrd3d::MakeTex(d.dev, Stock(1));
 
     Add(stock);
-    Rs7Swap_InstallOn(d.dev);
-    Rs7Swap_InjectFaultForTests(true);
+    RsxrSwap_InstallOn(d.dev);
+    RsxrSwap_InjectFaultForTests(true);
     Capturing cap;
 
     CHECK(SUCCEEDED(d.dev->SetTexture(1, stock)));
     CHECK(RawBound(d.dev, 1) == static_cast<IDirect3DBaseTexture9*>(stock));
     CHECK(Has(Stats(), "faults=1"));
-    CHECK(Rs7Cand_Find(stock)->state == Rs7CandState::Refused);
+    CHECK(RsxrCand_Find(stock)->state == RsxrCandState::Refused);
     CHECK(V6Off());
-    Rs7Swap_InjectFaultForTests(false);
+    RsxrSwap_InjectFaultForTests(false);
     d.dev->SetTexture(1, stock);  // refused: pass-through from now on, no second fault
     CHECK(RawBound(d.dev, 1) == static_cast<IDirect3DBaseTexture9*>(stock));
     CHECK(Has(Stats(), "faults=1"));

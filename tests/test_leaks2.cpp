@@ -7,7 +7,7 @@
 #include <cstring>
 #include <memory>
 
-// leaks2 (docs/ARCHITECTURE.md): the guitar-free mode cleanup and the RS7X block store's cap.
+// leaks2 (docs/ARCHITECTURE.md): the guitar-free mode cleanup and the extension block store's cap.
 
 TEST(leaks2_free_clears_song_marks_even_without_a_strings_entry) {
     alignas(4) uint8_t guitar[0x50] = {}, unrelated[0x50] = {}, strings[0x40] = {};
@@ -17,54 +17,54 @@ TEST(leaks2_free_clears_song_marks_even_without_a_strings_entry) {
     void* gs = strings;
 
     std::memcpy(guitar + 0xC, &gs, sizeof gs);
-    Rs7S7_SetGuitarMode(guitar, true);
-    Rs7S7_SetGuitarMode(unrelated, true);
-    Rs7S7Stats before{}, after{};
+    RsxrS7_SetGuitarMode(guitar, true);
+    RsxrS7_SetGuitarMode(unrelated, true);
+    RsxrS7Stats before{}, after{};
 
-    Rs7S7_Stats(&before);
-    Rs7_S7Free(strings);
-    Rs7S7_Stats(&after);
+    RsxrS7_Stats(&before);
+    Rsxr_S7Free(strings);
+    RsxrS7_Stats(&after);
     CHECK_EQ(after.sevenGuitars, before.sevenGuitars - 1);
-    Rs7_S7Free(strings);  // repeated free must leave the unrelated entry intact
-    Rs7S7_Stats(&before);
+    Rsxr_S7Free(strings);  // repeated free must leave the unrelated entry intact
+    RsxrS7_Stats(&before);
     CHECK_EQ(after.sevenGuitars, before.sevenGuitars);
-    Rs7S7_SetGuitarMode(unrelated, false);
+    RsxrS7_SetGuitarMode(unrelated, false);
 }
 
 TEST(leaks2_extblock_store_is_capped_oldest_dropped_newest_kept) {
     // Big test (tests/big-test/R7_allocstats.txt): extBlocks rose 1 per chord-chart load. 12 loads here.
     static uint8_t songs[12];
-    const int base = Rs7Ext_StoredBlocks();
+    const int base = RsxrExt_StoredBlocks();
 
     for (int i = 0; i < 12; ++i) {
-        Rs7Ext_Store(&songs[i], std::make_shared<rs7ext::Block>());
-        CHECK(Rs7Ext_StoredBlocks() <= kRs7ExtKeep);
-        CHECK(Rs7Ext_Find(&songs[i]) != nullptr);  // the song just loaded (the one played) is kept
+        RsxrExt_Store(&songs[i], std::make_shared<rsxrext::Block>());
+        CHECK(RsxrExt_StoredBlocks() <= kRsxrExtKeep);
+        CHECK(RsxrExt_Find(&songs[i]) != nullptr);  // the song just loaded (the one played) is kept
     }
 
-    CHECK(base <= kRs7ExtKeep);
-    CHECK_EQ(Rs7Ext_StoredBlocks(), kRs7ExtKeep);
+    CHECK(base <= kRsxrExtKeep);
+    CHECK_EQ(RsxrExt_StoredBlocks(), kRsxrExtKeep);
 
-    for (int i = 0; i < 12 - kRs7ExtKeep; ++i) {
-        CHECK(Rs7Ext_Find(&songs[i]) == nullptr);  // oldest dropped
+    for (int i = 0; i < 12 - kRsxrExtKeep; ++i) {
+        CHECK(RsxrExt_Find(&songs[i]) == nullptr);  // oldest dropped
     }
 
-    for (int i = 12 - kRs7ExtKeep; i < 12; ++i) {
-        CHECK(Rs7Ext_Find(&songs[i]) != nullptr);
+    for (int i = 12 - kRsxrExtKeep; i < 12; ++i) {
+        CHECK(RsxrExt_Find(&songs[i]) != nullptr);
     }
 
     // Reloading a kept song moves it to the newest end: the next load drops songs[5], not it.
-    Rs7Ext_Store(&songs[4], std::make_shared<rs7ext::Block>());
-    CHECK(Rs7Ext_Find(&songs[4]) != nullptr);
-    CHECK_EQ(Rs7Ext_StoredBlocks(), kRs7ExtKeep);
-    Rs7Ext_Store(&songs[0], std::make_shared<rs7ext::Block>());
-    CHECK(Rs7Ext_Find(&songs[5]) == nullptr);
-    CHECK(Rs7Ext_Find(&songs[4]) != nullptr);
-    CHECK(Rs7Ext_Find(&songs[0]) != nullptr);
+    RsxrExt_Store(&songs[4], std::make_shared<rsxrext::Block>());
+    CHECK(RsxrExt_Find(&songs[4]) != nullptr);
+    CHECK_EQ(RsxrExt_StoredBlocks(), kRsxrExtKeep);
+    RsxrExt_Store(&songs[0], std::make_shared<rsxrext::Block>());
+    CHECK(RsxrExt_Find(&songs[5]) == nullptr);
+    CHECK(RsxrExt_Find(&songs[4]) != nullptr);
+    CHECK(RsxrExt_Find(&songs[0]) != nullptr);
 
     for (int i = 0; i < 12; ++i) {
-        Rs7Ext_Store(&songs[i], nullptr);
+        RsxrExt_Store(&songs[i], nullptr);
     }
 
-    CHECK(Rs7Ext_StoredBlocks() <= base);
+    CHECK(RsxrExt_StoredBlocks() <= base);
 }

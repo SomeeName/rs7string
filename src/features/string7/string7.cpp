@@ -2,7 +2,7 @@
 // visibility rule N5 applies every frame. Values in, values out.
 #include "features/string7/string7.h"
 
-int Rs7S7_BackfillBit(uint8_t* sections, int count, uint32_t level, uint8_t bit, int* added) {
+int RsxrS7_BackfillBit(uint8_t* sections, int count, uint32_t level, uint8_t bit, int* added) {
     int lit = 0;
 
     if (added) {
@@ -32,10 +32,10 @@ int Rs7S7_BackfillBit(uint8_t* sections, int count, uint32_t level, uint8_t bit,
     return lit;
 }
 
-uint32_t rs7s7::g_fadeHoldMs = 1500;
+uint32_t rsxrs7::g_fadeHoldMs = 1500;
 
-rs7s7::Visibility rs7s7::Rs7S7_Visibility(bool seven, bool& armed, bool song, bool songEnded, bool fadedOut,
-                                          bool fadeOutDone, bool unseen) {
+rsxrs7::Visibility rsxrs7::RsxrS7_Visibility(bool seven, bool& armed, bool song, bool songEnded, bool fadedOut,
+                                             bool fadeOutDone, bool unseen) {
     Disarm why = Disarm::None;
 
     if (armed && !song) {

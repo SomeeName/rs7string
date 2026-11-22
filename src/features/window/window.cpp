@@ -7,7 +7,7 @@
 #include <intrin.h>
 #include <vector>
 
-POINT Rs7Window_Centre(const RECT& work, int w, int h) {
+POINT RsxrWindow_Centre(const RECT& work, int w, int h) {
     LONG x = work.left + (work.right - work.left - w) / 2;
     LONG y = work.top + (work.bottom - work.top - h) / 2;
 
@@ -21,7 +21,7 @@ POINT Rs7Window_Centre(const RECT& work, int w, int h) {
     return POINT{x, y};
 }
 
-int Rs7Window_NoActivateCmd(int cmd) {
+int RsxrWindow_NoActivateCmd(int cmd) {
     switch (cmd) {
         case SW_SHOWNORMAL:
         case SW_SHOWMAXIMIZED:
@@ -37,7 +37,7 @@ int Rs7Window_NoActivateCmd(int cmd) {
     }
 }
 
-Rs7Window_MessageFilter Rs7Window_FilterMessage(UINT m, WPARAM w, LPARAM, bool background) {
+RsxrWindow_MessageFilter RsxrWindow_FilterMessage(UINT m, WPARAM w, LPARAM, bool background) {
     if (!background) {
         return {false, 0};
     }
@@ -88,7 +88,7 @@ volatile LONG g_logBudget = 24;
 
 void LogLimited(const char* fmt, int a, int b, int c, int d) {
     if (InterlockedDecrement(&g_logBudget) >= 0) {
-        Rs7Log(fmt, a, b, c, d);
+        RsxrLog(fmt, a, b, c, d);
     }
 }
 
@@ -133,7 +133,7 @@ bool Quiet(HWND h) {
 
 LRESULT CALLBACK BackgroundWndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     const WNDPROC prev = g_prevProc;
-    const auto filtered = Rs7Window_FilterMessage(m, w, l, g_background && h == g_main);
+    const auto filtered = RsxrWindow_FilterMessage(m, w, l, g_background && h == g_main);
 
     if (filtered.consume) {
         LogLimited("window: suppressed focus loss msg=%04X w=%08X l=%08X result=%d", int(m), int(w), int(l),
@@ -158,7 +158,7 @@ bool Place(int* x, int* y, int w, int h2) {
         return false;
     }
 
-    const POINT p = Rs7Window_Centre(work, w, h2);
+    const POINT p = RsxrWindow_Centre(work, w, h2);
 
     LogLimited("window: %d,%d -> %d,%d (screen setting)", *x, *y, int(p.x), int(p.y));
     *x = p.x;
@@ -185,9 +185,9 @@ HWND WINAPI CreateWindowExAHook(DWORD ex, LPCSTR cls, LPCSTR name, DWORD style, 
             g_prevProc = reinterpret_cast<WNDPROC>(
                 SetWindowLongPtrA(r, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&BackgroundWndProc)));
             if (g_prevProc) {
-                Rs7Log("window: background focus filter installed");
+                RsxrLog("window: background focus filter installed");
             } else {
-                Rs7Log("window: background focus filter FAILED (%lu)", GetLastError());
+                RsxrLog("window: background focus filter FAILED (%lu)", GetLastError());
             }
         }
 
@@ -199,7 +199,7 @@ HWND WINAPI CreateWindowExAHook(DWORD ex, LPCSTR cls, LPCSTR name, DWORD style, 
 
 BOOL WINAPI ShowWindowHook(HWND h, int cmd) {
     if (Quiet(h)) {
-        const int c = Rs7Window_NoActivateCmd(cmd);
+        const int c = RsxrWindow_NoActivateCmd(cmd);
 
         if (c != cmd) {
             LogLimited("window: ShowWindow %d -> %d (background)", cmd, c, 0, 0);
@@ -284,7 +284,7 @@ HWND WINAPI SetFocusHook(HWND h) {
 // The game runs its per-frame input-device dispatch (0x9B1D40) only when GetFocus() (its only
 // call, 0x9B1D5A) returns a window; a never-activated window gets NULL there. Report the game
 // window instead, on the game window's thread only, so the input layer runs in the background.
-// The real keyboard cannot leak in: Rs7Dinput holds the game's keyboard to DISCL_FOREGROUND.
+// The real keyboard cannot leak in: RsxrDinput holds the game's keyboard to DISCL_FOREGROUND.
 HWND WINAPI GetFocusHook() {
     const HWND r = g_getFocus();
     if (!r && g_background && g_main && GetWindowThreadProcessId(g_main, nullptr) == GetCurrentThreadId()) {
@@ -308,12 +308,12 @@ HWND WINAPI GetForegroundWindowHook() {
 
 bool Write(uint8_t* at, const uint8_t* bytes, size_t n) {
     DWORD old = 0;
-    if (!Rs7_Protect(at, n, PAGE_EXECUTE_READWRITE, &old)) {
+    if (!Rsxr_Protect(at, n, PAGE_EXECUTE_READWRITE, &old)) {
         return false;
     }
 
     std::memcpy(at, bytes, n);
-    Rs7_Protect(at, n, old, &old);
+    Rsxr_Protect(at, n, old, &old);
     FlushInstructionCache(GetCurrentProcess(), at, n);
 
     return true;
@@ -384,8 +384,8 @@ bool Hook(HMODULE m, const char* name, T hook, T* orig) {
     if (!*orig) {
         const auto f = reinterpret_cast<const uint8_t*>(GetProcAddress(m, name));
 
-        Rs7Log("window: cannot hook user32!%s (first bytes %02X %02X) - window setting partly off", name, f ? f[0] : 0,
-               f ? f[1] : 0);
+        RsxrLog("window: cannot hook user32!%s (first bytes %02X %02X) - window setting partly off", name, f ? f[0] : 0,
+                f ? f[1] : 0);
         return false;
     }
 
@@ -393,15 +393,15 @@ bool Hook(HMODULE m, const char* name, T hook, T* orig) {
 }
 }  // namespace
 
-bool Rs7Window_Background() {
+bool RsxrWindow_Background() {
     return g_background;
 }
 
-void Rs7Window_Install(const wchar_t* iniPath) {
-    g_background = Rs7Set_ReadTableInt(kRs7WindowSettings, "window.background", iniPath) != 0;
-    g_screen = Rs7Set_ReadTableInt(kRs7WindowSettings, "window.screen", iniPath);
-    Rs7Log("config: [window] background=%d screen=%d%s", g_background ? 1 : 0, g_screen,
-           g_background || g_screen ? "" : " -> stock window, no hooks");
+void RsxrWindow_Install(const wchar_t* iniPath) {
+    g_background = RsxrSet_ReadTableInt(kRsxrWindowSettings, "window.background", iniPath) != 0;
+    g_screen = RsxrSet_ReadTableInt(kRsxrWindowSettings, "window.screen", iniPath);
+    RsxrLog("config: [window] background=%d screen=%d%s", g_background ? 1 : 0, g_screen,
+            g_background || g_screen ? "" : " -> stock window, no hooks");
     if (!g_background && !g_screen) {
         return;
     }
@@ -409,7 +409,7 @@ void Rs7Window_Install(const wchar_t* iniPath) {
     const HMODULE u = GetModuleHandleW(L"user32.dll");  // no LoadLibrary under the loader lock
 
     if (!u) {
-        Rs7Log("window: user32.dll not loaded yet - window setting off");
+        RsxrLog("window: user32.dll not loaded yet - window setting off");
         return;
     }
 
@@ -435,5 +435,5 @@ void Rs7Window_Install(const wchar_t* iniPath) {
     if (ok) {
         ok = Hook(u, "CreateWindowExA", &CreateWindowExAHook, &g_create);
     }
-    Rs7Log("window: user32 hooks %s", ok ? "installed" : "INCOMPLETE (game window left stock)");
+    RsxrLog("window: user32 hooks %s", ok ? "installed" : "INCOMPLETE (game window left stock)");
 }

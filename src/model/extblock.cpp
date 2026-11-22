@@ -5,14 +5,15 @@
 #include <cstring>
 #include <set>
 
-namespace rs7ext {
+namespace rsxrext {
 
 // The wire limits of the spec match the game model: extended columns follow the six stock guitar strings, an
 // extended bass has the model's 5 or 6 strings in the six stock tuning entries of the SNG.
-constexpr int kStockGuitar = int(rs7::kStockGuitarStrings);
-constexpr uint32_t kBassTuningEntries = rs7::kStockGuitarStrings;
-static_assert(kMaxBassStrings == int(rs7::kMaxBassSlots), "RS7X bass limit = model bass slots");
-static_assert(rs7::IsExtendedBass(kMinBassStrings) && rs7::IsExtendedBass(kMaxBassStrings), "RS7X bass range");
+constexpr int kStockGuitar = int(rsxr::kStockGuitarStrings);
+constexpr uint32_t kBassTuningEntries = rsxr::kStockGuitarStrings;
+static_assert(kMaxBassStrings == int(rsxr::kMaxBassSlots), "extension block bass limit = model bass slots");
+static_assert(rsxr::IsExtendedBass(kMinBassStrings) && rsxr::IsExtendedBass(kMaxBassStrings),
+              "extension block bass range");
 
 int Block::Column(int string) const {
     for (size_t i = 0; i < strings.size(); ++i) {
@@ -48,7 +49,7 @@ const char* StatusName(Status s) {
         case Status::Ok:
             return "ok";
         case Status::NotBlock:
-            return "not an RS7X block";
+            return "not an extension block";
         case Status::Unsupported:
             return "unsupported";
         case Status::Invalid:
@@ -115,8 +116,8 @@ struct Header {
 using Seen = std::set<uint32_t>;
 
 Status ReadHeader(const uint8_t* p, size_t n, Header* h, char* why, size_t whyLen) {
-    if (n < 4 || std::memcmp(p, "RS7X", 4) != 0) {
-        return Fail(Status::NotBlock, why, whyLen, "no RS7X magic");
+    if (n < 4 || std::memcmp(p, "RSXR", 4) != 0) {
+        return Fail(Status::NotBlock, why, whyLen, "no extension block magic");
     }
     if (n < kHeaderSize) {
         return Fail(Status::Invalid, why, whyLen, "%zu bytes, shorter than the header", n);
@@ -399,4 +400,4 @@ Status Parse(const uint8_t* p, size_t n, uint32_t templates, uint32_t chordNotes
     return Status::Ok;
 }
 
-}  // namespace rs7ext
+}  // namespace rsxrext

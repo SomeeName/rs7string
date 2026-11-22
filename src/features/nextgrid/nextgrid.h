@@ -2,10 +2,10 @@
 #include "model/slots.h"
 #include <cstdint>
 
-struct Rs7HookTable;
+struct RsxrHookTable;
 // The native next-note grid hooks (group Nextgrid): the NGB<va> layout sites, NG1, NGP, NG9. The table also lists the
-// X_SPAWN / X_ADV3 refs NG9's row-6 spawn calls; as data references they count as group Core (Rs7_FeatureOf).
-extern const Rs7HookTable kRs7NextgridHooks;
+// X_SPAWN / X_ADV3 refs NG9's row-6 spawn calls; as data references they count as group Core (Rsxr_FeatureOf).
+extern const RsxrHookTable kRsxrNextgridHooks;
 
 // Native capacity-8 next-note / target grid (docs/ARCHITECTURE.md section 2), a member of the native 7-string unit
 // (no ini switch).
@@ -19,13 +19,13 @@ extern const Rs7HookTable kRs7NextgridHooks;
 // Frame of 0x7E4870: 0D34h -> 1074h (NGP, after the stock prologue, adds 340h and probes); G = ebp-1060h, locals
 // ebp-1064h..-1074h, the tree header ebp-35Ch / -358h / -34Ch. Every edit is in-place (sites NGB<va>, NG1, NGP, NG9;
 // tools/gen_nextgrid.py). The active string count (InstrumentInfo +0Bh, passed to Init) is untouched, so strings 6/7
-// are stored, not published: the stock loops still cover rows 0-5 and NG9 spawns row 6 (Rs7_NeckRow6N). Logic:
+// are stored, not published: the stock loops still cover rows 0-5 and NG9 spawns row 6 (Rsxr_NeckRow6N). Logic:
 // nextgrid.cpp (the switch). Glue: hooks.cpp (the row-6 neck targets of NG9), hooks_mid.cpp (NG1, NG9), hooks_stubs.cpp
-// (NGP), registration.cpp (kRs7NextgridHooks; the NGB<va> rows come from sites.generated.inc, tools/gen_nextgrid.py).
+// (NGP), registration.cpp (kRsxrNextgridHooks; the NGB<va> rows come from sites.generated.inc, tools/gen_nextgrid.py).
 //
 // With the active string count published as 7 / 8 (InstrumentInfo +0Bh, features/publish):
 //  - nothing in Init / Set / Prune / Update: they read the count from the grid (+0D00h) / the local, so the stock
-//    loops of 0x7E4870 and 0x7AA1B0 enumerate rows 6/7 by themselves. NG9 self-disables (Rs7_NeckRow6N returns -1
+//    loops of 0x7E4870 and 0x7AA1B0 enumerate rows 6/7 by themselves. NG9 self-disables (Rsxr_NeckRow6N returns -1
 //    for a count above 6), so no double spawn; its tree-release half stays.
 //  - the chord side of Register 0x7A5D50 (not edited here): NN1 chord loop bound `cmp cx,7` -> 8, NN3 / NN4 slide
 //    guards `cmp byte [ebp-6],7` -> 8, and the T8 / C8 chord arrays must hold 8 strings.
@@ -34,10 +34,10 @@ extern const Rs7HookTable kRs7NextgridHooks;
 
 extern "C" {
 // The native next-note grid is on (set by startup before any site is patched).
-__declspec(dllexport) extern uintptr_t g_rs7_native_nextgrid;
+__declspec(dllexport) extern uintptr_t g_rsxr_native_nextgrid;
 }
 
-namespace rs7ng {
+namespace rsxrng {
 constexpr uint32_t kRowBytes = 0x68;  // 26 cells of 4
 constexpr uint32_t kCells = 26, kCapacity = 8, kStock = 6;
 constexpr uint32_t kTimeStock = 0xA90, kTimeNative = 0xD1C;
@@ -57,7 +57,7 @@ inline uint32_t TimeOff(uint32_t s, uint32_t f) {
 inline bool SetAccepts(uint32_t s, uint32_t f) {
     return s < kCapacity && f < kCells;
 }
-}  // namespace rs7ng
+}  // namespace rsxrng
 
 // Neck targets for string 6 (hooks.cpp, called by NG9; docs/ARCHITECTURE.md, Q2).
 //
@@ -66,7 +66,7 @@ inline bool SetAccepts(uint32_t s, uint32_t f) {
 // G+0xA90, std::set of note times with its header node at G+0xD04 (leftmost +0xD0C, size +0xD14).
 // The native grid (above) keeps string 6's pointer in notePtr row 6 (G+0x270); NG9 prunes and spawns row
 // 6 the way stock does rows 0-5 while the active string count is 6.
-namespace rs7neck {
+namespace rsxrneck {
 constexpr uint32_t kRow6Ptr = 0x270;   // notePtr[6][0]
 constexpr uint32_t kSetHead = 0xD04;   // set header node (end())
 constexpr uint32_t kSetBegin = 0xD0C;  // leftmost node (begin())
@@ -76,14 +76,14 @@ constexpr uint32_t kRowCells = 26;
 // The native layout (above): time[8][26] sits behind the tree at G+0xD1C, so string 6's times
 // are time row 6 (G+0xD1C+6*0x68) and the pointer row 6 is the same G+0x270.
 constexpr uint32_t kNgRow6Time = 0xD1C + 6 * 0x68;
-constexpr uint32_t kStockStrings = rs7::kStockGuitarStrings;
-}  // namespace rs7neck
+constexpr uint32_t kStockStrings = rsxr::kStockGuitarStrings;
+}  // namespace rsxrneck
 
-// Bound by Rs7_Startup from callref sites (never written): Rnd_NeckTarget_Spawn 0x7A56F0 (X_SPAWN,
+// Bound by Rsxr_Startup from callref sites (never written): Rnd_NeckTarget_Spawn 0x7A56F0 (X_SPAWN,
 // stdcall 6 args, ret 18h) and Rnd_TimeSet_Advance3 0x7AA880 (X_ADV3, ESI = &iterator, clobbers
 // EAX/ECX/EDX).
-extern "C" __declspec(dllexport) uintptr_t g_rs7_fn_spawn;
-extern "C" __declspec(dllexport) uintptr_t g_rs7_fn_adv3;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_fn_spawn;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_fn_adv3;
 
 extern "C" {
 // NG9 (frame of 0x7E4870 grown by 340h): grid = ebp-0x1060, self = EBX (the renderer), dt/t = raw float bits,
@@ -91,9 +91,9 @@ extern "C" {
 // row 6. Otherwise prunes row 6 exactly like Rnd_NextNoteGrid_Prune 0x7AA1B0 prunes rows 0-5, then calls
 // Rnd_NeckTarget_Spawn for every live row-6 cell like the stock consumer. Returns the first fret >= 1 it spawned,
 // else -1. From 7 strings on the stock loops spawn row 6: returns -1. Pure (no Win32 calls, no exceptions).
-__declspec(dllexport) int __cdecl Rs7_NeckRow6N(uint8_t* grid, void* self, uint32_t dtBits, uint32_t tBits,
-                                                uint32_t fretCount, uint32_t stringCount);
-// "neck: ..." log line, once per song (reset by Rs7Neck_ResetLog from song setup).
-__declspec(dllexport) void __cdecl Rs7_NeckLog(int fret);
+__declspec(dllexport) int __cdecl Rsxr_NeckRow6N(uint8_t* grid, void* self, uint32_t dtBits, uint32_t tBits,
+                                                 uint32_t fretCount, uint32_t stringCount);
+// "neck: ..." log line, once per song (reset by RsxrNeck_ResetLog from song setup).
+__declspec(dllexport) void __cdecl Rsxr_NeckLog(int fret);
 }
-void Rs7Neck_ResetLog();
+void RsxrNeck_ResetLog();

@@ -10,22 +10,22 @@
 #include <vector>
 
 namespace {
-using T = Rs7SetType;
-using W = Rs7SetWhen;
+using T = RsxrSetType;
+using W = RsxrSetWhen;
 
-// Every table's rows in kRs7SettingTables order, and their state. Built at the first use (the tables are constant).
+// Every table's rows in kRsxrSettingTables order, and their state. Built at the first use (the tables are constant).
 struct Flat {
-    std::vector<const Rs7SetDef*> defs;
-    std::vector<Rs7SetState> state;
+    std::vector<const RsxrSetDef*> defs;
+    std::vector<RsxrSetState> state;
 };
 
 Flat& All() {
     static Flat flat = [] {
         Flat f;
 
-        for (int t = 0; t < kRs7SettingTableCount; ++t) {
-            for (int i = 0; i < kRs7SettingTables[t]->count; ++i) {
-                f.defs.push_back(&kRs7SettingTables[t]->defs[i]);
+        for (int t = 0; t < kRsxrSettingTableCount; ++t) {
+            for (int i = 0; i < kRsxrSettingTables[t]->count; ++i) {
+                f.defs.push_back(&kRsxrSettingTables[t]->defs[i]);
             }
         }
 
@@ -41,7 +41,7 @@ int Count() {
     return int(All().defs.size());
 }
 
-const Rs7SetDef& Def(int i) {
+const RsxrSetDef& Def(int i) {
     return *All().defs[size_t(i)];
 }
 
@@ -55,12 +55,12 @@ int Index(const char* id) {
     return -1;
 }
 
-Rs7SetState& State(int i) {
+RsxrSetState& State(int i) {
     return All().state[size_t(i)];
 }
 
-const Rs7SetValue& Val(const char* id) {
-    static const Rs7SetValue none{};
+const RsxrSetValue& Val(const char* id) {
+    static const RsxrSetValue none{};
     const int i = Index(id);
 
     return i < 0 ? none : State(i).value;
@@ -114,13 +114,13 @@ bool ParseInt(const char* text, long* out) {
     return true;
 }
 
-bool InRange(const Rs7SetDef& d, double v) {
+bool InRange(const RsxrSetDef& d, double v) {
     return v >= double(d.lo) - 1e-6 && v <= double(d.hi) + 1e-6;
 }
 
 // Ini-text -> value (strict: the whole text, in range). False: out untouched.
-bool Parse(const Rs7SetDef& d, const char* text, Rs7SetValue* out) {
-    Rs7SetValue v{};
+bool Parse(const RsxrSetDef& d, const char* text, RsxrSetValue* out) {
+    RsxrSetValue v{};
 
     switch (d.type) {
         case T::Bool: {
@@ -160,7 +160,7 @@ bool Parse(const Rs7SetDef& d, const char* text, Rs7SetValue* out) {
                 w[k] = wchar_t(static_cast<unsigned char>(text[k]));
             }
 
-            if (!Rs7_ParseRgb(w, &v.rgb)) {
+            if (!Rsxr_ParseRgb(w, &v.rgb)) {
                 return false;
             }
 
@@ -174,7 +174,7 @@ bool Parse(const Rs7SetDef& d, const char* text, Rs7SetValue* out) {
                 --n;
             }
 
-            if (n >= size_t(kRs7SetTextMax) || (d.hi > 0 && double(n) > double(d.hi))) {
+            if (n >= size_t(kRsxrSetTextMax) || (d.hi > 0 && double(n) > double(d.hi))) {
                 return false;  // hi: max length
             }
 
@@ -199,7 +199,7 @@ bool Parse(const Rs7SetDef& d, const char* text, Rs7SetValue* out) {
     return true;
 }
 
-bool Valid(const Rs7SetDef& d, const Rs7SetValue& v) {
+bool Valid(const RsxrSetDef& d, const RsxrSetValue& v) {
     switch (d.type) {
         case T::Bool:
             return v.i == 0 || v.i == 1;
@@ -216,7 +216,7 @@ bool Valid(const Rs7SetDef& d, const Rs7SetValue& v) {
             }
 
             const size_t n = size_t(static_cast<const char*>(z) - v.text);
-            if (n >= size_t(kRs7SetTextMax) || (d.hi > 0 && double(n) > double(d.hi))) {
+            if (n >= size_t(kRsxrSetTextMax) || (d.hi > 0 && double(n) > double(d.hi))) {
                 return false;
             }
 
@@ -233,8 +233,8 @@ bool Valid(const Rs7SetDef& d, const Rs7SetValue& v) {
     return false;
 }
 
-Rs7SetValue Default(const Rs7SetDef& d) {
-    Rs7SetValue v{};
+RsxrSetValue Default(const RsxrSetDef& d) {
+    RsxrSetValue v{};
 
     Parse(d, d.def, &v);
 
@@ -253,11 +253,11 @@ std::string Narrow(const std::wstring& w) {
     return s;
 }
 
-// The ini's text of a key ("" = missing), and whether it was there. *cut: longer than kRs7IniValueMax, so its text is
-// only a prefix and must not pass as the value (Rs7Config_ReadInt rejects it the same way).
-bool ReadIni(const Rs7SetDef& d, const wchar_t* ini, std::string* out, bool* cut) {
+// The ini's text of a key ("" = missing), and whether it was there. *cut: longer than kRsxrIniValueMax, so its text is
+// only a prefix and must not pass as the value (RsxrConfig_ReadInt rejects it the same way).
+bool ReadIni(const RsxrSetDef& d, const wchar_t* ini, std::string* out, bool* cut) {
     std::wstring w;
-    if (!Rs7Config_ReadPresent(d.section, d.key, ini, &w, cut)) {
+    if (!RsxrConfig_ReadPresent(d.section, d.key, ini, &w, cut)) {
         return false;
     }
 
@@ -301,7 +301,7 @@ std::wstring ErrorText(DWORD e) {
 }
 }  // namespace
 
-bool Rs7Set_Equal(Rs7SetType t, const Rs7SetValue& a, const Rs7SetValue& b) {
+bool RsxrSet_Equal(RsxrSetType t, const RsxrSetValue& a, const RsxrSetValue& b) {
     switch (t) {
         case T::Bool:
         case T::Int:
@@ -317,19 +317,19 @@ bool Rs7Set_Equal(Rs7SetType t, const Rs7SetValue& a, const Rs7SetValue& b) {
     return false;
 }
 
-int Rs7Set_Count() {
+int RsxrSet_Count() {
     return Count();
 }
 
-const Rs7SetDef& Rs7Set_Def(int i) {
+const RsxrSetDef& RsxrSet_Def(int i) {
     return Def(i);
 }
 
-Rs7SetState& Rs7Set_State(int i) {
+RsxrSetState& RsxrSet_State(int i) {
     return State(i);
 }
 
-int Rs7Set_Find(const char* id) {
+int RsxrSet_Find(const char* id) {
     if (!id) {
         return -1;
     }
@@ -356,49 +356,49 @@ int Rs7Set_Find(const char* id) {
     return found;
 }
 
-void Rs7Set_ResetForTests() {
+void RsxrSet_ResetForTests() {
     for (int i = 0; i < Count(); ++i) {
-        State(i) = Rs7SetState{};
+        State(i) = RsxrSetState{};
         State(i).value = State(i).running = State(i).saved = Default(Def(i));
     }
 }
 
-bool Rs7Set_ReadIni(const wchar_t* iniPath) {
-    const std::wstring path = Rs7Config_ResolveIniPath(iniPath);
+bool RsxrSet_ReadIni(const wchar_t* iniPath) {
+    const std::wstring path = RsxrConfig_ResolveIniPath(iniPath);
     const DWORD attr = path.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(path.c_str());
     const bool found = attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 
     if (path.empty()) {
-        Rs7Log("config: invalid/overlong ini path; defaults used");
+        RsxrLog("config: invalid/overlong ini path; defaults used");
     }
 
-    for (int t = 0; t < kRs7SettingTableCount; ++t) {
-        if (kRs7SettingTables[t]->read) {
-            kRs7SettingTables[t]->read(found ? path.c_str() : nullptr);
+    for (int t = 0; t < kRsxrSettingTableCount; ++t) {
+        if (kRsxrSettingTables[t]->read) {
+            kRsxrSettingTables[t]->read(found ? path.c_str() : nullptr);
         }
     }
 
     return found;
 }
 
-int Rs7Set_ReadTableInt(const Rs7SetTable& t, const char* id, const wchar_t* iniPath) {
+int RsxrSet_ReadTableInt(const RsxrSetTable& t, const char* id, const wchar_t* iniPath) {
     for (int i = 0; i < t.count; ++i) {
-        const Rs7SetDef& d = t.defs[i];
+        const RsxrSetDef& d = t.defs[i];
         if (std::strcmp(d.id, id) == 0) {
-            return Rs7Config_ReadInt(d.section, d.key, std::atoi(d.def), iniPath, int(d.hi));
+            return RsxrConfig_ReadInt(d.section, d.key, std::atoi(d.def), iniPath, int(d.hi));
         }
     }
 
-    Rs7Log("config: %s has no settings row; disabled", id);
+    RsxrLog("config: %s has no settings row; disabled", id);
 
     return 0;
 }
 
-bool Rs7Set_ParseTableFloat(const Rs7SetTable& t, const char* id, const wchar_t* text, float* out) {
+bool RsxrSet_ParseTableFloat(const RsxrSetTable& t, const char* id, const wchar_t* text, float* out) {
     *out = 0.0f;
 
     for (int i = 0; i < t.count; ++i) {
-        const Rs7SetDef& d = t.defs[i];
+        const RsxrSetDef& d = t.defs[i];
         if (std::strcmp(d.id, id) != 0 || d.type != T::Float) {
             continue;
         }
@@ -429,12 +429,12 @@ bool Rs7Set_ParseTableFloat(const Rs7SetTable& t, const char* id, const wchar_t*
     return false;
 }
 
-bool Rs7Set_InitFromIni(const wchar_t* iniPath) {
-    Rs7Set_ResetForTests();
+bool RsxrSet_InitFromIni(const wchar_t* iniPath) {
+    RsxrSet_ResetForTests();
     // Every feature's own startup read: the same validation and the same defaults as the game uses
-    // (Rs7SetDef::startup). It logs an invalid path and hands every table its defaults.
-    const bool found = Rs7Set_ReadIni(iniPath);
-    const std::wstring path = Rs7Config_ResolveIniPath(iniPath);
+    // (RsxrSetDef::startup). It logs an invalid path and hands every table its defaults.
+    const bool found = RsxrSet_ReadIni(iniPath);
+    const std::wstring path = RsxrConfig_ResolveIniPath(iniPath);
 
     if (path.empty()) {
         return false;
@@ -443,21 +443,21 @@ bool Rs7Set_InitFromIni(const wchar_t* iniPath) {
     iniPath = path.c_str();
 
     for (int i = 0; i < Count(); ++i) {
-        const Rs7SetDef& d = Def(i);
-        Rs7SetState& s = State(i);
+        const RsxrSetDef& d = Def(i);
+        RsxrSetState& s = State(i);
         std::string text;
         bool cut = false;
 
         s.fromIni = ReadIni(d, iniPath, &text, &cut);
-        Rs7SetValue v = Default(d);
+        RsxrSetValue v = Default(d);
 
         if (s.fromIni && (cut || !Parse(d, text.c_str(), &v))) {
             if (d.type == T::Bool || d.type == T::Int) {
-                // 0 (off) until fixed, as the feature's own read (Rs7Config_ReadInt); the default if 0 is not allowed
-                v = InRange(d, 0.0) ? Rs7SetValue{} : Default(d);
-                Rs7Log("config: [%ls] %ls in rs7string.ini %s (a whole number from %g to %g); using %d until fixed "
-                       "(invalid integer)",
-                       d.section, d.key, IntReason(text.c_str(), cut), double(d.lo), double(d.hi), v.i);
+                // 0 (off) until fixed, as the feature's own read (RsxrConfig_ReadInt); the default if 0 is not allowed
+                v = InRange(d, 0.0) ? RsxrSetValue{} : Default(d);
+                RsxrLog("config: [%ls] %ls in rsxr.ini %s (a whole number from %g to %g); using %d until fixed "
+                        "(invalid integer)",
+                        d.section, d.key, IntReason(text.c_str(), cut), double(d.lo), double(d.hi), v.i);
             } else {
                 v = Default(d);
             }
@@ -472,43 +472,43 @@ bool Rs7Set_InitFromIni(const wchar_t* iniPath) {
     return found;
 }
 
-const char* Rs7Set_ResultName(Rs7SetResult r) {
+const char* RsxrSet_ResultName(RsxrSetResult r) {
     switch (r) {
-        case Rs7SetResult::Live:
+        case RsxrSetResult::Live:
             return "live";
-        case Rs7SetResult::NextSession:
+        case RsxrSetResult::NextSession:
             return "next session";
-        case Rs7SetResult::Restart:
+        case RsxrSetResult::Restart:
             return "restart required";
-        case Rs7SetResult::Unchanged:
+        case RsxrSetResult::Unchanged:
             return "unchanged";
-        case Rs7SetResult::Invalid:
+        case RsxrSetResult::Invalid:
             return "invalid value";
-        case Rs7SetResult::Unknown:
+        case RsxrSetResult::Unknown:
             return "unknown key";
     }
 
     return "?";
 }
 
-Rs7SetResult Rs7Set_Commit(int i, const Rs7SetValue& v) {
+RsxrSetResult RsxrSet_Commit(int i, const RsxrSetValue& v) {
     if (i < 0 || i >= Count()) {
-        return Rs7SetResult::Unknown;
+        return RsxrSetResult::Unknown;
     }
 
-    const Rs7SetDef& d = Def(i);
+    const RsxrSetDef& d = Def(i);
     if (!Valid(d, v)) {
-        return Rs7SetResult::Invalid;
+        return RsxrSetResult::Invalid;
     }
 
-    Rs7SetState& s = State(i);
-    if (Rs7Set_Equal(d.type, s.value, v) && (d.when == W::Restart || Rs7Set_Equal(d.type, s.running, v))) {
-        return Rs7SetResult::Unchanged;
+    RsxrSetState& s = State(i);
+    if (RsxrSet_Equal(d.type, s.value, v) && (d.when == W::Restart || RsxrSet_Equal(d.type, s.running, v))) {
+        return RsxrSetResult::Unchanged;
     }
 
     s.value = v;
     if (d.when == W::Restart) {
-        return Rs7SetResult::Restart;
+        return RsxrSetResult::Restart;
     }
 
     s.running = v;
@@ -516,25 +516,25 @@ Rs7SetResult Rs7Set_Commit(int i, const Rs7SetValue& v) {
         d.apply(v);
     }
 
-    return d.when == W::Live ? Rs7SetResult::Live : Rs7SetResult::NextSession;
+    return d.when == W::Live ? RsxrSetResult::Live : RsxrSetResult::NextSession;
 }
 
-Rs7SetResult Rs7Set_SetText(const char* id, const char* text) {
-    const int i = Rs7Set_Find(id);
+RsxrSetResult RsxrSet_SetText(const char* id, const char* text) {
+    const int i = RsxrSet_Find(id);
     if (i < 0) {
-        return Rs7SetResult::Unknown;
+        return RsxrSetResult::Unknown;
     }
 
-    Rs7SetValue v{};
+    RsxrSetValue v{};
     if (!text || !Parse(Def(i), text, &v)) {
-        return Rs7SetResult::Invalid;
+        return RsxrSetResult::Invalid;
     }
 
-    return Rs7Set_Commit(i, v);
+    return RsxrSet_Commit(i, v);
 }
 
-std::string Rs7Set_Format(int i, const Rs7SetValue& v) {
-    char b[kRs7SetTextMax + 8] = "";  // an unknown type formats as ""
+std::string RsxrSet_Format(int i, const RsxrSetValue& v) {
+    char b[kRsxrSetTextMax + 8] = "";  // an unknown type formats as ""
 
     switch (Def(i).type) {
         case T::Bool:
@@ -555,29 +555,29 @@ std::string Rs7Set_Format(int i, const Rs7SetValue& v) {
     return b;
 }
 
-bool Rs7Set_Dirty(int i) {
-    return !Rs7Set_Equal(Def(i).type, State(i).value, State(i).saved);
+bool RsxrSet_Dirty(int i) {
+    return !RsxrSet_Equal(Def(i).type, State(i).value, State(i).saved);
 }
 
-int Rs7Set_DirtyCount() {
+int RsxrSet_DirtyCount() {
     int n = 0;
 
     for (int i = 0; i < Count(); ++i) {
-        n += Rs7Set_Dirty(i) ? 1 : 0;
+        n += RsxrSet_Dirty(i) ? 1 : 0;
     }
 
     return n;
 }
 
-bool Rs7Set_NeedsRestart(int i) {
-    return Def(i).when == W::Restart && !Rs7Set_Equal(Def(i).type, State(i).value, State(i).running);
+bool RsxrSet_NeedsRestart(int i) {
+    return Def(i).when == W::Restart && !RsxrSet_Equal(Def(i).type, State(i).value, State(i).running);
 }
 
-int Rs7Set_Save(const wchar_t* iniPath) {
-    const std::wstring path = Rs7Config_ResolveIniPath(iniPath);
+int RsxrSet_Save(const wchar_t* iniPath) {
+    const std::wstring path = RsxrConfig_ResolveIniPath(iniPath);
 
     if (path.empty()) {
-        Rs7Log("overlay: invalid/overlong ini path; settings not saved");
+        RsxrLog("overlay: invalid/overlong ini path; settings not saved");
         return -1;
     }
 
@@ -585,17 +585,17 @@ int Rs7Set_Save(const wchar_t* iniPath) {
     int written = 0;
 
     for (int i = 0; i < Count(); ++i) {
-        if (!Rs7Set_Dirty(i)) {
+        if (!RsxrSet_Dirty(i)) {
             continue;
         }
 
-        const std::string text = Rs7Set_Format(i, State(i).value);
+        const std::string text = RsxrSet_Format(i, State(i).value);
         const std::wstring w(text.begin(), text.end());
 
         if (!WritePrivateProfileStringW(Def(i).section, Def(i).key, w.c_str(), iniPath)) {
             const DWORD e = GetLastError();
 
-            Rs7Log("overlay: saving [%ls] %ls failed: %ls (%lu)", Def(i).section, Def(i).key, ErrorText(e).c_str(), e);
+            RsxrLog("overlay: saving [%ls] %ls failed: %ls (%lu)", Def(i).section, Def(i).key, ErrorText(e).c_str(), e);
             return -1;
         }
 
@@ -607,22 +607,22 @@ int Rs7Set_Save(const wchar_t* iniPath) {
     return written;
 }
 
-bool Rs7Set_Bool(const char* id) {
+bool RsxrSet_Bool(const char* id) {
     return Val(id).i != 0;
 }
 
-int Rs7Set_Int(const char* id) {
+int RsxrSet_Int(const char* id) {
     return Val(id).i;
 }
 
-float Rs7Set_Float(const char* id) {
+float RsxrSet_Float(const char* id) {
     return Val(id).f[0];
 }
 
-uint32_t Rs7Set_Rgb(const char* id) {
+uint32_t RsxrSet_Rgb(const char* id) {
     return Val(id).rgb;
 }
 
-const char* Rs7Set_Text(const char* id) {
+const char* RsxrSet_Text(const char* id) {
     return Val(id).text;
 }

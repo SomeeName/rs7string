@@ -1,16 +1,26 @@
-// libFuzzer entry points: the target named by RS7_FUZZ_TARGET (fuzz.h).
+// libFuzzer entry points: the target named by RSXR_FUZZ_TARGET (fuzz.h).
 #include "fuzz.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-namespace rs7fuzz {
+namespace rsxrfuzz {
 const Target kTargets[] = {
-    {"rs7x", Rs7x, Rs7xSeeds},       {"settings", Settings, SettingsSeeds}, {"ini", Ini, IniSeeds},
-    {"text", Text, TextSeeds},       {"package", Package, NoSeeds},         {"nif", Nif, NoSeeds},
-    {"dds", Dds, DdsSeeds},          {"recipe", Recipe, RecipeSeeds},       {"nslot", Nslot, NslotSeeds},
-    {"plain", Plain, PlainSeeds},    {"pattern", Pattern, PatternSeeds},    {"tuningname", TuningName, TuningNameSeeds},
+    {"extblock", Extblock, ExtblockSeeds},
+    {"settings", Settings, SettingsSeeds},
+    {"ini", Ini, IniSeeds},
+    {"text", Text, TextSeeds},
+    {"package", Package, NoSeeds},
+    {"nif", Nif, NoSeeds},
+    {"dds", Dds, DdsSeeds},
+    {"recipe", Recipe, RecipeSeeds},
+    {"nslot", Nslot, NslotSeeds},
+    {"plain", Plain, PlainSeeds},
+    {"pattern", Pattern, PatternSeeds},
+    {"tuningname", TuningName, TuningNameSeeds},
     {"redact", Redact, RedactSeeds},
+    {"nativesng", NativeSng, NativeSngSeeds},
+    {"nativemanifest", NativeManifest, NativeManifestSeeds},
 };
 const size_t kTargetCount = sizeof kTargets / sizeof kTargets[0];
 
@@ -37,13 +47,13 @@ std::wstring Widen(const uint8_t* d, size_t n) {
 Seeds NoSeeds() {
     return {};
 }
-}  // namespace rs7fuzz
+}  // namespace rsxrfuzz
 
 namespace {
-const rs7fuzz::Target* g_target = nullptr;
+const rsxrfuzz::Target* g_target = nullptr;
 
-void WriteSeeds(const rs7fuzz::Target& t, const char* dir) {
-    const rs7fuzz::Seeds seeds = t.seeds();
+void WriteSeeds(const rsxrfuzz::Target& t, const char* dir) {
+    const rsxrfuzz::Seeds seeds = t.seeds();
 
     for (size_t i = 0; i < seeds.size(); ++i) {
         char path[512];
@@ -70,26 +80,26 @@ void WriteSeeds(const rs7fuzz::Target& t, const char* dir) {
 }  // namespace
 
 extern "C" int LLVMFuzzerInitialize(int*, char***) {
-    const char* name = std::getenv("RS7_FUZZ_TARGET");
+    const char* name = std::getenv("RSXR_FUZZ_TARGET");
 
-    for (size_t i = 0; name && i < rs7fuzz::kTargetCount; ++i) {
-        if (!std::strcmp(name, rs7fuzz::kTargets[i].name)) {
-            g_target = &rs7fuzz::kTargets[i];
+    for (size_t i = 0; name && i < rsxrfuzz::kTargetCount; ++i) {
+        if (!std::strcmp(name, rsxrfuzz::kTargets[i].name)) {
+            g_target = &rsxrfuzz::kTargets[i];
         }
     }
 
     if (!g_target) {
-        std::fprintf(stderr, "set RS7_FUZZ_TARGET to one of:");
+        std::fprintf(stderr, "set RSXR_FUZZ_TARGET to one of:");
 
-        for (size_t i = 0; i < rs7fuzz::kTargetCount; ++i) {
-            std::fprintf(stderr, " %s", rs7fuzz::kTargets[i].name);
+        for (size_t i = 0; i < rsxrfuzz::kTargetCount; ++i) {
+            std::fprintf(stderr, " %s", rsxrfuzz::kTargets[i].name);
         }
 
         std::fprintf(stderr, "\n");
         std::exit(2);
     }
 
-    if (const char* dir = std::getenv("RS7_FUZZ_SEEDS")) {
+    if (const char* dir = std::getenv("RSXR_FUZZ_SEEDS")) {
         WriteSeeds(*g_target, dir);
         std::exit(0);
     }

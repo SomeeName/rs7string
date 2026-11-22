@@ -7,6 +7,9 @@ EIP (which exit was taken), x87 state, XMM0/XMM7, the live stack (from the final
 page, every other machine write (address and final byte), exported setting variables, and the
 complete input of every helper call (arguments, memory the arguments point at, call order).
 
+One edit since: the object-marker immediates the frozen GSZ1, GSSS, GSSE and GRM2 stubs compare against carry the
+present values (strings.h kMarker, kMagic), which changed after those commits.
+
 Only code emitted by this repository is frozen; no game bytes are stored. The game image is used
 only for the displaced instruction bytes of a site, as in the existing emulator tests.
 """
@@ -79,7 +82,7 @@ FIXTURES = (
     "midhook_72da588.json",
     "midhook_fdfddcf.json",
     "midhook_304b9d3.json",  # the call-in helpers (callin_oracle.py)
-    "midhook_06733ba.json",  # Rs7_Call_GlowRead (callin_oracle.py)
+    "midhook_06733ba.json",  # Rsxr_Call_GlowRead (callin_oracle.py)
     *private_features.get("FIXTURES", ()),  # the private extras (tools/private_features.py)
 )
 FROZEN = {
@@ -98,8 +101,8 @@ OLD_AT, NEW_AT, SOURCE_AT, ARGS_AT, HELPER_AT = (
 SLOT_AT = DATA + 0x9000  # resume/target slots of the frozen stubs
 # Switches the frozen stubs read that the DLL no longer exports (retired in 1.0 with the legacy paths): the frozen code
 # reads a slot holding the only value the switch can still have, so it is compared in the configuration that remains.
-# g_rs7_wrong_stock: the old W stub's copy of the game's 34.0f (W now reads the game's constant, ref site X_WTHR).
-RETIRED_WORDS = {"g_rs7_tuner_on": 1, "g_rs7_wrong_stock": 0x42080000}  # [tuner] seven_slot: always on
+# g_rsxr_wrong_stock: the old W stub's copy of the game's 34.0f (W now reads the game's constant, ref site X_WTHR).
+RETIRED_WORDS = {"g_rsxr_tuner_on": 1, "g_rsxr_wrong_stock": 0x42080000}  # [tuner] seven_slot: always on
 ESP, EBP = STACK + 0x80000, STACK + 0x81000
 LIVE_ABOVE = 640  # bytes above the original ESP that are compared
 ARITH = 0x8D5  # CF PF AF ZF SF OF
@@ -161,7 +164,7 @@ class Spec:
     words: dict = field(default_factory=dict)  # exported variable -> dword reset before every run
     setup_mem: dict = field(default_factory=dict)
     extra_cmp: tuple = ()  # (address | Sym, size): memory ranges compared in addition
-    # A call site (Rs7Mid_BuildCall): both runs start at the callee's entry, so a case puts the return address (site + 5)
+    # A call site (RsxrMid_BuildCall): both runs start at the callee's entry, so a case puts the return address (site + 5)
     # at stack offset 0; length is 5 and "target" (the callee) is the Before placement's exit.
     call: bool = False
     # A call site whose old stub was a jmp over `lead` bytes of game code before the call too (GSA1: `push 40h; call`):
@@ -173,12 +176,12 @@ class Spec:
     clobbers: tuple = ()
     # exports the new hook calls but the old stub did not (a log-once diagnostic): replaced by `ret`, not recorded
     quiet: tuple = ()
-    # the frozen old stub, when it is not Rs7_Stub_<sid> (one stub served several sites: Rs7_Publish_ZeroRaw)
+    # the frozen old stub, when it is not Rsxr_Stub_<sid> (one stub served several sites: Rsxr_Publish_ZeroRaw)
     stub: str = ""
 
     @property
     def old_stub(self) -> str:
-        return self.stub or "Rs7_Stub_" + self.sid
+        return self.stub or "Rsxr_Stub_" + self.sid
 
 
 @dataclass
@@ -255,7 +258,7 @@ def place_frozen(emu: Emu, name: str, at: int, helpers_at: dict, slots: dict) ->
         sym = fx["symbol"]
         if sym.startswith("@") or (sym in helpers_at and sym not in emu.exports):  # a frozen (or retired) function
             target = helpers_at[sym.lstrip("@")] + fx["addend"]
-        elif sym.startswith(("g_rs7_resume_", "g_rs7_target_")) or sym in RETIRED_WORDS:
+        elif sym.startswith(("g_rsxr_resume_", "g_rsxr_target_")) or sym in RETIRED_WORDS:
             target = slots[sym] + fx["addend"]
         else:
             target = emu.exports[sym] + fx["addend"]
@@ -266,17 +269,17 @@ def place_frozen(emu: Emu, name: str, at: int, helpers_at: dict, slots: dict) ->
 
 
 def build_new(emu: Emu, sid: str, va: int, n: int, callee: int | None = None) -> int:
-    callback = emu.exports[MID_CALLBACKS.get(sid, "Rs7_Mid_" + sid)]
+    callback = emu.exports[MID_CALLBACKS.get(sid, "Rsxr_Mid_" + sid)]
     if sid in CALL_WRAP:
         emu.uc.mem_write(SOURCE_AT, game_text()[va - TEXT_VA : va - TEXT_VA + n])
         args = [
             CODE + 0xE000,
             *wrap_builder_args(emu.exports, sid, va, callee, SOURCE_AT, NEW_AT, mid_mode(sid)),
         ]
-        builder = "Rs7Mid_BuildWrap"
+        builder = "RsxrMid_BuildWrap"
     elif callee is not None:  # call site
         args = [CODE + 0xE000, NEW_AT, 256, va, callee, NEW_AT, callback, mid_mode(sid), sid in CALL_AFTER]
-        builder = "Rs7Mid_BuildCall"
+        builder = "RsxrMid_BuildCall"
     else:
         emu.uc.mem_write(SOURCE_AT, game_text()[va - TEXT_VA : va - TEXT_VA + n])
         args = [CODE + 0xE000, NEW_AT, 256, SOURCE_AT, va, n, NEW_AT, callback]
@@ -386,13 +389,13 @@ class Machine:
             out |= {
                 f["symbol"]
                 for f in FROZEN[name]["fixups"]
-                if f["symbol"].startswith(("g_rs7_resume_", "g_rs7_target_")) or f["symbol"] in RETIRED_WORDS
+                if f["symbol"].startswith(("g_rsxr_resume_", "g_rsxr_target_")) or f["symbol"] in RETIRED_WORDS
             }
         return out
 
     def _frozen_helpers(self):
         """The frozen functions the old stub calls: its "@NAME" fixups, and functions the DLL no longer exports whose
-        frozen copy exists (Rs7_Pitch_Raw8, called by stubs frozen before it was retired)."""
+        frozen copy exists (Rsxr_Pitch_Raw8, called by stubs frozen before it was retired)."""
         blob = FROZEN.get(self.spec.old_stub, {"fixups": ()})
         out = set()
         for f in blob["fixups"]:
@@ -429,7 +432,7 @@ class Machine:
         return hook
 
     def _track(self, uc, access, address, size, value, user):
-        # The fake TEB is SEH bookkeeping (Rs7Mid_Guard's __try frame sets and restores fs:[0]), not a result.
+        # The fake TEB is SEH bookkeeping (RsxrMid_Guard's __try frame sets and restores fs:[0]), not a result.
         if not (STACK <= address < STACK + 0x100000 or TEB <= address < TEB + 0x1000):
             self.writes.update(range(address, address + size))
             for a, old in zip(range(address, address + size), bytes(uc.mem_read(address, size))):
@@ -469,11 +472,11 @@ class Machine:
                 RETIRED_WORDS[sym]
                 if sym in RETIRED_WORDS
                 else self.resume
-                if sym.startswith("g_rs7_resume_")
+                if sym.startswith("g_rsxr_resume_")
                 else self.target
             )
             uc.mem_write(slot, struct.pack("<I", value or 0))
-        for sym in (f"g_rs7_resume_{spec.sid}", f"g_rs7_target_{spec.sid}"):
+        for sym in (f"g_rsxr_resume_{spec.sid}", f"g_rsxr_target_{spec.sid}"):
             if sym in emu.exports:
                 value = self.resume if "resume" in sym else self.target
                 uc.mem_write(emu.exports[sym], struct.pack("<I", value or 0))
@@ -510,7 +513,7 @@ class Machine:
             xmm=(uc.reg_read(UC_X86_REG_XMM0), uc.reg_read(UC_X86_REG_XMM7)),
             # Bytes between the pushes and the final ESP are uninitialised locals (`sub esp,N`) and the
             # dead scratch below the live stack: neither the stock code nor the hook ABI defines them. At a call
-            # site whose callee is skipped (Rs7Mid::Return), the popped return address and arguments are dead too; so
+            # site whose callee is skipped (RsxrMid::Return), the popped return address and arguments are dead too; so
             # is everything below the final ESP of an exit that pops (a `ret N`, an epilogue).
             stack=emu.read(
                 live := max(esp if spec.call else esp - spec.pushed, final_esp), max(0, esp + LIVE_ABOVE - live)

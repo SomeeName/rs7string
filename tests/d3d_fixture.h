@@ -9,18 +9,18 @@
 
 // Real D3D9 devices for test_d3d_*.cpp / test_gpu.cpp: a hidden window, windowed HAL with software vertex
 // processing (REF if HAL fails). FPU_PRESERVE keeps the process's x87 precision for the other tests.
-namespace rs7d3d {
+namespace rsxrd3d {
 inline HWND Window() {
     static HWND w = [] {
         WNDCLASSW wc{};
 
         wc.lpfnWndProc = DefWindowProcW;
         wc.hInstance = GetModuleHandleW(nullptr);
-        wc.lpszClassName = L"rs7string_tests";
+        wc.lpszClassName = L"rsxr_tests";
         RegisterClassW(&wc);
 
-        return CreateWindowExW(0, wc.lpszClassName, L"rs7string tests", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64, nullptr,
-                               nullptr, wc.hInstance, nullptr);
+        return CreateWindowExW(0, wc.lpszClassName, L"rsxr tests", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64, nullptr, nullptr,
+                               wc.hInstance, nullptr);
     }();
 
     return w;
@@ -88,13 +88,13 @@ inline bool Have(const Device& d) {
         return true;
     }
 
-    rs7test::Skip("no D3D9 device");
+    rsxrtest::Skip("no D3D9 device");
 
     return false;
 }
 
 // A texture with `lv`'s level sizes; MANAGED/SYSTEMMEM levels filled from lv (32-bit formats).
-inline IDirect3DTexture9* MakeTex(IDirect3DDevice9* dev, const std::vector<Rs7Image>& lv,
+inline IDirect3DTexture9* MakeTex(IDirect3DDevice9* dev, const std::vector<RsxrImage>& lv,
                                   D3DFORMAT fmt = D3DFMT_X8R8G8B8, D3DPOOL pool = D3DPOOL_MANAGED) {
     IDirect3DTexture9* t = nullptr;
     if (FAILED(dev->CreateTexture(lv[0].w, lv[0].h, UINT(lv.size()), 0, fmt, pool, &t, nullptr))) {
@@ -110,7 +110,7 @@ inline IDirect3DTexture9* MakeTex(IDirect3DDevice9* dev, const std::vector<Rs7Im
             continue;
         }
 
-        auto* dst = static_cast<uint8_t*>(rs7test::Must(lr.pBits, "LockRect bits"));
+        auto* dst = static_cast<uint8_t*>(rsxrtest::Must(lr.pBits, "LockRect bits"));
 
         for (unsigned y = 0; y < lv[k].h; ++y) {
             std::memcpy(dst + size_t(y) * lr.Pitch, &lv[k].px[size_t(y) * lv[k].w], size_t(lv[k].w) * 4);
@@ -123,8 +123,8 @@ inline IDirect3DTexture9* MakeTex(IDirect3DDevice9* dev, const std::vector<Rs7Im
 }
 
 // All levels of a 32-bit texture (empty on failure).
-inline std::vector<Rs7Image> ReadTex(IDirect3DTexture9* t) {
-    std::vector<Rs7Image> v;
+inline std::vector<RsxrImage> ReadTex(IDirect3DTexture9* t) {
+    std::vector<RsxrImage> v;
 
     for (UINT k = 0; k < t->GetLevelCount(); ++k) {
         D3DSURFACE_DESC d{};
@@ -133,7 +133,7 @@ inline std::vector<Rs7Image> ReadTex(IDirect3DTexture9* t) {
             return {};
         }
 
-        Rs7Image im;
+        RsxrImage im;
 
         im.w = d.Width;
         im.h = d.Height;
@@ -151,7 +151,7 @@ inline std::vector<Rs7Image> ReadTex(IDirect3DTexture9* t) {
     return v;
 }
 
-inline bool SameImages(const std::vector<Rs7Image>& a, const std::vector<Rs7Image>& b) {
+inline bool SameImages(const std::vector<RsxrImage>& a, const std::vector<RsxrImage>& b) {
     if (a.size() != b.size()) {
         return false;
     }
@@ -164,4 +164,4 @@ inline bool SameImages(const std::vector<Rs7Image>& a, const std::vector<Rs7Imag
 
     return true;
 }
-}  // namespace rs7d3d
+}  // namespace rsxrd3d

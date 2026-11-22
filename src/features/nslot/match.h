@@ -5,22 +5,22 @@
 // Native N-slot chord matcher. Play_Matcher_DetectChord 0x4E7B30 (stdcall
 // (matcher, int32 targets[], tolerance, history index), AL = matched) takes eight targets: every caller
 // hands it an int32[8] (strings 0-7, -1 = none; nslot.h). MD1 (its entry) calls
-// Rs7Ns_DetectChord:
+// RsxrNs_DetectChord:
 //  - at most six non-negative targets: they are compacted (order kept, the -1 holes dropped) into
 //    out6 and the stock body runs on them (returns -1). Dropping holes changes nothing the stock
 //    algorithm looks at (dedupe, active count, lowest target, subharmonic rows, OctaveDyad), so these
 //    chords are judged bit for bit as before;
-//  - seven or eight: rs7match::MatchN, the stock algorithm over n targets (returns 0/1);
+//  - seven or eight: rsxrmatch::MatchN, the stock algorithm over n targets (returns 0/1);
 //  - a LowChord (two or three notes, the lowest below E1): the port too, its lowest note matching on
 //    its fundamental or its octave (stock: fundamental only; returns 0/1).
 // docs/ARCHITECTURE.md has the port's derivation.
-extern "C" __declspec(dllexport) int __cdecl Rs7Ns_DetectChord(const uint8_t* matcher, const int32_t* in8, int tol,
-                                                               int hist, int32_t* out6);
+extern "C" __declspec(dllexport) int __cdecl RsxrNs_DetectChord(const uint8_t* matcher, const int32_t* in8, int tol,
+                                                                int hist, int32_t* out6);
 
-namespace rs7match {
+namespace rsxrmatch {
 constexpr int kMaxTargets = 8;
 
-// Addresses bound by Rs7_Startup from sites.json (X_MSORT, X_MINS1, X_MINS2: the std::sort pieces the
+// Addresses bound by Rsxr_Startup from sites.json (X_MSORT, X_MINS1, X_MINS2: the std::sort pieces the
 // stock matcher calls; X_MCMP: its comparator; X_MTAB: the subharmonic table 0x119A398).
 struct Game {
     uintptr_t sort = 0, ins1 = 0, ins2 = 0, cmp = 0, table = 0;
@@ -48,11 +48,11 @@ constexpr int kTableRows = 72;
 // The table row of `midi`, or null outside the table (the stock matcher indexes it unchecked; a very low extra
 // string fails closed: its target has no row and is never found).
 const int32_t* TableRow(uintptr_t table, int32_t midi);
-}  // namespace rs7match
+}  // namespace rsxrmatch
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_fn_msort, g_rs7_fn_mins1, g_rs7_fn_mins2, g_rs7_fn_mcmp,
-    g_rs7_matcher_table;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_fn_msort, g_rsxr_fn_mins1, g_rsxr_fn_mins2, g_rsxr_fn_mcmp,
+    g_rsxr_matcher_table;
 // The port over n targets with the bound game addresses, no SEH frame (emulator tests compare it with
 // the stock 0x4E7B30).
-extern "C" __declspec(dllexport) int __cdecl Rs7Ns_MatchPort(const uint8_t* matcher, const int32_t* in, int n, int tol,
-                                                             int hist);
+extern "C" __declspec(dllexport) int __cdecl RsxrNs_MatchPort(const uint8_t* matcher, const int32_t* in, int n, int tol,
+                                                              int hist);

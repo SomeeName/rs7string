@@ -18,8 +18,8 @@
 // dispatch that picks the copy or the stock code (trampoline) per call.
 
 namespace {
-using rs7tuner::g_state;
-using rs7tuner::UncheckedRead;
+using rsxrtuner::g_state;
+using rsxrtuner::UncheckedRead;
 
 // ---- the session copies (tools/gen_tuner8s.py) ----
 struct Tu8Rel {
@@ -41,7 +41,7 @@ struct Tu8Spec {
 // Synthetic targets of the generated code, in the generator's SYMS order.
 constexpr uintptr_t kTu8Sym = 0x70000000;
 #include "features/tuner/tuner8s.generated.h"
-static_assert(kTu8SpecCount == rs7tuner::kSessionCopies, "state.h sizes the copy tables from tuner8s_ids");
+static_assert(kTu8SpecCount == rsxrtuner::kSessionCopies, "state.h sizes the copy tables from tuner8s_ids");
 
 constexpr uintptr_t kTu8CopyBase = 0x40;  // kTu8Sym + 40h + index: the copy of spec `index`
 
@@ -52,15 +52,15 @@ uintptr_t SymAddress(uintptr_t t) {
 
     switch (t - kTu8Sym) {
         case 0:
-            return g_rs7_callin_Tu8Advance.Entry();
+            return g_rsxr_callin_Tu8Advance.Entry();
         case 1:
-            return reinterpret_cast<uintptr_t>(&Rs7Tu8_OnSelect);
+            return reinterpret_cast<uintptr_t>(&RsxrTu8_OnSelect);
         case 2:
-            return g_rs7_callin_Tu8First.Entry();
+            return g_rsxr_callin_Tu8First.Entry();
         case 3:
-            return reinterpret_cast<uintptr_t>(&g_rs7_tu8_labels[0]);
+            return reinterpret_cast<uintptr_t>(&g_rsxr_tu8_labels[0]);
         case 4:
-            return reinterpret_cast<uintptr_t>(&Rs7Asset_LetterInline);
+            return reinterpret_cast<uintptr_t>(&RsxrAsset_LetterInline);
         default:
             return 0;
     }
@@ -68,58 +68,58 @@ uintptr_t SymAddress(uintptr_t t) {
 }  // namespace
 
 // ---- entry dispatch ----
-extern "C" int __cdecl Rs7Tuner8_Use(uint32_t kind, uint8_t* reg) {
+extern "C" int __cdecl RsxrTuner8_Use(uint32_t kind, uint8_t* reg) {
     // Installed readers follow the owned GuitarStrings layout even after runtime isolation.
     if (kind >= 3 || !reg) {
         return 0;
     }
 
     __try {
-        uint8_t* guitar = UncheckedRead<uint8_t*>(reg, kind == 2 ? rs7::kSessionGuitar : rs7tu::kGuitar);
+        uint8_t* guitar = UncheckedRead<uint8_t*>(reg, kind == 2 ? rsxr::kSessionGuitar : rsxrtu::kGuitar);
         if (!guitar) {
             return 0;
         }
 
-        uint8_t* gsObj = UncheckedRead<uint8_t*>(guitar, rs7::kGuitarStrings);
-        if (!rs7gs::IsNative(gsObj)) {
+        uint8_t* gsObj = UncheckedRead<uint8_t*>(guitar, rsxr::kGuitarStrings);
+        if (!rsxrgs::IsNative(gsObj)) {
             return 0;
         }
 
-        uint8_t* info = UncheckedRead<uint8_t*>(guitar, rs7::kGuitarInfo);
+        uint8_t* info = UncheckedRead<uint8_t*>(guitar, rsxr::kGuitarInfo);
         uint8_t* owner = UncheckedRead<uint8_t*>(gsObj, 0);
-        if (!info || !owner || UncheckedRead<uint8_t*>(owner, rs7::kGuitarInfo) != info ||
-            UncheckedRead<uint8_t*>(gsObj, rs7gs::kInfo) != info ||
-            UncheckedRead<uint8_t*>(gsObj, rs7gs::kGuitar) != guitar ||
-            UncheckedRead<uint32_t>(info, rs7gs::kInfoMagicOff) != rs7gs::kInfoMagic) {
+        if (!info || !owner || UncheckedRead<uint8_t*>(owner, rsxr::kGuitarInfo) != info ||
+            UncheckedRead<uint8_t*>(gsObj, rsxrgs::kInfo) != info ||
+            UncheckedRead<uint8_t*>(gsObj, rsxrgs::kGuitar) != guitar ||
+            UncheckedRead<uint32_t>(info, rsxrgs::kInfoMagicOff) != rsxrgs::kInfoMagic) {
             return 0;
         }
 
-        const unsigned active = info[rs7gs::kInfoActive], loaded = info[rs7gs::kInfoLoaded];
-        if (!active || active > loaded || loaded > rs7gs::kCapacity) {
+        const unsigned active = info[rsxrgs::kInfoActive], loaded = info[rsxrgs::kInfoLoaded];
+        if (!active || active > loaded || loaded > rsxrgs::kCapacity) {
             return 0;
         }
 
         for (unsigned s = 0; s < active; ++s) {
-            if (!rs7gs::Child(gsObj, int(s), false)) {
+            if (!rsxrgs::Child(gsObj, int(s), false)) {
                 return 0;
             }
         }
 
         return 1;
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return 0;
     }
 }
 
-extern "C" uintptr_t __cdecl Rs7Tuner8_Target(uint32_t kind, uint8_t* reg) {
+extern "C" uintptr_t __cdecl RsxrTuner8_Target(uint32_t kind, uint8_t* reg) {
     if (kind >= 3) {
         return 0;  // entry stubs only pass constants 0..2
     }
 
-    return g_state.readerCopy[kind] && Rs7Tuner8_Use(kind, reg) ? g_state.readerCopy[kind] : g_state.readerTramp[kind];
+    return g_state.readerCopy[kind] && RsxrTuner8_Use(kind, reg) ? g_state.readerCopy[kind] : g_state.readerTramp[kind];
 }
 
-extern "C" uintptr_t __cdecl Rs7Tuner8_SessTarget(uint32_t index, const uint32_t* regs) {
+extern "C" uintptr_t __cdecl RsxrTuner8_SessTarget(uint32_t index, const uint32_t* regs) {
     if (index >= uint32_t(kTu8SpecCount)) {
         return 0;
     }
@@ -160,15 +160,15 @@ extern "C" uintptr_t __cdecl Rs7Tuner8_SessTarget(uint32_t index, const uint32_t
 
     // A stock session on a guitar built with 7/8 strings (a 6-string target, or one TS never made
     // native) runs the native copy too; the stock method would index its six-slot arrays with string 6.
-    if (g_state.sessCopy[index] && !Rs7Tuner8_IsNative(session) && Rs7Tuner8_HasSession(session)) {
-        Rs7Tuner8_EnsureNative(const_cast<uint8_t*>(session), kTu8Specs[index].id);
+    if (g_state.sessCopy[index] && !RsxrTuner8_IsNative(session) && RsxrTuner8_HasSession(session)) {
+        RsxrTuner8_EnsureNative(const_cast<uint8_t*>(session), kTu8Specs[index].id);
     }
-    if (!g_state.sessCopy[index] || !Rs7Tuner8_IsNative(session)) {
+    if (!g_state.sessCopy[index] || !RsxrTuner8_IsNative(session)) {
         return g_state.sessTramp[index];
     }
 
     if (index == 0) {
-        rs7tuner::SetLabels(session);  // TS8SEL: the precision tuner's labels of this session's strings
+        rsxrtuner::SetLabels(session);  // TS8SEL: the precision tuner's labels of this session's strings
     }
 
     // C-lite: the guitar already has the extra strings (built with them at song selection); the tuner
@@ -183,8 +183,8 @@ bool AllocSessionCopies() {
     for (int k = 0; k < kTu8SpecCount; ++k) {
         const Tu8Spec& s = kTu8Specs[k];
 
-        if (Rs7Fn_Fnv(reinterpret_cast<const uint8_t*>(s.va), s.stockLen) != s.hash) {
-            Rs7Log("tuner8: %s bytes at %08X differ from the generated copy - native_tuner off", s.id, unsigned(s.va));
+        if (RsxrFn_Fnv(reinterpret_cast<const uint8_t*>(s.va), s.stockLen) != s.hash) {
+            RsxrLog("tuner8: %s bytes at %08X differ from the generated copy - native_tuner off", s.id, unsigned(s.va));
             return false;
         }
 
@@ -257,13 +257,13 @@ void ReleaseSessionCopies() {
 }
 }  // namespace
 
-bool Rs7Tuner8_BuildCopies() {
-    for (int i = 0; i < kRs7FnSpecCount; ++i) {
-        const auto& sp = kRs7FnSpecs[i];
+bool RsxrTuner8_BuildCopies() {
+    for (int i = 0; i < kRsxrFnSpecCount; ++i) {
+        const auto& sp = kRsxrFnSpecs[i];
         char why[160]{};
 
-        if (!Rs7Fn_Build(sp, sp.va, &g_state.readerCopy[i], &g_state.readerTramp[i], why, sizeof why)) {
-            Rs7Log("tuner8: %s - native_tuner off", why);
+        if (!RsxrFn_Build(sp, sp.va, &g_state.readerCopy[i], &g_state.readerTramp[i], why, sizeof why)) {
+            RsxrLog("tuner8: %s - native_tuner off", why);
 
             for (int k = 0; k < 3; ++k) {
                 g_state.readerCopy[k] = g_state.readerTramp[k] = 0;
@@ -290,37 +290,38 @@ bool Rs7Tuner8_BuildCopies() {
         const uintptr_t* stock = reinterpret_cast<const uintptr_t*>(0x12E8644);
 
         for (int s = 0; s < 6; ++s) {
-            g_rs7_tu8_labels[s] = stock[s];
+            g_rsxr_tu8_labels[s] = stock[s];
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         ReleaseSessionCopies();
         return false;
     }
 
-    Rs7Log("tuner8: %d GuitarStrings reader copies and %d session method copies built", kRs7FnSpecCount, kTu8SpecCount);
+    RsxrLog("tuner8: %d GuitarStrings reader copies and %d session method copies built", kRsxrFnSpecCount,
+            kTu8SpecCount);
 
     return true;
 }
 
-void Rs7Tuner8_Prepare() {
-    if (g_rs7_native_tuner && (!g_rs7_native_strings || !g_rs7_native_fretgrid || !g_rs7_native_colours)) {
-        Rs7Log("tuner8: native_tuner OFF - needs the native strings, FretGrid and colours (now %d %d %d)",
-               int(g_rs7_native_strings), int(g_rs7_native_fretgrid), int(g_rs7_native_colours));
-        g_rs7_native_tuner = 0;
+void RsxrTuner8_Prepare() {
+    if (g_rsxr_native_tuner && (!g_rsxr_native_strings || !g_rsxr_native_fretgrid || !g_rsxr_native_colours)) {
+        RsxrLog("tuner8: native_tuner OFF - needs the native strings, FretGrid and colours (now %d %d %d)",
+                int(g_rsxr_native_strings), int(g_rsxr_native_fretgrid), int(g_rsxr_native_colours));
+        g_rsxr_native_tuner = 0;
     }
 
-    if (g_rs7_native_tuner && !Rs7Tuner8_BuildCopies()) {
-        g_rs7_native_tuner = 0;
+    if (g_rsxr_native_tuner && !RsxrTuner8_BuildCopies()) {
+        g_rsxr_native_tuner = 0;
     }
 }
 
-void Rs7Tuner8_ApplySkip(const std::string& skip) {
-    if (g_rs7_native_tuner && (skip.find(",TU8") != std::string::npos || skip.find(",TS8") != std::string::npos)) {
-        g_rs7_native_tuner = 0;
-        Rs7Log("tuner8: a native tuner site was skipped - native_tuner off");
+void RsxrTuner8_ApplySkip(const std::string& skip) {
+    if (g_rsxr_native_tuner && (skip.find(",TU8") != std::string::npos || skip.find(",TS8") != std::string::npos)) {
+        g_rsxr_native_tuner = 0;
+        RsxrLog("tuner8: a native tuner site was skipped - native_tuner off");
     }
 
-    if (g_rs7_native_tuner) {
-        Rs7Log("tuner8: native_tuner ON - native 8-slot tuner sessions");
+    if (g_rsxr_native_tuner) {
+        RsxrLog("tuner8: native_tuner ON - native 8-slot tuner sessions");
     }
 }

@@ -1,4 +1,4 @@
-// The groups' failure state, the unit cascade and the write conditions (hook_rules.h): which site Rs7_Startup
+// The groups' failure state, the unit cascade and the write conditions (hook_rules.h): which site Rsxr_Startup
 // writes, given the features' switches.
 #include "hook_rules.h"
 #include "features/chords/chords.h"
@@ -21,33 +21,33 @@
 #include "model/gates.h"
 
 namespace {
-bool g_featureOff[size_t(Rs7Feature::Count)] = {};
+bool g_featureOff[size_t(RsxrFeature::Count)] = {};
 
 // The runtime switches a group's failure clears (read by its stubs / callbacks); a group without a row has none.
 struct GroupSwitches {
-    Rs7Feature group;
+    RsxrFeature group;
     uintptr_t* a;
     uintptr_t* b;  // or nullptr
 };
 
 const GroupSwitches kGroupSwitches[] = {
-    {Rs7Feature::Colours, &g_rs7_native_colours, nullptr},
-    {Rs7Feature::Pegs, &g_rs7_native_pegset, nullptr},
-    {Rs7Feature::Strings, &g_rs7_native_strings, nullptr},
-    {Rs7Feature::Fretgrid, &g_rs7_native_fretgrid, nullptr},
-    {Rs7Feature::Pitch, &g_rs7_native_pitch, nullptr},
-    {Rs7Feature::Nextgrid, &g_rs7_native_nextgrid, nullptr},
-    {Rs7Feature::Diagrams, &g_rs7_diagrams, nullptr},
-    {Rs7Feature::Publish, &g_rs7_publish_ports, &g_rs7_native_publish},
-    {Rs7Feature::Chords, &g_rs7_native_chordloops, nullptr},
-    {Rs7Feature::Tuner, &g_rs7_native_tuner, nullptr},
-    {Rs7Feature::Clite, &g_rs7_clite, nullptr},
-    {Rs7Feature::Glow, &g_rs7_glow_fix, nullptr},
-    {Rs7Feature::MenuLoad, &g_rs7_menu_retry, nullptr},
+    {RsxrFeature::Colours, &g_rsxr_native_colours, nullptr},
+    {RsxrFeature::Pegs, &g_rsxr_native_pegset, nullptr},
+    {RsxrFeature::Strings, &g_rsxr_native_strings, nullptr},
+    {RsxrFeature::Fretgrid, &g_rsxr_native_fretgrid, nullptr},
+    {RsxrFeature::Pitch, &g_rsxr_native_pitch, nullptr},
+    {RsxrFeature::Nextgrid, &g_rsxr_native_nextgrid, nullptr},
+    {RsxrFeature::Diagrams, &g_rsxr_diagrams, nullptr},
+    {RsxrFeature::Publish, &g_rsxr_publish_ports, &g_rsxr_native_publish},
+    {RsxrFeature::Chords, &g_rsxr_native_chordloops, nullptr},
+    {RsxrFeature::Tuner, &g_rsxr_native_tuner, nullptr},
+    {RsxrFeature::Clite, &g_rsxr_clite, nullptr},
+    {RsxrFeature::Glow, &g_rsxr_glow_fix, nullptr},
+    {RsxrFeature::MenuLoad, &g_rsxr_menu_retry, nullptr},
 };
 
 // Marks one group failed and clears its switches (no cascade).
-void MarkOff(Rs7Feature f) {
+void MarkOff(RsxrFeature f) {
     g_featureOff[size_t(f)] = true;
 
     for (const GroupSwitches& g : kGroupSwitches) {
@@ -64,18 +64,18 @@ void MarkOff(Rs7Feature f) {
 }
 }  // namespace
 
-bool Rs7_FeatureDisabled(Rs7Feature f) {
-    return size_t(f) < size_t(Rs7Feature::Count) && g_featureOff[size_t(f)];
+bool Rsxr_FeatureDisabled(RsxrFeature f) {
+    return size_t(f) < size_t(RsxrFeature::Count) && g_featureOff[size_t(f)];
 }
 
-void Rs7_ResetFeatureFailures() {
+void Rsxr_ResetFeatureFailures() {
     for (auto& b : g_featureOff) {
         b = false;
     }
 }
 
-bool Rs7_DisableFeature(Rs7Feature f) {
-    if (f == Rs7Feature::Core || size_t(f) >= size_t(Rs7Feature::Count)) {
+bool Rsxr_DisableFeature(RsxrFeature f) {
+    if (f == RsxrFeature::Core || size_t(f) >= size_t(RsxrFeature::Count)) {
         return false;
     }
 
@@ -83,50 +83,50 @@ bool Rs7_DisableFeature(Rs7Feature f) {
 
     // Native 7-string mode is both halves: C-lite (the guitar is built with the count) and the native_publish
     // ports (the layouts that can show it). One half failing takes the other with it: a half cannot stand alone.
-    if (f == Rs7Feature::Clite && g_rs7_publish_ports) {
-        MarkOff(Rs7Feature::Publish);
+    if (f == RsxrFeature::Clite && g_rsxr_publish_ports) {
+        MarkOff(RsxrFeature::Publish);
     }
 
-    if (f == Rs7Feature::Publish && g_rs7_clite) {
-        MarkOff(Rs7Feature::Clite);
+    if (f == RsxrFeature::Publish && g_rsxr_clite) {
+        MarkOff(RsxrFeature::Clite);
     }
 
     // The native tuner session carries copies of the GuitarStrings / FretGrid / colour edits: without any of them it
     // must go too (its switch only; the Tuner group itself stays).
-    if (!g_rs7_native_strings || !g_rs7_native_fretgrid || !g_rs7_native_colours) {
-        g_rs7_native_tuner = 0;
+    if (!g_rsxr_native_strings || !g_rsxr_native_fretgrid || !g_rsxr_native_colours) {
+        g_rsxr_native_tuner = 0;
     }
 
     // A guitar built with 7 needs the native PegSet: GKC writes peg request 7/8 and the stock
     // Rnd_PegSet_Load 0x59C4D0 would loop over it on the six-slot stock layout. Any loss of Pegs (startup config or a
     // runtime isolation after the initial configuration) takes clite and the ports with it before the next round.
-    if (!g_rs7_native_pegset && (g_rs7_clite || g_rs7_publish_ports)) {
-        MarkOff(Rs7Feature::Clite);
-        MarkOff(Rs7Feature::Publish);
+    if (!g_rsxr_native_pegset && (g_rsxr_clite || g_rsxr_publish_ports)) {
+        MarkOff(RsxrFeature::Clite);
+        MarkOff(RsxrFeature::Publish);
     }
 
     // A guitar built with 7 needs the native 8-slot tuner session (docs/ARCHITECTURE.md): the stock
     // session's per-string arrays have six slots and its loops run to info+0Bh. clite goes, and native_publish with it.
-    if (!g_rs7_native_tuner && g_rs7_clite) {
-        MarkOff(Rs7Feature::Clite);
+    if (!g_rsxr_native_tuner && g_rsxr_clite) {
+        MarkOff(RsxrFeature::Clite);
 
-        if (g_rs7_publish_ports) {
-            MarkOff(Rs7Feature::Publish);
+        if (g_rsxr_publish_ports) {
+            MarkOff(RsxrFeature::Publish);
         }
     }
 
-    // native_publish needs all five native layouts (rs7pub::PortsEnabled); chordloops needs native_strings.
-    if (g_rs7_publish_ports && (!g_rs7_native_strings || !g_rs7_native_fretgrid || !g_rs7_native_colours ||
-                                !g_rs7_native_pitch || !g_rs7_native_nextgrid)) {
-        MarkOff(Rs7Feature::Publish);
+    // native_publish needs all five native layouts (rsxrpub::PortsEnabled); chordloops needs native_strings.
+    if (g_rsxr_publish_ports && (!g_rsxr_native_strings || !g_rsxr_native_fretgrid || !g_rsxr_native_colours ||
+                                 !g_rsxr_native_pitch || !g_rsxr_native_nextgrid)) {
+        MarkOff(RsxrFeature::Publish);
 
-        if (g_rs7_clite) {  // ... and without the ports a guitar built with 7 strings has nothing to show it
-            MarkOff(Rs7Feature::Clite);
+        if (g_rsxr_clite) {  // ... and without the ports a guitar built with 7 strings has nothing to show it
+            MarkOff(RsxrFeature::Clite);
         }
     }
 
-    if (g_rs7_native_chordloops && !g_rs7_native_strings) {
-        MarkOff(Rs7Feature::Chords);
+    if (g_rsxr_native_chordloops && !g_rsxr_native_strings) {
+        MarkOff(RsxrFeature::Chords);
     }
 
     return true;
@@ -134,60 +134,60 @@ bool Rs7_DisableFeature(Rs7Feature f) {
 
 // Parameters are switches the tests vary; other switches are owned by their features. Every
 // write condition comes from registration metadata, so site renames do not alter patch selection.
-bool Rs7_ShouldPatch(const Rs7Hook& h, bool diagnostics, bool privateOn, bool nativePegs, bool nativeStrings) {
-    if (g_featureOff[size_t(Rs7_FeatureOf(h))]) {
+bool Rsxr_ShouldPatch(const RsxrHook& h, bool diagnostics, bool privateOn, bool nativePegs, bool nativeStrings) {
+    if (g_featureOff[size_t(Rsxr_FeatureOf(h))]) {
         return false;
     }
-    if ((h.gates & kRs7GateMenuLoad) && !g_rs7_menu_retry) {
+    if ((h.gates & kRsxrGateMenuLoad) && !g_rsxr_menu_retry) {
         return false;
     }
-    if ((h.gates & kRs7GateTuner) &&
-        (!g_rs7_native_tuner || !nativeStrings || !g_rs7_native_fretgrid || !g_rs7_native_colours)) {
+    if ((h.gates & kRsxrGateTuner) &&
+        (!g_rsxr_native_tuner || !nativeStrings || !g_rsxr_native_fretgrid || !g_rsxr_native_colours)) {
         return false;
     }
-    if ((h.gates & kRs7GatePublish) && !g_rs7_publish_ports) {
+    if ((h.gates & kRsxrGatePublish) && !g_rsxr_publish_ports) {
         return false;
     }
-    if ((h.gates & kRs7GateClite) && !g_rs7_clite) {
+    if ((h.gates & kRsxrGateClite) && !g_rsxr_clite) {
         return false;
     }
-    if ((h.gates & kRs7GateNoClite) && g_rs7_clite) {
+    if ((h.gates & kRsxrGateNoClite) && g_rsxr_clite) {
         return false;
     }
-    if ((h.gates & kRs7GatePublishTrace) && !g_rs7_publish_trace) {
+    if ((h.gates & kRsxrGatePublishTrace) && !g_rsxr_publish_trace) {
         return false;
     }
-    if ((h.gates & kRs7GateNoPublish) && g_rs7_publish_ports) {
+    if ((h.gates & kRsxrGateNoPublish) && g_rsxr_publish_ports) {
         return false;
     }
-    if ((h.gates & kRs7GateChordloops) && (!g_rs7_native_chordloops || !nativeStrings)) {
+    if ((h.gates & kRsxrGateChordloops) && (!g_rsxr_native_chordloops || !nativeStrings)) {
         return false;
     }
-    if ((h.gates & kRs7GateColours) && !g_rs7_native_colours) {
+    if ((h.gates & kRsxrGateColours) && !g_rsxr_native_colours) {
         return false;
     }
-    if ((h.gates & kRs7GateTestVariant) && !Rs7Variant_Get().Any()) {
+    if ((h.gates & kRsxrGateTestVariant) && !RsxrVariant_Get().Any()) {
         return false;
     }
-    if ((h.gates & kRs7GateGlow) && !g_rs7_glow_fix) {
+    if ((h.gates & kRsxrGateGlow) && !g_rsxr_glow_fix) {
         return false;
     }
-    if ((h.gates & kRs7GateDiagrams) && !g_rs7_diagrams) {
+    if ((h.gates & kRsxrGateDiagrams) && !g_rsxr_diagrams) {
         return false;
     }
-    if ((h.gates & kRs7GatePegs) && !nativePegs) {
+    if ((h.gates & kRsxrGatePegs) && !nativePegs) {
         return false;
     }
-    if ((h.gates & kRs7GateStrings) && !nativeStrings) {
+    if ((h.gates & kRsxrGateStrings) && !nativeStrings) {
         return false;
     }
-    if ((h.gates & kRs7GateFretgrid) && !g_rs7_native_fretgrid) {
+    if ((h.gates & kRsxrGateFretgrid) && !g_rsxr_native_fretgrid) {
         return false;
     }
-    if ((h.gates & kRs7GatePitch) && !g_rs7_native_pitch) {
+    if ((h.gates & kRsxrGatePitch) && !g_rsxr_native_pitch) {
         return false;
     }
-    if ((h.gates & kRs7GateNextgrid) && !g_rs7_native_nextgrid) {
+    if ((h.gates & kRsxrGateNextgrid) && !g_rsxr_native_nextgrid) {
         return false;
     }
 

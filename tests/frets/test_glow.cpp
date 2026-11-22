@@ -8,9 +8,9 @@
 #include <cstring>
 #include <vector>
 
-extern "C" void __cdecl Rs7_Mid_FRG1(Rs7Mid::Context& c);
-extern "C" void __cdecl Rs7_Mid_FRG2(Rs7Mid::Context& c);
-extern "C" void __cdecl Rs7_Mid_FRG3(Rs7Mid::Context& c);
+extern "C" void __cdecl Rsxr_Mid_FRG1(RsxrMid::Context& c);
+extern "C" void __cdecl Rsxr_Mid_FRG2(RsxrMid::Context& c);
+extern "C" void __cdecl Rsxr_Mid_FRG3(RsxrMid::Context& c);
 
 // FRG1 / FRG2 (features/frets/hooks.cpp): the fret range glow's bars are queued by FRG1 and scaled by FRG2 to span
 // all strings. With inverted strings the floor (the wires' b ends) lies on the extra strings' side; FRG1 then leaves
@@ -33,7 +33,7 @@ void __cdecl RecordScale(uint8_t* entity, float k) {
 // call RecordScale; add esp, 8; ret.
 uintptr_t FakeSetScale() {
     static uint8_t* code = [] {
-        auto* b = rs7test::Must(
+        auto* b = rsxrtest::Must(
             static_cast<uint8_t*>(VirtualAlloc(nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)),
             "VirtualAlloc");
         const uint8_t head[] = {0xFF, 0x74, 0x24, 0x04, 0x50, 0xE8};
@@ -69,17 +69,17 @@ uint32_t Addr(const void* p) {
 }  // namespace
 
 TEST(frets_glow_bars_are_queued_when_the_floor_is_already_shifted) {
-    rs7test::Restore restore_g_rs7_fn_setscale(g_rs7_fn_setscale);
+    rsxrtest::Restore restore_g_rsxr_fn_setscale(g_rsxr_fn_setscale);
 
-    g_rs7_fn_setscale = FakeSetScale();
+    g_rsxr_fn_setscale = FakeSetScale();
     g_scaleCalls = 0;
-    Rs7Frets_ResetLog();  // no glow bars queued from earlier tests
+    RsxrFrets_ResetLog();  // no glow bars queued from earlier tests
 
     alignas(4) uint8_t info[0x10] = {};
 
-    info[rs7::kInfoKind] = 1;     // guitar
-    info[rs7::kInfoStrings] = 7;  // built with 7 strings: one extra lane
-    info[rs7::kInfoFretBars] = 25;
+    info[rsxr::kInfoKind] = 1;     // guitar
+    info[rsxr::kInfoStrings] = 7;  // built with 7 strings: one extra lane
+    info[rsxr::kInfoFretBars] = 25;
     alignas(4) uint8_t o0[0x20] = {}, o1[0x20] = {}, gs[0x10] = {};
 
     PutVec(o0, 0x08, 0, 0, 0);  // string 0 attach (a0) and wire end (w0)
@@ -88,21 +88,21 @@ TEST(frets_glow_bars_are_queued_when_the_floor_is_already_shifted) {
     PutVec(o1, 0x14, 2, 0, 0);
     Put<uint8_t*>(gs, 4, o0);
     Put<uint8_t*>(gs, 8, o1);
-    std::vector<uint8_t> grid(rs7frets::kBars + 26 * rs7frets::kBarStride, 0);
-    uint8_t* bar0 = grid.data() + rs7frets::kBars;
+    std::vector<uint8_t> grid(rsxrfrets::kBars + 26 * rsxrfrets::kBarStride, 0);
+    uint8_t* bar0 = grid.data() + rsxrfrets::kBars;
 
     bar0[0] = 1;
-    PutVec(bar0, rs7frets::kBarBLocal, -10, 0, 0);  // inverted: the floor beyond string 0, on the extra string's side
+    PutVec(bar0, rsxrfrets::kBarBLocal, -10, 0, 0);  // inverted: the floor beyond string 0, on the extra string's side
     alignas(4) uint8_t guitar[0x40] = {};
 
-    Put<uint8_t*>(guitar, rs7::kGuitarStrings, gs);
-    Put<uint8_t*>(guitar, rs7::kGuitarGrid, grid.data());
-    Put<uint8_t*>(guitar, rs7::kGuitarInfo, info);
+    Put<uint8_t*>(guitar, rsxr::kGuitarStrings, gs);
+    Put<uint8_t*>(guitar, rsxr::kGuitarGrid, grid.data());
+    Put<uint8_t*>(guitar, rsxr::kGuitarInfo, info);
     Put<uint8_t*>(grid.data(), 0, guitar);
-    Rs7_FretsAfterApply(grid.data());
-    std::vector<uint8_t> player(rs7::kSessionGuitar + 4, 0);
+    Rsxr_FretsAfterApply(grid.data());
+    std::vector<uint8_t> player(rsxr::kSessionGuitar + 4, 0);
 
-    Put<uint8_t*>(player.data(), rs7::kSessionGuitar, guitar);
+    Put<uint8_t*>(player.data(), rsxr::kSessionGuitar, guitar);
     alignas(4) uint8_t entities[5][4] = {};
     alignas(4) uint8_t objs[4][0x14] = {};
     alignas(4) uint8_t box[0x14] = {};
@@ -125,11 +125,11 @@ TEST(frets_glow_bars_are_queued_when_the_floor_is_already_shifted) {
     uint32_t frame[4] = {};  // [ebp+0Ch] = the highway (player)
 
     frame[3] = Addr(player.data());
-    Rs7Mid::Context c{};
+    RsxrMid::Context c{};
 
     c.ebx = Addr(fx);
     c.ebp = Addr(frame);
-    Rs7_Mid_FRG1(c);
+    Rsxr_Mid_FRG1(c);
 
     // Whatever ShiftFloor did to them, FRG1 puts the floor-side wire ends exactly on the floor (#283): the stock margin
     // (bar B at -10 = 5 spacings past string 0) plus the one extra lane = 6 spacings of 2.
@@ -142,19 +142,19 @@ TEST(frets_glow_bars_are_queued_when_the_floor_is_already_shifted) {
 
     // FRG2 scales each queued bar and FRG3 the box: (stock far 5 + 1 lane) * spacing 2 plus the stock margin (5
     // spacings) on both sides, over the stock strings' width plus that margin (#283: the box kept its stock height).
-    const float k = (6.0f * 2.0f + 20.0f) / (rs7frets::kStockStringsWidth + 20.0f);
+    const float k = (6.0f * 2.0f + 20.0f) / (rsxrfrets::kStockStringsWidth + 20.0f);
 
     for (int i = 0; i < 4; ++i) {
-        Rs7Mid::Context c2{};
+        RsxrMid::Context c2{};
 
         c2.ebx = Addr(objs[i]);
-        Rs7_Mid_FRG2(c2);
+        Rsxr_Mid_FRG2(c2);
     }
 
-    Rs7Mid::Context c3{};
+    RsxrMid::Context c3{};
 
     c3.edi = Addr(box);
-    Rs7_Mid_FRG3(c3);
+    Rsxr_Mid_FRG3(c3);
     CHECK_EQ(g_scaleCalls, 5);
 
     for (int i = 0; i < 5 && i < g_scaleCalls; ++i) {
@@ -162,6 +162,6 @@ TEST(frets_glow_bars_are_queued_when_the_floor_is_already_shifted) {
         CHECK(std::fabs(g_scaledK[i] - k) < 1e-4f);
     }
 
-    Rs7Frets_ResetLog();
-    Rs7Frets_Forget(guitar);
+    RsxrFrets_ResetLog();
+    RsxrFrets_Forget(guitar);
 }

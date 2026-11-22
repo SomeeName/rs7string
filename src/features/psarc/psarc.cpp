@@ -3,67 +3,67 @@
 #include "features/psarc/psarc.h"
 #include <cstring>
 
-const char* Rs7_SiteStateName(Rs7SiteState s) {
+const char* Rsxr_SiteStateName(RsxrSiteState s) {
     switch (s) {
-        case Rs7SiteState::Original:
+        case RsxrSiteState::Original:
             return "stock";
-        case Rs7SiteState::Ours:
+        case RsxrSiteState::Ours:
             return "ours";
         default:
             return "foreign";
     }
 }
 
-Rs7SiteState Rs7_ClassifySite(const uint8_t* live, const uint8_t* original, size_t originalLen, const uint8_t* ours,
-                              size_t oursLen) {
+RsxrSiteState Rsxr_ClassifySite(const uint8_t* live, const uint8_t* original, size_t originalLen, const uint8_t* ours,
+                                size_t oursLen) {
     if (std::memcmp(live, original, originalLen) == 0) {
-        return Rs7SiteState::Original;
+        return RsxrSiteState::Original;
     }
     if (oursLen <= originalLen && std::memcmp(live, ours, oursLen) == 0 &&
         std::memcmp(live + oursLen, original + oursLen, originalLen - oursLen) == 0) {
-        return Rs7SiteState::Ours;
+        return RsxrSiteState::Ours;
     }
 
-    return Rs7SiteState::Foreign;
+    return RsxrSiteState::Foreign;
 }
 
-Rs7PlainDecision Rs7Plain_Decide(const Rs7SiteState* states, size_t n) {
+RsxrPlainDecision RsxrPlain_Decide(const RsxrSiteState* states, size_t n) {
     size_t ours = 0;
 
     for (size_t i = 0; i < n; ++i) {
-        if (states[i] == Rs7SiteState::Foreign) {
-            return Rs7PlainDecision::Enabler;
+        if (states[i] == RsxrSiteState::Foreign) {
+            return RsxrPlainDecision::Enabler;
         }
 
-        if (states[i] == Rs7SiteState::Ours) {
+        if (states[i] == RsxrSiteState::Ours) {
             ++ours;
         }
     }
 
-    return n && ours == n ? Rs7PlainDecision::Already : Rs7PlainDecision::Patch;
+    return n && ours == n ? RsxrPlainDecision::Already : RsxrPlainDecision::Patch;
 }
 
-Rs7SngAction Rs7Plain_SngAction(uint32_t magic, uint32_t flags, uint32_t len, uint32_t outLen) {
+RsxrSngAction RsxrPlain_SngAction(uint32_t magic, uint32_t flags, uint32_t len, uint32_t outLen) {
     if (magic != 0x4A || flags != 1) {
-        return Rs7SngAction::Decrypt;
+        return RsxrSngAction::Decrypt;
     }
     if (len < 0x10 || outLen < len - 0x10) {
-        return Rs7SngAction::Reject;
+        return RsxrSngAction::Reject;
     }
 
-    return Rs7SngAction::Copy;
+    return RsxrSngAction::Copy;
 }
 
-const char* Rs7Plain_ProviderName(Rs7PlainProvider p) {
+const char* RsxrPlain_ProviderName(RsxrPlainProvider p) {
     switch (p) {
-        case Rs7PlainProvider::Off:
-            return "off in rs7string ([psarc] plain=0)";
-        case Rs7PlainProvider::Ours:
-            return "provided by rs7string";
-        case Rs7PlainProvider::Enabler:
+        case RsxrPlainProvider::Off:
+            return "off in RSXR ([psarc] plain=0)";
+        case RsxrPlainProvider::Ours:
+            return "provided by RSXR";
+        case RsxrPlainProvider::Enabler:
             return "provided by the CDLC enabler";
-        case Rs7PlainProvider::Failed:
-            return "not provided (rs7string failed)";
+        case RsxrPlainProvider::Failed:
+            return "not provided (RSXR failed)";
         default:
             return "unknown";
     }

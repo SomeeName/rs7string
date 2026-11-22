@@ -2,7 +2,7 @@
 #include "platform/safecopy.h"
 #include <cstdint>
 
-bool rs7::ReadGameString(const void* string, char* out, size_t cap, bool truncate, size_t* length) {
+bool rsxr::ReadGameString(const void* string, char* out, size_t cap, bool truncate, size_t* length) {
     if (length) {
         *length = 0;
     }
@@ -12,7 +12,7 @@ bool rs7::ReadGameString(const void* string, char* out, size_t cap, bool truncat
 
     out[0] = 0;
     uint32_t words[6] = {};
-    if (!Rs7_SafeCopy(words, string, sizeof words)) {
+    if (!Rsxr_SafeCopy(words, string, sizeof words)) {
         return false;
     }
 
@@ -32,7 +32,7 @@ bool rs7::ReadGameString(const void* string, char* out, size_t cap, bool truncat
         size = cap - 1;
     }
 
-    if (!Rs7_SafeCopyZero(out, reinterpret_cast<const void*>(uintptr_t(data)), size)) {
+    if (!Rsxr_SafeCopyZero(out, reinterpret_cast<const void*>(uintptr_t(data)), size)) {
         return false;
     }
 

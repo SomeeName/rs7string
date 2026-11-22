@@ -11,8 +11,8 @@
 // name, +4 base).
 
 extern "C" {
-__declspec(dllexport) uintptr_t g_rs7_fn_world = 0;
-__declspec(dllexport) uintptr_t g_rs7_fn_root = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_world = 0;
+__declspec(dllexport) uintptr_t g_rsxr_fn_root = 0;
 }
 
 namespace {
@@ -35,7 +35,7 @@ void SafeStr(const char* p, char* out, size_t cap) {
         for (; p && i + 1 < cap && p[i]; ++i) {
             out[i] = p[i];
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
     }
 
     out[i] = 0;
@@ -51,39 +51,39 @@ const uint8_t* Rtti(const void* obj) {
         using Fn = const uint8_t*(__fastcall*)(const void*, void*);  // thiscall, no stack args
 
         return reinterpret_cast<Fn>(vt[2])(obj, nullptr);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
 
 uint8_t* CallWorld() {
-    if (!g_rs7_fn_world) {
+    if (!g_rsxr_fn_world) {
         return nullptr;
     }
 
     __try {
-        return reinterpret_cast<uint8_t*(__cdecl*)()>(g_rs7_fn_world)();
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return reinterpret_cast<uint8_t*(__cdecl*)()>(g_rsxr_fn_world)();
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
 
 uint8_t* CallRoot(uint8_t* entity, uint8_t* world) {
-    if (!g_rs7_fn_root) {
+    if (!g_rsxr_fn_root) {
         return nullptr;
     }
 
     __try {
         using Fn = uint8_t*(__fastcall*)(uint8_t*, void*, uint8_t*);  // ECX = entity, (world) ret 4
 
-        return reinterpret_cast<Fn>(g_rs7_fn_root)(entity, nullptr, world);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
+        return reinterpret_cast<Fn>(g_rsxr_fn_root)(entity, nullptr, world);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
         return nullptr;
     }
 }
 }  // namespace
 
-namespace rs7s7d {
+namespace rsxrs7d {
 // The entity's root scene node, exactly as Rnd_FindStringBaseShape 0x5996C4..0x5996EE finds it.
 uint8_t* EntityRoot(uint8_t* entity) {
     if (!entity) {
@@ -91,11 +91,11 @@ uint8_t* EntityRoot(uint8_t* entity) {
     }
 
     uint8_t* world = CallWorld();
-    if (!world || !Rs7_SafeRead<uint32_t>(world, kWorldReady)) {
+    if (!world || !Rsxr_SafeRead<uint32_t>(world, kWorldReady)) {
         return nullptr;
     }
-    if (Rs7_SafeRead<uint32_t>(entity, kEntityFlags) & 1) {
-        return Rs7_SafeRead<uint8_t*>(entity, kEntityRoot);
+    if (Rsxr_SafeRead<uint32_t>(entity, kEntityFlags) & 1) {
+        return Rsxr_SafeRead<uint8_t*>(entity, kEntityRoot);
     }
 
     return CallRoot(entity, world);
@@ -107,12 +107,12 @@ bool IsKindOf(const void* obj, const char* kind) {
     for (int i = 0; r && i < 16; ++i) {
         char buf[48];
 
-        SafeStr(Rs7_SafeRead<const char*>(r, 0), buf, sizeof buf);
+        SafeStr(Rsxr_SafeRead<const char*>(r, 0), buf, sizeof buf);
         if (std::strcmp(buf, kind) == 0) {
             return true;
         }
 
-        r = Rs7_SafeRead<const uint8_t*>(r, 4);
+        r = Rsxr_SafeRead<const uint8_t*>(r, 4);
     }
 
     return false;
@@ -125,7 +125,7 @@ void KindOf(const void* obj, char* out, size_t cap) {
 
     out[0] = 0;
     if (const uint8_t* r = Rtti(obj)) {
-        SafeStr(Rs7_SafeRead<const char*>(r, 0), out, cap);
+        SafeStr(Rsxr_SafeRead<const char*>(r, 0), out, cap);
     }
     if (!out[0]) {
         std::snprintf(out, cap, "?");
@@ -133,6 +133,6 @@ void KindOf(const void* obj, char* out, size_t cap) {
 }
 
 void NameOfNode(const void* obj, char* out, size_t cap) {
-    SafeStr(Rs7_SafeRead<const char*>(obj, kName), out, cap);
+    SafeStr(Rsxr_SafeRead<const char*>(obj, kName), out, cap);
 }
-}  // namespace rs7s7d
+}  // namespace rsxrs7d

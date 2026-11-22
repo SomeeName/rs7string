@@ -102,7 +102,7 @@ struct Parked {
     ~Parked() {
         if (h) {
             TerminateThread(h, 0);  // test only: the loop never returns
-            rs7test::Join(h, 2000);
+            rsxrtest::Join(h, 2000);
         }
 
         if (code) {
@@ -116,7 +116,7 @@ void Nothing(void*) {}
 
 TIMING_TEST(freeze_lists_this_process_threads) {
     unsigned long ids[1024];
-    const size_t n = Rs7_FreezeListThreads(ids, 1024);
+    const size_t n = Rsxr_FreezeListThreads(ids, 1024);
     bool self = false;
 
     for (size_t i = 0; i < n; ++i) {
@@ -127,11 +127,11 @@ TIMING_TEST(freeze_lists_this_process_threads) {
     CHECK(self);
     Parked p;
 
-    if (!rs7test::Ready(p.ready, "parked worker did not reach its loop")) {
+    if (!rsxrtest::Ready(p.ready, "parked worker did not reach its loop")) {
         return;
     }
 
-    const size_t m = Rs7_FreezeListThreads(ids, 1024);
+    const size_t m = Rsxr_FreezeListThreads(ids, 1024);
     bool other = false;
 
     for (size_t i = 0; i < m; ++i) {
@@ -163,7 +163,7 @@ TIMING_TEST(freeze_stops_every_other_thread_while_fn_runs) {
 
     const auto stopCounter = [&] {
         InterlockedExchange(&g_stop, 1);
-        rs7test::Join(t);
+        rsxrtest::Join(t);
         CloseHandle(progress);
     };
     const DWORD started = WaitForSingleObject(progress, 5000);
@@ -176,9 +176,9 @@ TIMING_TEST(freeze_stops_every_other_thread_while_fn_runs) {
     }
 
     Probe pr{};
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, &Watch, &pr, &st));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, &Watch, &pr, &st));
     CHECK_EQ(pr.before, pr.after);  // the counter did not move for 20 ms
     CHECK(st.threads >= 1);
     CHECK_EQ(st.retries, 0u);
@@ -193,18 +193,18 @@ TIMING_TEST(freeze_stops_every_other_thread_while_fn_runs) {
 TIMING_TEST(freeze_times_out_without_calling_fn_while_a_thread_stands_inside_a_range) {
     Parked p;
 
-    if (!rs7test::Ready(p.ready, "parked worker did not reach its loop")) {
+    if (!rsxrtest::Ready(p.ready, "parked worker did not reach its loop")) {
         return;
     }
 
     const uintptr_t c = reinterpret_cast<uintptr_t>(p.code);
-    Rs7Range inside[2] = {{c + 0x100, c + 0x108}, {c, c + 4}};  // the loop at c + 2 is interior to range 1
+    RsxrRange inside[2] = {{c + 0x100, c + 0x108}, {c, c + 4}};  // the loop at c + 2 is interior to range 1
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
     // A zero deadline makes the first conflict exhaust the budget deterministically. With a 50 ms
     // budget, descheduling during the first attempt can legitimately leave only one conflict.
-    CHECK(!Rs7_RunFrozen(inside, 2, [](void* n) { ++*static_cast<int*>(n); }, &calls, &st, 0));
+    CHECK(!Rsxr_RunFrozen(inside, 2, [](void* n) { ++*static_cast<int*>(n); }, &calls, &st, 0));
     CHECK_EQ(calls, 0);
     CHECK(st.timedOut);
     CHECK_EQ(st.retries, 1u);
@@ -213,12 +213,12 @@ TIMING_TEST(freeze_times_out_without_calling_fn_while_a_thread_stands_inside_a_r
     CHECK_EQ(st.busyRange, size_t(1));
     char line[256];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
+    Rsxr_FreezeDescribe(st, line, sizeof line);
     CHECK(std::strstr(line, "DEADLINE") != nullptr);
     // A thread exactly at the start of a range has not fetched it yet: not a conflict.
-    Rs7Range atStart{c + 2, c + 4};
+    RsxrRange atStart{c + 2, c + 4};
 
-    CHECK(Rs7_RunFrozen(&atStart, 1, [](void* n) { ++*static_cast<int*>(n); }, &calls, &st, 50));
+    CHECK(Rsxr_RunFrozen(&atStart, 1, [](void* n) { ++*static_cast<int*>(n); }, &calls, &st, 50));
     CHECK_EQ(calls, 1);
     CHECK(!st.timedOut);
 }
@@ -235,11 +235,11 @@ TIMING_TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
         std::vector<std::string> log;
     } x;
 
-    Rs7PatchOps ops;
+    RsxrPatchOps ops;
 
     ops.count = 3;
     ops.group = [](size_t i) {
-        return Rs7_Group(i == 0 ? Rs7Feature::Core : Rs7Feature::Diagrams);
+        return Rsxr_Group(i == 0 ? RsxrFeature::Core : RsxrFeature::Diagrams);
     };
     ops.name = [](size_t i) {
         static const char* n[3] = {"A", "B", "C"};
@@ -247,7 +247,7 @@ TIMING_TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
         return n[i];
     };
     ops.should = [&](size_t i) {
-        return i == 0 || !Rs7_FeatureDisabled(Rs7Feature::Diagrams);
+        return i == 0 || !Rsxr_FeatureDisabled(RsxrFeature::Diagrams);
     };
     ops.prepare = [](size_t) {
         return true;
@@ -269,17 +269,17 @@ TIMING_TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
         return true;
     };
     ops.range = [](size_t i) {
-        return Rs7Range{reinterpret_cast<uintptr_t>(buf[i]), reinterpret_cast<uintptr_t>(buf[i]) + 8};
+        return RsxrRange{reinterpret_cast<uintptr_t>(buf[i]), reinterpret_cast<uintptr_t>(buf[i]) + 8};
     };
     ops.log = [&](const std::string& m) {
         x.log.push_back(m);
     };
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
-    Rs7_ResetFeatureFailures();
+    Rsxr_ResetFeatureFailures();
     std::vector<size_t> written;
 
-    CHECK(Rs7_PatchIsolated(kRs7Groups, ops, written) == Rs7PatchResult::Ok);
+    CHECK(Rsxr_PatchIsolated(kRsxrGroups, ops, written) == RsxrPatchResult::Ok);
     CHECK_EQ(written.size(), size_t(1));  // B's group disabled, round 2 wrote A only
     CHECK_EQ(buf[0][0], 0x22);
     CHECK_EQ(buf[1][0], 0x11);
@@ -291,7 +291,7 @@ TIMING_TEST(freeze_patch_round_writes_and_rolls_back_under_one_freeze) {
     }
 
     CHECK_EQ(freezes, 2);  // one freeze per round, logged after it
-    Rs7_ResetFeatureFailures();
+    Rsxr_ResetFeatureFailures();
 }
 
 // ---- bounded thread control (startup hang, smoke frame-2: GetThreadContext blocked inside WoW64) ----------
@@ -321,7 +321,7 @@ struct Spinner {
         InterlockedExchange(&stop, 1);
 
         if (h) {
-            rs7test::Join(h);
+            rsxrtest::Join(h);
         }
     }
 
@@ -385,7 +385,7 @@ int OnceWedgedContext(void* h, unsigned long tid, void* c) {
     if (g_victim && tid == g_victim->tid && InterlockedCompareExchange(&g_hookStalls, 0, 0) > 0) {
         InterlockedDecrement(&g_hookStalls);
 
-        while (!Rs7_FreezeAbortedForTests()) {
+        while (!Rsxr_FreezeAbortedForTests()) {
             Sleep(1);
         }
     }
@@ -407,8 +407,8 @@ void Count(void* n) {
 }
 
 void ResetHooks() {
-    Rs7_FreezeSetTestHooks(nullptr, nullptr);
-    Rs7_FreezeSetTiming(0, 0);
+    Rsxr_FreezeSetTestHooks(nullptr, nullptr);
+    Rsxr_FreezeSetTiming(0, 0);
     g_victim = nullptr;
     InterlockedExchange(&g_hookStalls, 0);
 }
@@ -423,21 +423,21 @@ TIMING_TEST(freeze_context_stall_lets_only_the_target_run_and_reads_it_again) {
     if (!v.h) {
         return;
     }
-    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+    if (!rsxrtest::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
     g_victim = &v;
     InterlockedExchange(&g_hookStalls, 1);  // the first context read stalls, the second does not
-    Rs7_FreezeSetTestHooks(nullptr, &WowLikeContext);
+    Rsxr_FreezeSetTestHooks(nullptr, &WowLikeContext);
     // 150 ms, not 50: on a busy machine another thread of the test process can take 50 ms to stop and counts as a
     // stall of its own.
-    Rs7_FreezeSetTiming(150, 2000);
+    Rsxr_FreezeSetTiming(150, 2000);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
     const double t = NowMs();
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
     const double took = NowMs() - t;
 
     ResetHooks();
@@ -450,7 +450,7 @@ TIMING_TEST(freeze_context_stall_lets_only_the_target_run_and_reads_it_again) {
     CHECK(v.Moves());
     char line[512];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
+    Rsxr_FreezeDescribe(st, line, sizeof line);
     CHECK(std::strstr(line, "0 stalls, 1 released") != nullptr);
 }
 
@@ -462,18 +462,18 @@ TIMING_TEST(freeze_context_stall_that_survives_the_release_resumes_everything_an
     if (!v.h) {
         return;
     }
-    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+    if (!rsxrtest::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
     g_victim = &v;
-    Rs7_FreezeSetTestHooks(nullptr, &OnceWedgedContext);
-    Rs7_FreezeSetTiming(150, 2000);
+    Rsxr_FreezeSetTestHooks(nullptr, &OnceWedgedContext);
+    Rsxr_FreezeSetTiming(150, 2000);
     InterlockedExchange(&g_hookStalls, 1);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
     ResetHooks();
     CHECK_EQ(calls, 1);
     CHECK_EQ(st.stalls, 1u);
@@ -486,7 +486,7 @@ TIMING_TEST(freeze_context_stall_that_survives_the_release_resumes_everything_an
     CHECK(v.Moves());
     char line[512];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
+    Rsxr_FreezeDescribe(st, line, sizeof line);
     CHECK(std::strstr(line, "1 stalls") != nullptr);
     CHECK(std::strstr(line, "stall 1: GetThreadContext") != nullptr);
 }
@@ -498,19 +498,19 @@ TIMING_TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_wri
     if (!v.h) {
         return;
     }
-    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+    if (!rsxrtest::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
     g_victim = &v;
     InterlockedExchange(&g_hookStalls, 1000);  // every attempt stalls
-    Rs7_FreezeSetTestHooks(nullptr, &WowLikeContext);
-    Rs7_FreezeSetTiming(50, 2000);
+    Rsxr_FreezeSetTestHooks(nullptr, &WowLikeContext);
+    Rsxr_FreezeSetTiming(50, 2000);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
     const double t = NowMs();
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 300));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st, 300));
     const double took = NowMs() - t;
 
     ResetHooks();
@@ -525,7 +525,7 @@ TIMING_TEST(freeze_persistent_context_stall_gives_up_at_the_deadline_without_wri
     CHECK(v.Moves());
     char line[1024];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
+    Rsxr_FreezeDescribe(st, line, sizeof line);
     CHECK(std::strstr(line, "DEADLINE") != nullptr);
     CHECK(std::strstr(line, "kept stalling") != nullptr);
 }
@@ -537,7 +537,7 @@ TIMING_TEST(freeze_wedged_reader_releases_threads_and_refuses_until_it_returns) 
     if (!v.h) {
         return;
     }
-    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+    if (!rsxrtest::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
@@ -548,46 +548,46 @@ TIMING_TEST(freeze_wedged_reader_releases_threads_and_refuses_until_it_returns) 
     }
 
     g_victim = &v;
-    Rs7_FreezeSetTestHooks(nullptr, &WedgedContext);
-    Rs7_FreezeSetTiming(50, 200);
+    Rsxr_FreezeSetTestHooks(nullptr, &WedgedContext);
+    Rsxr_FreezeSetTiming(50, 200);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
     CHECK_EQ(calls, 0);
     CHECK(st.wedged);
     CHECK_EQ(st.stalls, 1u);
     CHECK(st.events[0].releaseMs < 0.0f);
     // The reader is still blocked, yet no thread stays suspended.
-    CHECK(Rs7_FreezeReaderBusy());
+    CHECK(Rsxr_FreezeReaderBusy());
     CHECK(v.Moves());
     char line[512];
 
-    Rs7_FreezeDescribe(st, line, sizeof line);
+    Rsxr_FreezeDescribe(st, line, sizeof line);
     CHECK(std::strstr(line, "WEDGED") != nullptr);
     CHECK(std::strstr(line, "reader NOT back") != nullptr);
     // While it is blocked every freeze is refused at once.
-    Rs7FreezeStats st2;
+    RsxrFreezeStats st2;
     const double t = NowMs();
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st2, 2000));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st2, 2000));
     CHECK(NowMs() - t < 100.0);
     CHECK(st2.readerBusy);
     CHECK_EQ(calls, 0);
-    Rs7_FreezeDescribe(st2, line, sizeof line);
+    Rsxr_FreezeDescribe(st2, line, sizeof line);
     CHECK(std::strstr(line, "REFUSED") != nullptr);
     // Once the call returns the reader cleans up and freezes work again.
     SetEvent(g_releaseWedge);
 
-    for (int i = 0; i < 5000 && Rs7_FreezeReaderBusy(); ++i) {
+    for (int i = 0; i < 5000 && Rsxr_FreezeReaderBusy(); ++i) {
         Sleep(1);
     }
 
-    CHECK(!Rs7_FreezeReaderBusy());
+    CHECK(!Rsxr_FreezeReaderBusy());
     ResetHooks();
-    Rs7FreezeStats st3;
+    RsxrFreezeStats st3;
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st3, 2000));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st3, 2000));
     CHECK_EQ(calls, 1);
     CHECK_EQ(st3.stalls, 0u);
     CHECK_EQ(v.SuspendCount(), DWORD(0));
@@ -602,19 +602,19 @@ TIMING_TEST(freeze_suspend_stall_resumes_what_the_reader_suspends_late) {
     if (!v.h) {
         return;
     }
-    if (!rs7test::Ready(v.Moves(), "spinner did not start")) {
+    if (!rsxrtest::Ready(v.Moves(), "spinner did not start")) {
         return;
     }
 
     g_victim = &v;
     g_suspendStallMs = 300;
     InterlockedExchange(&g_hookStalls, 1);  // first SuspendThread on the victim takes 300 ms
-    Rs7_FreezeSetTestHooks(&SlowSuspend, nullptr);
-    Rs7_FreezeSetTiming(150, 2000);
+    Rsxr_FreezeSetTestHooks(&SlowSuspend, nullptr);
+    Rsxr_FreezeSetTiming(150, 2000);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(Rs7_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
+    CHECK(Rsxr_RunFrozen(nullptr, 0, &Count, &calls, &st, 2000));
     ResetHooks();
     CHECK_EQ(calls, 1);
     CHECK_EQ(st.stalls, 1u);
@@ -633,34 +633,34 @@ TIMING_TEST(freeze_keeps_a_returning_wedged_reader_busy_until_completion_is_publ
         return;
     }
 
-    g_releaseWedge = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
-    g_completing = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
-    g_finishCompletion = rs7test::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_releaseWedge = rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_completing = rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
+    g_finishCompletion = rsxrtest::Must(CreateEventW(nullptr, TRUE, FALSE, nullptr), "CreateEvent");
     g_victim = &v;
-    Rs7_FreezeSetTestHooks(nullptr, &WedgedContext);
-    Rs7_FreezeSetCompletionHookForTests(PauseCompletion);
-    Rs7_FreezeSetTiming(50, 100);
+    Rsxr_FreezeSetTestHooks(nullptr, &WedgedContext);
+    Rsxr_FreezeSetCompletionHookForTests(PauseCompletion);
+    Rsxr_FreezeSetTiming(50, 100);
     int calls = 0;
-    Rs7FreezeStats st;
+    RsxrFreezeStats st;
 
-    CHECK(!Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
+    CHECK(!Rsxr_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
     CHECK(st.wedged);
     SetEvent(g_releaseWedge);
     CHECK_EQ(WaitForSingleObject(g_completing, 5000), WAIT_OBJECT_0);
-    CHECK(Rs7_FreezeReaderBusy());
+    CHECK(Rsxr_FreezeReaderBusy());
     // Release the publication hook before any CHECK that could run a new job on the unfixed code.
     SetEvent(g_finishCompletion);
 
     const ULONGLONG end = GetTickCount64() + 5000;
 
-    while (Rs7_FreezeReaderBusy() && GetTickCount64() < end) {
+    while (Rsxr_FreezeReaderBusy() && GetTickCount64() < end) {
         Sleep(1);
     }
 
-    CHECK(!Rs7_FreezeReaderBusy());
+    CHECK(!Rsxr_FreezeReaderBusy());
     // A normal freeze joins the reader after publication before the hooks and their events are removed.
-    CHECK(Rs7_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
-    Rs7_FreezeSetCompletionHookForTests(nullptr);
+    CHECK(Rsxr_RunFrozen(nullptr, 0, Count, &calls, &st, 2000));
+    Rsxr_FreezeSetCompletionHookForTests(nullptr);
     ResetHooks();
     CHECK_EQ(calls, 1);
     CHECK_EQ(v.SuspendCount(), DWORD(0));

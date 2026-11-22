@@ -1,5 +1,5 @@
 """Regression: an MSVC inline-asm operand named like a register is the register, not the C variable.
-`push gs` in Rs7_S7Pluck pushed the GS segment selector (0x2B) as the GuitarStrings argument and crashed
+`push gs` in Rsxr_S7Pluck pushed the GS segment selector (0x2B) as the GuitarStrings argument and crashed
 the native chord pluck (crash-59ad3c.md). Flag segment-register names used as asm operands."""
 
 import pathlib

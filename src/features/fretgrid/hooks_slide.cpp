@@ -11,9 +11,9 @@
 #include "platform/midhook.h"
 #include <cstdint>
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_V2 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_V2 = 0;
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_V2(Rs7Mid::Context& c) {
-    c.eax = (c.eax & 0xFF) * rs7fg::RowStride() + c.ecx + c.edx + 0x3C;
-    c.jump = static_cast<uint32_t>(g_rs7_resume_V2);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_V2(RsxrMid::Context& c) {
+    c.eax = (c.eax & 0xFF) * rsxrfg::RowStride() + c.ecx + c.edx + 0x3C;
+    c.jump = static_cast<uint32_t>(g_rsxr_resume_V2);
 }

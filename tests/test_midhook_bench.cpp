@@ -8,7 +8,7 @@
 #include <cstring>
 
 namespace {
-void __cdecl BenchNoop(Rs7Mid::Context&) {}
+void __cdecl BenchNoop(RsxrMid::Context&) {}
 
 // The full thunk without FNINIT (FXSAVE / FXRSTOR kept).
 __declspec(naked) void ThunkNoFninit() {
@@ -163,11 +163,11 @@ TEST(midhook_cost_breakdown) {
         void (*thunk)();
     };
 
-    const Variant variants[] = {{"full", &Rs7Mid_Thunk},
+    const Variant variants[] = {{"full", &RsxrMid_Thunk},
                                 {"full - fninit", &ThunkNoFninit},
                                 {"full - fxsave/fninit/fxrstor", &ThunkNoFx},
-                                {"light (production)", &Rs7Mid_ThunkLight},
-                                {"sse (production)", &Rs7Mid_ThunkSse},
+                                {"light (production)", &RsxrMid_ThunkLight},
+                                {"sse (production)", &RsxrMid_ThunkSse},
                                 {"pushfd/pushad/call only", &ThunkMin}};
     constexpr int calls = 200000;
     const double stockNs = MedianNs(reinterpret_cast<int (*)()>(page), calls);
@@ -179,7 +179,7 @@ TEST(midhook_cost_breakdown) {
     for (size_t i = 0; i < sizeof variants / sizeof variants[0]; ++i) {
         uint8_t* entry = page + 256 + i * 256;
 
-        CHECK(Rs7Mid_Build(entry, 256, page, uintptr_t(page), 5, uintptr_t(entry), uintptr_t(&BenchNoop)) > 0);
+        CHECK(RsxrMid_Build(entry, 256, page, uintptr_t(page), 5, uintptr_t(entry), uintptr_t(&BenchNoop)) > 0);
         Retarget(entry, variants[i].thunk);
         const double ns = MedianNs(reinterpret_cast<int (*)()>(entry), calls);
 

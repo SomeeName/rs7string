@@ -1,5 +1,5 @@
 // Calls into the game for the native GuitarStrings (hooks.h), and the two answers the copies' calls need from it:
-// the attach point and the atlas row of an added string (the call-ins Rs7_CallIn_Attach / Rs7_CallIn_Shape,
+// the attach point and the atlas row of an added string (the call-ins Rsxr_CallIn_Attach / Rsxr_CallIn_Shape,
 // hooks_callin.cpp).
 #include "features/scene/scene.h"
 #include "features/spacing/spacing.h"
@@ -11,16 +11,16 @@
 #include <cmath>
 #include <cstring>
 
-using namespace rs7gs;
+using namespace rsxrgs;
 
-uint8_t* rs7gs::GameAlloc(uint32_t size) {
+uint8_t* rsxrgs::GameAlloc(uint32_t size) {
     using Fn = uint8_t*(__cdecl*)(uint32_t, uint32_t);
 
-    return g_rs7_fn_alloc ? reinterpret_cast<Fn>(g_rs7_fn_alloc)(size, 0) : nullptr;
+    return g_rsxr_fn_alloc ? reinterpret_cast<Fn>(g_rsxr_fn_alloc)(size, 0) : nullptr;
 }
 
-void rs7gs::GameStrCtor(uint8_t* obj, uint32_t kind) {
-    if (!g_rs7_fn_strctor) {
+void rsxrgs::GameStrCtor(uint8_t* obj, uint32_t kind) {
+    if (!g_rsxr_fn_strctor) {
         return;
     }
 
@@ -30,27 +30,27 @@ void rs7gs::GameStrCtor(uint8_t* obj, uint32_t kind) {
         push edi
         mov esi, obj
         mov eax, kind
-        call dword ptr [g_rs7_fn_strctor]
+        call dword ptr [g_rsxr_fn_strctor]
         pop edi
         pop esi
         pop ebx
     }
 }
 
-void rs7gs::GameShow(uint8_t* entity, uint32_t show) {
-    rs7s7d::ShowEntity(entity, show);
+void rsxrgs::GameShow(uint8_t* entity, uint32_t show) {
+    rsxrs7d::ShowEntity(entity, show);
 }
 
-void rs7gs::GameDetach(uint8_t* entity, uint32_t detach) {
+void rsxrgs::GameDetach(uint8_t* entity, uint32_t detach) {
     using Fn = uint32_t(__cdecl*)(uint8_t*, uint32_t, uint32_t);
 
-    if (g_rs7_fn_detach) {
-        reinterpret_cast<Fn>(g_rs7_fn_detach)(entity, detach, 1);
+    if (g_rsxr_fn_detach) {
+        reinterpret_cast<Fn>(g_rsxr_fn_detach)(entity, detach, 1);
     }
 }
 
-void rs7gs::GameFade(uint8_t* entity, bool in, float seconds) {
-    rs7s7d::FadeEntity(in ? g_rs7_fn_fadein : g_rs7_fn_fadeout, entity, seconds);
+void rsxrgs::GameFade(uint8_t* entity, bool in, float seconds) {
+    rsxrs7d::FadeEntity(in ? g_rsxr_fn_fadein : g_rsxr_fn_fadeout, entity, seconds);
 }
 
 namespace {
@@ -58,7 +58,7 @@ namespace {
 bool GameAttach(uint8_t* info, uint32_t s, float* outVec) {
     uint32_t ok = 0;
 
-    if (!g_rs7_fn_attach) {
+    if (!g_rsxr_fn_attach) {
         return false;
     }
 
@@ -69,7 +69,7 @@ bool GameAttach(uint8_t* info, uint32_t s, float* outVec) {
         push outVec
         push s
         mov ecx, info
-        call dword ptr [g_rs7_fn_attach]
+        call dword ptr [g_rsxr_fn_attach]
         add esp, 8
         movzx eax, al
         mov ok, eax
@@ -82,11 +82,11 @@ bool GameAttach(uint8_t* info, uint32_t s, float* outVec) {
 }
 }  // namespace
 
-extern "C" int __cdecl Rs7Gs_AttachExt(uint8_t* info, uint32_t s, float* out) {
+extern "C" int __cdecl RsxrGs_AttachExt(uint8_t* info, uint32_t s, float* out) {
     s &= 0xFF;
     const bool bass = StockAttachCount(info) == 4;
 
-    if (s >= rs7::MaxSlots(bass)) {
+    if (s >= rsxr::MaxSlots(bass)) {
         return 0;
     }
 
@@ -103,22 +103,22 @@ extern "C" int __cdecl Rs7Gs_AttachExt(uint8_t* info, uint32_t s, float* out) {
     }
 
     ExtrapolateAttach(a0, a1, bass ? 6u : s, out);  // s 6: 2*a0 - a1, s 7: 3*a0 - 2*a1; bass: one spacing
-    if (Rs7Log_Upto(&g_strings.logAttach, 2)) {
-        Rs7Log("gsnative: string %u attach (%.3f, %.3f, %.3f) from strings 0/1", s, double(out[0]), double(out[1]),
-               double(out[2]));
+    if (RsxrLog_Upto(&g_strings.logAttach, 2)) {
+        RsxrLog("gsnative: string %u attach (%.3f, %.3f, %.3f) from strings 0/1", s, double(out[0]), double(out[1]),
+                double(out[2]));
     }
 
     return 1;
 }
 
 namespace {
-// Set while this thread is inside Rs7Gs_AttachSpaced: its own attach queries re-enter PUBGA and must get the stock
+// Set while this thread is inside RsxrGs_AttachSpaced: its own attach queries re-enter PUBGA and must get the stock
 // answer. Per thread, so two guitars built on parallel loader jobs (co-op) both get the spacing.
 thread_local bool t_inSpaced = false;
 volatile long g_logSpaced = 0;
 }  // namespace
 
-extern "C" int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out) {
+extern "C" int __cdecl RsxrGs_AttachSpaced(uint8_t* info, uint32_t s, float* out) {
     s &= 0xFF;
     if (!info || !out) {
         return -1;
@@ -126,10 +126,11 @@ extern "C" int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out)
 
     // The setting first: the stock path (no setting) makes no import call (the emulator tests run it).
     const uint32_t stock = StockAttachCount(info);
-    const float want = rs7spacing::Target(g_rs7_spacing, stock == 4, UncheckedRead<uint8_t>(info, rs7::kInfoStrings));
+    const float want =
+        rsxrspacing::Target(g_rsxr_spacing, stock == 4, UncheckedRead<uint8_t>(info, rsxr::kInfoStrings));
 
     if (want <= 0.0f) {
-        Rs7Spacing_Forget(info);  // a reused InstrumentInfo address never keeps an older build's factor
+        RsxrSpacing_Forget(info);  // a reused InstrumentInfo address never keeps an older build's factor
         return -1;
     }
 
@@ -148,14 +149,14 @@ extern "C" int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out)
     t_inSpaced = true;
 
     __try {
-        ok = (s < stock ? GameAttach(info, s, p) : Rs7Gs_AttachExt(info, s, p) != 0) && GameAttach(info, 0, r0) &&
+        ok = (s < stock ? GameAttach(info, s, p) : RsxrGs_AttachExt(info, s, p) != 0) && GameAttach(info, 0, r0) &&
              GameAttach(info, 1, r1) && GameAttach(info, stock - 1, rl);
     } __finally {
         t_inSpaced = false;
     }
 
     if (!ok) {
-        return s < rs7::MaxSlots(stock == 4) ? -1 : 0;
+        return s < rsxr::MaxSlots(stock == 4) ? -1 : 0;
     }
 
     float d2 = 0.0f, c[3];
@@ -172,20 +173,20 @@ extern "C" int __cdecl Rs7Gs_AttachSpaced(uint8_t* info, uint32_t s, float* out)
 
     const float k = want / std::sqrt(d2);
 
-    rs7spacing::Scale(c, k, p);
+    rsxrspacing::Scale(c, k, p);
     std::memcpy(out, p, sizeof p);
-    Rs7Spacing_Record(info, k);
+    RsxrSpacing_Record(info, k);
 
-    if (Rs7Log_Upto(&g_logSpaced, 16)) {
-        Rs7Log("spacing: %s %u-string string %u attach (%.3f, %.3f, %.3f), spacing %.3f -> %.3f (k %.3f)",
-               stock == 4 ? "bass" : "guitar", unsigned(UncheckedRead<uint8_t>(info, rs7::kInfoStrings)), s,
-               double(p[0]), double(p[1]), double(p[2]), double(std::sqrt(d2)), double(want), double(k));
+    if (RsxrLog_Upto(&g_logSpaced, 16)) {
+        RsxrLog("spacing: %s %u-string string %u attach (%.3f, %.3f, %.3f), spacing %.3f -> %.3f (k %.3f)",
+                stock == 4 ? "bass" : "guitar", unsigned(UncheckedRead<uint8_t>(info, rsxr::kInfoStrings)), s,
+                double(p[0]), double(p[1]), double(p[2]), double(std::sqrt(d2)), double(want), double(k));
     }
 
     return 1;
 }
 
-extern "C" void __cdecl Rs7Gs_ShapeDone(uint8_t* obj, uint32_t s) {
+extern "C" void __cdecl RsxrGs_ShapeDone(uint8_t* obj, uint32_t s) {
     s &= 0xFF;
     if (!obj || !UncheckedRead<uint8_t>(obj, 0x50) || s < 4 || s > 7) {
         return;
@@ -194,13 +195,13 @@ extern "C" void __cdecl Rs7Gs_ShapeDone(uint8_t* obj, uint32_t s) {
     // Strings 4 / 5 only get here on a bass (a guitar's are below its stock attach count, the stock lookup alone):
     // the stock lookup indexed the four-entry bass row table past its end into the guitar rows (0.4 / 0.5), so the
     // low B and the high C drew a guitar row of the bass texture. They take the E's and the G's rows instead.
-    const float v = s >= 6 ? g_rs7_ns_v[s - 6] : rs7gs::BassStringRow(s);
+    const float v = s >= 6 ? g_rsxr_ns_v[s - 6] : rsxrgs::BassStringRow(s);
 
     if (uint8_t* h = UncheckedRead<uint8_t*>(obj, 0x3C)) {
         UncheckedField<float>(h, 0x14) = v;
     }
-    if (Rs7Log_Upto(&g_strings.logShape, 2)) {
-        Rs7Log("gsnative: string %u (%s %p) shader params found, atlas row %.2f", s,
-               UncheckedRead<uint32_t>(obj, 0) ? "ghost" : "main", obj, double(v));
+    if (RsxrLog_Upto(&g_strings.logShape, 2)) {
+        RsxrLog("gsnative: string %u (%s %p) shader params found, atlas row %.2f", s,
+                UncheckedRead<uint32_t>(obj, 0) ? "ghost" : "main", obj, double(v));
     }
 }

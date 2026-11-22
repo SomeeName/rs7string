@@ -9,7 +9,7 @@
 // game call, so the unit tests and the emulator run it (no Win32 call and no C++ exception frame on the PSC1 / PSL2
 // paths).
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_pegsets[RS7_PEG_OWNERS] = {};
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_pegsets[RSXR_PEG_OWNERS] = {};
 
 // ---- ownership ----
 // The table is the only native identification: IsNative and Disown scan it, nothing reads
@@ -18,9 +18,9 @@ extern "C" __declspec(dllexport) uintptr_t g_rs7_pegsets[RS7_PEG_OWNERS] = {};
 // address afterwards claims a fresh entry. 0x59C300 (dtor) and the sized free 0x58DA05 have one caller each and
 // run back to back (0x58D9F4 / 0x58DA0D), so every native PegSet's free passes PSA2.
 // The PSU1 / PSU2 / PSM1 stubs frozen for the mid-hook oracle (tools/tests/fixtures/midhook_9c0e44f.json) scan 64.
-static_assert(rs7head::kOwners == 64, "the frozen Rs7_PegOwnedZF scans 64 entries");
+static_assert(rsxrhead::kOwners == 64, "the frozen Rsxr_PegOwnedZF scans 64 entries");
 
-bool rs7head::Own(const uint8_t* pegset) noexcept {
+bool rsxrhead::Own(const uint8_t* pegset) noexcept {
     if (!pegset) {
         return false;
     }
@@ -30,10 +30,10 @@ bool rs7head::Own(const uint8_t* pegset) noexcept {
         return true;
     }
 
-    volatile long* t = reinterpret_cast<volatile long*>(g_rs7_pegsets);
+    volatile long* t = reinterpret_cast<volatile long*>(g_rsxr_pegsets);
 
     for (unsigned i = 0; i < kOwners; ++i) {
-        if (!g_rs7_pegsets[i] && _InterlockedCompareExchange(&t[i], long(a), 0) == 0) {
+        if (!g_rsxr_pegsets[i] && _InterlockedCompareExchange(&t[i], long(a), 0) == 0) {
             return true;
         }
     }
@@ -41,16 +41,16 @@ bool rs7head::Own(const uint8_t* pegset) noexcept {
     return false;
 }
 
-bool rs7head::Disown(const uint8_t* pegset) noexcept {
+bool rsxrhead::Disown(const uint8_t* pegset) noexcept {
     if (!pegset) {
         return false;
     }
 
     const uintptr_t a = reinterpret_cast<uintptr_t>(pegset);
-    volatile long* t = reinterpret_cast<volatile long*>(g_rs7_pegsets);
+    volatile long* t = reinterpret_cast<volatile long*>(g_rsxr_pegsets);
 
     for (unsigned i = 0; i < kOwners; ++i) {
-        if (g_rs7_pegsets[i] == a && _InterlockedCompareExchange(&t[i], 0, long(a)) == long(a)) {
+        if (g_rsxr_pegsets[i] == a && _InterlockedCompareExchange(&t[i], 0, long(a)) == long(a)) {
             return true;
         }
     }
@@ -58,13 +58,13 @@ bool rs7head::Disown(const uint8_t* pegset) noexcept {
     return false;
 }
 
-bool rs7head::IsNative(const uint8_t* pegset) noexcept {
+bool rsxrhead::IsNative(const uint8_t* pegset) noexcept {
     if (!pegset) {
         return false;
     }
 
     const uintptr_t a = reinterpret_cast<uintptr_t>(pegset);
-    const volatile uintptr_t* t = g_rs7_pegsets;
+    const volatile uintptr_t* t = g_rsxr_pegsets;
 
     for (unsigned i = 0; i < kOwners; ++i) {
         if (t[i] == a) {
@@ -75,9 +75,9 @@ bool rs7head::IsNative(const uint8_t* pegset) noexcept {
     return false;
 }
 
-unsigned rs7head::OwnedCount() noexcept {
+unsigned rsxrhead::OwnedCount() noexcept {
     unsigned n = 0;
-    const volatile uintptr_t* t = g_rs7_pegsets;
+    const volatile uintptr_t* t = g_rsxr_pegsets;
 
     for (unsigned i = 0; i < kOwners; ++i) {
         n += t[i] != 0;
@@ -86,15 +86,15 @@ unsigned rs7head::OwnedCount() noexcept {
     return n;
 }
 
-void rs7head::ResetOwners() noexcept {
-    for (auto& e : g_rs7_pegsets) {
+void rsxrhead::ResetOwners() noexcept {
+    for (auto& e : g_rsxr_pegsets) {
         e = 0;
     }
 }
 
 // ---- the native layout and the load counts ----
 
-void rs7head::InitTail(uint8_t* ps) {
+void rsxrhead::InitTail(uint8_t* ps) {
     uint8_t colours[kStockSlots][kColourStride];
 
     std::memcpy(colours, ps + kStockColours, sizeof colours);  // before slots 6/7 overwrite them
@@ -114,12 +114,12 @@ void rs7head::InitTail(uint8_t* ps) {
     *reinterpret_cast<uint32_t*>(ps + kMagicOff) = kMagic;
 }
 
-uint32_t rs7head::LoadCount(uint32_t strings, bool native, bool headOn, uint32_t pegLoad, uint32_t modelPegs,
-                            int kind) {
+uint32_t rsxrhead::LoadCount(uint32_t strings, bool native, bool headOn, uint32_t pegLoad, uint32_t modelPegs,
+                             int kind) {
     if (!native) {
         return strings;
     }
-    if (headOn && !rs7::IsBassKind(kind) && strings == uint32_t(kStockSlots)) {
+    if (headOn && !rsxr::IsBassKind(kind) && strings == uint32_t(kStockSlots)) {
         return pegLoad;
     }
 
@@ -128,7 +128,7 @@ uint32_t rs7head::LoadCount(uint32_t strings, bool native, bool headOn, uint32_t
     return strings > cap ? cap : strings;
 }
 
-unsigned rs7head::ReadyCount(uint8_t* ps) {
+unsigned rsxrhead::ReadyCount(uint8_t* ps) {
     const unsigned loaded = ps[kTail + 1];
     unsigned n = kStockSlots;
 
@@ -145,7 +145,7 @@ unsigned rs7head::ReadyCount(uint8_t* ps) {
     return n;
 }
 
-unsigned rs7head::LoadedCounts(uint8_t* ps) {
+unsigned rsxrhead::LoadedCounts(uint8_t* ps) {
     unsigned count = *reinterpret_cast<uint16_t*>(ps + kPegCount);
 
     if (count > unsigned(kCapacity)) {
@@ -163,24 +163,24 @@ unsigned rs7head::LoadedCounts(uint8_t* ps) {
 
 // ---- the load queue (PSL2 producer, N5 consumer) ----
 
-long rs7head::LoadRing::Reserve() {
+long rsxrhead::LoadRing::Reserve() {
     return _InterlockedIncrement(&reserve_) - 1;
 }
 
-void rs7head::LoadRing::Publish(long n, const LoadRec& r) {
+void rsxrhead::LoadRing::Publish(long n, const LoadRec& r) {
     Entry& e = ring_[n & 7];
 
-    Rs7Spin_Lock(&e.spin);
+    RsxrSpin_Lock(&e.spin);
 
     if (e.seq < n + 1) {
         e.rec = r;
         e.seq = n + 1;
     }
 
-    Rs7Spin_Unlock(&e.spin);
+    RsxrSpin_Unlock(&e.spin);
 }
 
-rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
+rsxrhead::LoadRing::Result rsxrhead::LoadRing::Pop(LoadRec& out) {
     const long reserve = _InterlockedCompareExchange(&reserve_, 0, 0);
     if (done_ >= reserve) {
         return Empty;
@@ -193,11 +193,11 @@ rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
 
     Entry& e = ring_[done_ & 7];
 
-    Rs7Spin_Lock(&e.spin);
+    RsxrSpin_Lock(&e.spin);
     const long s1 = e.seq;
 
     if (s1 != done_ + 1) {
-        Rs7Spin_Unlock(&e.spin);
+        RsxrSpin_Unlock(&e.spin);
 
         if (s1 > done_ + 1) {  // overwritten by a later lap
             ++dropped_;
@@ -210,7 +210,7 @@ rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
     }
 
     out = e.rec;
-    Rs7Spin_Unlock(&e.spin);
+    RsxrSpin_Unlock(&e.spin);
     ++done_;
 
     return Got;
@@ -218,7 +218,7 @@ rs7head::LoadRing::Result rs7head::LoadRing::Pop(LoadRec& out) {
 
 // ---- colours and node names ----
 
-bool rs7head::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRgb, float out[3]) {
+bool rsxrhead::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRgb, float out[3]) {
     if (!mgr || player >= 2) {
         return false;
     }
@@ -228,8 +228,8 @@ bool rs7head::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRg
         return false;
     }
 
-    const float* c1 = *reinterpret_cast<const float* const*>(mgr + rs7colour::PtrOffset(mode, 1));
-    const float* c4 = *reinterpret_cast<const float* const*>(mgr + rs7colour::PtrOffset(mode, 4));
+    const float* c1 = *reinterpret_cast<const float* const*>(mgr + rsxrcolour::PtrOffset(mode, 1));
+    const float* c4 = *reinterpret_cast<const float* const*>(mgr + rsxrcolour::PtrOffset(mode, 4));
     if (!c1 || !c4) {
         return false;
     }
@@ -255,7 +255,7 @@ bool rs7head::NamedColour(const uint8_t* mgr, uint32_t player, const float* fxRg
     return true;
 }
 
-bool rs7head::IsTunerNode(const char* name) {
+bool rsxrhead::IsTunerNode(const char* name) {
     if (!name) {
         return false;
     }

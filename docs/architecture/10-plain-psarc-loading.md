@@ -1,15 +1,15 @@
 # 10. Plain (unencrypted) PSARC loading
 
-Part of the [rs7string architecture](../ARCHITECTURE.md).
+Part of the [RS Extended Range architecture](../ARCHITECTURE.md).
 
 `[psarc] plain=1` (the default) lets the game read unencrypted custom packages. The code is in
-`src/features/psarc/`; the three sites form the `psarc` group, resolved and written first, on their
-own (a failure there disables only plain loading). A CDLC enabler is still needed for the SNG signature bypass (`0x5582F0`), which
-rs7string does not touch.
+`src/features/psarc/`. Its three sites form the `psarc` group, which the mod resolves and writes first,
+on its own. A failure there disables only plain loading. You still need a CDLC enabler for the SNG
+signature bypass (`0x5582F0`), which RS Extended Range does not touch.
 
 ## Package paths
 
-The mod recognises a plain TOC and a plain SNG. Everything else takes the game's own path. **CONFIRMED** by emulator and in-game checks:
+The mod recognizes a plain TOC and a plain SNG. Everything else takes the game's own path. **CONFIRMED** by emulator and in-game checks:
 
 | Site | Purpose |
 |---|---|
@@ -19,14 +19,14 @@ The mod recognises a plain TOC and a plain SNG. Everything else takes the game's
 
 ## Coexistence with an enabler
 
-If another mod has written any of the three sites, rs7string leaves all three alone and logs
-`plain psarc: provided by the CDLC enabler`. An enabler that loses the race can print
-"Unencrypted CDLC will not load" even though plain packages load; that message is cosmetic.
+If another mod has already written any of the three sites, RS Extended Range leaves all three alone and
+logs `plain psarc: provided by the CDLC enabler`. An enabler that loses this race can print
+"Unencrypted CDLC will not load" even though plain packages load. That message is cosmetic.
 
 ## Checks and open risk
 
-- The 2026-10-14 matrix: plain and encrypted packages and official DLC played. With `plain=0` and an
-  enabler without plain support, the game aborted after profile selection.
+- The 2026-10-14 test matrix: plain and encrypted packages and official DLC all played. With `plain=0`
+  and an enabler without plain support, the game aborted after profile selection.
 - **Open risk:** a locked 8-byte exchange is atomic for data, but cross-modifying code needs
-  serialization on the executing core. This is also an assumption of the upstream enabler's patch;
-  no SNG is loaded at patch time.
+  serialization on the executing core. The upstream enabler's patch makes the same assumption. No SNG
+  is loaded at patch time.

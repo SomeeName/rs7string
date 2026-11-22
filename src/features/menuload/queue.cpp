@@ -8,7 +8,7 @@ char Lower(char c) {
 }
 }  // namespace
 
-bool rs7menu::NameMatchesFile(const char* name, const char* file) {
+bool rsxrmenu::NameMatchesFile(const char* name, const char* file) {
     if (!name || !name[0] || !file) {
         return false;
     }
@@ -30,7 +30,7 @@ bool rs7menu::NameMatchesFile(const char* name, const char* file) {
     return file[i] == '.';
 }
 
-rs7menu::Request* rs7menu::Queue::Ask(uint32_t movie, uint64_t owner, const char* uri) {
+rsxrmenu::Request* rsxrmenu::Queue::Ask(uint32_t movie, uint64_t owner, const char* uri) {
     const char* name = uri ? std::strrchr(uri, ':') : nullptr;
 
     name = name ? name + 1 : uri;
@@ -77,7 +77,7 @@ rs7menu::Request* rs7menu::Queue::Ask(uint32_t movie, uint64_t owner, const char
     return slot;
 }
 
-rs7menu::Request* rs7menu::Queue::Result(uint32_t movie, bool accepted, uint64_t now) {
+rsxrmenu::Request* rsxrmenu::Queue::Result(uint32_t movie, bool accepted, uint64_t now) {
     for (auto& r : items) {
         if (r.stage.load() == Stage::Free || r.movie != movie) {
             continue;
@@ -96,7 +96,7 @@ rs7menu::Request* rs7menu::Queue::Result(uint32_t movie, bool accepted, uint64_t
     return nullptr;
 }
 
-bool rs7menu::Queue::Publish(const char* file) {
+bool rsxrmenu::Queue::Publish(const char* file) {
     if (!active.load()) {
         return false;
     }
@@ -114,7 +114,7 @@ bool rs7menu::Queue::Publish(const char* file) {
     return hit;
 }
 
-rs7menu::Request* rs7menu::Queue::NextReplay(uint64_t now, Why& why) {
+rsxrmenu::Request* rsxrmenu::Queue::NextReplay(uint64_t now, Why& why) {
     if (!active.load()) {
         return nullptr;
     }
@@ -139,7 +139,7 @@ rs7menu::Request* rs7menu::Queue::NextReplay(uint64_t now, Why& why) {
     return nullptr;
 }
 
-void rs7menu::Queue::Drop(Request& r) {
+void rsxrmenu::Queue::Drop(Request& r) {
     if (r.stage.exchange(Stage::Free) != Stage::Free) {
         --active;
     }

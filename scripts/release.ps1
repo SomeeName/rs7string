@@ -71,7 +71,11 @@ try {
     # package.ps1 rebuilds with -Public: check the exports of the DLL that ships, not only the full build's.
     Invoke-Checked 'uv' @('run', 'python', 'tools\check_exports.py', 'bin\Release\dinput8.dll')
 
-    $zip = Join-Path $root "dist\rs7string-$short.zip"
+    # package.ps1 names its zip after the commit; the release asset carries the version.
+    $built = Join-Path $root "dist\rsxr-$short.zip"
+    if (-not (Test-Path -LiteralPath $built -PathType Leaf)) { throw "Missing release artifact: $built" }
+    $zip = Join-Path $root "dist\rsxr-$Version.zip"
+    Move-Item -LiteralPath $built -Destination $zip -Force
     $dll = Join-Path $root 'bin\Release\dinput8.dll'
     foreach ($file in @($zip, $dll)) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing release artifact: $file" }
@@ -86,8 +90,8 @@ try {
     $notesPath = Join-Path $root "dist\release-notes-$Version.md"
     [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
 
-    $tagArgs = @('tag', '-a', $tag, $commit, '-m', "rs7string $Version")
-    $releaseArgs = @('release', 'create', $tag, '--target', $commit, '--title', "rs7string $Version",
+    $tagArgs = @('tag', '-a', $tag, $commit, '-m', "RS Extended Range $Version")
+    $releaseArgs = @('release', 'create', $tag, '--target', $commit, '--title', "RS Extended Range $Version",
                      '--notes-file', $notesPath, $zip, $sums, $notesPath)
     Write-Host 'Prepared release artifacts. Commands (PowerShell, from this repository):'
     Write-Host ('git tag ' + (($tagArgs[1..($tagArgs.Count - 1)] | ForEach-Object { Quote-Argument $_ }) -join ' '))

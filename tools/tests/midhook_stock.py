@@ -19,7 +19,7 @@ from midhook_oracle import ARITH, FLAG_PATTERNS, Case, Machine, Spec, brief, fla
 # reference runs the site's original instructions instead and compares what the game can observe: the exit taken, the
 # GPRs, the live stack, x87/SSE, the DATA and EBP areas, the case's memory and every write outside the DLL image (the
 # hook's own state is not game-observable), with the register bits no continuation reads (regs_live_at) masked. The
-# hook's helpers run for real on the DLL's default state (six strings, no RS7X chart; reset before every run), so a
+# hook's helpers run for real on the DLL's default state (six strings, no extension block chart; reset before every run), so a
 # case's `rets` do not apply, unless a site's helpers need game state the emulator lacks (Ref.real). Arithmetic flags
 # are compared at a common exit unless flags_dead_at proves it rewrites them before any read; the other flag bits
 # always. Writes to the fake TEB (SEH frame bookkeeping of a helper's

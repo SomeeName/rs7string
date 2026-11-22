@@ -38,7 +38,7 @@ docs/eight-audit.tsv
 docs/publish-grid-manifest.json
 .venv/
 original/
-rs7string/
+rsxr/
 *.nif
 *.psarc
 *.gfx

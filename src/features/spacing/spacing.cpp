@@ -1,4 +1,4 @@
-// The spacing factor each instrument was built with (Rs7Gs_AttachSpaced records it, the headstock reads it).
+// The spacing factor each instrument was built with (RsxrGs_AttachSpaced records it, the headstock reads it).
 #include "features/spacing/spacing.h"
 #include <windows.h>
 
@@ -15,7 +15,7 @@ unsigned g_next = 0;
 SRWLOCK g_lock = SRWLOCK_INIT;
 }  // namespace
 
-void Rs7Spacing_Record(const uint8_t* info, float k) {
+void RsxrSpacing_Record(const uint8_t* info, float k) {
     if (!info) {
         return;
     }
@@ -38,7 +38,7 @@ void Rs7Spacing_Record(const uint8_t* info, float k) {
     ReleaseSRWLockExclusive(&g_lock);
 }
 
-void Rs7Spacing_Forget(const uint8_t* info) {
+void RsxrSpacing_Forget(const uint8_t* info) {
     if (!info) {
         return;
     }
@@ -54,7 +54,7 @@ void Rs7Spacing_Forget(const uint8_t* info) {
     ReleaseSRWLockExclusive(&g_lock);
 }
 
-float Rs7Spacing_Factor(const uint8_t* info) {
+float RsxrSpacing_Factor(const uint8_t* info) {
     if (!info) {
         return 1.0f;
     }

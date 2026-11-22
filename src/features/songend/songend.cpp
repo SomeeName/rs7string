@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_endlog = 1;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_endlog = 1;
 
 namespace {
 constexpr unsigned kMaxLines = 400;  // per run; a song end costs 1-3 lines
@@ -26,17 +26,17 @@ Session ReadSession(uint32_t s) {
     Session r;
     const uint8_t* p = reinterpret_cast<const uint8_t*>(uintptr_t(s));
 
-    r.ok = s && Rs7_SafeCopyZero(&r.vtable, p, 4) && Rs7_SafeCopyZero(&r.id, p + 8, 4) &&
-           Rs7_SafeCopyZero(&r.song, p + 0x78, 4) && Rs7_SafeCopyZero(&r.state, p + 0x390, 2) &&
-           Rs7_SafeCopyZero(&r.pending, p + 0x392, 2) && Rs7_SafeCopyZero(&r.flags, p + 0x394, 1) &&
-           Rs7_SafeCopyZero(&r.time, p + 0x3B4, 4);
+    r.ok = s && Rsxr_SafeCopyZero(&r.vtable, p, 4) && Rsxr_SafeCopyZero(&r.id, p + 8, 4) &&
+           Rsxr_SafeCopyZero(&r.song, p + 0x78, 4) && Rsxr_SafeCopyZero(&r.state, p + 0x390, 2) &&
+           Rsxr_SafeCopyZero(&r.pending, p + 0x392, 2) && Rsxr_SafeCopyZero(&r.flags, p + 0x394, 1) &&
+           Rsxr_SafeCopyZero(&r.time, p + 0x3B4, 4);
 
     return r;
 }
 
 // The tick each session last entered state 3 (playing): the end line says how long the song ran. A full table replaces
 // its entries in turn.
-rs7::ObjTable<uint32_t, DWORD, 4> g_start;
+rsxr::ObjTable<uint32_t, DWORD, 4> g_start;
 
 void NoteStart(uint32_t s) {
     g_start.Put(s, GetTickCount());
@@ -66,8 +66,8 @@ bool InImage(uint32_t a) {
 bool IsReturn(uint32_t a) {
     uint8_t b[7];
 
-    return InImage(a) && Rs7_SafeCopyZero(b, reinterpret_cast<const void*>(uintptr_t(a - 7)), 7) &&
-           rs7end::EndsInCall(b);
+    return InImage(a) && Rsxr_SafeCopyZero(b, reinterpret_cast<const void*>(uintptr_t(a - 7)), 7) &&
+           rsxrend::EndsInCall(b);
 }
 
 // "frames A B C | stack D E F": the EBP chain from `ebp`, then return-address candidates on the stack
@@ -77,7 +77,7 @@ void Backtrace(uint32_t ebp, const uint32_t* sp, char* out, size_t n) {
 
     for (int i = 0; i < 10 && ebp && !(ebp & 3) && at < n; ++i) {
         uint32_t fr[2];
-        if (!Rs7_SafeCopyZero(fr, reinterpret_cast<const void*>(uintptr_t(ebp)), 8)) {
+        if (!Rsxr_SafeCopyZero(fr, reinterpret_cast<const void*>(uintptr_t(ebp)), 8)) {
             break;
         }
         if (!InImage(fr[1])) {
@@ -99,7 +99,7 @@ void Backtrace(uint32_t ebp, const uint32_t* sp, char* out, size_t n) {
 
     for (int i = 0; i < 160 && found < 14 && at < n; ++i) {
         uint32_t v;
-        if (!Rs7_SafeCopyZero(&v, sp + i, 4)) {
+        if (!Rsxr_SafeCopyZero(&v, sp + i, 4)) {
             break;
         }
         if (!IsReturn(v)) {
@@ -116,16 +116,16 @@ void SessionText(const Session& s, char* out, size_t n) {
                   s.state, s.pending, s.flags, s.song, double(s.time));
 }
 
-void OnEvent(const Rs7Mid::Context& c) {  // SE1
+void OnEvent(const RsxrMid::Context& c) {  // SE1
     const auto* stack = reinterpret_cast<const uint32_t*>(c.esp);
     const uint32_t session = c.ecx;
     uint32_t ev[3] = {};
-    if (!Rs7_SafeCopyZero(ev, reinterpret_cast<const void*>(uintptr_t(stack[1])), 12)) {
+    if (!Rsxr_SafeCopyZero(ev, reinterpret_cast<const void*>(uintptr_t(stack[1])), 12)) {
         return;
     }
 
     const Session s = ReadSession(session);
-    if (!s.ok || !rs7end::IsEndEvent(ev[0], ev[1], s.id) || !Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
+    if (!s.ok || !rsxrend::IsEndEvent(ev[0], ev[1], s.id) || !RsxrLog_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -133,21 +133,21 @@ void OnEvent(const Rs7Mid::Context& c) {  // SE1
 
     SessionText(s, st, sizeof st);
     Backtrace(c.ebp, stack, bt, sizeof bt);
-    Rs7Log("song end [SE1 end-song event 0x7DD600]: session %08X event {target %u, type 3, flags %02X} %s, "
-           "playing %.1f s | sender %08X | %s",
-           session, ev[0], ev[2] & 0xFF, st, SecondsPlaying(session), stack[0], bt);
+    RsxrLog("song end [SE1 end-song event 0x7DD600]: session %08X event {target %u, type 3, flags %02X} %s, "
+            "playing %.1f s | sender %08X | %s",
+            session, ev[0], ev[2] & 0xFF, st, SecondsPlaying(session), stack[0], bt);
 }
 
-void OnLeave(const Rs7Mid::Context& c) {  // SE2
+void OnLeave(const RsxrMid::Context& c) {  // SE2
     const auto* stack = reinterpret_cast<const uint32_t*>(c.esp);
     const uint32_t session = c.esi, ret = stack[0];
     const unsigned old = stack[1] & 0xFFFF;
-    const int to = rs7end::NewState(ret, c.edi, c.ebx);
+    const int to = rsxrend::NewState(ret, c.edi, c.ebx);
 
     if (to == 3) {
         NoteStart(session);
     }
-    if (!Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
+    if (!RsxrLog_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -157,22 +157,22 @@ void OnLeave(const Rs7Mid::Context& c) {  // SE2
     SessionText(s, st, sizeof st);
 
     if (old != 3) {
-        Rs7Log("song state: session %08X leaves state %u -> %d (caller %08X %s) %s", session, old, to, ret,
-               rs7end::CallerName(ret), st);
+        RsxrLog("song state: session %08X leaves state %u -> %d (caller %08X %s) %s", session, old, to, ret,
+                rsxrend::CallerName(ret), st);
         return;
     }
 
     char bt[400];
 
     Backtrace(c.ebp, stack, bt, sizeof bt);
-    Rs7Log(
+    RsxrLog(
         "song end [SE2 leaves state 3 'playing' 0x7DFA30] -> %d: session %08X, caller %08X %s, %s, playing %.1f s | %s",
-        to, session, ret, rs7end::CallerName(ret), st, SecondsPlaying(session), bt);
+        to, session, ret, rsxrend::CallerName(ret), st, SecondsPlaying(session), bt);
 }
 
-void OnNoSong(const Rs7Mid::Context& c) {  // SE3
+void OnNoSong(const RsxrMid::Context& c) {  // SE3
     const uint32_t session = c.esi;
-    if (!Rs7Log_Upto(&g_lines, LONG(kMaxLines))) {
+    if (!RsxrLog_Upto(&g_lines, LONG(kMaxLines))) {
         return;
     }
 
@@ -181,11 +181,11 @@ void OnNoSong(const Rs7Mid::Context& c) {  // SE3
 
     SessionText(s, st, sizeof st);
     Backtrace(c.ebp, reinterpret_cast<const uint32_t*>(c.esp), bt, sizeof bt);
-    Rs7Log("song end [SE3 song object +78h is NULL 0x7E0AE6]: session %08X %s, playing %.1f s | %s", session, st,
-           SecondsPlaying(session), bt);
+    RsxrLog("song end [SE3 song object +78h is NULL 0x7E0AE6]: session %08X %s, playing %.1f s | %s", session, st,
+            SecondsPlaying(session), bt);
 }
 
-void OnSite(uint32_t site, const Rs7Mid::Context& c) {
+void OnSite(uint32_t site, const RsxrMid::Context& c) {
     if (site == 1) {
         OnEvent(c);
     } else if (site == 2) {
@@ -196,11 +196,11 @@ void OnSite(uint32_t site, const Rs7Mid::Context& c) {
 }
 }  // namespace
 
-bool rs7end::IsEndEvent(uint32_t target, uint32_t type, uint32_t sessionId) {
+bool rsxrend::IsEndEvent(uint32_t target, uint32_t type, uint32_t sessionId) {
     return type == 3 && (target == 2 || target == sessionId);
 }
 
-int rs7end::NewState(uint32_t ret, uint32_t edi, uint32_t ebx) {
+int rsxrend::NewState(uint32_t ret, uint32_t edi, uint32_t ebx) {
     switch (ret) {
         case 0x7E0A3C:
             return int(edi & 0xFFFF);  // UpdateState: the pending request +392h
@@ -216,7 +216,7 @@ int rs7end::NewState(uint32_t ret, uint32_t edi, uint32_t ebx) {
     }
 }
 
-const char* rs7end::CallerName(uint32_t ret) {
+const char* rsxrend::CallerName(uint32_t ret) {
     switch (ret) {
         case 0x7E0A3C:
             return "(UpdateState: pending request)";
@@ -232,7 +232,7 @@ const char* rs7end::CallerName(uint32_t ret) {
     }
 }
 
-bool rs7end::EndsInCall(const uint8_t b[7]) {
+bool rsxrend::EndsInCall(const uint8_t b[7]) {
     if (b[2] == 0xE8) {
         return true;  // E8 rel32
     }
@@ -264,28 +264,28 @@ bool rs7end::EndsInCall(const uint8_t b[7]) {
     return false;
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7End_OnSite(uint32_t site, const uint32_t* f) {
+extern "C" __declspec(dllexport) void __cdecl RsxrEnd_OnSite(uint32_t site, const uint32_t* f) {
     // Compatibility for the former PUSHAD ABI. The saved ESP slot is after
     // PUSHFD; the actual live stack starts immediately after the nine dwords.
-    __try {  // Rs7End_OnContext checks g_rs7_endlog
-        Rs7Mid::Context c{};
+    __try {  // RsxrEnd_OnContext checks g_rsxr_endlog
+        RsxrMid::Context c{};
 
         std::memcpy(&c, f, 9 * sizeof(uint32_t));
         c.esp = uint32_t(uintptr_t(f + 9));
-        Rs7End_OnContext(site, c);
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
-        g_rs7_endlog = 0;
-        Rs7Log("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
+        RsxrEnd_OnContext(site, c);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
+        g_rsxr_endlog = 0;
+        RsxrLog("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
     }
 }
 
-extern "C" __declspec(dllexport) void __cdecl Rs7End_OnContext(uint32_t site, const Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl RsxrEnd_OnContext(uint32_t site, const RsxrMid::Context& c) {
     __try {
-        if (g_rs7_endlog) {
+        if (g_rsxr_endlog) {
             OnSite(site, c);
         }
-    } __except (Rs7_FaultFilter(GetExceptionCode())) {
-        g_rs7_endlog = 0;
-        Rs7Log("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
+    } __except (Rsxr_FaultFilter(GetExceptionCode())) {
+        g_rsxr_endlog = 0;
+        RsxrLog("song end log: fault %08lX at site SE%u - switched off for this run", GetExceptionCode(), site);
     }
 }

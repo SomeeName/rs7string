@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check the built dinput8.dll: the exports the game and the emulator tests need, the image base, and
-that it does not import d3d9.dll (Rs7_Startup waits for d3d9.dll to appear as the "exe unpacked"
+that it does not import d3d9.dll (Rsxr_Startup waits for d3d9.dll to appear as the "exe unpacked"
 signal; an import would load it before the wait and the DLL would talk to D3D9 outside COM vtables)."""
 
 from __future__ import annotations
@@ -21,28 +21,28 @@ REQUIRED = [
 ]
 # Colour data and stubs the emulator tests (test_emu_*.py) and the in-game log rely on.
 REQUIRED_DATA = [
-    "g_rs7_v6",
-    "g_rs7_fx_rgb",
-    "g_rs7_colormgr",
-    "Rs7_S7LogMask",
-    "g_rs7_pegsets",
-    "Rs7_Mid_PP_TOC",
-    "Rs7_Mid_PP_SNGF",
-    "Rs7_Mid_GIP1",
-    "Rs7_Mid_SC1",  # song-camera floor compensation (test_song_camera.py)
-    "Rs7_Stub_PP_SNGD",
-    "g_rs7_skip_PP_TOC",
-    "g_rs7_plain_psarc",
+    "g_rsxr_v6",
+    "g_rsxr_fx_rgb",
+    "g_rsxr_colormgr",
+    "Rsxr_S7LogMask",
+    "g_rsxr_pegsets",
+    "Rsxr_Mid_PP_TOC",
+    "Rsxr_Mid_PP_SNGF",
+    "Rsxr_Mid_GIP1",
+    "Rsxr_Mid_SC1",  # song-camera floor compensation (test_song_camera.py)
+    "Rsxr_Stub_PP_SNGD",
+    "g_rsxr_skip_PP_TOC",
+    "g_rsxr_plain_psarc",
     # mid-hook builders and thunks (test_midhook_emu.py, test_midhook_call_emu.py, emu_harness.py)
-    "Rs7Mid_Build",
-    "Rs7Mid_BuildLight",
-    "Rs7Mid_BuildSse",
-    "Rs7Mid_BuildCall",
-    "Rs7Mid_BuildWrap",
-    "Rs7Mid_BuildCallIn",
-    "Rs7Mid_Thunk",
-    "Rs7Mid_ThunkLight",
-    "Rs7Mid_ThunkSse",
+    "RsxrMid_Build",
+    "RsxrMid_BuildLight",
+    "RsxrMid_BuildSse",
+    "RsxrMid_BuildCall",
+    "RsxrMid_BuildWrap",
+    "RsxrMid_BuildCallIn",
+    "RsxrMid_Thunk",
+    "RsxrMid_ThunkLight",
+    "RsxrMid_ThunkSse",
 ]
 FORBIDDEN_IMPORTS = ["d3d9.dll"]
 IMAGE_BASE = 0x5E000000

@@ -9,13 +9,13 @@ namespace {
 int g_removed = 0;
 
 void ReadRemoved(const wchar_t* iniPath) {
-    g_removed = Rs7Removed_ReadIni(iniPath);
+    g_removed = RsxrRemoved_ReadIni(iniPath);
 }
 }  // namespace
 
-const Rs7SetTable kRs7RemovedSettings = {nullptr, 0, ReadRemoved};
+const RsxrSetTable kRsxrRemovedSettings = {nullptr, 0, ReadRemoved};
 
-const Rs7RemovedKey kRs7RemovedKeys[] = {
+const RsxrRemovedKey kRsxrRemovedKeys[] = {
     {L"debug", L"string6_as_string0"},  // diagnostic mirror of string 0 (lanes and colours)
     {L"neck", L"native_colours"},       // 0: the stock six-column colours with C1-C5 / N11 / GSCL
     {L"neck", L"native_tuner"},         // 0: the six-slot tuner with the low B as a phase of slot 0
@@ -42,30 +42,30 @@ const Rs7RemovedKey kRs7RemovedKeys[] = {
     {L"chords", L"frame_scale"},        // the old fixed chord-frame scale (ignored since the lane-based frames)
     {L"chords", L"frame_axis"},         // the chord frame's string axis (always y)
     {L"chords", L"native_chordloops"},  // 0: the 7-slot chord loops (N22 N23 NF2 NF3 CT4-CT11)
-    {L"debug", L"head_stretch"},  // the headstock length stretch experiment (the frame rotation Rs7Head_Width writes)
+    {L"debug", L"head_stretch"},  // the headstock length stretch experiment (the frame rotation RsxrHead_Width writes)
     {L"debug", L"head_stretch_mode"},  // that experiment's Entity_SetScale mode
 };
-const int kRs7RemovedKeyCount = int(sizeof(kRs7RemovedKeys) / sizeof(kRs7RemovedKeys[0]));
+const int kRsxrRemovedKeyCount = int(sizeof(kRsxrRemovedKeys) / sizeof(kRsxrRemovedKeys[0]));
 
-int Rs7Removed_ReadIni(const wchar_t* iniPath) {
+int RsxrRemoved_ReadIni(const wchar_t* iniPath) {
     int n = 0;
     if (!iniPath) {
         return n;
     }
 
-    for (int i = 0; i < kRs7RemovedKeyCount; ++i) {
+    for (int i = 0; i < kRsxrRemovedKeyCount; ++i) {
         std::wstring value;
-        if (!Rs7Config_ReadPresent(kRs7RemovedKeys[i].section, kRs7RemovedKeys[i].key, iniPath, &value)) {
+        if (!RsxrConfig_ReadPresent(kRsxrRemovedKeys[i].section, kRsxrRemovedKeys[i].key, iniPath, &value)) {
             continue;
         }
 
         ++n;
-        Rs7Log("config: [%ls] %ls ignored, removed in 1.0", kRs7RemovedKeys[i].section, kRs7RemovedKeys[i].key);
+        RsxrLog("config: [%ls] %ls ignored, removed in 1.0", kRsxrRemovedKeys[i].section, kRsxrRemovedKeys[i].key);
     }
 
     return n;
 }
 
-int Rs7Removed_Count() {
+int RsxrRemoved_Count() {
     return g_removed;
 }

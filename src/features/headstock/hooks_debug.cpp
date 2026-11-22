@@ -10,14 +10,14 @@
 #include <intrin.h>
 
 // The debug experiment on a 7-string guitar's headstock: [debug] head_cull keeps one named frame node culled.
-// Hot-reloaded from the ini every 120 frames until the overlay takes over (Rs7Head_SetLive). Game thread, except
-// Rs7Head_SetLive.
+// Hot-reloaded from the ini every 120 frames until the overlay takes over (RsxrHead_SetLive). Game thread, except
+// RsxrHead_SetLive.
 
 namespace {
-using namespace rs7head;
-using rs7asset::kChildren;
-using rs7asset::kChildSlots;
-using rs7asset::kFlags;
+using namespace rsxrhead;
+using rsxrasset::kChildren;
+using rsxrasset::kChildSlots;
+using rsxrasset::kFlags;
 
 constexpr int kMaxNodes = 128;
 
@@ -40,11 +40,11 @@ void Reload() {
             return;
         }
 
-        Rs7Spin_Lock(&g_head.liveSpin);
+        RsxrSpin_Lock(&g_head.liveSpin);
 
         const Live l = g_head.live;
 
-        Rs7Spin_Unlock(&g_head.liveSpin);
+        RsxrSpin_Unlock(&g_head.liveSpin);
         g_head.liveTaken = seq;
         Take(l.cull);
         return;
@@ -71,15 +71,15 @@ int Collect(uint8_t* root, uint8_t** out) {  // depth first, at most kMaxNodes n
         uint8_t* p = stack[--sp];
 
         out[n++] = p;
-        if (!rs7s7d::IsKindOf(p, "NiNode")) {
+        if (!rsxrs7d::IsKindOf(p, "NiNode")) {
             continue;
         }
 
-        const unsigned cnt = Rs7_SafeRead<uint16_t>(p, kChildSlots);
-        const uint8_t* ch = Rs7_SafeRead<const uint8_t*>(p, kChildren);
+        const unsigned cnt = Rsxr_SafeRead<uint16_t>(p, kChildSlots);
+        const uint8_t* ch = Rsxr_SafeRead<const uint8_t*>(p, kChildren);
 
         for (int i = int(cnt < 64 ? cnt : 64) - 1; i >= 0; --i) {
-            uint8_t* c = Rs7_SafeRead<uint8_t*>(ch, 4 * uint32_t(i));
+            uint8_t* c = Rsxr_SafeRead<uint8_t*>(ch, 4 * uint32_t(i));
 
             if (c && sp < kMaxNodes) {
                 stack[sp++] = c;
@@ -114,15 +114,15 @@ Culled& CulledOf(uint8_t* head) {
 }
 
 void SetCullFlag(uint8_t* node, bool on) {
-    const uint16_t old = Rs7_SafeRead<uint16_t>(node, kFlags);
+    const uint16_t old = Rsxr_SafeRead<uint16_t>(node, kFlags);
     const uint16_t f = uint16_t(on ? (old | 1u) : (old & ~1u));
 
-    Rs7_SafeStore(node + kFlags, &f, sizeof f);
+    Rsxr_SafeStore(node + kFlags, &f, sizeof f);
 }
 
 void ApplyCull(Culled& c, uint8_t* frame) {
     uint8_t* target = nullptr;
-    uint8_t* fr = frame ? rs7s7d::EntityRoot(frame) : nullptr;
+    uint8_t* fr = frame ? rsxrs7d::EntityRoot(frame) : nullptr;
 
     if (fr != c.root) {
         c.root = fr;
@@ -136,7 +136,7 @@ void ApplyCull(Culled& c, uint8_t* frame) {
         for (int i = 0; i < n && !target; ++i) {
             char name[48] = {};
 
-            rs7s7d::NameOfNode(nodes[i], name, sizeof name);
+            rsxrs7d::NameOfNode(nodes[i], name, sizeof name);
             if (!std::strcmp(name, g_head.cullName)) {
                 target = nodes[i];
             }
@@ -156,7 +156,7 @@ void ApplyCull(Culled& c, uint8_t* frame) {
 
 }  // namespace
 
-void rs7head::DebugFrame(uint8_t* head) {
+void rsxrhead::DebugFrame(uint8_t* head) {
     Reload();
     Culled& c = CulledOf(head);
 
@@ -165,22 +165,22 @@ void rs7head::DebugFrame(uint8_t* head) {
     }
 }
 
-void Rs7Head_SetLive(const char* cull) {
+void RsxrHead_SetLive(const char* cull) {
     Live l{};
 
     for (int i = 0; i < 47 && cull && cull[i]; ++i) {
         l.cull[i] = cull[i];
     }
 
-    Rs7Spin_Lock(&g_head.liveSpin);
+    RsxrSpin_Lock(&g_head.liveSpin);
 
     g_head.live = l;
-    Rs7Spin_Unlock(&g_head.liveSpin);
+    RsxrSpin_Unlock(&g_head.liveSpin);
     _InterlockedExchange(&g_head.liveOwned, 1);
     _InterlockedIncrement(&g_head.liveSeq);
 }
 
-void Rs7Head_SetIni(const wchar_t* path) {
+void RsxrHead_SetIni(const wchar_t* path) {
     g_head.ini[0] = 0;
     if (path && std::wcslen(path) < MAX_PATH) {
         wcscpy_s(g_head.ini, path);

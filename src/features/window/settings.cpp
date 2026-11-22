@@ -4,13 +4,12 @@
 #include "platform/uilayout.h"
 
 namespace {
-using T = Rs7SetType;
-using W = Rs7SetWhen;
+using T = RsxrSetType;
+using W = RsxrSetWhen;
 
-const Rs7SetDef kWindowDefs[] = {
+const RsxrSetDef kWindowDefs[] = {
     {"window.background", L"window", L"background", T::Bool, W::Restart, "0", 0, 1, "Background driving",
-     "The game window never activates itself; injected keys via \\\\.\\pipe\\rs7string. Applies after a restart.",
-     nullptr},
+     "The game window never activates itself; injected keys via \\\\.\\pipe\\rsxr. Applies after a restart.", nullptr},
     {"window.screen", L"window", L"screen", T::Int, W::Restart, "0", 0, 16, "Screen",
      "Centre the game window on monitor N (0 = stock placement). Applies after a restart.", nullptr},
     {"window.console_quickedit_off", L"window", L"console_quickedit_off", T::Bool, W::Restart, "1", 0, 1,
@@ -21,16 +20,16 @@ const Rs7SetDef kWindowDefs[] = {
 };
 }  // namespace
 
-const Rs7SetTable kRs7WindowSettings = {kWindowDefs, int(sizeof kWindowDefs / sizeof kWindowDefs[0]), nullptr};
+const RsxrSetTable kRsxrWindowSettings = {kWindowDefs, int(sizeof kWindowDefs / sizeof kWindowDefs[0]), nullptr};
 
 namespace {
-using U = Rs7UiTab;
-using K = Rs7UiKind;
+using U = RsxrUiTab;
+using K = RsxrUiKind;
 
-const Rs7UiItem kUi[] = {
+const RsxrUiItem kUi[] = {
     {U::Window, K::Section, "window"},
     {U::Window, K::Setting, "window.screen"},
 };
 }  // namespace
 
-const Rs7UiTable kRs7WindowUi = {kUi, int(sizeof kUi / sizeof kUi[0])};
+const RsxrUiTable kRsxrWindowUi = {kUi, int(sizeof kUi / sizeof kUi[0])};

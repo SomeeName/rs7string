@@ -12,16 +12,16 @@
 #include <memory>
 #include <vector>
 
-using namespace rs7bass;
+using namespace rsxrbass;
 
 TEST(bass_song_strings_need_a_bass_block_on_a_bass_detector) {
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentBass, 5, 2), 5u);
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentBass, 6, 2), 6u);
-    CHECK_EQ(SongStrings(false, rs7ext::kInstrumentBass, 5, 2), 0u);  // no RS7X block: stock 4-string bass
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentGuitar, 7, 2), 0u);
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentBass, 5, 1), 0u);  // a guitar detector
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentBass, 4, 2), 0u);
-    CHECK_EQ(SongStrings(true, rs7ext::kInstrumentBass, 7, 2), 0u);
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentBass, 5, 2), 5u);
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentBass, 6, 2), 6u);
+    CHECK_EQ(SongStrings(false, rsxrext::kInstrumentBass, 5, 2), 0u);  // no extension block: stock 4-string bass
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentGuitar, 7, 2), 0u);
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentBass, 5, 1), 0u);  // a guitar detector
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentBass, 4, 2), 0u);
+    CHECK_EQ(SongStrings(true, rsxrext::kInstrumentBass, 7, 2), 0u);
 }
 
 TEST(bass_extra_bases_and_lowest_open) {
@@ -46,30 +46,30 @@ TEST(bass_attach_extrapolates_outwards) {
     const uint8_t bass[0x0C] = {2}, guitar[0x0C] = {1};
     uint32_t nearRow = 9, farRow = 9;
 
-    CHECK_EQ(rs7gs::StockAttachCount(bass), 4u);
-    CHECK_EQ(rs7gs::StockAttachCount(guitar), 6u);
-    rs7gs::BassAttachRows(4, &nearRow, &farRow);  // low B below E
+    CHECK_EQ(rsxrgs::StockAttachCount(bass), 4u);
+    CHECK_EQ(rsxrgs::StockAttachCount(guitar), 6u);
+    rsxrgs::BassAttachRows(4, &nearRow, &farRow);  // low B below E
     CHECK(nearRow == 0 && farRow == 1);
-    rs7gs::BassAttachRows(5, &nearRow, &farRow);  // high C above G
+    rsxrgs::BassAttachRows(5, &nearRow, &farRow);  // high C above G
     CHECK(nearRow == 3 && farRow == 2);
 }
 
 TEST(bass_added_strings_draw_the_bass_rows_of_their_neighbours) {
-    CHECK(rs7gs::BassStringRow(4) == 0.0f);  // low B: the E's row (stock 0.4 read past the bass table)
-    CHECK(rs7gs::BassStringRow(5) == 0.3f);  // high C: the G's row
+    CHECK(rsxrgs::BassStringRow(4) == 0.0f);  // low B: the E's row (stock 0.4 read past the bass table)
+    CHECK(rsxrgs::BassStringRow(5) == 0.3f);  // high C: the G's row
 }
 
 namespace {
 // A fake song (tuning vector at +110h, as S4 passes it) and bass detector (native size).
 struct Fixture {
     std::vector<uint8_t> song = std::vector<uint8_t>(0x200);
-    std::vector<uint8_t> det = std::vector<uint8_t>(rs7p::kDetSize);
+    std::vector<uint8_t> det = std::vector<uint8_t>(rsxrp::kDetSize);
 
     explicit Fixture(int instrument) {
-        Put<int>(rs7::kDetInstrument, instrument);
-        Put<int>(rs7::kDetFloor, rs7p::kStockFloor);
-        Put<int>(rs7::kDetLowestOpen, 28);
-        Put<int16_t>(rs7::kDetTuning + 8, -1);  // t4: B0 tuned to Bb0
+        Put<int>(rsxr::kDetInstrument, instrument);
+        Put<int>(rsxr::kDetFloor, rsxrp::kStockFloor);
+        Put<int>(rsxr::kDetLowestOpen, 28);
+        Put<int16_t>(rsxr::kDetTuning + 8, -1);  // t4: B0 tuned to Bb0
     }
 
     template <class T>
@@ -84,16 +84,16 @@ struct Fixture {
 
     uint32_t Song(int blockInstrument, int strings) {
         if (blockInstrument >= 0) {
-            auto b = std::make_shared<rs7ext::Block>();
+            auto b = std::make_shared<rsxrext::Block>();
 
             b->instrument = blockInstrument;
             b->stringCount = strings;
-            Rs7Ext_Store(song.data(), b);
+            RsxrExt_Store(song.data(), b);
         } else {
-            Rs7Ext_Store(song.data(), nullptr);
+            RsxrExt_Store(song.data(), nullptr);
         }
 
-        return Rs7Bass_OnSong(det.data(), song.data() + 0x110, Get<int>(rs7::kDetInstrument));
+        return RsxrBass_OnSong(det.data(), song.data() + 0x110, Get<int>(rsxr::kDetInstrument));
     }
 };
 }  // namespace
@@ -101,37 +101,37 @@ struct Fixture {
 TEST(bass_mode_binds_the_detector_and_lowers_its_floor) {
     Fixture f(2);
 
-    Rs7Pitch_DetFloor(f.det.data(), 1);  // PR0: the reset's floor is this detector's own
-    CHECK_EQ(f.Get<int>(rs7::kDetFloor), rs7p::kStockFloor);
-    CHECK_EQ(f.Song(rs7ext::kInstrumentBass, 5), 5u);
-    CHECK_EQ(g_rs7_bass_strings, 5u);
-    CHECK_EQ(Rs7Bass_DetectorStrings(f.det.data()), 5u);
-    CHECK_EQ(Rs7Bass_DetectorStrings(f.song.data()), 0u);
-    Rs7Pitch_BassDetector(f.det.data());
-    Rs7Pitch_DetFloor(f.det.data(), 0);
-    CHECK_EQ(f.Get<int>(rs7::kDetLowestOpen), 22);      // 23 - 1
-    CHECK_EQ(f.Get<int>(rs7::kDetFloor), 21);           // one below the lowest open string
-    CHECK_EQ(f.Get<int16_t>(rs7p::kDetOpen6 + 8), 22);  // string 4 open MIDI
-    CHECK_EQ(f.Get<int16_t>(rs7p::kDetOpen6 + 10), 0);  // slot 5 untouched on five strings
+    RsxrPitch_DetFloor(f.det.data(), 1);  // PR0: the reset's floor is this detector's own
+    CHECK_EQ(f.Get<int>(rsxr::kDetFloor), rsxrp::kStockFloor);
+    CHECK_EQ(f.Song(rsxrext::kInstrumentBass, 5), 5u);
+    CHECK_EQ(g_rsxr_bass_strings, 5u);
+    CHECK_EQ(RsxrBass_DetectorStrings(f.det.data()), 5u);
+    CHECK_EQ(RsxrBass_DetectorStrings(f.song.data()), 0u);
+    RsxrPitch_BassDetector(f.det.data());
+    RsxrPitch_DetFloor(f.det.data(), 0);
+    CHECK_EQ(f.Get<int>(rsxr::kDetLowestOpen), 22);      // 23 - 1
+    CHECK_EQ(f.Get<int>(rsxr::kDetFloor), 21);           // one below the lowest open string
+    CHECK_EQ(f.Get<int16_t>(rsxrp::kDetOpen6 + 8), 22);  // string 4 open MIDI
+    CHECK_EQ(f.Get<int16_t>(rsxrp::kDetOpen6 + 10), 0);  // slot 5 untouched on five strings
     // The next song is a stock 4-string bass (SetTuning: E1 again): the mode clears and the floor goes back to stock.
     CHECK_EQ(f.Song(-1, 0), 0u);
-    CHECK_EQ(g_rs7_bass_strings, 0u);
-    f.Put<int>(rs7::kDetLowestOpen, 28);
-    Rs7Pitch_BassDetector(f.det.data());
-    Rs7Pitch_DetFloor(f.det.data(), 0);
-    CHECK_EQ(f.Get<int>(rs7::kDetFloor), rs7p::kStockFloor);
-    Rs7Ext_Store(f.song.data(), nullptr);
+    CHECK_EQ(g_rsxr_bass_strings, 0u);
+    f.Put<int>(rsxr::kDetLowestOpen, 28);
+    RsxrPitch_BassDetector(f.det.data());
+    RsxrPitch_DetFloor(f.det.data(), 0);
+    CHECK_EQ(f.Get<int>(rsxr::kDetFloor), rsxrp::kStockFloor);
+    RsxrExt_Store(f.song.data(), nullptr);
 }
 
 TEST(bass_mode_leaves_guitar_detectors_stock) {
     Fixture f(1);
 
-    CHECK_EQ(f.Song(rs7ext::kInstrumentBass, 6), 0u);
-    Rs7Pitch_BassDetector(f.det.data());
-    CHECK_EQ(f.Get<int>(rs7::kDetFloor), rs7p::kStockFloor);
-    CHECK_EQ(f.Get<int>(rs7::kDetLowestOpen), 28);
-    CHECK_EQ(g_rs7_bass_strings, 0u);
-    Rs7Ext_Store(f.song.data(), nullptr);
+    CHECK_EQ(f.Song(rsxrext::kInstrumentBass, 6), 0u);
+    RsxrPitch_BassDetector(f.det.data());
+    CHECK_EQ(f.Get<int>(rsxr::kDetFloor), rsxrp::kStockFloor);
+    CHECK_EQ(f.Get<int>(rsxr::kDetLowestOpen), 28);
+    CHECK_EQ(g_rsxr_bass_strings, 0u);
+    RsxrExt_Store(f.song.data(), nullptr);
 }
 
 TEST(bass_bend_hold_bridges_dropouts_of_the_low_b) {
@@ -230,57 +230,57 @@ TEST(bass_players_two_basses_and_a_full_table) {
     CHECK_EQ(StringsOf(t, nullptr), 0u);
 }
 
-extern "C" void __cdecl Rs7_Mid_I1(Rs7Mid::Context& c);
-extern "C" uintptr_t g_rs7_resume_I1;
+extern "C" void __cdecl Rsxr_Mid_I1(RsxrMid::Context& c);
+extern "C" uintptr_t g_rsxr_resume_I1;
 
 TEST(bass_mistake_fret_of_the_low_b_and_high_c) {
-    rs7test::Restore restoreStrings(g_rs7_bass_strings);
-    rs7test::Restore restoreResume(g_rs7_resume_I1);
+    rsxrtest::Restore restoreStrings(g_rsxr_bass_strings);
+    rsxrtest::Restore restoreResume(g_rsxr_resume_I1);
     const int16_t tuning[6] = {-2, -2, -2, -2, -2, -1};  // a step down, high C a half step down
-    Rs7Mid::Context c{};
+    RsxrMid::Context c{};
 
-    g_rs7_resume_I1 = 0x1000;
-    g_rs7_bass_strings = 6;
+    g_rsxr_resume_I1 = 0x1000;
+    g_rsxr_bass_strings = 6;
 
     // Low B (base 23) tuned to A (-2): MIDI 26 is fret 5.
     c.eax = 2;
     c.ecx = 26;
     c.edx = 4;
     c.esi = uint32_t(reinterpret_cast<uintptr_t>(tuning));
-    Rs7_Mid_I1(c);
+    Rsxr_Mid_I1(c);
     CHECK_EQ(c.eax, 5u);
     CHECK_EQ(c.ecx, 5u);
     CHECK_EQ(c.jump, 0x100Du);
 
     // High C (base 48) tuned to B (-1): MIDI 50 is fret 3.
-    c = Rs7Mid::Context{};
+    c = RsxrMid::Context{};
     c.eax = 2;
     c.ecx = 50;
     c.edx = 5;
     c.esi = uint32_t(reinterpret_cast<uintptr_t>(tuning));
-    Rs7_Mid_I1(c);
+    Rsxr_Mid_I1(c);
     CHECK_EQ(c.eax, 3u);
     CHECK_EQ(c.jump, 0x100Du);
 
     // A 5-string bass has no string 5, a stock string stays stock: the game's code runs.
     for (const uint32_t strings : {5u, 0u}) {
-        g_rs7_bass_strings = strings;
-        c = Rs7Mid::Context{};
+        g_rsxr_bass_strings = strings;
+        c = RsxrMid::Context{};
         c.eax = 2;
         c.ecx = 50;
         c.edx = strings ? 5 : 4;
         c.esi = uint32_t(reinterpret_cast<uintptr_t>(tuning));
-        Rs7_Mid_I1(c);
+        Rsxr_Mid_I1(c);
         CHECK_EQ(c.jump, 0u);
         CHECK_EQ(c.ecx, 50u);
     }
 
-    g_rs7_bass_strings = 6;
-    c = Rs7Mid::Context{};
+    g_rsxr_bass_strings = 6;
+    c = RsxrMid::Context{};
     c.eax = 2;
     c.ecx = 40;
     c.edx = 2;
     c.esi = uint32_t(reinterpret_cast<uintptr_t>(tuning));
-    Rs7_Mid_I1(c);
+    Rsxr_Mid_I1(c);
     CHECK_EQ(c.jump, 0u);
 }

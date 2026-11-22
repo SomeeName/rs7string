@@ -4,7 +4,7 @@
 #include "testutil.h"
 #include <cstring>
 
-using namespace rs7ns;
+using namespace rsxrns;
 
 namespace {
 constexpr uint32_t kBendCountOffset = kBendSize - sizeof(uint32_t);
@@ -40,7 +40,7 @@ const int32_t* Midi(const uint8_t* t8) {
 TEST(nslot_layout_constants) {
     CHECK_EQ(kT8Size, 0x80u);
     CHECK_EQ(kC8Size, 0x15A8u);
-    CHECK_EQ(sizeof(Rs7NsEntry), 32u);  // the asm lookups step 32 bytes per entry
+    CHECK_EQ(sizeof(RsxrNsEntry), 32u);  // the asm lookups step 32 bytes per entry
 }
 
 TEST(t8_keeps_the_stock_prefix_and_copies_strings_0_to_5) {
@@ -104,19 +104,44 @@ TEST(t8_ignores_columns_beyond_the_tuning_and_applies_the_capo_rule) {
     CHECK_EQ(Fingers(out)[6], -1);
 }
 
-TEST(name31_decodes_only_with_a_terminated_name) {
-    uint8_t t[kTplSize];
+TEST(nslot_without_a_block_keeps_extended_columns_empty) {
+    uint8_t song[0x120] = {}, t[kTplSize];
+    int16_t tuning[8] = {};
+    const uintptr_t templates[2] = {reinterpret_cast<uintptr_t>(t), reinterpret_cast<uintptr_t>(t + sizeof t)};
 
+    std::memcpy(song + 0x94, templates, sizeof templates);
     StockTemplate(t);
-    Col c;
 
-    CHECK(!DecodeName31(t, &c));
-    t[0x28 + 31] = static_cast<uint8_t>(((1 + 1) << 5) | (2 + 1));
-    CHECK(DecodeName31(t, &c));
-    CHECK_EQ(c.fret, 2);
-    CHECK_EQ(c.finger, 1);
-    std::memset(t + 0x28, 'A', 31);  // a 31-character name: byte 31 is text
-    CHECK(!DecodeName31(t, &c));
+    for (int n : {7, 8}) {
+        const uintptr_t tun[2] = {reinterpret_cast<uintptr_t>(tuning), reinterpret_cast<uintptr_t>(tuning + n)};
+
+        std::memcpy(song + 0x110, tun, sizeof tun);
+
+        for (uint8_t last : {uint8_t(0), uint8_t(0x63), uint8_t(0xFF)}) {
+            t[kTplSize - 1] = last;  // template name bytes never supply chord columns
+            RsxrNs_OnSngLoaded(song);
+
+            for (int pass = 0; pass < 2; ++pass) {
+                if (pass) {
+                    RsxrNs_OnPostProcessed(song);
+                }
+
+                const auto* out = reinterpret_cast<const uint8_t*>(RsxrNs_TplRecord(templates[0], 0));
+
+                CHECK(std::memcmp(out, t, kTplSize) == 0);
+                CHECK_EQ(out[kT8Slots], n);
+                CHECK_EQ(out[kT8Used], 1);
+
+                for (int s : {6, 7}) {
+                    CHECK_EQ(Frets(out)[s], -1);
+                    CHECK_EQ(Fingers(out)[s], -1);
+                    CHECK_EQ(Midi(out)[s], -1);
+                }
+            }
+
+            RsxrNs_OnSongFree(song);
+        }
+    }
 }
 
 TEST(c8_copies_strings_0_to_5_and_converts_flagged_unpitched_slides) {
@@ -330,7 +355,7 @@ TEST(nslot_eval_reentry_clears_previous_chord_tails_when_new_data_is_absent) {
 TEST(nslot_double_stop_span_is_stock_for_an_unregistered_vector) {
     const uint32_t begin = 0x10000000;
 
-    // Rs7Ns_TplRecord answered the stock record (vector not registered / id out of range): the stock loop.
+    // RsxrNs_TplRecord answered the stock record (vector not registered / id out of range): the stock loop.
     const FretSpan stock = DoubleStopSpan(begin, 3, begin + 3 * kTplSize);
 
     CHECK(stock.frets == begin + 3 * kTplSize + 4 && stock.count == 6);
@@ -342,9 +367,9 @@ TEST(nslot_double_stop_span_is_stock_for_an_unregistered_vector) {
 
 TEST(nslot_double_stop_span_through_the_registry) {
     const uint32_t begin = 0x10000000, t8 = 0x20000000;
-    rs7test::Restore restore_g_rs7_ns_5_(g_rs7_ns[5]);
+    rsxrtest::Restore restore_g_rsxr_ns_5_(g_rsxr_ns[5]);
     auto span = [](uint32_t b, uint32_t id) {
-        return DoubleStopSpan(b, id, Rs7Ns_TplRecord(b, id));
+        return DoubleStopSpan(b, id, RsxrNs_TplRecord(b, id));
     };
     auto isEmpty = [](FretSpan s) {
         const auto* frets = reinterpret_cast<const uint8_t*>(s.frets);
@@ -352,23 +377,23 @@ TEST(nslot_double_stop_span_through_the_registry) {
         return s.count == kSlots && frets[0] == 0xFF && frets[7] == 0xFF;
     };
 
-    g_rs7_ns[5] = Rs7NsEntry{begin, 4, t8, 0, 0, 0, 0x5000, 0};
+    g_rsxr_ns[5] = RsxrNsEntry{begin, 4, t8, 0, 0, 0, 0x5000, 0};
     const FretSpan last = span(begin, 3);
 
     CHECK(last.frets == t8 + 3 * kT8Size + kT8Frets && last.count == kSlots);
     CHECK(isEmpty(span(begin, 4)));          // id == tplCount
     CHECK(isEmpty(span(begin + 0x100, 0)));  // a vector not in the registry
-    g_rs7_ns[5].tplCount = 0;
+    g_rsxr_ns[5].tplCount = 0;
     CHECK(isEmpty(span(begin, 0)));  // tplCount 0
 }
 
 TEST(nslot_match_table_row_is_null_outside_the_subharmonic_table) {
     const uintptr_t table = 0x0119A398;
 
-    CHECK(rs7match::TableRow(table, 22) == reinterpret_cast<const int32_t*>(table));
-    CHECK(rs7match::TableRow(table, 93) == reinterpret_cast<const int32_t*>(table + 24 * 71));
-    CHECK(!rs7match::TableRow(table, 21));  // string 7 tuned very low (open 30 + tuning)
-    CHECK(!rs7match::TableRow(table, 0));
-    CHECK(!rs7match::TableRow(table, 94));
-    CHECK(!rs7match::TableRow(0, 40));  // table not bound
+    CHECK(rsxrmatch::TableRow(table, 22) == reinterpret_cast<const int32_t*>(table));
+    CHECK(rsxrmatch::TableRow(table, 93) == reinterpret_cast<const int32_t*>(table + 24 * 71));
+    CHECK(!rsxrmatch::TableRow(table, 21));  // string 7 tuned very low (open 30 + tuning)
+    CHECK(!rsxrmatch::TableRow(table, 0));
+    CHECK(!rsxrmatch::TableRow(table, 94));
+    CHECK(!rsxrmatch::TableRow(0, 40));  // table not bound
 }

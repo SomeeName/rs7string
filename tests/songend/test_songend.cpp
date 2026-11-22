@@ -5,7 +5,7 @@
 #include <cstring>
 #include <string>
 
-extern "C" void __cdecl Rs7_Mid_SE2(Rs7Mid::Context&);
+extern "C" void __cdecl Rsxr_Mid_SE2(RsxrMid::Context&);
 
 namespace {
 std::string g_snapshot;
@@ -17,42 +17,42 @@ void Capture(const char* line) {
 }  // namespace
 
 TEST(songend_allocation_snapshot_is_independent_of_the_end_log_switch) {
-    const uintptr_t saved = g_rs7_endlog;
+    const uintptr_t saved = g_rsxr_endlog;
     const uint32_t stack[2] = {0, 3};
-    Rs7Mid::Context context{};
+    RsxrMid::Context context{};
 
     context.esp = uint32_t(uintptr_t(stack));
-    g_rs7_endlog = 0;
-    Rs7Alloc_SetEnabledForTests(true);
-    Rs7Log_SetSink(Capture);
+    g_rsxr_endlog = 0;
+    RsxrAlloc_SetEnabledForTests(true);
+    RsxrLog_SetSink(Capture);
     g_snapshot.clear();
-    Rs7_Mid_SE2(context);
+    Rsxr_Mid_SE2(context);
     CHECK(g_snapshot.find("allocstats song end #") != std::string::npos);
     CHECK(g_snapshot.find("song end [SE2") == std::string::npos);
-    Rs7Alloc_SetEnabledForTests(false);
+    RsxrAlloc_SetEnabledForTests(false);
     g_snapshot.clear();
-    Rs7_Mid_SE2(context);
+    Rsxr_Mid_SE2(context);
     CHECK(g_snapshot.empty());
-    Rs7Log_SetSink(nullptr);
-    g_rs7_endlog = saved;
+    RsxrLog_SetSink(nullptr);
+    g_rsxr_endlog = saved;
 }
 
 TEST(songend_end_event_is_type_3_to_all_or_this_session) {
-    CHECK(rs7end::IsEndEvent(2, 3, 7));
-    CHECK(rs7end::IsEndEvent(7, 3, 7));
-    CHECK(!rs7end::IsEndEvent(8, 3, 7));
-    CHECK(!rs7end::IsEndEvent(2, 2, 7));
+    CHECK(rsxrend::IsEndEvent(2, 3, 7));
+    CHECK(rsxrend::IsEndEvent(7, 3, 7));
+    CHECK(!rsxrend::IsEndEvent(8, 3, 7));
+    CHECK(!rsxrend::IsEndEvent(2, 2, 7));
 }
 
 TEST(songend_new_state_at_the_known_callers) {
-    CHECK_EQ(rs7end::NewState(0x7E0A3C, 0xAAAA0004, 9), 4);  // UpdateState: DI = pending
-    CHECK_EQ(rs7end::NewState(0x7DD65E, 1, 1), 4);           // end-song event
-    CHECK_EQ(rs7end::NewState(0x7DF85A, 3, 9), 3);
-    CHECK_EQ(rs7end::NewState(0x7EF06C, 9, 2), 2);  // sync: BX
-    CHECK_EQ(rs7end::NewState(0x7EF0C8, 9, 5), 5);
-    CHECK_EQ(rs7end::NewState(0x401000, 3, 3), -1);
-    CHECK(rs7end::CallerName(0x401000)[0] == 0);
-    CHECK(rs7end::CallerName(0x7DD65E)[0] != 0);
+    CHECK_EQ(rsxrend::NewState(0x7E0A3C, 0xAAAA0004, 9), 4);  // UpdateState: DI = pending
+    CHECK_EQ(rsxrend::NewState(0x7DD65E, 1, 1), 4);           // end-song event
+    CHECK_EQ(rsxrend::NewState(0x7DF85A, 3, 9), 3);
+    CHECK_EQ(rsxrend::NewState(0x7EF06C, 9, 2), 2);  // sync: BX
+    CHECK_EQ(rsxrend::NewState(0x7EF0C8, 9, 5), 5);
+    CHECK_EQ(rsxrend::NewState(0x401000, 3, 3), -1);
+    CHECK(rsxrend::CallerName(0x401000)[0] == 0);
+    CHECK(rsxrend::CallerName(0x7DD65E)[0] != 0);
 }
 
 TEST(songend_return_addresses_follow_a_call) {
@@ -64,15 +64,15 @@ TEST(songend_return_addresses_follow_a_call) {
     const uint8_t none[7] = {0x8B, 0x45, 0x08, 0x33, 0xC0, 0x5D, 0xC3};
     const uint8_t jmp[7] = {0, 0, 0, 0, 0, 0xFF, 0xE0};  // jmp eax is no call
 
-    CHECK(rs7end::EndsInCall(rel));
-    CHECK(rs7end::EndsInCall(reg));
-    CHECK(rs7end::EndsInCall(mem));
-    CHECK(rs7end::EndsInCall(d32));
-    CHECK(rs7end::EndsInCall(iat));
-    CHECK(!rs7end::EndsInCall(none));
-    CHECK(!rs7end::EndsInCall(jmp));
+    CHECK(rsxrend::EndsInCall(rel));
+    CHECK(rsxrend::EndsInCall(reg));
+    CHECK(rsxrend::EndsInCall(mem));
+    CHECK(rsxrend::EndsInCall(d32));
+    CHECK(rsxrend::EndsInCall(iat));
+    CHECK(!rsxrend::EndsInCall(none));
+    CHECK(!rsxrend::EndsInCall(jmp));
 }
 
 TEST(songend_logger_is_on_by_default) {
-    CHECK_EQ(g_rs7_endlog, uintptr_t(1));
+    CHECK_EQ(g_rsxr_endlog, uintptr_t(1));
 }

@@ -1,4 +1,4 @@
-"""Deterministic truncation/bit-mutation coverage of the real RS7X parser."""
+"""Deterministic truncation/bit-mutation coverage of the real extension block parser."""
 
 from native_harness import ROOT, compile_harness, run_harness
 

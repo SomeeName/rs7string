@@ -4,7 +4,7 @@
 #include <algorithm>
 
 namespace {
-bool Refuse(Rs7FrozenRefusal& refusal, Rs7FrozenReason reason, uintptr_t address, uintptr_t value = 0) {
+bool Refuse(RsxrFrozenRefusal& refusal, RsxrFrozenReason reason, uintptr_t address, uintptr_t value = 0) {
     refusal.reason = reason;
     refusal.address = address;
     refusal.value = value;
@@ -12,12 +12,12 @@ bool Refuse(Rs7FrozenRefusal& refusal, Rs7FrozenReason reason, uintptr_t address
     return true;
 }
 
-bool ReadableRegion(uintptr_t address, MEMORY_BASIC_INFORMATION* memory, Rs7FrozenRefusal& refusal) {
+bool ReadableRegion(uintptr_t address, MEMORY_BASIC_INFORMATION* memory, RsxrFrozenRefusal& refusal) {
     refusal.state = refusal.protect = 0;
 
     if (!VirtualQuery(reinterpret_cast<const void*>(address), memory, sizeof *memory)) {
         refusal.error = GetLastError();
-        Refuse(refusal, Rs7FrozenReason::Unreadable, address);
+        Refuse(refusal, RsxrFrozenReason::Unreadable, address);
         return false;
     }
 
@@ -26,12 +26,12 @@ bool ReadableRegion(uintptr_t address, MEMORY_BASIC_INFORMATION* memory, Rs7Froz
 
     // SafeCopy deliberately does not swallow guard-page faults: never touch those pages.
     if (memory->Protect & PAGE_GUARD) {
-        Refuse(refusal, Rs7FrozenReason::GuardPage, address);
+        Refuse(refusal, RsxrFrozenReason::GuardPage, address);
         return false;
     }
 
     if (memory->State != MEM_COMMIT || (memory->Protect & PAGE_NOACCESS)) {
-        Refuse(refusal, Rs7FrozenReason::Unreadable, address);
+        Refuse(refusal, RsxrFrozenReason::Unreadable, address);
         return false;
     }
 
@@ -47,7 +47,7 @@ size_t Available(uintptr_t address, const MEMORY_BASIC_INFORMATION& memory) {
     return memory.RegionSize - (address - base);
 }
 
-bool ScanStack(const Rs7FrozenContext& context, const Rs7Range& range, Rs7FrozenRefusal& refusal) {
+bool ScanStack(const RsxrFrozenContext& context, const RsxrRange& range, RsxrFrozenRefusal& refusal) {
     uintptr_t cursor = context.esp;
     void* allocation = nullptr;
     uintptr_t words[64];
@@ -61,24 +61,24 @@ bool ScanStack(const Rs7FrozenContext& context, const Rs7Range& range, Rs7Frozen
         if (!allocation) {
             allocation = memory.AllocationBase;
         } else if (memory.AllocationBase != allocation) {
-            return Refuse(refusal, Rs7FrozenReason::AllocationBoundary, cursor,
+            return Refuse(refusal, RsxrFrozenReason::AllocationBoundary, cursor,
                           reinterpret_cast<uintptr_t>(memory.AllocationBase));
         }
         size_t bytes = std::min(context.stackBase - cursor, Available(cursor, memory));
         if (bytes < sizeof(uintptr_t)) {
-            return Refuse(refusal, Rs7FrozenReason::ShortRegion, cursor, bytes);
+            return Refuse(refusal, RsxrFrozenReason::ShortRegion, cursor, bytes);
         }
 
         while (bytes >= sizeof(uintptr_t)) {
             const size_t count = std::min(bytes / sizeof(uintptr_t), sizeof words / sizeof words[0]);
             const size_t copied = count * sizeof(uintptr_t);
-            if (!Rs7_SafeCopy(words, reinterpret_cast<const void*>(cursor), copied)) {
-                return Refuse(refusal, Rs7FrozenReason::CopyFailed, cursor, copied);
+            if (!Rsxr_SafeCopy(words, reinterpret_cast<const void*>(cursor), copied)) {
+                return Refuse(refusal, RsxrFrozenReason::CopyFailed, cursor, copied);
             }
 
             for (size_t i = 0; i < count; ++i) {
                 if (words[i] >= range.lo && words[i] < range.hi) {
-                    return Refuse(refusal, Rs7FrozenReason::ReturnAddress, cursor + i * sizeof(uintptr_t), words[i]);
+                    return Refuse(refusal, RsxrFrozenReason::ReturnAddress, cursor + i * sizeof(uintptr_t), words[i]);
                 }
             }
 
@@ -91,24 +91,24 @@ bool ScanStack(const Rs7FrozenContext& context, const Rs7Range& range, Rs7Frozen
 }
 }  // namespace
 
-Rs7FrozenContext Rs7FrozenContext::Capture(void* thread, uintptr_t eip, uintptr_t esp, unsigned long segFs) {
+RsxrFrozenContext RsxrFrozenContext::Capture(void* thread, uintptr_t eip, uintptr_t esp, unsigned long segFs) {
     // CONTEXT.SegFs is a DWORD, but only its low 16 bits are the selector; the game's threads were seen with
     // garbage above them (0x1A0053), which GetThreadSelectorEntry rejects.
     const unsigned long fs = segFs & 0xFFFF;
-    Rs7FrozenContext context{eip, esp};
-    Rs7FrozenRefusal& refusal = context.capture;
+    RsxrFrozenContext context{eip, esp};
+    RsxrFrozenRefusal& refusal = context.capture;
 
     refusal.fs = fs;
     LDT_ENTRY entry{};
 
     if (!fs) {
-        Refuse(refusal, Rs7FrozenReason::NoFs, 0);
+        Refuse(refusal, RsxrFrozenReason::NoFs, 0);
         return context;
     }
 
     if (!GetThreadSelectorEntry(static_cast<HANDLE>(thread), fs, &entry)) {
         refusal.error = GetLastError();
-        Refuse(refusal, Rs7FrozenReason::SelectorFailure, fs);
+        Refuse(refusal, RsxrFrozenReason::SelectorFailure, fs);
         return context;
     }
 
@@ -123,27 +123,27 @@ Rs7FrozenContext Rs7FrozenContext::Capture(void* thread, uintptr_t eip, uintptr_
     }
 
     if (Available(teb, memory) < sizeof tib) {
-        Refuse(refusal, Rs7FrozenReason::ShortRegion, teb, Available(teb, memory));
+        Refuse(refusal, RsxrFrozenReason::ShortRegion, teb, Available(teb, memory));
         return context;
     }
 
-    if (!Rs7_SafeCopy(&tib, reinterpret_cast<const void*>(teb), sizeof tib)) {
-        Refuse(refusal, Rs7FrozenReason::CopyFailed, teb, sizeof tib);
+    if (!Rsxr_SafeCopy(&tib, reinterpret_cast<const void*>(teb), sizeof tib)) {
+        Refuse(refusal, RsxrFrozenReason::CopyFailed, teb, sizeof tib);
         return context;
     }
 
     context.stackLimit = reinterpret_cast<uintptr_t>(tib.StackLimit);
     context.stackBase = reinterpret_cast<uintptr_t>(tib.StackBase);
     if (!teb || reinterpret_cast<uintptr_t>(tib.Self) != teb) {
-        Refuse(refusal, Rs7FrozenReason::TibMismatch, teb + offsetof(NT_TIB, Self),
+        Refuse(refusal, RsxrFrozenReason::TibMismatch, teb + offsetof(NT_TIB, Self),
                reinterpret_cast<uintptr_t>(tib.Self));
     }
 
     return context;
 }
 
-bool Rs7FrozenContext::CallsRange(const Rs7Range& range, Rs7FrozenRefusal* out, unsigned long tid) const {
-    Rs7FrozenRefusal refusal = capture;
+bool RsxrFrozenContext::CallsRange(const RsxrRange& range, RsxrFrozenRefusal* out, unsigned long tid) const {
+    RsxrFrozenRefusal refusal = capture;
 
     refusal.tid = tid;
     refusal.eip = eip;
@@ -154,13 +154,13 @@ bool Rs7FrozenContext::CallsRange(const Rs7Range& range, Rs7FrozenRefusal* out, 
     bool refused = true;
 
     if (eip >= range.lo && eip < range.hi) {
-        Refuse(refusal, Rs7FrozenReason::Eip, eip, eip);
-    } else if (capture.reason != Rs7FrozenReason::None) {
+        Refuse(refusal, RsxrFrozenReason::Eip, eip, eip);
+    } else if (capture.reason != RsxrFrozenReason::None) {
         // Capture preserved the exact selector/TIB failure; it still refuses writes.
     } else if (!stackLimit || esp < stackLimit || esp >= stackBase) {
-        Refuse(refusal, Rs7FrozenReason::EspOutside, esp);
+        Refuse(refusal, RsxrFrozenReason::EspOutside, esp);
     } else if (esp % sizeof(uintptr_t) || stackBase % sizeof(uintptr_t)) {
-        Refuse(refusal, Rs7FrozenReason::Unaligned, esp, stackBase);
+        Refuse(refusal, RsxrFrozenReason::Unaligned, esp, stackBase);
     } else {
         refused = ScanStack(*this, range, refusal);
     }
@@ -171,33 +171,33 @@ bool Rs7FrozenContext::CallsRange(const Rs7Range& range, Rs7FrozenRefusal* out, 
     return refused;
 }
 
-const char* Rs7_FrozenReasonName(Rs7FrozenReason reason) {
+const char* Rsxr_FrozenReasonName(RsxrFrozenReason reason) {
     switch (reason) {
-        case Rs7FrozenReason::None:
+        case RsxrFrozenReason::None:
             return "none";
-        case Rs7FrozenReason::NoFs:
+        case RsxrFrozenReason::NoFs:
             return "no-fs";
-        case Rs7FrozenReason::SelectorFailure:
+        case RsxrFrozenReason::SelectorFailure:
             return "selector-failure";
-        case Rs7FrozenReason::TibMismatch:
+        case RsxrFrozenReason::TibMismatch:
             return "tib-self-mismatch";
-        case Rs7FrozenReason::EspOutside:
+        case RsxrFrozenReason::EspOutside:
             return "esp-outside-stack";
-        case Rs7FrozenReason::Unaligned:
+        case RsxrFrozenReason::Unaligned:
             return "unaligned-stack";
-        case Rs7FrozenReason::Unreadable:
+        case RsxrFrozenReason::Unreadable:
             return "unreadable-region";
-        case Rs7FrozenReason::GuardPage:
+        case RsxrFrozenReason::GuardPage:
             return "guard-page";
-        case Rs7FrozenReason::AllocationBoundary:
+        case RsxrFrozenReason::AllocationBoundary:
             return "allocation-boundary";
-        case Rs7FrozenReason::ShortRegion:
+        case RsxrFrozenReason::ShortRegion:
             return "short-region";
-        case Rs7FrozenReason::CopyFailed:
+        case RsxrFrozenReason::CopyFailed:
             return "copy-failed";
-        case Rs7FrozenReason::Eip:
+        case RsxrFrozenReason::Eip:
             return "eip-in-range";
-        case Rs7FrozenReason::ReturnAddress:
+        case RsxrFrozenReason::ReturnAddress:
             return "return-address-hit";
     }
 

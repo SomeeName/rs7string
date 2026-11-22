@@ -1,4 +1,8 @@
-"""Plain (unencrypted TOC) PSARC reader/writer."""
+"""Plain (unencrypted TOC) PSARC reader/writer.
+
+A native RSXR package (docs/NATIVE-FORMAT.md) has the magic PSXR instead of PSAR and is otherwise the
+same archive; read() accepts both and reports which in meta["magic"], write() takes it as `magic`.
+"""
 
 import hashlib
 import struct
@@ -7,12 +11,13 @@ import zlib
 from pathlib import Path
 
 BLOCK = 65536
+MAGICS = (b"PSAR", b"PSXR")
 
 
 def read(path):
     d = Path(path).read_bytes()
     magic, ver, comp, toclen, esz, n, bsz, flags = struct.unpack(">4sI4sIIIII", d[:32])
-    assert magic == b"PSAR" and comp == b"zlib" and esz == 30, (magic, comp, esz)
+    assert magic in MAGICS and comp == b"zlib" and esz == 30, (magic, comp, esz)
     assert flags & 4 == 0, f"encrypted TOC (flags {flags})"
     ents = []
     for i in range(n):
@@ -53,10 +58,11 @@ def read(path):
             b += 1
         files.append(bytes(out))
     names = files[0].decode().split("\n")
-    return dict(zip(names, files[1:])), dict(ver=ver, flags=flags, names=names)
+    return dict(zip(names, files[1:])), dict(ver=ver, flags=flags, names=names, magic=magic)
 
 
-def write(path, named, names, ver=0x00010004, flags=0):
+def write(path, named, names, ver=0x00010004, flags=0, magic=b"PSAR"):
+    assert magic in MAGICS, magic
     blobs = ["\n".join(names).encode()] + [named[n] for n in names]
     zl = []
     data = bytearray()
@@ -79,7 +85,7 @@ def write(path, named, names, ver=0x00010004, flags=0):
         ents.append((md5, zi, len(b), off))
     n = len(blobs)
     toclen = 32 + n * 30 + len(zl) * 2
-    hdr = struct.pack(">4sI4sIIIII", b"PSAR", ver, b"zlib", toclen, 30, n, BLOCK, flags)
+    hdr = struct.pack(">4sI4sIIIII", magic, ver, b"zlib", toclen, 30, n, BLOCK, flags)
     toc = b"".join(
         md5 + struct.pack(">I", zi) + ln.to_bytes(5, "big") + (off + toclen).to_bytes(5, "big")
         for md5, zi, ln, off in ents

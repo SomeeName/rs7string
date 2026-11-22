@@ -13,7 +13,7 @@ def test_call_after_reads_chained_modifiers_and_ignores_comments(tmp_path, monke
     feature = tmp_path / "src/features/example"
     feature.mkdir(parents=True)
     (feature / "registration.cpp").write_text(
-        'Rs7_Mid("A", &callback).Gate(kGate).After().Light(),\nRs7_Mid("B", &callback), // .After()\n',
+        'Rsxr_Mid("A", &callback).Gate(kGate).After().Light(),\nRsxr_Mid("B", &callback), // .After()\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(emu_common, "REPO", tmp_path)

@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace rs7test {
+namespace rsxrtest {
 // A live worker may still use its fixture. Never unwind or close its handle after an unsuccessful join.
 inline void Join(HANDLE thread, DWORD timeoutMs = 5000) {
     const DWORD result = WaitForSingleObject(thread, timeoutMs);
@@ -33,4 +33,4 @@ private:
     T& ref_;
     T saved_;
 };
-}  // namespace rs7test
+}  // namespace rsxrtest

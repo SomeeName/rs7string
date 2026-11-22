@@ -1,7 +1,7 @@
 // RSMods note ramps (render thread only). With custom string colours / Extended Range, RSMods binds its own
 // 256x128 ramp on stage 1 after the game bound the stock one (its DrawIndexedPrimitive / DrawPrimitive hooks).
 // Its rows 7 / 15 hold fixed greys, so string 6 (V6) would show grey. Each such texture gets its own copy with
-// string 6's lines repainted (same Rs7Ramp_Build + self-check as the stock ramps). We hold a reference on the
+// string 6's lines repainted (same RsxrRamp_Build + self-check as the stock ramps). We hold a reference on the
 // source, so its address cannot be reused while it is cached: a rebuilt RSMods texture is a new address.
 // Refused textures are cached too (ours = nullptr), so each is read once.
 #include "d3d/swap_foreign.h"
@@ -17,8 +17,8 @@
 #include <vector>
 
 namespace {
-using namespace rs7swap;
-using rs7d3d::LogQuiet;
+using namespace rsxrswap;
+using rsxrd3d::LogQuiet;
 // More than kForeignMax distinct RSMods ramps within kForeignWindowMs (rainbow notes) switch the copies off. A window,
 // not a session count: RSMods builds new ramps on every colour change, which over many songs passed any fixed count.
 constexpr unsigned kForeignSlots = 8, kForeignMax = 32;
@@ -68,13 +68,13 @@ void ReleaseAllForeign() {
 IDirect3DTexture9* BuildForeign(IDirect3DDevice9* dev, IDirect3DTexture9* t, const D3DSURFACE_DESC& d, char* why,
                                 size_t whyLen) {
     const unsigned levels = t->GetLevelCount();
-    std::vector<Rs7Image> src(levels);
+    std::vector<RsxrImage> src(levels);
 
     if (!ReadLevels(t, src, why, whyLen)) {
         return nullptr;
     }
 
-    const Rs7RowStats rs = Rs7Ramp_RowStats(src[0]);
+    const RsxrRowStats rs = RsxrRamp_RowStats(src[0]);
 
     if (!rs.grey7 || !rs.grey15) {
         std::snprintf(why, whyLen, "not a ramp with grey rows 7/15 (non-uniform-rows=%u grey7=%d grey15=%d)",
@@ -98,10 +98,10 @@ IDirect3DTexture9* BuildForeign(IDirect3DDevice9* dev, IDirect3DTexture9* t, con
 }
 }  // namespace
 
-namespace rs7swap {
+namespace rsxrswap {
 // Render thread, stage 1, not a stock candidate: an RSMods ramp gets its copy bound instead.
 IDirect3DBaseTexture9* OnForeign(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* tex) {
-    if (!g_ramp.cfg.rsmods || g_foreign.off || stage != 1 || dev != g_hook.dev || g_rs7_v6[0] == 0.0f) {
+    if (!g_ramp.cfg.rsmods || g_foreign.off || stage != 1 || dev != g_hook.dev || g_rsxr_v6[0] == 0.0f) {
         return tex;
     }
 
@@ -116,7 +116,7 @@ IDirect3DBaseTexture9* OnForeign(IDirect3DDevice9* dev, DWORD stage, IDirect3DBa
 
     if (!hit) {
         IDirect3DTexture9* t = nullptr;
-        if (FAILED(tex->QueryInterface(kRs7IID_Texture9, reinterpret_cast<void**>(&t))) || !t) {
+        if (FAILED(tex->QueryInterface(kRsxrIID_Texture9, reinterpret_cast<void**>(&t))) || !t) {
             return tex;
         }
 
@@ -184,7 +184,7 @@ IDirect3DBaseTexture9* OnForeign(IDirect3DDevice9* dev, DWORD stage, IDirect3DBa
     }
 
     g_hook.bound[stage] = {tex, hit->ours};
-    Rs7Ramp_CountSwap();
+    RsxrRamp_CountSwap();
 
     return hit->ours;
 }
@@ -194,4 +194,4 @@ void ResetForeign() {
     g_foreign.seen = 0;
     g_foreign.off = false;
 }
-}  // namespace rs7swap
+}  // namespace rsxrswap

@@ -1,5 +1,5 @@
 <#
-    Build rs7string: DLL (bin\Release\dinput8.dll) and unit tests (bin\Release\rs7string_tests.exe),
+    Build RS Extended Range (RSXR): DLL (bin\Release\dinput8.dll) and unit tests (bin\Release\rsxr_tests.exe),
     then run the unit tests. Never copies anything into the game folder.
       .\build.ps1                build + run unit tests + static analysis
       .\build.ps1 -NoTests       build only (with -Asan: skips the normal test run, still runs the ASan tests)
@@ -45,7 +45,7 @@ $Common = @('/p:Configuration=Release', '/p:Platform=Win32', '/p:PostBuildEventU
 # Their features' sites are the src/features/<name>/ folders .publicignore lists.
 $PrivateSites = @()
 if ($Public) {
-    $Common += '/p:Rs7Private=false'
+    $Common += '/p:RsxrPrivate=false'
     if (Test-Path "$PSScriptRoot\.publicignore") {
         foreach ($line in Get-Content "$PSScriptRoot\.publicignore") {
             if ($line -match '^src/features/([^/]+)/$') { $PrivateSites += '--without', $Matches[1] }
@@ -62,31 +62,31 @@ try {
     }
     uv run python tools\gen_sites.py sites.json src\generated\sites.generated.h @PrivateSites
     if ($LASTEXITCODE) { throw 'gen_sites failed' }
-    foreach ($proj in 'rs7string.vcxproj', 'tests\rs7string_tests.vcxproj') {
+    foreach ($proj in 'rsxr.vcxproj', 'tests\rsxr_tests.vcxproj') {
         & $MSBuild $proj @Common /v:minimal
         if ($LASTEXITCODE) { throw "build failed: $proj" }
     }
-    Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rs7string_headstock.bin" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock.bin"
+    Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rsxr_headstock.bin" -Destination "$PSScriptRoot\bin\Release\rsxr_headstock.bin"
     foreach ($kit in '_lh', '_bass', '_bass_lh') {
-        Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rs7string_headstock$kit.bin" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock$kit.bin"
+        Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\rsxr_headstock$kit.bin" -Destination "$PSScriptRoot\bin\Release\rsxr_headstock$kit.bin"
     }
-    Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\LICENSE.md" -Destination "$PSScriptRoot\bin\Release\rs7string_headstock.LICENSE.md"
+    Copy-Item -LiteralPath "$PSScriptRoot\data\headstock\LICENSE.md" -Destination "$PSScriptRoot\bin\Release\rsxr_headstock.LICENSE.md"
     if (-not $NoTests) {
-        & "$PSScriptRoot\bin\Release\rs7string_tests.exe"
+        & "$PSScriptRoot\bin\Release\rsxr_tests.exe"
         if ($LASTEXITCODE) { throw 'unit tests failed' }
     }
     Copy-Item -LiteralPath "$PSScriptRoot\data\chord-diagrams" -Destination "$PSScriptRoot\bin\Release" -Recurse -Force
     if (-not $SkipAnalysis) {
-        foreach ($proj in 'rs7string.vcxproj', 'tests\rs7string_tests.vcxproj') {
-            & $MSBuild $proj /t:ClCompile /p:Rs7Analyze=true @Common /v:quiet
+        foreach ($proj in 'rsxr.vcxproj', 'tests\rsxr_tests.vcxproj') {
+            & $MSBuild $proj /t:ClCompile /p:RsxrAnalyze=true @Common /v:quiet
             if ($LASTEXITCODE) { throw "analysis build failed: $proj" }
         }
         uv run python tools\check_analyze.py
         if ($LASTEXITCODE) { throw 'static analysis: new findings, see AGENTS.md "Build and gates"' }
     }
     if ($Asan) {
-        & $MSBuild 'tests\rs7string_tests.vcxproj' /p:Rs7Asan=true @Common /v:minimal
-        if ($LASTEXITCODE) { throw 'ASan build failed: tests\rs7string_tests.vcxproj' }
+        & $MSBuild 'tests\rsxr_tests.vcxproj' /p:RsxrAsan=true @Common /v:minimal
+        if ($LASTEXITCODE) { throw 'ASan build failed: tests\rsxr_tests.vcxproj' }
         # The x86 ASan runtime of the newest installed MSVC toolset (VC\Tools\MSVC\<version>), next to the exe.
         $vc = [IO.Path]::GetFullPath((Join-Path (Split-Path $MSBuild -Parent) '..\..\..\VC\Tools\MSVC'))
         if (-not (Test-Path -LiteralPath $vc)) { throw "MSVC tools folder not found next to MSBuild ($vc): install the C++ build tools" }
@@ -96,7 +96,7 @@ try {
             Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
         if (-not $rt) { throw "ASan runtime (clang_rt.asan_dynamic-i386.dll) not found under ${vc}: install the MSVC AddressSanitizer component" }
         Copy-Item -LiteralPath $rt -Destination "$PSScriptRoot\bin\Asan" -Force
-        & "$PSScriptRoot\bin\Asan\rs7string_tests.exe"
+        & "$PSScriptRoot\bin\Asan\rsxr_tests.exe"
         if ($LASTEXITCODE) { throw 'unit tests under ASan failed' }
     }
     if ($Fuzz) {

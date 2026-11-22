@@ -44,8 +44,8 @@ static void Report(Probe& p, uint32_t guitar, const char* where, uint32_t result
 
     p.last = now;
 
-    if (Rs7Log_Upto(&g_lines, 60)) {
-        Rs7Log(
+    if (RsxrLog_Upto(&g_lines, 60)) {
+        RsxrLog(
             "loadstep: guitar %08X (%s %u) | calls %u: strings pending %u, grid done %u, pending before headstock %u, "
             "headstock done %u (pending %u), final pending %u",
             guitar, where, result, p.calls, p.strings1, p.gridOk, p.before58dc1, p.headDone, p.calls - p.headDone,
@@ -53,7 +53,7 @@ static void Report(Probe& p, uint32_t guitar, const char* where, uint32_t result
     }
 }
 
-extern "C" void __cdecl Rs7_Mid_LSA(Rs7Mid::Context& c) {
+extern "C" void __cdecl Rsxr_Mid_LSA(RsxrMid::Context& c) {
     Probe& p = At(c.esi);
 
     ++p.calls;
@@ -63,17 +63,17 @@ extern "C" void __cdecl Rs7_Mid_LSA(Rs7Mid::Context& c) {
     Report(p, c.esi, "strings", c.eax);
 }
 
-extern "C" void __cdecl Rs7_Mid_LSG(Rs7Mid::Context& c) {
+extern "C" void __cdecl Rsxr_Mid_LSG(RsxrMid::Context& c) {
     ++At(c.esi).gridOk;
 }
 
-extern "C" void __cdecl Rs7_Mid_LSC(Rs7Mid::Context& c) {
+extern "C" void __cdecl Rsxr_Mid_LSC(RsxrMid::Context& c) {
     if (c.edi == 1) {
         ++At(c.esi).before58dc1;
     }
 }
 
-extern "C" void __cdecl Rs7_Mid_LSE(Rs7Mid::Context& c) {
+extern "C" void __cdecl Rsxr_Mid_LSE(RsxrMid::Context& c) {
     Probe& p = At(c.esi);
 
     ++p.headDone;

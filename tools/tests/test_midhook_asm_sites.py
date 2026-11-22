@@ -3,7 +3,7 @@ frozen at b72bc52 and c15ca8d, tools/tests/fixtures/midhook_b72bc52.json / midho
 - the guitar ctor's allocations and GuitarStrings ctor, now call sites (GSA1, GSC1: Before placement; GIA1: Wrap) whose
   old jmp stubs also covered the instructions before the call (Spec.lead);
 - GRM3 (an x87 result through Context::PushSt0);
-- BT1 (Play_Eval_Build's epilogue, `ret 14h` now relocated) and AG1-AG3 (whole child queries, light, Rs7Mid::Ret).
+- BT1 (Play_Eval_Build's epilogue, `ret 14h` now relocated) and AG1-AG3 (whole child queries, light, RsxrMid::Ret).
 What is compared: midhook_oracle.py and midhook_stock.py. Callees are replaced by short stand-ins.
 """
 
@@ -46,18 +46,18 @@ def callee(code: str):
 
 # ---- GSA1: `push 40h; call 0x8F9D40` (cdecl (size, 0)); the allocator stand-in returns its size argument ------------
 register(
-    # the old stub calls through g_rs7_fn_alloc (X_ALLOC, bound to the allocator by Rs7_Startup)
-    Spec("GSA1", 5, lead=2, pushed=4, patch=callee("8B 44 24 04 C3"), words={"g_rs7_fn_alloc": 0x8F9D40}),
+    # the old stub calls through g_rsxr_fn_alloc (X_ALLOC, bound to the allocator by Rsxr_Startup)
+    Spec("GSA1", 5, lead=2, pushed=4, patch=callee("8B 44 24 04 C3"), words={"g_rsxr_fn_alloc": 0x8F9D40}),
     [Case("alloc", stack={0: 0})],
 )
 
-# ---- GSC1: `push eax; call Rnd_GuitarStrings_Ctor` (`ret 4`; ESI = guitar) -> Rs7Gs_Construct(guitar, gs) -----------
+# ---- GSC1: `push eax; call Rnd_GuitarStrings_Ctor` (`ret 4`; ESI = guitar) -> RsxrGs_Construct(guitar, gs) -----------
 register(
     Spec(
         "GSC1",
         5,
         lead=1,
-        helpers={"Rs7Gs_Construct": Helper(2, ret=D + 0x300)},
+        helpers={"RsxrGs_Construct": Helper(2, ret=D + 0x300)},
         patch=callee("8B 44 24 04 C2 04 00"),  # the ctor stand-in returns `this`
         flags="dead",  # the old stub left its `add esp,8` flags
         clobbers=("ecx", "edx"),  # after a call: the old stub returned with the C helper's ECX / EDX
@@ -65,7 +65,7 @@ register(
     [Case("gs", regs={UC_X86_REG_EAX: D + 0x300, UC_X86_REG_ESI: D})],
 )
 
-# ---- GIA1: `push 38h; mov [esi+4Ch],ebx; call 0x8F9D40` -> 48h, then Rs7Gs_InfoAllocated(a non-NULL info) ---------
+# ---- GIA1: `push 38h; mov [esi+4Ch],ebx; call 0x8F9D40` -> 48h, then RsxrGs_InfoAllocated(a non-NULL info) ---------
 # The allocator stand-in returns its second argument (the case's [esp]), so both branches run.
 # Registry reservations deliberately change DLL-owned writes from the frozen stub. The stock reference below checks
 # the game-facing contract; tests/strings/test_failures.cpp covers capacity and failed allocations.
@@ -75,7 +75,7 @@ register(
         5,
         lead=5,
         pushed=4,
-        helpers={"Rs7Gs_InfoAllocated": Helper(1)},
+        helpers={"RsxrGs_InfoAllocated": Helper(1)},
         flags="dead",  # the old stub left its `test eax,eax` or the helper's flags
         patch=callee("8B 44 24 08 C3"),  # mov eax,[esp+8]; ret
     ),
@@ -89,16 +89,16 @@ register(
 # the old stub's fld did. Not in the matrix: test_grm3_full_x87_stack_faults_like_the_old_stub.
 GRM3_FULL = Case("row18-full", ebp={0x10: 0x18}, x87=bytes.fromhex("D9 E8") * 6)
 
-# ---- GRM3: `mov edx,[ebp+10h]; fld dword [edx+1199D9Ch]` (EDX = 4 * mesh); strings 6/7 load g_rs7_ns_v ------------
+# ---- GRM3: `mov edx,[ebp+10h]; fld dword [edx+1199D9Ch]` (EDX = 4 * mesh); strings 6/7 load g_rsxr_ns_v ------------
 register(
     Spec("GRM3", 9),
     [Case(f"row{row:x}", ebp={0x10: row}) for row in (0, 0x14, 0x18, 0x1C)],
 )
 
-# ---- BT1: the epilogue of Play_Eval_Build: Rs7Ns_OnEvalBuilt(eval = EBX, template, ChordNotes), then the epilogue ----
+# ---- BT1: the epilogue of Play_Eval_Build: RsxrNs_OnEvalBuilt(eval = EBX, template, ChordNotes), then the epilogue ----
 # [esp] = the saved EDI, ESI, EBX, EBP, then the return address and the five arguments `ret 14h` pops.
 register(
-    Spec("BT1", 7, helpers={"Rs7Ns_OnEvalBuilt": Helper(3)}, flags="dead", exits=(RET_AT,)),
+    Spec("BT1", 7, helpers={"RsxrNs_OnEvalBuilt": Helper(3)}, flags="dead", exits=(RET_AT,)),
     [
         Case(
             f"tpl{t}-cn{n}",
@@ -111,17 +111,17 @@ register(
     ],
 )
 
-# ---- AG1-AG3: the child queries (ESI = parent eval, EDI = tracker, EDX = string pointer): AL = Rs7Ns_Aggregate --------
+# ---- AG1-AG3: the child queries (ESI = parent eval, EDI = tracker, EDX = string pointer): AL = RsxrNs_Aggregate --------
 for sid in ("AG1", "AG2", "AG3"):
     register(
-        Spec(sid, 10, helpers={"Rs7Ns_Aggregate": Helper(5)}, flags="dead", exits=(RET_AT,)),
+        Spec(sid, 10, helpers={"RsxrNs_Aggregate": Helper(5)}, flags="dead", exits=(RET_AT,)),
         [
             Case(
                 f"r{r}-{'null' if not esi else 'eval'}",
                 regs={UC_X86_REG_EAX: 0x12345678, UC_X86_REG_ESI: esi, UC_X86_REG_EDI: D + 0x800, UC_X86_REG_EDX: D},
                 mem={D + 0x400: bytes(0xC28), D + 0x800: bytes(0x2000)},
                 stack={0: RET_AT},
-                rets={"Rs7Ns_Aggregate": r},
+                rets={"RsxrNs_Aggregate": r},
             )
             for r in (0, 1)
             for esi in (0, D + 0x400)
@@ -176,7 +176,7 @@ def pe0_native(case: Case):
 
 
 def bt1_tails(case: Case):
-    """BT1 with the real Rs7Ns_OnEvalBuilt: the eval (D) gets its N-slot tails (unregistered template / ChordNotes: the
+    """BT1 with the real RsxrNs_OnEvalBuilt: the eval (D) gets its N-slot tails (unregistered template / ChordNotes: the
     empty tails), which the stock epilogue never writes."""
     return W("writes")
 
@@ -189,10 +189,10 @@ REFS: dict[str, Ref] = {
             why="the native GuitarStrings size 0B0h instead of 40h",
         )
     ),
-    # stubbed: the real Rs7Gs_Construct allocates the extra strings through the game allocator (g_rs7_fn_alloc), which needs
+    # stubbed: the real RsxrGs_Construct allocates the extra strings through the game allocator (g_rsxr_fn_alloc), which needs
     # the live heap; stubbed it returns the GuitarStrings as the real one does
     "GSC1": Ref(real=False),
-    "GIA1": Ref(  # Rs7Gs_InfoAllocated for real: it registers the info in the DLL (not game-observable)
+    "GIA1": Ref(  # RsxrGs_InfoAllocated for real: it registers the info in the DLL (not game-observable)
         **ruled(
             lambda case: (
                 dataclasses.replace(size_slot(0x48), keys=frozenset({"stack", "writes"}))
@@ -202,15 +202,15 @@ REFS: dict[str, Ref] = {
             why="the native InstrumentInfo size 48h instead of 38h; a non-NULL info gets its extension (writes)",
         ),
     ),
-    "BT1": Ref(**ruled(lambda case: bt1_tails(case), why="the eval's N-slot tails, written by Rs7Ns_OnEvalBuilt")),
-    **{sid: Ref() for sid in ("AG1", "AG2", "AG3")},  # Rs7Ns_Aggregate for real: six-string evals give stock's AL
+    "BT1": Ref(**ruled(lambda case: bt1_tails(case), why="the eval's N-slot tails, written by RsxrNs_OnEvalBuilt")),
+    **{sid: Ref() for sid in ("AG1", "AG2", "AG3")},  # RsxrNs_Aggregate for real: six-string evals give stock's AL
     "PE0": Ref(
         **ruled(lambda case: pe0_native(case), why="guitar strings 6/7: the native bases 35 / 30, stock has six")
     ),
     "GRM3": Ref(
         **ruled(
             lambda case: W("fpu") if case.ebp[0x10] >= 0x18 else None,
-            why="strings 6/7: the V row from g_rs7_ns_v, the stock table has six rows",
+            why="strings 6/7: the V row from g_rsxr_ns_v, the stock table has six rows",
         )
     ),
 }
@@ -222,10 +222,10 @@ REFS: dict[str, Ref] = {
 
 
 def test_grm3_full_x87_stack_faults_like_the_old_stub():
-    """Strings 6/7 on a full x87 stack: the new hook replays the stock fld, the old stub loaded g_rs7_ns_v; both
+    """Strings 6/7 on a full x87 stack: the new hook replays the stock fld, the old stub loaded g_rsxr_ns_v; both
     push onto a full stack. The same exit, registers, flags, status word and tags. ST0 is not compared: on a masked stack
     overflow the hardware loads the QNaN indefinite whatever the operand (Intel SDM, FLD); Unicorn does not model the
-    stack fault and loads the operand (the old stub's g_rs7_ns_v, the replay's stock row)."""
+    stack fault and loads the operand (the old stub's g_rsxr_ns_v, the replay's stock row)."""
     from midhook_oracle import FLAG_PATTERNS, Machine
 
     machine = Machine(SPECS["GRM3"][0])

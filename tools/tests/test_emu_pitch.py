@@ -1,7 +1,7 @@
 """[neck] native_pitch, features/pitch/pitch.h) in Unicorn on the game snapshot.
 
 Three emulators: stock (no site written), `cur` (today's default build: every site but the P* ones,
-string 6 through S1/S3/I1) and `nat` (also the P* sites, g_rs7_native_pitch = 1, _msize replaced by
+string 6 through S1/S3/I1) and `nat` (also the P* sites, g_rsxr_native_pitch = 1, _msize replaced by
 a stub that reports SIZE). Six-string inputs must give stock results in `nat` (ports and tails are
 equivalence-checked against the stock code); seven-string inputs must give what `cur` returns, eight
 strings what the native formula gives.
@@ -35,7 +35,7 @@ VEC = DATA + 0x30000  # std::vector<int16>: begin, end; data at VEC + 0x100
 DET_INSTR, DET_LOWEST, DET_TUNING, DET_OPEN = 0x11EC, 0x11F8, 0x1340, 0x134C
 DET_T8, DET_O8, DET_COUNT, DET_MAGIC, DET_SIZE = 0x13B8, 0x13C8, 0x13D8, 0x13DC, 0x13E0
 MAT_T8, MAT_MAGIC, MAT_SIZE = 0x58, 0x68, 0x6C
-MAGIC = 0x38503752
+MAGIC = 0x38505852
 EXPECT_VEC, EXPECT_RAW = 0x873E90, 0x873F80
 FAIL_433650 = 0x433650
 
@@ -47,9 +47,9 @@ class NatEmu(Emu):
 @pytest.fixture(scope="module")
 def emus3():
     stock, cur, nat = Emu(patched=False), Emu(patched=True), NatEmu(patched=True)
-    nat.uc.mem_write(nat.exports["g_rs7_native_pitch"], struct.pack("<I", 1))
+    nat.uc.mem_write(nat.exports["g_rsxr_native_pitch"], struct.pack("<I", 1))
     nat.uc.mem_write(MSIZE_CODE, bytes([0xA1]) + struct.pack("<I", MSIZE_VAL) + b"\xc3")  # mov eax,[val]; ret
-    nat.uc.mem_write(nat.exports["g_rs7_fn_msize"], struct.pack("<I", MSIZE_CODE))
+    nat.uc.mem_write(nat.exports["g_rsxr_fn_msize"], struct.pack("<I", MSIZE_CODE))
     set_msize(nat, 0x10000)
     return stock, cur, nat
 
@@ -136,16 +136,16 @@ def test_pe0_string_past_the_vector_takes_the_stock_failure_path(emus3, string, 
     assert nat.read(esp, 8) == stock.read(esp, 8)  # return 0x873F13 + the 119C8A8h argument
 
 
-# ---- the PUBAN copy's expected pitch over the tail (Rs7_Mid_PubTailPitch, a light call entry; was Rs7_Pitch_Raw8)
+# ---- the PUBAN copy's expected pitch over the tail (Rsxr_Mid_PubTailPitch, a light call entry; was Rsxr_Pitch_Raw8)
 
 
 def tail_pitch_entry(emu: Emu) -> int:
     """The light call entry the publication builds for the PUBAN copy (Before placement, callee 0x873F80 never runs),
     built by the DLL's own emitter."""
     out, esp = CODE + 0xE8000, STACK + 0x70000  # below RET_MAGIC (CODE + 0xF0000)
-    callback = emu.exports["Rs7_Mid_PubTailPitch"]
+    callback = emu.exports["Rsxr_Mid_PubTailPitch"]
     emu.uc.mem_write(esp, struct.pack("<9I", RET_MAGIC, out, 256, out, EXPECT_RAW, out, callback, 1, 0))
-    emu.run(emu.exports["Rs7Mid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: esp})
+    emu.run(emu.exports["RsxrMid_BuildCall"], RET_MAGIC, {UC_X86_REG_ESP: esp})
     assert emu.uc.reg_read(UC_X86_REG_EAX) > 0
     return out
 
@@ -205,9 +205,9 @@ PC_OFF = {"PC1": (MAT, 0x44), "PC2": (MAT, 0x44), "PC3": (DET, 0x1340), "PC4": (
 
 
 def register_tails(emu: Emu):
-    """The DLL's own tail writers (PM0 Rs7Pitch_MatNew, PR0 Rs7Pitch_DetReset) on MAT / DET: they record the objects in
-    the registry of tailed allocations that Rs7Pitch_Tailed reads, if _msize reports the native block size."""
-    for name, obj in (("Rs7Pitch_MatNew", MAT), ("Rs7Pitch_DetReset", DET)):
+    """The DLL's own tail writers (PM0 RsxrPitch_MatNew, PR0 RsxrPitch_DetReset) on MAT / DET: they record the objects in
+    the registry of tailed allocations that RsxrPitch_Tailed reads, if _msize reports the native block size."""
+    for name, obj in (("RsxrPitch_MatNew", MAT), ("RsxrPitch_DetReset", DET)):
         esp = STACK + 0x80000
         emu.uc.mem_write(esp, struct.pack("<II", RET_MAGIC, obj))
         emu.run(emu.exports[name], RET_MAGIC, {UC_X86_REG_ESP: esp})
@@ -478,10 +478,10 @@ def test_matcher_set_tuning(emus3, tuning, instrument):
 
 
 def set_bass(emu: Emu, strings: int, det: int = 0):
-    emu.uc.mem_write(emu.exports["g_rs7_bass_strings"], struct.pack("<I", strings))
-    # rs7bass::Players: two {det, strings, instrument, ms} setups; the song's bass player in the first.
+    emu.uc.mem_write(emu.exports["g_rsxr_bass_strings"], struct.pack("<I", strings))
+    # rsxrbass::Players: two {det, strings, instrument, ms} setups; the song's bass player in the first.
     emu.uc.mem_write(
-        emu.exports["g_rs7_bass_players"], struct.pack("<4I4I", det, strings if det else 0, 2, 0, 0, 0, 0, 0)
+        emu.exports["g_rsxr_bass_players"], struct.pack("<4I4I", det, strings if det else 0, 2, 0, 0, 0, 0, 0)
     )
 
 
@@ -556,6 +556,6 @@ def test_pt1_extended_bass_detector(emus3, strings):
     if not strings:
         assert (floor, lowest, open6[4:]) == (24, 28, [-1, 2])  # stock: raw offsets, floor 24
         return
-    # low B tuned down one (Bb0 = 22): the floor follows one below it (rs7p::Floor)
+    # low B tuned down one (Bb0 = 22): the floor follows one below it (rsxrp::Floor)
     assert (floor, lowest, open6[4]) == (21, 22, 22)
     assert open6[5] == (50 if strings == 6 else 2)

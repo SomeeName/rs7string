@@ -5,7 +5,7 @@
 #include "features/fretgrid/fretgrid.h"
 #include "platform/midhook.h"
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_FGRB(Rs7Mid::Context& c) {
-    Rs7Fg_BuildExtra(reinterpret_cast<uint8_t*>(Rs7Mid::Dword(c.ebp + 8)),
-                     reinterpret_cast<uint8_t*>(Rs7Mid::Dword(c.ebp + 0x0C)));
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_FGRB(RsxrMid::Context& c) {
+    RsxrFg_BuildExtra(reinterpret_cast<uint8_t*>(RsxrMid::Dword(c.ebp + 8)),
+                      reinterpret_cast<uint8_t*>(RsxrMid::Dword(c.ebp + 0x0C)));
 }

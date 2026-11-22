@@ -1,7 +1,7 @@
-; Shared mid-hook thunks (ARCHITECTURE.md section 14). Every generated entry (Rs7Mid_Build, Rs7Mid_BuildLight,
-; Rs7Mid_BuildSse, Rs7Mid_BuildCall, Rs7Mid_BuildWrap in midhook.cpp / midhook_wrap.cpp) pushes the continuation and the callback and jumps here, so on entry:
+; Shared mid-hook thunks (ARCHITECTURE.md section 14). Every generated entry (RsxrMid_Build, RsxrMid_BuildLight,
+; RsxrMid_BuildSse, RsxrMid_BuildCall, RsxrMid_BuildWrap in midhook.cpp / midhook_wrap.cpp) pushes the continuation and the callback and jumps here, so on entry:
 ;   [esp+0] callback, [esp+4] continuation (replay copy, callee or site + 5), [esp+8] the site's stack.
-; The thunks build an Rs7Mid::Context (midhook.h, 44 bytes, its offsets are static_asserted there), call the cdecl
+; The thunks build an RsxrMid::Context (midhook.h, 44 bytes, its offsets are static_asserted there), call the cdecl
 ; callback with a pointer to it, and resume the edited registers, flags and ESP at Context::jump.
 ;
 ; Context offsets used below (PUSHAD order, then the thunk-owned slots):
@@ -13,15 +13,15 @@
         .xmm
         .model flat, C
 
-EXTERN Rs7Mid_Guard:PROC                ; void __cdecl Rs7Mid_Guard(callback, Context*) (midhook.cpp)
+EXTERN RsxrMid_Guard:PROC                ; void __cdecl RsxrMid_Guard(callback, Context*) (midhook.cpp)
 
         .code
 
-; Full thunk (Rs7Mid::Mode::Full). The context is a copy of the PUSHAD/PUSHFD frame and the two entry slots, so
+; Full thunk (RsxrMid::Mode::Full). The context is a copy of the PUSHAD/PUSHFD frame and the two entry slots, so
 ; restoring ESP never depends on POPAD's ignored ESP slot. FXSAVE saves x87/MMX/SSE/MXCSR (the game requires an SSE
 ; CPU), the callback runs after FNINIT with DF = 0 and gets the image in Context::fpu, FXRSTOR restores it (with the
 ; callback's St0 edits).
-Rs7Mid_Thunk PROC EXPORT
+RsxrMid_Thunk PROC EXPORT
         pushfd
         pushad
         mov     esi, esp                ; source: the saved frame and the two entry slots
@@ -39,9 +39,9 @@ Rs7Mid_Thunk PROC EXPORT
         fninit
         mov     eax, [ebp+36]           ; the callback (entry slot copied into Context::fpu)
         mov     [ebp+36], ebx           ; Context::fpu = the FXSAVE image
-        push    ebp                     ; Rs7Mid_Guard(callback, &Context): the callback runs inside its __try
+        push    ebp                     ; RsxrMid_Guard(callback, &Context): the callback runs inside its __try
         push    eax
-        call    Rs7Mid_Guard
+        call    RsxrMid_Guard
         fxrstor [ebx]
 
         ; Copy the nine register dwords under the requested ESP; the destination may overlap the context, so copy
@@ -66,7 +66,7 @@ forward_copy:
         popad
         popfd
         ret
-Rs7Mid_Thunk ENDP
+RsxrMid_Thunk ENDP
 
 ; Copy the nine register dwords of the context at ebp to the frame at edi, one dword per pair of moves, at the given
 ; offsets (in order). Clobbers ecx.
@@ -98,11 +98,11 @@ copied:
         ret
 ENDM
 
-; Light thunk (Rs7Mid::Mode::Light): the same Context and continuation without any floating-point save and with
+; Light thunk (RsxrMid::Mode::Light): the same Context and continuation without any floating-point save and with
 ; unrolled copies instead of REP MOVSD / STD. The callback must not touch x87/MMX/SSE state (midhook.h). The context
 ; lies 44 bytes below the entry slots, as in the full thunk, so a callback may push up to eleven dwords below the
-; site ESP (Rs7Mid::Push) without overwriting it.
-Rs7Mid_ThunkLight PROC EXPORT
+; site ESP (RsxrMid::Push) without overwriting it.
+RsxrMid_ThunkLight PROC EXPORT
         lea     esp, [esp-44]           ; keeps the flags (no SUB)
         pushfd
         pushad
@@ -112,20 +112,20 @@ Rs7Mid_ThunkLight PROC EXPORT
         mov     [ebp+40], eax           ; Context::jump
         add     dword ptr [ebp+12], 56  ; Context::esp: the site's ESP, above the gap, entry slots and PUSHFD
         cld
-        push    ebp                     ; Rs7Mid_Guard(the callback entry slot, &Context)
+        push    ebp                     ; RsxrMid_Guard(the callback entry slot, &Context)
         push    dword ptr [ebp+80]
-        call    Rs7Mid_Guard
+        call    RsxrMid_Guard
         RESUME_FRAME
-Rs7Mid_ThunkLight ENDP
+RsxrMid_ThunkLight ENDP
 
-; SSE thunk (Rs7Mid::Mode::Sse): the light thunk plus XMM0-7 and MXCSR, for hot callbacks that compute with SSE. No
+; SSE thunk (RsxrMid::Mode::Sse): the light thunk plus XMM0-7 and MXCSR, for hot callbacks that compute with SSE. No
 ; FXSAVE, no FNINIT: the game's x87 state is untouched, so the callback must not execute x87 or MMX code (midhook.h,
 ; SSE_CALLBACKS). MXCSR is the default 1F80h (round to nearest, all exceptions masked, no FTZ/DAZ) while it runs.
-; Context::fpu = the address of the result block (Rs7Mid::SseResult at ebp+44) with bit 0 set; when the callback set
-; its `load` (Rs7Mid::LoadSt0), the thunk loads `value` with `fld dword` after restoring, as a displaced
+; Context::fpu = the address of the result block (RsxrMid::SseResult at ebp+44) with bit 0 set; when the callback set
+; its `load` (RsxrMid::LoadSt0), the thunk loads `value` with `fld dword` after restoring, as a displaced
 ; `fld dword [..]` would. The gap is 52 bytes: the context tail and the block stay below the eleven dwords a
 ; callback may Push under the site ESP.
-Rs7Mid_ThunkSse PROC EXPORT
+RsxrMid_ThunkSse PROC EXPORT
         lea     esp, [esp-52]           ; keeps the flags (no SUB)
         pushfd
         pushad
@@ -150,8 +150,8 @@ Rs7Mid_ThunkSse PROC EXPORT
         ldmxcsr [esp]
         mov     [esp], ebp              ; the same slot is the callback's argument
         cld
-        push    dword ptr [ebp+88]      ; Rs7Mid_Guard(the callback entry slot, &Context)
-        call    Rs7Mid_Guard
+        push    dword ptr [ebp+88]      ; RsxrMid_Guard(the callback entry slot, &Context)
+        call    RsxrMid_Guard
         add     esp, 4                  ; back to the saved XMM block layout
         ldmxcsr [esp+132]
         movups  xmm0, [esp+4]
@@ -167,12 +167,12 @@ Rs7Mid_ThunkSse PROC EXPORT
         fld     dword ptr [ebp+44]      ; SseResult::value
 no_load:
         RESUME_FRAME
-Rs7Mid_ThunkSse ENDP
+RsxrMid_ThunkSse ENDP
 
-; void __cdecl Rs7Mid_Fldcw(uint32_t fcw): load the low word as the x87 control word (Rs7Mid::GameFcw, midhook.h).
-Rs7Mid_Fldcw PROC EXPORT
+; void __cdecl RsxrMid_Fldcw(uint32_t fcw): load the low word as the x87 control word (RsxrMid::GameFcw, midhook.h).
+RsxrMid_Fldcw PROC EXPORT
         fldcw   word ptr [esp+4]
         ret
-Rs7Mid_Fldcw ENDP
+RsxrMid_Fldcw ENDP
 
         END

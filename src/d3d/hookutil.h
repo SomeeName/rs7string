@@ -2,19 +2,19 @@
 #include <cstddef>
 #include <cstdint>
 
-enum class Rs7Family : uint8_t;  // features/colours/colours.h
-struct Rs7MemReader;             // d3d/texlist.h
+enum class RsxrFamily : uint8_t;  // features/colours/colours.h
+struct RsxrMemReader;             // d3d/texlist.h
 
 // Helpers shared by the device-hook modules (swap_*.cpp, present.cpp, worker.cpp): logging that cannot throw into a
 // hook, the module that owns an address (for the install log lines), the ramp family names of the log lines and
 // the two-slot vtable hook.
-namespace rs7d3d {
-// Rs7Log that never throws into the hook (std::string allocation inside Rs7Log).
+namespace rsxrd3d {
+// RsxrLog that never throws into the hook (std::string allocation inside RsxrLog).
 void LogQuiet(const char* fmt, ...);
 // File name of the module that contains `addr`, or "no module".
 void ModuleName(const void* addr, char* out, size_t n);
 // "note", "additive" or "embedded".
-const char* FamilyName(Rs7Family f);
+const char* FamilyName(RsxrFamily f);
 
 // One value per slot of a VtSlotPair: slot `lo` and slot `lo + 1`.
 struct SlotValues {
@@ -34,6 +34,6 @@ struct VtSlotPair {
     void Restore(void** vt, SlotValues orig) const;
     // Repairs pairs containing only originals and our thunks; logs once (`*foreignLogged`) when another
     // module took them.
-    void Recheck(const void* device, void** vt, SlotValues orig, const Rs7MemReader& mem, bool* foreignLogged) const;
+    void Recheck(const void* device, void** vt, SlotValues orig, const RsxrMemReader& mem, bool* foreignLogged) const;
 };
-}  // namespace rs7d3d
+}  // namespace rsxrd3d

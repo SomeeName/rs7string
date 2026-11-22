@@ -46,7 +46,7 @@ TEST(uistate_reads_an_inline_name) {
     char out[64];
 
     state.SetInline("MainMenu");
-    CHECK(Rs7Ui_ReadState(manager.Global(), out, sizeof out));
+    CHECK(RsxrUi_ReadState(manager.Global(), out, sizeof out));
     CHECK(!std::strcmp(out, "MainMenu"));
 }
 
@@ -57,7 +57,7 @@ TEST(uistate_reads_a_heap_name) {
     char out[64];
 
     state.SetHeap(kName);
-    CHECK(Rs7Ui_ReadState(manager.Global(), out, sizeof out));
+    CHECK(RsxrUi_ReadState(manager.Global(), out, sizeof out));
     CHECK(!std::strcmp(out, kName));
 }
 
@@ -67,11 +67,11 @@ TEST(uistate_refuses_missing_state_and_bad_names) {
     char out[64];
     const uint32_t noManager = 0;
 
-    CHECK(!Rs7Ui_ReadState(uintptr_t(&noManager), out, sizeof out));
+    CHECK(!RsxrUi_ReadState(uintptr_t(&noManager), out, sizeof out));
     CHECK_EQ(out[0], 0);
-    CHECK(!Rs7Ui_ReadState(manager.Global(), out, sizeof out));  // empty name
+    CHECK(!RsxrUi_ReadState(manager.Global(), out, sizeof out));  // empty name
     state.SetInline("Main\x01Menu");
-    CHECK(!Rs7Ui_ReadState(manager.Global(), out, sizeof out));
+    CHECK(!RsxrUi_ReadState(manager.Global(), out, sizeof out));
     state.SetInline("LongerThanTheBuffer");
-    CHECK(!Rs7Ui_ReadState(manager.Global(), out, 8));
+    CHECK(!RsxrUi_ReadState(manager.Global(), out, 8));
 }

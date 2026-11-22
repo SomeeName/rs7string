@@ -1,7 +1,7 @@
 [project]
-name = "rs7string-tools"
+name = "rsxr-tools"
 version = "0.0.0"
-description = "Site generators, checks and emulator tests for rs7string (not a package)"
+description = "Site generators, checks and emulator tests for RSXR (not a package)"
 requires-python = ">=3.12"
 dependencies = [
     "capstone>=5.0",

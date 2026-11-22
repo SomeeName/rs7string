@@ -15,12 +15,12 @@ static std::vector<uint8_t> Bytes(const std::filesystem::path& p) {
 }
 
 TEST(diagrammovie_paths_are_exact_case_insensitive_and_support_data_prefix) {
-    CHECK_EQ(rs7diagram::MovieTarget("DATA\\GFXASSETS\\LIBS\\CommonLib.GFX"), 0);
-    CHECK_EQ(rs7diagram::MovieTarget("gfxassets/views/contentpanel.gfx"), 1);
-    CHECK_EQ(rs7diagram::MovieTarget("data/gfxassets/views/ge_game.gfx"), 2);
-    CHECK_EQ(rs7diagram::MovieTarget("other/gfxassets/libs/commonlib.gfx"), -1);
-    CHECK_EQ(rs7diagram::MovieTarget("gfxassets/libs/commonlib.gfx.old"), -1);
-    CHECK_EQ(rs7diagram::MovieTarget(nullptr), -1);
+    CHECK_EQ(rsxrdiagram::MovieTarget("DATA\\GFXASSETS\\LIBS\\CommonLib.GFX"), 0);
+    CHECK_EQ(rsxrdiagram::MovieTarget("gfxassets/views/contentpanel.gfx"), 1);
+    CHECK_EQ(rsxrdiagram::MovieTarget("data/gfxassets/views/ge_game.gfx"), 2);
+    CHECK_EQ(rsxrdiagram::MovieTarget("other/gfxassets/libs/commonlib.gfx"), -1);
+    CHECK_EQ(rsxrdiagram::MovieTarget("gfxassets/libs/commonlib.gfx.old"), -1);
+    CHECK_EQ(rsxrdiagram::MovieTarget(nullptr), -1);
 }
 
 TEST(diagrammovie_cpp_swap_matches_all_three_owner_movies_and_refuses_tampering) {
@@ -33,7 +33,7 @@ TEST(diagrammovie_cpp_swap_matches_all_three_owner_movies_and_refuses_tampering)
     GetEnvironmentVariableW(L"USERPROFILE", home, MAX_PATH);
     auto root = std::filesystem::path(home) / L"Desktop" / L"rocksmith-assets";
     const char* const paths[] = {"libs/commonlib.gfx", "views/contentpanel.gfx", "views/ge_game.gfx"};
-    const char* const recipes[] = {"commonlib.rs7da", "contentpanel.rs7da", "ge_game.rs7da"};
+    const char* const recipes[] = {"commonlib.rsxrda", "contentpanel.rsxrda", "ge_game.rsxrda"};
     const uint16_t sprites[] = {1103, 28, 26};
 
     for (int i = 0; i < 3; ++i) {
@@ -41,38 +41,38 @@ TEST(diagrammovie_cpp_swap_matches_all_three_owner_movies_and_refuses_tampering)
         auto expected = Bytes(root / "edited2" / "gfx" / paths[i]);
 
         if (original.empty() || expected.empty()) {
-            rs7test::Skip(paths[i]);  // absent owner movie
+            rsxrtest::Skip(paths[i]);  // absent owner movie
             continue;
         }
 
         auto recipe = Bytes(repo / "data" / "chord-diagrams" / recipes[i]);
         std::vector<uint8_t> out{42};
 
-        CHECK(rs7diagram::SwapMovie(original.data(), original.size(), recipe.data(), recipe.size(), sprites[i], &out));
+        CHECK(rsxrdiagram::SwapMovie(original.data(), original.size(), recipe.data(), recipe.size(), sprites[i], &out));
         CHECK(out == expected);
 
         for (auto malformed : {expected, std::vector<uint8_t>{1, 2, 3}}) {
             auto saved = out;
 
-            CHECK(!rs7diagram::SwapMovie(malformed.data(), malformed.size(), recipe.data(), recipe.size(), sprites[i],
-                                         &out));
+            CHECK(!rsxrdiagram::SwapMovie(malformed.data(), malformed.size(), recipe.data(), recipe.size(), sprites[i],
+                                          &out));
             CHECK(saved == out);
         }
 
         auto r = recipe;
 
         r[20] ^= 1;
-        CHECK(!rs7diagram::SwapMovie(original.data(), original.size(), r.data(), r.size(), sprites[i], &out));
+        CHECK(!rsxrdiagram::SwapMovie(original.data(), original.size(), r.data(), r.size(), sprites[i], &out));
         r = recipe;
         r[52] ^= 1;
-        CHECK(!rs7diagram::SwapMovie(original.data(), original.size(), r.data(), r.size(), sprites[i], &out));
-        CHECK(!rs7diagram::SwapMovie(original.data(), original.size(), recipe.data(), recipe.size() - 1, sprites[i],
-                                     &out));
+        CHECK(!rsxrdiagram::SwapMovie(original.data(), original.size(), r.data(), r.size(), sprites[i], &out));
+        CHECK(!rsxrdiagram::SwapMovie(original.data(), original.size(), recipe.data(), recipe.size() - 1, sprites[i],
+                                      &out));
         auto compressed = original;
 
         compressed[0] = 'C';
-        CHECK(!rs7diagram::SwapMovie(compressed.data(), compressed.size(), recipe.data(), recipe.size(), sprites[i],
-                                     &out));
+        CHECK(!rsxrdiagram::SwapMovie(compressed.data(), compressed.size(), recipe.data(), recipe.size(), sprites[i],
+                                      &out));
         std::printf("  %s C++ byte-identical (%zu bytes)\n", paths[i], expected.size());
     }
 }
@@ -152,14 +152,14 @@ using OpenCall = void*(__thiscall*)(void*, const char*, void*, int, int);
 }  // namespace
 
 TEST(diagrammovie_open_hook_frame_failure_paths_leave_wrapper_untouched) {
-    auto hook = reinterpret_cast<OpenCall>(rs7diagram::OpenHookForTest());
+    auto hook = reinterpret_cast<OpenCall>(rsxrdiagram::OpenHookForTest());
 
-    rs7diagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrdiagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
-    g_rs7_diagrams = 1;
+    g_rsxr_diagrams = 1;
     // recipe present but garbage movie -> SwapMovie refuses
-    rs7diagram::SetRecipeForTest(0, std::vector<uint8_t>(100, 7));
+    rsxrdiagram::SetRecipeForTest(0, std::vector<uint8_t>(100, 7));
     FakeFile ff{kFfVt, std::vector<uint8_t>(64, 1)};
     uint8_t adapter[0x1c] = {};
 
@@ -204,25 +204,25 @@ TEST(diagrammovie_open_hook_frame_failure_paths_leave_wrapper_untouched) {
     CHECK(hook((void*)0x1234, "data\\gfxassets\\libs\\CommonLib.gfx", &dummy, 0x21, 0x1B6) == &w);
     // diagrams7=0: nothing is touched even for a target url
     *reinterpret_cast<FakeFile**>(adapter + 0x18) = &ff;
-    g_rs7_diagrams = 0;
+    g_rsxr_diagrams = 0;
     CHECK(hook((void*)0x1234, "data\\gfxassets\\libs\\CommonLib.gfx", &dummy, 0x21, 0x1B6) == &w);
     CHECK(*reinterpret_cast<FakeFile**>(adapter + 0x18) == &ff);
     const char* why = nullptr;
 
-    rs7diagram::SetRecipeForTest(0, {});
-    CHECK(!rs7diagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
+    rsxrdiagram::SetRecipeForTest(0, {});
+    CHECK(!rsxrdiagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
     CHECK(why != nullptr);
     // a stream that was already read is never swapped: the patched movie has no matching position
-    rs7diagram::SetRecipeForTest(0, {1});
+    rsxrdiagram::SetRecipeForTest(0, {1});
     ff.pos = 3;
     why = nullptr;
-    CHECK(!rs7diagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
+    CHECK(!rsxrdiagram::SwapWrapperFile(&w, "data\\gfxassets\\libs\\CommonLib.gfx", &why));
     CHECK(why != nullptr && std::strstr(why, "position") != nullptr);
     CHECK(*reinterpret_cast<FakeFile**>(adapter + 0x18) == &ff);
     CHECK_EQ(ff.pos, 3u);
     ff.pos = 0;
-    rs7diagram::SetRecipeForTest(0, {});
-    rs7diagram::SetOpenForTest(nullptr);
+    rsxrdiagram::SetRecipeForTest(0, {});
+    rsxrdiagram::SetOpenForTest(nullptr);
 }
 
 TEST(diagrammovie_open_hook_installs_owned_file_for_owner_movie) {
@@ -238,17 +238,17 @@ TEST(diagrammovie_open_hook_installs_owned_file_for_owner_movie) {
     auto expected = Bytes(root / "edited2" / "gfx" / "libs/commonlib.gfx");
 
     if (original.empty() || expected.empty()) {
-        rs7test::Skip("absent owner movie");
+        rsxrtest::Skip("absent owner movie");
         return;
     }
 
-    auto hook = reinterpret_cast<OpenCall>(rs7diagram::OpenHookForTest());
+    auto hook = reinterpret_cast<OpenCall>(rsxrdiagram::OpenHookForTest());
 
-    rs7diagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
-    rs7test::Restore restore_g_rs7_diagrams(g_rs7_diagrams);
+    rsxrdiagram::SetOpenForTest(reinterpret_cast<void*>(&FakeOpen));
+    rsxrtest::Restore restore_g_rsxr_diagrams(g_rsxr_diagrams);
 
-    g_rs7_diagrams = 1;
-    rs7diagram::SetRecipeForTest(0, Bytes(repo / "data" / "chord-diagrams" / "commonlib.rs7da"));
+    g_rsxr_diagrams = 1;
+    rsxrdiagram::SetRecipeForTest(0, Bytes(repo / "data" / "chord-diagrams" / "commonlib.rsxrda"));
     FakeFile ff{kFfVt, original, 0};
     uint8_t adapter[0x1c] = {};
     FakeFile* p = &ff;
@@ -275,6 +275,6 @@ TEST(diagrammovie_open_hook_installs_owned_file_for_owner_movie) {
     CHECK_EQ(reinterpret_cast<uint32_t(__thiscall*)(void*, void*, uint32_t)>(vt[3])(nf, got.data(), size), size);
     CHECK(got == expected);
     reinterpret_cast<LONG(__thiscall*)(void*)>(vt[2])(nf);  // owned file starts at refs=1 -> freed
-    rs7diagram::SetOpenForTest(nullptr);
-    rs7diagram::SetRecipeForTest(0, {});
+    rsxrdiagram::SetOpenForTest(nullptr);
+    rsxrdiagram::SetRecipeForTest(0, {});
 }

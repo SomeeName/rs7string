@@ -9,67 +9,67 @@
 #include "model/instrument.h"
 #include "platform/midhook.h"
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_PM0 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_PM0 = 0;
 
 // PM0 0x4EADDD `mov dword [eax+40h],-1` in Play_DetectInput_Init: EAX = the new matcher (its stock fields set above),
-// ST0 = the fldz stored next. The callback does the stock store itself, so Rs7Pitch_MatNew sees the finished stock
+// ST0 = the fldz stored next. The callback does the stock store itself, so RsxrPitch_MatNew sees the finished stock
 // fields as before, and skips the replay. Flags are dead (fstp follows): the hook leaves the incoming ones.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PM0(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PM0(RsxrMid::Context& c) {
     *reinterpret_cast<uint32_t*>(c.eax + 0x40) = 0xFFFFFFFFu;
-    Rs7Pitch_MatNew(reinterpret_cast<uint8_t*>(c.eax));
-    c.jump = uint32_t(g_rs7_resume_PM0);
+    RsxrPitch_MatNew(reinterpret_cast<uint8_t*>(c.eax));
+    c.jump = uint32_t(g_rsxr_resume_PM0);
 }
 
 // PR0 0x4DC07B `mov eax,[ebx+11F0h]` in Play_Detector_Reset 0x4DBF20, the join after the guitar / bass open-MIDI
 // writers: EBX = detector (tuning[6] zeroed, instrument +11ECh set). Then the replay. Flags are dead.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PR0(Rs7Mid::Context& c) {
-    Rs7Pitch_DetReset(reinterpret_cast<uint8_t*>(c.ebx));
-    Rs7Pitch_BassDetector(reinterpret_cast<uint8_t*>(c.ebx));
-    Rs7Pitch_DetFloor(reinterpret_cast<uint8_t*>(c.ebx), 1);
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PR0(RsxrMid::Context& c) {
+    RsxrPitch_DetReset(reinterpret_cast<uint8_t*>(c.ebx));
+    RsxrPitch_BassDetector(reinterpret_cast<uint8_t*>(c.ebx));
+    RsxrPitch_DetFloor(reinterpret_cast<uint8_t*>(c.ebx), 1);
 }
 
 // PM1 0x4E85E5 in Play_Matcher_SetTuning 0x4E85A0, after the six-entry copy loop (the vector has >= 6 entries): ESI =
 // matcher, EDX = vector, EBX still pushed. Then the replay `mov eax,[esi+4]; pop ebx; test eax,eax` (the je after it
 // reads ZF).
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PM1(Rs7Mid::Context& c) {
-    Rs7Pitch_MatTuned(reinterpret_cast<uint8_t*>(c.esi), reinterpret_cast<const Rs7Int16Vec*>(c.edx));
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PM1(RsxrMid::Context& c) {
+    RsxrPitch_MatTuned(reinterpret_cast<uint8_t*>(c.esi), reinterpret_cast<const RsxrInt16Vec*>(c.edx));
 }
 
 // The two exits of Play_Detector_SetTuning 0x4E2590 (EAX = detector, ESI = the std::vector<int16> tuning it just
 // copied; cold: once per tuning change), `mov [eax+1356h],<reg16>; ret`: jmp_atomic8 sites (the 5-byte jmp is one
 // locked write, the replay would be the whole `mov; ret`). The callback does the store itself, so the helper sees the
-// finished detector as before, calls the helper and returns for the function (Rs7Mid::Ret). Flags are dead after the
+// finished detector as before, calls the helper and returns for the function (RsxrMid::Ret). Flags are dead after the
 // return (the old stubs left the helper's).
 namespace {
 // The displaced `mov [eax+1356h],<reg16>`: the last tuning entry.
-void StoreLastEntry(const Rs7Mid::Context& c, uint32_t entry) {
+void StoreLastEntry(const RsxrMid::Context& c, uint32_t entry) {
     *reinterpret_cast<uint16_t*>(c.eax + 0x1356) = uint16_t(entry);
 }
 
-const Rs7Int16Vec* Tuning(const Rs7Mid::Context& c) {
-    return reinterpret_cast<const Rs7Int16Vec*>(c.esi);
+const RsxrInt16Vec* Tuning(const RsxrMid::Context& c) {
+    return reinterpret_cast<const RsxrInt16Vec*>(c.esi);
 }
 }  // namespace
 
 // PT1 0x4E26BA, the bass exit (`mov [eax+1356h],dx`): fills the native detector tail.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PT1(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PT1(RsxrMid::Context& c) {
     StoreLastEntry(c, c.edx);
-    Rs7Pitch_DetTuned(reinterpret_cast<uint8_t*>(c.eax), Tuning(c));
-    Rs7Pitch_BassDetector(reinterpret_cast<uint8_t*>(c.eax));
-    Rs7Pitch_DetFloor(reinterpret_cast<uint8_t*>(c.eax), 0);
-    Rs7Mid::Ret(c);
+    RsxrPitch_DetTuned(reinterpret_cast<uint8_t*>(c.eax), Tuning(c));
+    RsxrPitch_BassDetector(reinterpret_cast<uint8_t*>(c.eax));
+    RsxrPitch_DetFloor(reinterpret_cast<uint8_t*>(c.eax), 0);
+    RsxrMid::Ret(c);
 }
 
 // ---- the song's 7-string mode ----
 // S3 0x4E263B, the guitar exit (`mov [eax+1356h],cx`): a 7-entry tuning lowers the detector's lowest open MIDI.
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_S3(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_S3(RsxrMid::Context& c) {
     StoreLastEntry(c, c.ecx);
-    Rs7_OnDetectorTuned(reinterpret_cast<void*>(c.eax), Tuning(c));
-    Rs7Pitch_DetFloor(reinterpret_cast<uint8_t*>(c.eax), 0);
-    Rs7Mid::Ret(c);
+    Rsxr_OnDetectorTuned(reinterpret_cast<void*>(c.eax), Tuning(c));
+    RsxrPitch_DetFloor(reinterpret_cast<uint8_t*>(c.eax), 0);
+    RsxrMid::Ret(c);
 }
 
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_I1 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_I1 = 0;
 
 // I1 0x874056 in Play_MidiToFret 0x874050 (inverse pitch feedback, from Play_AnalyzeNoteMistake 0x875430: once per
 // analysed mistake, an event, so full mode is within the cost budget): replays `sub eax,2; jz bass` (EAX = instrument,
@@ -82,23 +82,23 @@ namespace {
 // I1 on an extended bass (bass.h): strings 4 / 5 would take the stock bass branch, which reads its four-entry base
 // table past the end (a wrong fret in the mistake feedback). fret = MIDI - (base + tuning[string]), the inverse of
 // BassPitch (hooks_calls.cpp), returned like string 6. False: not such a string, the stock code runs.
-bool BassFret(Rs7Mid::Context& c) {
-    const int base = rs7bass::ExtraBase(c.edx, g_rs7_bass_strings);
+bool BassFret(RsxrMid::Context& c) {
+    const int base = rsxrbass::ExtraBase(c.edx, g_rsxr_bass_strings);
 
-    if (base == rs7bass::kNoBase || !c.esi) {
+    if (base == rsxrbass::kNoBase || !c.esi) {
         return false;
     }
 
     c.ecx -= uint32_t(base + reinterpret_cast<const int16_t*>(c.esi)[c.edx]);
     c.eax = c.ecx;
-    c.jump = uint32_t(g_rs7_resume_I1) + 0x0D;
+    c.jump = uint32_t(g_rsxr_resume_I1) + 0x0D;
 
     return true;
 }
 }  // namespace
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_I1(Rs7Mid::Context& c) {
-    if (rs7::IsBassKind(int(c.eax))) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_I1(RsxrMid::Context& c) {
+    if (rsxr::IsBassKind(int(c.eax))) {
         BassFret(c);
         return;
     }
@@ -107,17 +107,17 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_I1(Rs7Mid::Context& c) {
         return;
     }
 
-    const int base = Rs7_Base6(reinterpret_cast<const void*>(c.esi));
+    const int base = Rsxr_Base6(reinterpret_cast<const void*>(c.esi));
 
-    if (base == rs7::kNotActive) {
-        c.eax = uint32_t(rs7::kNotActive);
-        c.jump = uint32_t(g_rs7_resume_I1);
+    if (base == rsxr::kNotActive) {
+        c.eax = uint32_t(rsxr::kNotActive);
+        c.jump = uint32_t(g_rsxr_resume_I1);
         return;
     }
 
     c.ecx -= uint32_t(base);
     c.eax = c.ecx;
-    c.jump = uint32_t(g_rs7_resume_I1) + 0x0D;
+    c.jump = uint32_t(g_rsxr_resume_I1) + 0x0D;
 }
 
 // PE0 - the native expected-pitch function: the entry of 0x873E90 (EAX = instrument, EDX = string, [esp+4] = fret,
@@ -129,34 +129,34 @@ extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_I1(Rs7Mid::Context& c) {
 // 433650h) with the stock frame (`push ebp; mov ebp,esp`, EAX = the vector's begin). Light mode: per note, integer
 // only. Converted from a naked stub (frozen at c15ca8d, tools/tests/test_midhook_asm_sites.py); flags are dead after
 // the `ret` and at the failure path's `push`.
-extern "C" __declspec(dllexport) uintptr_t g_rs7_resume_PE0 = 0;
+extern "C" __declspec(dllexport) uintptr_t g_rsxr_resume_PE0 = 0;
 
-extern "C" __declspec(dllexport) void __cdecl Rs7_Mid_PE0(Rs7Mid::Context& c) {
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PE0(RsxrMid::Context& c) {
     const uint32_t string = c.edx;
-    const bool bass = rs7::IsBassKind(int(c.eax));
+    const bool bass = rsxr::IsBassKind(int(c.eax));
     uint32_t base = 0xFFFFFFFFu;
 
     // Bass strings 4 / 5 only in an extended-bass song (ExtraBase), else -1 as for any string past the table.
     if (!bass && string <= 7) {
-        base = uint32_t(g_rs7_pitch_gbase[string]);
-    } else if (bass && (string <= 3 || rs7bass::ExtraBase(string, g_rs7_bass_strings) != rs7bass::kNoBase)) {
-        base = uint32_t(g_rs7_pitch_bbase[string]);
+        base = uint32_t(g_rsxr_pitch_gbase[string]);
+    } else if (bass && (string <= 3 || rsxrbass::ExtraBase(string, g_rsxr_bass_strings) != rsxrbass::kNoBase)) {
+        base = uint32_t(g_rsxr_pitch_bbase[string]);
     }
 
-    const uint32_t vector = Rs7Mid::Dword(c.esp + 8);
-    const uint32_t begin = Rs7Mid::Dword(vector);
-    const uint32_t count = uint32_t(int32_t(Rs7Mid::Dword(vector + 4) - begin) >> 1);
+    const uint32_t vector = RsxrMid::Dword(c.esp + 8);
+    const uint32_t begin = RsxrMid::Dword(vector);
+    const uint32_t count = uint32_t(int32_t(RsxrMid::Dword(vector + 4) - begin) >> 1);
 
     c.ecx = base;
 
     if (string < count) {
-        c.eax = uint32_t(int32_t(*Rs7Mid::Ptr<const int16_t>(begin + 2 * string))) + base + Rs7Mid::Dword(c.esp + 4);
-        Rs7Mid::Ret(c);
+        c.eax = uint32_t(int32_t(*RsxrMid::Ptr<const int16_t>(begin + 2 * string))) + base + RsxrMid::Dword(c.esp + 4);
+        RsxrMid::Ret(c);
         return;
     }
 
     c.eax = begin;
-    Rs7Mid::Push(c, c.ebp);
+    RsxrMid::Push(c, c.ebp);
     c.ebp = c.esp;
-    c.jump = uint32_t(g_rs7_resume_PE0) + 0x73;
+    c.jump = uint32_t(g_rsxr_resume_PE0) + 0x73;
 }

@@ -8,7 +8,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6F2B7C1E-7A1D-4C55-9B7E-5A1C0D7E7002}</ProjectGuid>
-    <RootNamespace>rs7string_tests</RootNamespace>
+    <RootNamespace>rsxr_tests</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -23,7 +23,7 @@
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <PropertyGroup>
-    <TargetName>rs7string_tests</TargetName>
+    <TargetName>rsxr_tests</TargetName>
     <!-- No ILT: test_d3d_hook.cpp reads the thunks' first bytes and the vtable slots hold their addresses. -->
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(MSBuildThisFileDirectory)..\bin\$(Configuration)\</OutDir>

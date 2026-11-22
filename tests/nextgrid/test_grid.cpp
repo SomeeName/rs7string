@@ -5,7 +5,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace rs7ng;
+using namespace rsxrng;
 
 namespace {
 struct SpawnCall {
@@ -34,9 +34,9 @@ TEST(nextgrid_layout_arithmetic) {
     CHECK_EQ(TimeOff(0, 0), 0xD1Cu);
     CHECK_EQ(TimeOff(5, 25), kTimeNative + 5 * 0x68 + 25 * 4);
     CHECK_EQ(TimeOff(7, 25) + 4, kGridNative);  // the last cell ends the grid
-    CHECK_EQ(rs7neck::kNgRow6Time, TimeOff(6, 0));
-    CHECK_EQ(rs7neck::kRow6Ptr, 6u * 26u * 4u);  // pointer row 6 is the same in both layouts
-    CHECK(kCapacity * kRowBytes <= kTimeStock);  // pointer rows 0-7 lie inside the 26-row pointer block
+    CHECK_EQ(rsxrneck::kNgRow6Time, TimeOff(6, 0));
+    CHECK_EQ(rsxrneck::kRow6Ptr, 6u * 26u * 4u);  // pointer row 6 is the same in both layouts
+    CHECK(kCapacity * kRowBytes <= kTimeStock);   // pointer rows 0-7 lie inside the 26-row pointer block
     // the frame shift is exactly the growth of the grid
     CHECK_EQ(kFrameNative - kFrameStock, kGridNative - kGridStock);
 }
@@ -53,21 +53,21 @@ TEST(nextgrid_set_accepts_eight_strings_and_26_frets) {
 }
 
 TEST(nextgrid_configure_sets_the_switch) {
-    rs7test::Restore restore_g_rs7_native_nextgrid(g_rs7_native_nextgrid);
+    rsxrtest::Restore restore_g_rsxr_native_nextgrid(g_rsxr_native_nextgrid);
 
     Configure(true);
-    CHECK_EQ(g_rs7_native_nextgrid, uintptr_t(1));
+    CHECK_EQ(g_rsxr_native_nextgrid, uintptr_t(1));
     Configure(false);
-    CHECK_EQ(g_rs7_native_nextgrid, uintptr_t(0));
+    CHECK_EQ(g_rsxr_native_nextgrid, uintptr_t(0));
 }
 
 TEST(nextgrid_row6_native_spawns_from_the_native_time_row_only_at_six_strings) {
-    rs7test::Restore restore_publish(g_rs7_native_publish);  // another test may leave it on
+    rsxrtest::Restore restore_publish(g_rsxr_native_publish);  // another test may leave it on
 
-    g_rs7_native_publish = 0;
-    rs7test::Restore restore_adv3(g_rs7_fn_adv3);
+    g_rsxr_native_publish = 0;
+    rsxrtest::Restore restore_adv3(g_rsxr_fn_adv3);
 
-    g_rs7_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
+    g_rsxr_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
     std::vector<uint8_t> g(kGridNative, 0);
     uint8_t notes[3][0x80] = {};
 
@@ -77,12 +77,12 @@ TEST(nextgrid_row6_native_spawns_from_the_native_time_row_only_at_six_strings) {
     const uint32_t frets = 5;
     const uint8_t* ptrs[5] = {nullptr, notes[0], notes[1], notes[2], nullptr};
 
-    std::memcpy(g.data() + rs7neck::kRow6Ptr, ptrs, sizeof ptrs);
-    g_rs7_fn_spawn = reinterpret_cast<uintptr_t>(&FakeSpawn);
+    std::memcpy(g.data() + rsxrneck::kRow6Ptr, ptrs, sizeof ptrs);
+    g_rsxr_fn_spawn = reinterpret_cast<uintptr_t>(&FakeSpawn);
     int self = 0;
 
     g_calls.clear();
-    CHECK_EQ(Rs7_NeckRow6N(g.data(), &self, 11, 22, frets, 6), 1);  // first spawned fret >= 1
+    CHECK_EQ(Rsxr_NeckRow6N(g.data(), &self, 11, 22, frets, 6), 1);  // first spawned fret >= 1
     CHECK_EQ(g_calls.size(), size_t(2));
 
     if (g_calls.size() == 2) {
@@ -92,36 +92,36 @@ TEST(nextgrid_row6_native_spawns_from_the_native_time_row_only_at_six_strings) {
 }
 
 TEST(nextgrid_row6_native_is_left_to_the_stock_loops_from_seven_strings) {
-    rs7test::Restore restore_publish(g_rs7_native_publish);  // another test may leave it on
+    rsxrtest::Restore restore_publish(g_rsxr_native_publish);  // another test may leave it on
 
-    g_rs7_native_publish = 0;
-    rs7test::Restore restore_adv3(g_rs7_fn_adv3);
+    g_rsxr_native_publish = 0;
+    rsxrtest::Restore restore_adv3(g_rsxr_fn_adv3);
 
-    g_rs7_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
+    g_rsxr_fn_adv3 = reinterpret_cast<uintptr_t>(&FakeSpawn);  // bound but never called: the set is empty
     std::vector<uint8_t> g(kGridNative, 0);
     uint8_t note[0x80] = {};
 
     note[0x51] = 1;
     const uint8_t* p = note;
 
-    std::memcpy(g.data() + rs7neck::kRow6Ptr + 4, &p, sizeof p);
-    g_rs7_fn_spawn = reinterpret_cast<uintptr_t>(&FakeSpawn);
+    std::memcpy(g.data() + rsxrneck::kRow6Ptr + 4, &p, sizeof p);
+    g_rsxr_fn_spawn = reinterpret_cast<uintptr_t>(&FakeSpawn);
     g_calls.clear();
-    CHECK_EQ(Rs7_NeckRow6N(g.data(), nullptr, 1, 2, 5, 7), -1);
-    CHECK_EQ(Rs7_NeckRow6N(g.data(), nullptr, 1, 2, 5, 8), -1);
+    CHECK_EQ(Rsxr_NeckRow6N(g.data(), nullptr, 1, 2, 5, 7), -1);
+    CHECK_EQ(Rsxr_NeckRow6N(g.data(), nullptr, 1, 2, 5, 8), -1);
     CHECK(g_calls.empty());
-    CHECK_EQ(Rs7_NeckRow6N(g.data(), nullptr, 1, 2, 5, 4), 1);  // <= 6 strings: the NG9 path
+    CHECK_EQ(Rsxr_NeckRow6N(g.data(), nullptr, 1, 2, 5, 4), 1);  // <= 6 strings: the NG9 path
     g_calls.clear();
 }
 
 TEST(nextgrid_row6_empty_row_is_a_pure_read) {
     std::vector<uint8_t> g(kGridNative, 0xCD);
 
-    std::memset(g.data() + rs7neck::kRow6Ptr, 0, 26 * 4);
+    std::memset(g.data() + rsxrneck::kRow6Ptr, 0, 26 * 4);
     const std::vector<uint8_t> before = g;
 
     g_calls.clear();
-    CHECK_EQ(Rs7_NeckRow6N(g.data(), nullptr, 1, 2, 24, 6), -1);
+    CHECK_EQ(Rsxr_NeckRow6N(g.data(), nullptr, 1, 2, 24, 6), -1);
     CHECK(g == before);
     CHECK(g_calls.empty());
 }

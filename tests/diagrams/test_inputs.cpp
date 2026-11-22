@@ -32,7 +32,7 @@ std::vector<uint8_t> Recipe(const std::vector<uint8_t>& movie) {
     // One COPY of the synthetic five-byte DoInitAction tag.
     std::vector<uint8_t> r(93, 0);
 
-    std::memcpy(r.data(), "R7DA\1\0\0\0", 8);
+    std::memcpy(r.data(), "RXDA\1\0\0\0", 8);
     Word(r, 8, 5);
     Word(r, 12, 5);
     Word(r, 16, 1);
@@ -48,7 +48,7 @@ std::vector<uint8_t> Recipe(const std::vector<uint8_t>& movie) {
 void Refuses(const std::vector<uint8_t>& m, const std::vector<uint8_t>& r) {
     std::vector<uint8_t> out = {0xab, 0xcd};
 
-    CHECK(!rs7diagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, &out));
+    CHECK(!rsxrdiagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, &out));
     CHECK(out == std::vector<uint8_t>({0xab, 0xcd}));
 }
 }  // namespace
@@ -56,7 +56,7 @@ void Refuses(const std::vector<uint8_t>& m, const std::vector<uint8_t>& r) {
 TEST(diagram_manifest_open_capo_has_no_fretted_window) {
     for (int count : {7, 8}) {
         for (int capo = 0; capo <= 24; ++capo) {
-            rs7diagram::Shape s;
+            rsxrdiagram::Shape s;
 
             s.manifest = true;
             s.count = count;
@@ -64,7 +64,7 @@ TEST(diagram_manifest_open_capo_has_no_fretted_window) {
             s.frets[0] = s.frets[count - 1] = capo;
             Properties out;
 
-            rs7diagram::Emit(s, PutProperty, &out);
+            rsxrdiagram::Emit(s, PutProperty, &out);
             CHECK_EQ(out["StartFret"], 1);
             CHECK_EQ(out["LowEFret"], 0);
             CHECK_EQ(out[count == 7 ? "LowBFret" : "LowFsFret"], 0);
@@ -74,31 +74,31 @@ TEST(diagram_manifest_open_capo_has_no_fretted_window) {
 
 TEST(diagram_manifest_high_frets_use_actual_minimum) {
     for (int fret = 25; fret <= 30; ++fret) {
-        rs7diagram::Shape s;
+        rsxrdiagram::Shape s;
 
         s.manifest = true;
         s.count = 7;
         s.frets[6] = fret;
         Properties out;
 
-        rs7diagram::Emit(s, PutProperty, &out);
+        rsxrdiagram::Emit(s, PutProperty, &out);
         CHECK_EQ(out["StartFret"], fret);
         CHECK_EQ(out["LowBFret"], 1);
     }
 }
 
 TEST(diagram_t8_corrupt_widths_refuse_without_mutating_shape) {
-    uint8_t t[rs7ns::kT8Size] = {};
+    uint8_t t[rsxrns::kT8Size] = {};
 
     for (int count = 0; count < 256; ++count) {
-        t[rs7ns::kT8Slots] = uint8_t(count);
-        rs7diagram::Shape s;
+        t[rsxrns::kT8Slots] = uint8_t(count);
+        rsxrdiagram::Shape s;
 
         s.count = 4;
         s.frets[0] = 17;
         s.capo = 3;
         s.manifest = true;
-        const bool ok = rs7diagram::FromT8(t, &s);
+        const bool ok = rsxrdiagram::FromT8(t, &s);
 
         CHECK_EQ(ok, count == 7 || count == 8);
 
@@ -110,16 +110,16 @@ TEST(diagram_t8_corrupt_widths_refuse_without_mutating_shape) {
         }
     }
 
-    rs7diagram::Shape s;
+    rsxrdiagram::Shape s;
 
-    CHECK(!rs7diagram::FromT8(nullptr, &s));
-    CHECK(!rs7diagram::FromT8(t, nullptr));
+    CHECK(!rsxrdiagram::FromT8(nullptr, &s));
+    CHECK(!rsxrdiagram::FromT8(t, nullptr));
 
     for (int count : {-1, 0, 4, 6, 9, 255}) {
         s.count = count;
         Properties out;
 
-        rs7diagram::Emit(s, PutProperty, &out);
+        rsxrdiagram::Emit(s, PutProperty, &out);
         CHECK(out.empty());
     }
 }
@@ -128,7 +128,7 @@ TEST(diagrammovie_synthetic_recipe_roundtrip_and_every_truncated_prefix) {
     auto m = Movie(), r = Recipe(m);
     std::vector<uint8_t> out;
 
-    CHECK(rs7diagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, &out));
+    CHECK(rsxrdiagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, &out));
     CHECK(out == m);
 
     for (size_t n = 0; n < r.size(); ++n) {
@@ -144,9 +144,9 @@ TEST(diagrammovie_synthetic_recipe_roundtrip_and_every_truncated_prefix) {
         Refuses(truncated, r);
     }
 
-    CHECK(!rs7diagram::SwapMovie(nullptr, m.size(), r.data(), r.size(), 28, &out));
-    CHECK(!rs7diagram::SwapMovie(m.data(), m.size(), nullptr, r.size(), 28, &out));
-    CHECK(!rs7diagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, nullptr));
+    CHECK(!rsxrdiagram::SwapMovie(nullptr, m.size(), r.data(), r.size(), 28, &out));
+    CHECK(!rsxrdiagram::SwapMovie(m.data(), m.size(), nullptr, r.size(), 28, &out));
+    CHECK(!rsxrdiagram::SwapMovie(m.data(), m.size(), r.data(), r.size(), 28, nullptr));
 }
 
 TEST(diagrammovie_recipe_corruption_bounds_and_output_atomicity) {

@@ -1,13 +1,13 @@
 #include "platform/freeze_completion.h"
 
-LONG Rs7FreezeCompletion::Start() {
+LONG RsxrFreezeCompletion::Start() {
     ResetEvent(done);
     InterlockedExchange(&busy, 1);
 
     return InterlockedIncrement(&submitted);
 }
 
-void Rs7FreezeCompletion::Publish(LONG generation) {
+void RsxrFreezeCompletion::Publish(LONG generation) {
     InterlockedExchange(&completed, generation);
     SetEvent(done);
     if (hook) {
@@ -16,7 +16,7 @@ void Rs7FreezeCompletion::Publish(LONG generation) {
     InterlockedExchange(&busy, 0);
 }
 
-bool Rs7FreezeCompletion::Wait(LONG generation, unsigned timeoutMs) {
+bool RsxrFreezeCompletion::Wait(LONG generation, unsigned timeoutMs) {
     const ULONGLONG end = GetTickCount64() + timeoutMs;
 
     for (;;) {

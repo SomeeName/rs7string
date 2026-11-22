@@ -1,9 +1,9 @@
 # Documentation site. Build: uv run --group docs mkdocs build --strict
 # Published to GitHub Pages from the public repository only (.github/workflows/pages.yml).
-site_name: rs7string
+site_name: RS Extended Range
 site_description: Seven- and eight-string guitars and five- and six-string basses for Rocksmith 2014 Remastered
-site_url: https://someename.github.io/rs7string/
-repo_url: https://github.com/SomeeName/rs7string
+site_url: https://someename.github.io/rs-extended-range/
+repo_url: https://github.com/SomeeName/rs-extended-range
 docs_dir: site-src
 site_dir: site
 hooks:
@@ -56,14 +56,14 @@ theme:
     - content.code.copy
     - content.tabs.link
 
-copyright: rs7string is MIT licensed. Rocksmith is a trademark of Ubisoft; this project is not affiliated with Ubisoft.
+copyright: RS Extended Range is MIT licensed. Rocksmith is a trademark of Ubisoft; this project is not affiliated with Ubisoft.
 
 extra:
   generator: false
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/SomeeName/rs7string
-      name: rs7string on GitHub
+      link: https://github.com/SomeeName/rs-extended-range
+      name: RS Extended Range on GitHub
 
 extra_css:
   - docs/assets/extra.css
@@ -110,8 +110,8 @@ nav:
       - Changelog: docs/release/CHANGELOG.md
   - Chart authors:
       - Charting guide: docs/release/CHARTING.md
-      - Chart tools: docs/release/CHART-TOOLS.md
-      - RS7X specification: docs/release/RS7X-SPEC.md
+      - Chart tools guide: docs/release/CHART-TOOLS.md
+      - Native format specification: docs/release/NATIVE-FORMAT.md
   - Developers:
       - Start here: docs/GETTING-STARTED.md
       - Development: docs/DEVELOPMENT.md
@@ -132,6 +132,7 @@ nav:
           - docs/architecture/13-known-limitations-and-open-risks.md
           - docs/architecture/14-mid-hook-contract-and-cold-site-conversion.md
           - docs/architecture/15-source-layout.md
+          - Extension block: docs/architecture/extension-block.md
       - Contributing: CONTRIBUTING.md
       - Releasing: docs/RELEASING.md
       - Test checklist: docs/TEST-CHECKLIST.md
