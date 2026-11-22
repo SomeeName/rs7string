@@ -1,4 +1,5 @@
 // The native manifest rewriter (model/nativemanifest.h): native Tuning objects become the current form.
+#include "../tones/manifest_fixture.h"
 #include "model/nativemanifest.h"
 #include "test.h"
 #include <string>
@@ -57,6 +58,55 @@ TEST(nativemanifest_guitar_strings_move_to_their_slots) {
     CHECK(Run(Attributes("Lead", {-8, -7, 1, 2, 3, 4, 5, 6})) ==
           Current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": 5, \"string5\": 6, "
                   "\"RsxrString6\": -7, \"RsxrString7\": -8"));
+}
+
+TEST(nativemanifest_tone_marker_requires_valid_native_attributes_and_extra_names) {
+    std::string native = Attributes("Lead", {0, 0, 0, 0, 0, 0, 0});
+
+    native.insert(1, "\"Tone_E\": \"crunch\", \"Tone_F\": \"lead\", ");
+
+    const std::string out = Run(native);
+
+    CHECK(out.find("\"RsxrToneSlots\": 26") != std::string::npos);
+    CHECK(out.find("\"Tone_E\": \"crunch\"") != std::string::npos);
+    CHECK(out.find("ExtendedRange") == std::string::npos);
+    CHECK(Run(Attributes("Lead", {0, 0, 0, 0, 0, 0, 0})).find("RsxrToneSlots") == std::string::npos);
+
+    std::string invalid = Attributes("Lead", {0, 0, 0, 0, 0});
+
+    invalid.insert(1, "\"Tone_E\": \"crunch\", ");
+    CHECK(Run(invalid).find("RsxrToneSlots") == std::string::npos);
+    CHECK(Run("{\"Tone_E\":\"crunch\"}") == "<unchanged>");
+
+    native.insert(1, "\"RsxrToneSlots\":26, ");
+    CHECK(Run(native).find("\"RsxrToneSlots\":0") != std::string::npos);
+    CHECK(Run(native).find("\"RsxrToneSlots\": 26") == std::string::npos);
+}
+
+TEST(nativemanifest_demo_layout_preserves_extra_fields_inside_attributes) {
+    for (const char* name : {"Lead", "Rhythm"}) {
+        std::string input = tonetest::kManifest;
+
+        input.replace(input.find("Lead"), 4, name);
+
+        std::string want = input;
+        const std::string marker = "\"ExtendedRange\": {\n          \"Version\": 1\n        }";
+        const size_t tuning = want.find("\"Tuning\": {");
+        const size_t end = want.find('}', tuning);
+
+        want.replace(tuning, end + 1 - tuning,
+                     "\"Tuning\": {\"string0\": -2, \"string1\": -2, \"string2\": -2, \"string3\": -2, "
+                     "\"string4\": -2, \"string5\": -2, \"RsxrString6\": -2}");
+        want.replace(want.find(marker), marker.size(), "\"RsxrToneSlots\": 26");
+
+        ManifestStats stats;
+
+        CHECK(Run(input, &stats) == want);  // all other bytes, including Tones and empty G..Z, survive
+        CHECK_EQ(stats.rewritten, 1);
+        CHECK_EQ(stats.bad, 0);
+        input.erase(input.find("        " + marker), marker.size() + 10);  // remove marker, comma and newline
+        CHECK(Run(input) == "<unchanged>");
+    }
 }
 
 TEST(nativemanifest_bass_strings_move_to_their_slots) {

@@ -17,6 +17,7 @@
 #include "features/string7/string7.h"
 #include "features/strings/strings.h"
 #include "features/testdrive/testdrive.h"
+#include "features/tones/tones.h"
 #include "features/tuner/tuner.h"
 #include "model/gates.h"
 
@@ -44,6 +45,7 @@ const GroupSwitches kGroupSwitches[] = {
     {RsxrFeature::Clite, &g_rsxr_clite, nullptr},
     {RsxrFeature::Glow, &g_rsxr_glow_fix, nullptr},
     {RsxrFeature::MenuLoad, &g_rsxr_menu_retry, nullptr},
+    {RsxrFeature::Tones, &g_rsxr_tones, nullptr},
 };
 
 // Marks one group failed and clears its switches (no cascade).
@@ -136,6 +138,9 @@ bool Rsxr_DisableFeature(RsxrFeature f) {
 // write condition comes from registration metadata, so site renames do not alter patch selection.
 bool Rsxr_ShouldPatch(const RsxrHook& h, bool diagnostics, bool privateOn, bool nativePegs, bool nativeStrings) {
     if (g_featureOff[size_t(Rsxr_FeatureOf(h))]) {
+        return false;
+    }
+    if ((h.gates & kRsxrGateTones) && !g_rsxr_tones) {
         return false;
     }
     if ((h.gates & kRsxrGateMenuLoad) && !g_rsxr_menu_retry) {

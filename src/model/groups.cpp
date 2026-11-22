@@ -19,7 +19,8 @@ const char* Rsxr_FeatureName(RsxrFeature f) {
                                     "[psarc] plain",
                                     "C-lite",
                                     "RSMods glow correction",
-                                    "menu loading retry"};
+                                    "menu loading retry",
+                                    "26 tone slots"};
     static_assert(sizeof n / sizeof n[0] == size_t(RsxrFeature::Count), "one name per RsxrFeature");
 
     return size_t(f) < size_t(RsxrFeature::Count) ? n[size_t(f)] : "?";

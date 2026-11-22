@@ -23,6 +23,7 @@ techniques. Padding follows NATIVE-FORMAT.md, increased if real sizes require it
 
 import argparse
 import json
+import math
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -74,6 +75,7 @@ class _Layout:
     sections: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     tuning: tuple = (0, 0)
+    tones: tuple = (0, 0)
     end: int = 0
 
 
@@ -93,8 +95,12 @@ def _walk(data, width, start=0):
     for _ in range(reader.count(8)):  # NewLinkedDifficulties
         reader.take(4)
         reader.array(4)
-    for size in (260, 260, 8, 8):  # Actions, Events, Tones, DNA
+    for size in (260, 260):  # Actions, Events
         reader.array(size)
+    tone_start = reader.pos
+    reader.array(8)
+    layout.tones = (tone_start, reader.pos)
+    reader.array(8)  # DNA
     layout.sections = reader.array(88)
     for _ in range(reader.count(36)):  # Levels
         reader.take(4)  # difficulty
@@ -458,6 +464,45 @@ def unpack_sng(data):
 
 def pack_sng(body):
     return _pack("II", 0x4A, 1) + bytes(16) + _pack("I", len(body)) + zlib.compress(body, 9) + bytes(56)
+
+
+def tone_names(attributes):
+    """A..Z names, with empty strings for unused slots (Base is separate)."""
+    result = [attributes.get(f"Tone_{chr(65 + i)}", "") for i in range(26)]
+    if any(not isinstance(key, str) for key in result):
+        raise ValueError("Tone_A..Tone_Z must be strings")
+    return result
+
+
+def _tone_layout(body):
+    if body.startswith(b"SNXR"):
+        _, width, _, start = _native_header(body)
+        return _walk(body, width, start)
+    return _walk(body, 6)
+
+
+def read_tone_changes(body):
+    """Read the complete timeline from a native or internal stock body, without remapping raw IDs."""
+    start, end = _tone_layout(body).tones
+    return list(struct.iter_unpack("<fI", body[start + 4 : end]))
+
+
+def with_tone_changes(body, changes):
+    """Write a native A..Z timeline; events must be chronological and have finite, nonnegative times."""
+    if not body.startswith(b"SNXR"):
+        raise ValueError("extended tone timelines require a native SNXR chart")
+    records, previous = [], -1.0
+    for time, ident in changes:
+        if not math.isfinite(time) or time < 0 or time < previous or type(ident) is not int or not 0 <= ident < 26:
+            raise ValueError("invalid A..Z tone event (time/order/id)")
+        try:
+            record = _pack("fI", time, ident)
+        except (OverflowError, struct.error):
+            raise ValueError("tone time does not fit a float32") from None
+        records.append(record)
+        previous = time
+    start, end = _tone_layout(body).tones
+    return body[:start] + _pack("I", len(records)) + b"".join(records) + body[end:]
 
 
 def instrument_arrangements(files):

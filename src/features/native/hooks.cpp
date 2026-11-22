@@ -1,6 +1,7 @@
 // The three hooks that translate a native package (native.h) while the game loads it. Everything after them (the
 // game, XB1, the N-slot chord data, the manifest readers of the tuner and C-lite) sees the current form only.
 #include "features/native/native.h"
+#include "features/tones/tones.h"
 #include "model/nativemanifest.h"
 #include "model/nativesng.h"
 #include "platform/log.h"
@@ -117,7 +118,15 @@ extern "C" void __cdecl RsxrNative_OnJson(const char** cursor) {
 // cannot be converted continues at the loader's own failure exit instead (the target of the `jne rel32` that ends 3
 // bytes before the site; it destroys both streams and returns false), with the site's stack. Must not throw.
 extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_XI1(RsxrMid::Context& c) {
-    if (RsxrNative_OnBody(RsxrMid::Dword(c.esp + 0x24), RsxrMid::Dword(c.esp + 0x2C))) {
+    const uint32_t buffer = RsxrMid::Dword(c.esp + 0x24);
+    const uint32_t size = RsxrMid::Dword(c.esp + 0x2C);
+    const bool native =
+        size >= 4 && Rsxr_SafeRead<uint32_t>(reinterpret_cast<const void*>(uintptr_t(buffer)), 0) == 0x52584E53u;
+    const bool accepted = RsxrNative_OnBody(buffer, size);
+
+    RsxrTones_SongLoaded(c.ebx, accepted && native);
+
+    if (accepted) {
         return;
     }
 

@@ -24,6 +24,12 @@ before the repository went public. They remain only in the maintainer's private 
 hashes elsewhere in these docs also point into that history, for example those of the frozen stub fixtures in
 chapter 14. The fixture files themselves are in the tree.
 
+Native tone registration findings and the isolated E..Z resource-preload design are tracked in
+[tone implementation notes](agents/tones-notes.md#native-registration). Full shared-store reader integration
+is deferred until its aliases and lifetime are mapped; playback retains the full-object apply path and reads
+the stock per-player Tone Plan override properties. The editor's dynamic rows and viewport limit are recorded
+in the [demo-first editor notes](agents/tones-notes.md#demo-first-editor-implementation).
+
 ## Find a topic
 
 ### Start with the model

@@ -73,6 +73,46 @@ entry in the HSAN header file:
 - Stock arrangements and arrangements without a `Tuning`, such as vocals, have no marker. All other fields
   keep their stock meaning.
 
+## Tone slots A through Z
+
+A native arrangement can name up to 26 tone-change destinations, `Tone_A` through `Tone_Z`, plus its separate
+`Tone_Base`. Put the extra names in the arrangement's `Attributes` next to the stock names:
+
+```json
+"Tone_Base": "clean",
+"Tone_A": "clean",
+"Tone_B": "crunch",
+"Tone_C": "drive",
+"Tone_D": "lead",
+"Tone_E": "ambient",
+"Tone_F": "fuzz"
+```
+
+Keep complete definitions in `Attributes.Tones` in the full manifest, as for stock tones. Each name must match
+exactly one definition's `Key`, compared without case sensitivity. An unused slot may be absent or an empty
+string. Names must fit in 255 UTF-8 bytes. Use the same slot names in the manifest JSON and its HSAN entry.
+Do not write `RsxrToneSlots`: the loader generates that internal field from valid native attributes.
+
+The SNG tone section retains its stock binary layout: a `u32` event count followed by records containing
+`float32 time` and `u32 id`, eight bytes each. Raw IDs `0` through `25` mean A through Z. In particular, ID `5`
+means F. Base is selected before the first event; it has no timeline ID. Times must be finite, nonnegative and
+chronological. The game selects the last event strictly earlier than the current song time. There is no limit
+of 26 changes: only the number of named destinations is limited.
+
+Extra slots require both native manifest attributes and an `SNXR` chart, with at least one nonempty extra
+slot E through Z. Stock arrangements and native arrangements without extra slots use stock tone handling.
+A missing or ambiguous definition or an out-of-range ID is rejected and leaves the previous sound active.
+The stock Tone Plan editor still shows Base and A through D; paging for E through Z is a follow-up.
+
+To prepare a six-tone, 20-change demo from your own native package and six existing definitions, run:
+
+```powershell
+python tools/tone_demo.py SOURCE.psarc DEMO_rsxr_p.psarc --arrangement PERSISTENT_ID --keys KEY_A KEY_B KEY_C KEY_D KEY_E KEY_F
+```
+
+The first change is at 5 seconds, then every 3 seconds; `--start` and `--interval` change those times.
+Choose times within your song and run the generator outside the game folder.
+
 ## Charts
 
 The SNG wrapper is the plain-package wrapper. All its numeric values and the inflated body are little-endian.
