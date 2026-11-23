@@ -275,15 +275,15 @@ BATCH5_MID = (
     *("TU8H", "TU8C", "TU8A", "TU8INIT", "TU8FREE", "AT"),  # features/tuner/hooks_entries.cpp (+ the TS8* entries)
     *("TS8SEL", "TS8STA", "TS8STB", "TS8M2E", "TS8MD2", "TS8MD0", "TS8MD1", "TS8MD3", "TS8FIN", "TS8FOU", "TS8PLS"),
     *("TS8PEK", "TS8LET", "TS8LPL", "TS8LRL", "TS8PKS", "TS8PKR", "TS8PKP", "TS8PKL", "TS8LOF", "TS8HNT"),
-    *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC"),  # features/publish/hooks_entries.cpp
-    *("PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBGB", "PUBGA", "PUBGF", "PUBEDGE"),  # hooks_gridsites.cpp
+    *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC"),  # features/publish: hooks_entries.cpp, hooks_gridsites.cpp
+    *("PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBGB", "PUBGA", "PUBGF", "PUBFA", "PUBBC", "PUBEDGE"),
     *("PSU1", "PSU2", "PSM1", "LT0", "LT1", "AL1"),  # features/headstock/hooks_mid.cpp
     *private_features.get("MID_SITES", ()),  # the private extras (tools/private_features.py)
     *("GSFR", "GSBD", "GSUL", "GSLD", "GSFO", "GSFI", "GSXF", "GSWD", "GSUP", "GSRS", "GSPK", "GSVB"),
     *("GSIC", "GSDM", "GSGL", "GSHC", "GRM1", "GRM2"),  # features/strings/hooks_entries.cpp
 )
 BATCH5_LIGHT = {
-    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "CLVE", "NG1"),
+    *("CLBM", "CLBA", "CLGU", "CLGE", "CLVB", "CLVE", "NG1", "PUBFA"),
     *("PUBCL", "PUBTO", "PUBWU", "PUBNL", "PUBAN", "PUBAC", "PUBGS", "PUBGE1", "PUBGE2", "PUBGC", "PUBGO", "PUBEDGE"),
 }
 MID_CALLBACKS.update({sid: f"Rsxr_Mid_{sid}" for sid in BATCH5_MID})

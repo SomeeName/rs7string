@@ -55,6 +55,10 @@ __declspec(dllexport) void __cdecl Rsxr_FretsAfterApply(uint8_t* grid);
 __declspec(dllexport) void __cdecl Rsxr_InlaysAfter(uint8_t* guitar, uint8_t* inlays);
 }
 
+// Entity_SetScale 0x7AE2C0 through X_SETSCALE (nothing when it did not resolve); hooks.cpp. Also used by the finger
+// marker barres (features/publish).
+void RsxrFrets_SetScale(uint8_t* entity, float k);
+
 namespace rsxrfrets {
 constexpr float kDefaultHalfLen = 4.61f;  // half bar length estimate (bound radius 4.638, see the note)
 using rsxr::kGuitarGrid;                  // FretGrid* (0x593043: EAX = [edi+10h])

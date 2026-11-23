@@ -17,6 +17,8 @@ SPECS = [
     ("PUBGB", 0x58FA25, 5, None),
     ("PUBGA", 0x594530, 6, None),
     ("PUBGF", 0x58CF90, 5, None),
+    ("PUBFA", 0x58CDC0, 6, None),
+    ("PUBBC", 0x58C7DC, 6, None),
     ("PUBEDGE", 0x7E72D0, 13, None),
 ]
 

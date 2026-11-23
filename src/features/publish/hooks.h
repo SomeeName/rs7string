@@ -48,6 +48,10 @@ __declspec(dllexport) int __cdecl RsxrPublish_GridPos(uint8_t* grid, unsigned fr
 __declspec(dllexport) int __cdecl RsxrPublish_GridBuild(uint8_t* grid, uint8_t* guitar);
 __declspec(dllexport) int __cdecl RsxrPublish_FingerSpan(const uint8_t* tpl, unsigned finger, int* span);
 __declspec(dllexport) unsigned __cdecl RsxrPublish_Edge(uint8_t* info, unsigned first);
+__declspec(dllexport) unsigned __cdecl RsxrPublish_FingerAnchor(const uint8_t* tpl, unsigned string,
+                                                                const uint8_t* owner);
+__declspec(dllexport) extern volatile uint32_t g_rsxr_finger_bass;
+__declspec(dllexport) void __cdecl RsxrPublish_BarreFit(const uint8_t* owner, uint8_t* marker, float* duration);
 }
 
 // The pitch copies' call-in entries (hooks_callin.cpp; hooks_pitch.cpp writes them into the copies).

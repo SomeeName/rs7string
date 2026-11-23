@@ -4,6 +4,21 @@
 
 [README](../../README.md) · [Install](INSTALL.md) · [Settings](SETTINGS.md) · [Charting](CHARTING.md) · **Changelog**
 
+## 1.0.0-beta.6
+
+A bug-fix release for the finger markers (the "hand shape" markers on the neck) and a rare crash. Everything
+else works as in 1.0.0-beta.5.
+
+### Fixed
+
+- A barre marker on a seven- or eight-string guitar now reaches across all strings. Before, it stopped at the sixth
+  string.
+- On five- and six-string basses, and with custom string spacing, barre markers now have the right length.
+- On seven- and eight-string guitars, a barre over the low strings was drawn one string too high. Its finger
+  marker now sits on the barre's lowest string.
+- On bass, finger markers follow the bass string order, so they sit on the right string and have the right size.
+- Fixed a rare crash while the game loads the headstock model.
+
 ## 1.0.0-beta.5
 
 ### Changed

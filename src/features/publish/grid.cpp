@@ -21,13 +21,22 @@ unsigned PhysicalEdge(unsigned n, bool first, bool bass) {
     return first && n > 6 ? n - 1 : first ? 0 : n > 6 ? 5 : n - 1;
 }
 
-int FingerSpan(const uint8_t* fingers, unsigned n, unsigned finger, int* span) {
+unsigned FingerRank(unsigned s, unsigned n, bool bass) {
+    // Bass keeps six template slots: E A D G in 0-3, the low B in 4 (lowest), the high C in 5 (highest).
+    if (bass) {
+        return s < 4 ? s + 1 : s == 4 ? 0 : s;
+    }
+
+    return PhysicalRank(s, n);
+}
+
+int FingerSpan(const uint8_t* fingers, unsigned n, unsigned finger, int* span, bool bass) {
     // Stock's no-match result is 0-6+1=-5 and its return tests maxIndex != 0.
     unsigned lo = n, hi = 0;
 
     for (unsigned s = 0; s < n; ++s) {
         if (fingers[s] == finger) {
-            const unsigned r = PhysicalRank(s, n);
+            const unsigned r = FingerRank(s, n, bass);
 
             lo = std::min(lo, r);
             hi = std::max(hi, r);
@@ -37,6 +46,48 @@ int FingerSpan(const uint8_t* fingers, unsigned n, unsigned finger, int* span) {
     *span = int(hi) - int(lo) + 1;
 
     return hi != 0;
+}
+
+unsigned FingerAnchor(const uint8_t* fingers, unsigned n, unsigned s, bool bass) {
+    // The marker loop anchors a finger on the first string in slot order, and the barre runs up from there. The low
+    // strings (guitar 6/7, bass 4) are not first in slot order, so a barre that includes them must start at its
+    // lowest physical string.
+    if (s >= n || fingers[s] == 0xFF) {
+        return s;
+    }
+
+    unsigned anchor = s;
+
+    for (unsigned i = 0; i < n; ++i) {
+        if (fingers[i] == fingers[s] && FingerRank(i, n, bass) < FingerRank(anchor, n, bass)) {
+            anchor = i;
+        }
+    }
+
+    return anchor;
+}
+
+// The marker update 0x58C690 seeks the barre clip to clamp((span - 1) / 5, 0, 1) of its length, and the clip ends at
+// five gaps of clipGap. The barre needs span - 1 gaps of gap: up to the clip's end that is a seek (scale the duration
+// the seek multiplies), beyond it the clip stays at its end and the capsule is scaled up.
+namespace {
+float BarreReach(int span, float gap, float clipGap) {
+    return span <= 1 || !(gap > 0.0f) || !(clipGap > 0.0f) ? 0.0f : float(span - 1) * gap / (5.0f * clipGap);
+}
+}  // namespace
+
+float BarreClipScale(int span, float gap, float clipGap) {
+    const float reach = BarreReach(span, gap, clipGap);
+
+    if (!(reach > 0.0f)) {
+        return 1.0f;
+    }
+
+    return std::min(reach, 1.0f) / std::min(float(span - 1) / 5.0f, 1.0f);
+}
+
+float BarreEntityScale(int span, float gap, float clipGap) {
+    return std::max(BarreReach(span, gap, clipGap), 1.0f);
 }
 
 int GetCellPos(const uint8_t* grid, unsigned n, unsigned fret, unsigned k, unsigned s, float* out) {

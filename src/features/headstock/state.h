@@ -55,7 +55,7 @@ struct State {
     // Game thread; the peg-swap flag retains its interlocked write and volatile reads.
     volatile long pegSwapEver;
     // Game thread log limits, retaining interlocked RsxrLog_Upto updates.
-    volatile long logFrameCheck, logNoAlt, logFrame, logLetters;
+    volatile long logNoAlt, logFrame, logLetters;
     volatile long logPegs, logPegAlt, logBind, logSeg7, logLayer, logWidth;
 
     // Startup writes before hooks; loader threads then read without a lock.
@@ -71,7 +71,7 @@ struct State {
     volatile long sbState, sbStateLh;  // 0 untried, 1 running, 2 succeeded, 3 failed
 
     // Resource-loader threads: interlocked log limits (no additional lock).
-    volatile long logSeen, logMerged, logMissing, logFail, logLayout, logTexCheck, logTex;
+    volatile long logSeen, logMerged, logMissing, logFail, logLayout, logTex;
     // Resource-loader threads claim / publish shared and bass builds through interlocked operations.
     volatile long sbShared, sbBassRh, sbBassLh;
     // Resource-loader callbacks only take these stable addresses; the tags are never written.

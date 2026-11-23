@@ -264,10 +264,6 @@ void MergeModels(const char* name, void* res, const void* buf, uint32_t size, bo
         RegisterTextures(name, second, bytes, buf, size, &registered);
         Merge(name, res, second, bytes, kAltName5);
     }
-
-    if (own && RsxrLog_Upto(&g_head.logTexCheck, 2)) {
-        LogTextureList("after the merge");
-    }
 }
 
 // Eight strings: the 7-peg model file next to the 8-peg one, "" without one (or with eight off). The self-build writes

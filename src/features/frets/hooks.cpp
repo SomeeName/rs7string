@@ -146,6 +146,12 @@ void GameSetScale(uint8_t* entity, float k) {  // Entity_SetScale 0x7AE2C0: EAX 
 }
 }  // namespace rsxrfretglue
 
+void RsxrFrets_SetScale(uint8_t* entity, float k) {
+    if (entity && g_rsxr_fn_setscale) {
+        rsxrfretglue::GameSetScale(entity, k);
+    }
+}
+
 namespace {
 using namespace rsxrfrets;
 using namespace rsxrfretglue;

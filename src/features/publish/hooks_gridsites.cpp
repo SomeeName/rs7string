@@ -8,6 +8,8 @@
 //   PUBGB                Rnd_FretGrid_Build exit: build the extra cells 6/7 once
 //   PUBGA                Rnd_GetStringAttachPoint entry: strings 6/7 via RsxrGs_AttachExt; [neck] spacing_* scaled
 //   PUBGF                finger span over the template's physical ranks
+//   PUBFA                the string a finger marker is anchored on: the barre's lowest physical string (light)
+//   PUBBC                a finger marker's changed span: fit the barre capsule to the neck's string gap
 //   PUBEDGE              the edge string of a string action over N strings (light)
 //   PUBGP (site R1)      Rnd_FretGrid_GetCellPos: every cell position query from the native cells (sse)
 // Converted from naked stubs (frozen at 9c0e44f, tools/tests/test_midhook_features.py). Light
@@ -149,6 +151,34 @@ extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBGF(Context& c) {
     const int span = RsxrPublish_FingerSpan(Ptr<const uint8_t>(Dword(c.esp + 4)), c.edi, Ptr<int>(Dword(c.esp + 8)));
 
     RsxrMid::Return(c, static_cast<uint32_t>(span), 8);
+}
+
+// PUBFA - 0x58CDC0, entry of the neck finger marker (AL = string, ECX = template, EDI = the marker owner; only caller
+// 0x58CD5F in the marker loop 0x58CC80). The loop picks the first string in slot order that uses a finger, and PUBGF's
+// span runs up from it, so a barre over the low B and E was drawn from the E, one string too high. With the
+// publication ports the anchor becomes the barre's lowest physical string, on an extended bass in the bass order (low
+// B in slot 4). It also records whether the marker is a bass one for PUBGF's span. Replays `push ebp; mov ebp,esp; sub
+// esp,10h`; the flags are rewritten by that `sub` (contract "dead").
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBFA(Context& c) {
+    if (!g_rsxr_native_publish) {
+        return;
+    }
+
+    c.eax =
+        WithLow8(c.eax, RsxrPublish_FingerAnchor(Ptr<const uint8_t>(c.ecx), c.eax & 0xFF, Ptr<const uint8_t>(c.edi)));
+}
+
+// PUBBC - 0x58C7DC in the finger marker update 0x58C690 (EBP frame: [EBP+8] = the owner, EBX = the marker), in the
+// block that re-seeks the barre clip when the span changed, after the clip duration was stored at [ESP+14h]. The seek
+// is clamp((span - 1) / 5, 0, 1) of it, fit for six guitar strings; RsxrPublish_BarreFit scales the duration and the
+// capsule to the span at an extended neck's string gap. Replays `mov esi,[ebx+1Ch]; sub esp,0Ch`; the flags are
+// rewritten by that `sub` (contract "dead").
+extern "C" __declspec(dllexport) void __cdecl Rsxr_Mid_PUBBC(Context& c) {
+    if (!g_rsxr_native_publish) {
+        return;
+    }
+
+    RsxrPublish_BarreFit(Ptr<const uint8_t>(Dword(c.ebp + 8)), Ptr<uint8_t>(c.ebx), Ptr<float>(c.esp + 0x14));
 }
 
 // PUBEDGE - 0x7E72D0 in the string-action function 0x7E7140 (EAX = info, CL = first): the stock edge string `first ? 0
