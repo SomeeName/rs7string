@@ -222,8 +222,8 @@ TEST(publish_and_chordloops_sites_have_their_own_groups) {
         }
     }
 
-    CHECK_EQ(pub, 25u);
-    CHECK_EQ(cl, 20u);  // + CLVE
+    CHECK_EQ(pub, 27u);  // + PUBFA, PUBBC
+    CHECK_EQ(cl, 20u);   // + CLVE
 
     for (const char* id : {"PA1", "PA2", "PM0", "PR0", "PT1", "PM1", "PE0", "PC1", "PC2", "PC3", "PC4", "PBH"}) {
         const RsxrHook* h = Rsxr_FindHook(id);

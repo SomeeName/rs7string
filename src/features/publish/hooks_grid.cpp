@@ -256,8 +256,13 @@ extern "C" int __cdecl RsxrPublish_GridBuild(uint8_t* grid, uint8_t* guitar) {
     }
 }
 
+// The marker being placed belongs to an extended bass (5/6 strings): set by RsxrPublish_FingerAnchor (PUBFA) at the
+// entry of the marker function, read by the span (PUBGF) that the same call makes next on the same thread.
+extern "C" __declspec(dllexport) volatile uint32_t g_rsxr_finger_bass = 0;
+
 extern "C" int __cdecl RsxrPublish_FingerSpan(const uint8_t* tpl, unsigned finger, int* span) {
     const uint8_t* t8 = RsxrNs_AsT8(tpl);
+    const bool bass = g_rsxr_finger_bass != 0;
 
     if (t8) {
         unsigned n = t8[rsxrns::kT8Slots];
@@ -265,10 +270,34 @@ extern "C" int __cdecl RsxrPublish_FingerSpan(const uint8_t* tpl, unsigned finge
         if (n < 6 || n > 8) {
             n = 6;
         }
-        return rsxrpubgrid::FingerSpan(t8 + rsxrns::kT8Fingers, n, finger, span);
+        return rsxrpubgrid::FingerSpan(t8 + rsxrns::kT8Fingers, n, finger, span, bass);
     }
 
-    return rsxrpubgrid::FingerSpan(tpl + 0xA, 6, finger, span);
+    return rsxrpubgrid::FingerSpan(tpl + 0xA, 6, finger, span, bass);
+}
+
+// `owner` is the marker function's owner (EDI at its entry): +6Ch the player, whose guitar gives the instrument.
+// Six-string guitar and four-string bass keep the stock anchor (slot order is physical order there).
+extern "C" unsigned __cdecl RsxrPublish_FingerAnchor(const uint8_t* tpl, unsigned string, const uint8_t* owner) {
+    const uint8_t* player = owner ? *reinterpret_cast<const uint8_t* const*>(owner + 0x6C) : nullptr;
+    const uint8_t* guitar = player ? *reinterpret_cast<const uint8_t* const*>(player + rsxr::kSessionGuitar) : nullptr;
+    const uint8_t* info = rsxr::GuitarInfo(guitar);
+    const bool bass = info && rsxr::IsBassKind(info[rsxr::kInfoKind]) && info[rsxr::kInfoStrings] > 4;
+    const uint8_t* t8 = RsxrNs_AsT8(tpl);
+
+    g_rsxr_finger_bass = bass ? 1 : 0;
+
+    if (bass) {
+        return rsxrpubgrid::FingerAnchor(t8 ? t8 + rsxrns::kT8Fingers : tpl + 0xA, 6, string, true);
+    }
+
+    if (!t8) {
+        return string;
+    }
+
+    const unsigned n = t8[rsxrns::kT8Slots];
+
+    return n == 7 || n == 8 ? rsxrpubgrid::FingerAnchor(t8 + rsxrns::kT8Fingers, n, string) : string;
 }
 
 extern "C" unsigned __cdecl RsxrPublish_Edge(uint8_t* info, unsigned first) {

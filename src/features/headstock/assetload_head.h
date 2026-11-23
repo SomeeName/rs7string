@@ -36,7 +36,6 @@ struct Head {
     uint8_t* altLoc[kSegs];    // the same names in rsxr_alt
     uint8_t* altLocX[kExtra];  // rsxr_alt's Locator_Peg_7 / _8 (or _Invert_): PegSet slots 6 / 7
     bool locSwapped;
-    bool texChecked;
     bool onNonInline;  // the frame is not the in-line one (InstrumentInfo +0Ah = 0, 3+3): LT1, pegs
     uint8_t* pegDone[rsxrhead::kCapacity];  // peg entities whose clone shows the merged in-line peg (3+3)
     uint8_t* pegCheckedSet;  // a stock guitar's PegSet whose pegs were checked for a left-over in-line peg

@@ -13,7 +13,7 @@ void Rsxr_Mid_PUBGP(RsxrMid::Context&);  // hooks_gridsites.cpp (site R1, sse mo
 // clang-format off
 PUB_DECL(PUBCL) PUB_DECL(PUBTO) PUB_DECL(PUBWU) PUB_DECL(PUBNL) PUB_DECL(PUBAN) PUB_DECL(PUBAC)  // hooks_entries.cpp
 PUB_DECL_GUARD(PUBGS) PUB_DECL_GUARD(PUBGE1) PUB_DECL_GUARD(PUBGE2)  // hooks_gridsites.cpp
-PUB_DECL_RESUME(PUBGC) PUB_DECL_RESUME(PUBGO) PUB_DECL_RESUME(PUBGB) PUB_DECL(PUBGA) PUB_DECL(PUBGF)
+PUB_DECL_RESUME(PUBGC) PUB_DECL_RESUME(PUBGO) PUB_DECL_RESUME(PUBGB) PUB_DECL(PUBGA) PUB_DECL(PUBGF) PUB_DECL(PUBFA) PUB_DECL(PUBBC)
 PUB_DECL_RESUME(PUBEDGE)
 PUB_DECL(PUBZ)  // hooks_pitch.cpp: PUBZ0-PUBZ6, the callees of the call sites
 extern uintptr_t g_rsxr_target_PUBZ0, g_rsxr_target_PUBZ4, g_rsxr_target_PUBZ5, g_rsxr_target_PUBZ6;
@@ -47,6 +47,8 @@ const RsxrHook kHooks[] = {
     RSXR_PUB_MID(PUBGB, &g_rsxr_resume_PUBGB, nullptr, Full),
     RSXR_PUB_MID(PUBGA, nullptr, nullptr, Full),
     RSXR_PUB_MID(PUBGF, nullptr, nullptr, Full),
+    RSXR_PUB_MID(PUBFA, nullptr, nullptr, Light),
+    RSXR_PUB_MID(PUBBC, nullptr, nullptr, Full),
     RSXR_PUB_MID(PUBEDGE, &g_rsxr_resume_PUBEDGE, nullptr, Light),
     RSXR_PUB_MID(PUBNL, nullptr, nullptr, Light),
     RSXR_PUB_MID(PUBAN, nullptr, nullptr, Light),

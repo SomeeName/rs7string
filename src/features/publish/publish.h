@@ -71,7 +71,15 @@ namespace rsxrpubgrid {
 unsigned PhysicalRank(unsigned string, unsigned count);
 unsigned PhysicalEdge(unsigned count, bool first, bool bass = false);
 // Exact stock scan for stock templates; native T8 scans physical ranks.
-int FingerSpan(const uint8_t* fingers, unsigned count, unsigned finger, int* span);
+// A template slot's physical rank for the finger markers (bass: the six-slot bass order, low B in slot 4).
+unsigned FingerRank(unsigned string, unsigned count, bool bass);
+int FingerSpan(const uint8_t* fingers, unsigned count, unsigned finger, int* span, bool bass = false);
+// The string a finger's neck marker is anchored on: the physically lowest string with the same finger as `string`.
+unsigned FingerAnchor(const uint8_t* fingers, unsigned count, unsigned string, bool bass = false);
+// The barre capsule over span strings at a string gap (the stock clip ends at five gaps of clipGap): the factor for
+// the clip duration the stock seek multiplies, and the capsule's scale beyond the clip's end (1 within it).
+float BarreClipScale(int span, float gap, float clipGap);
+float BarreEntityScale(int span, float gap, float clipGap);
 // GridBuild's bounded wait (pure, tests): one entry per grid that reported "not ready". WaitStep returns true
 // (give up) once `grid` has been not ready for limitMs; WaitDone clears its entry.
 // An entry belongs to one build. A poll that finds the entry's owner (the guitar) changed, or that comes

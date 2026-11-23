@@ -143,13 +143,6 @@ void Show(Head& h) {  // every frame while wanted: alt shown, its stock siblings
         }
         LayerExtra(h, e);
     }
-
-    if (!h.texChecked) {
-        h.texChecked = true;
-        if (RsxrLog_Upto(&g_head.logFrameCheck, 1)) {
-            LogTextureList("first show");
-        }
-    }
 }
 }  // namespace
 
@@ -243,7 +236,6 @@ void RsxrAsset_HeadFrame(uint8_t* guitar, bool want) {
         h->pointed = false;
         h->locSwapped = false;
         std::memset(h->altLocX, 0, sizeof h->altLocX);
-        h->texChecked = false;
         h->frames = 0;
         if (want && !h->alt && root && RsxrLog_Upto(&g_head.logNoAlt, 4)) {
             RsxrLog("assetload: guitar %p (frame entity %p, root %p) has no %s node: no edited model merged for it",

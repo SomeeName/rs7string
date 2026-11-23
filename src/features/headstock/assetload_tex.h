@@ -21,6 +21,4 @@ std::vector<std::string> StockDdsNames(const void* stockBuf, uint32_t stockSize)
 // and the ones registered here are added (a second model merged into the same frame shares env / normal maps).
 int RegisterTextures(const char* name, const std::wstring& path, const std::vector<uint8_t>& model,
                      const void* stockBuf, uint32_t stockSize, std::vector<std::string>* done = nullptr);
-// Diagnostic: the engine's NiTexture list entries of our textures, logged.
-void LogTextureList(const char* when);
 }  // namespace rsxrasset
